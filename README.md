@@ -1,4 +1,4 @@
-# langsmith-cli
+# langsmith-cli-tools
 
 A coding agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
@@ -8,13 +8,13 @@ Built for AI coding agents (Claude Code, Cursor, etc.) and developers who need f
 
 ```bash
 # With uv (recommended)
-uv tool install langsmith-cli
+uv tool install langsmith-cli-tools
 
 # With pipx
-pipx install langsmith-cli
+pipx install langsmith-cli-tools
 
 # With pip
-pip install langsmith-cli
+pip install langsmith-cli-tools
 
 # From source
 uv tool install git+https://github.com/langchain-ai/langsmith-cli
@@ -38,29 +38,29 @@ export LANGSMITH_PROJECT="my-default-project"                 # Default project 
 Or pass them as flags:
 
 ```bash
-langsmith-cli --api-key lsv2_pt_... trace list --project my-app
+langsmith --api-key lsv2_pt_... trace list --project my-app
 ```
 
 ## Quick Start
 
 ```bash
 # List tracing projects
-langsmith-cli project list
+langsmith project list
 
 # List recent traces in a project
-langsmith-cli trace list --project my-app --limit 5
+langsmith trace list --project my-app --limit 5
 
 # Get a specific trace with full detail
-langsmith-cli trace get <trace-id> --project my-app --full
+langsmith trace get <trace-id> --project my-app --full
 
 # List LLM calls with token counts
-langsmith-cli run list --project my-app --run-type llm --include-metadata
+langsmith run list --project my-app --run-type llm --include-metadata
 
 # List datasets
-langsmith-cli dataset list
+langsmith dataset list
 
 # List experiments for a dataset
-langsmith-cli experiment list --dataset my-eval-set
+langsmith experiment list --dataset my-eval-set
 ```
 
 ## Output Formats
@@ -68,19 +68,19 @@ langsmith-cli experiment list --dataset my-eval-set
 All commands default to **JSON** output for machine consumption:
 
 ```bash
-langsmith-cli trace list --project my-app  # JSON array to stdout
+langsmith trace list --project my-app  # JSON array to stdout
 ```
 
 Use `--format pretty` for human-readable Rich tables and trees:
 
 ```bash
-langsmith-cli --format pretty trace list --project my-app
+langsmith --format pretty trace list --project my-app
 ```
 
 Write to a file with `-o`:
 
 ```bash
-langsmith-cli trace list --project my-app -o traces.json
+langsmith trace list --project my-app -o traces.json
 ```
 
 ## Command Reference
@@ -91,14 +91,14 @@ A tracing project (session) is a namespace that groups related traces together. 
 
 ```bash
 # List tracing projects (default limit: 20)
-langsmith-cli project list
-langsmith-cli project list --limit 50
+langsmith project list
+langsmith project list --limit 50
 
 # Filter by name
-langsmith-cli project list --name-contains chatbot
+langsmith project list --name-contains chatbot
 
 # Human-readable table
-langsmith-cli --format pretty project list
+langsmith --format pretty project list
 ```
 
 ### `trace` — Query and export traces
@@ -107,28 +107,28 @@ A trace is a tree of runs representing one end-to-end invocation of your applica
 
 ```bash
 # List recent traces (default limit: 20)
-langsmith-cli trace list --project my-app
-langsmith-cli trace list --project my-app --limit 50 --last-n-minutes 60
+langsmith trace list --project my-app
+langsmith trace list --project my-app --limit 50 --last-n-minutes 60
 
 # Filter traces
-langsmith-cli trace list --project my-app --error           # Only errors
-langsmith-cli trace list --project my-app --min-latency 5   # Slow traces (>5s)
-langsmith-cli trace list --project my-app --tags production  # By tag
-langsmith-cli trace list --project my-app --name "agent"     # By name
+langsmith trace list --project my-app --error           # Only errors
+langsmith trace list --project my-app --min-latency 5   # Slow traces (>5s)
+langsmith trace list --project my-app --tags production  # By tag
+langsmith trace list --project my-app --name "agent"     # By name
 
 # Include additional fields
-langsmith-cli trace list --project my-app --include-metadata  # + status, duration, tokens, costs
-langsmith-cli trace list --project my-app --include-io        # + inputs, outputs, error
-langsmith-cli trace list --project my-app --full              # All fields
+langsmith trace list --project my-app --include-metadata  # + status, duration, tokens, costs
+langsmith trace list --project my-app --include-io        # + inputs, outputs, error
+langsmith trace list --project my-app --full              # All fields
 
 # Show trace hierarchy (fetches full run tree for each trace)
-langsmith-cli trace list --project my-app --show-hierarchy --limit 3
+langsmith trace list --project my-app --show-hierarchy --limit 3
 
 # Get a specific trace
-langsmith-cli trace get <trace-id> --project my-app --full
+langsmith trace get <trace-id> --project my-app --full
 
 # Export traces to JSONL files (one per trace)
-langsmith-cli trace export ./traces --project my-app --limit 20 --full
+langsmith trace export ./traces --project my-app --limit 20 --full
 ```
 
 ### `run` — Query individual runs
@@ -137,17 +137,17 @@ A run is a single step within a trace (LLM call, tool call, chain step, etc.).
 
 ```bash
 # List LLM calls (default limit: 50)
-langsmith-cli run list --project my-app --run-type llm
-langsmith-cli run list --project my-app --run-type tool --name search
+langsmith run list --project my-app --run-type llm
+langsmith run list --project my-app --run-type tool --name search
 
 # Find expensive calls
-langsmith-cli run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
+langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
 
 # Get a specific run
-langsmith-cli run get <run-id> --full
+langsmith run get <run-id> --full
 
 # Export to JSONL (default limit: 100)
-langsmith-cli run export llm_calls.jsonl --project my-app --run-type llm --full
+langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
 ### `thread` — Query conversation threads
@@ -156,36 +156,36 @@ A thread groups multiple root runs sharing a thread_id (multi-turn conversations
 
 ```bash
 # List threads (requires --project)
-langsmith-cli thread list --project my-chatbot
-langsmith-cli thread list --project my-chatbot --last-n-minutes 120
+langsmith thread list --project my-chatbot
+langsmith thread list --project my-chatbot --last-n-minutes 120
 
 # Get all turns in a thread
-langsmith-cli thread get <thread-id> --project my-chatbot --full
+langsmith thread get <thread-id> --project my-chatbot --full
 ```
 
 ### `dataset` — Manage evaluation datasets
 
 ```bash
 # List datasets
-langsmith-cli dataset list
-langsmith-cli dataset list --name-contains eval
+langsmith dataset list
+langsmith dataset list --name-contains eval
 
 # Get dataset details
-langsmith-cli dataset get my-dataset
+langsmith dataset get my-dataset
 
 # Create and delete
-langsmith-cli dataset create --name my-eval-set --description "QA pairs for v2"
-langsmith-cli dataset delete my-old-dataset --yes
+langsmith dataset create --name my-eval-set --description "QA pairs for v2"
+langsmith dataset delete my-old-dataset --yes
 
 # Export examples to JSON
-langsmith-cli dataset export my-dataset ./data.json --limit 500
+langsmith dataset export my-dataset ./data.json --limit 500
 
 # Upload from JSON file
-langsmith-cli dataset upload data.json --name new-dataset
+langsmith dataset upload data.json --name new-dataset
 
 # Inspect local files without uploading
-langsmith-cli dataset view-file data.json
-langsmith-cli dataset structure data.json
+langsmith dataset view-file data.json
+langsmith dataset structure data.json
 ```
 
 #### Dataset Generation from Traces
@@ -194,10 +194,10 @@ Generate evaluation datasets from exported trace files:
 
 ```bash
 # Step 1: Export traces
-langsmith-cli trace export ./traces --project my-app --full --limit 50
+langsmith trace export ./traces --project my-app --full --limit 50
 
 # Step 2: Generate dataset
-langsmith-cli dataset generate -i ./traces -o eval.json --type final_response
+langsmith dataset generate -i ./traces -o eval.json --type final_response
 
 # Dataset types:
 #   final_response  - Root input -> root output pairs
@@ -206,61 +206,61 @@ langsmith-cli dataset generate -i ./traces -o eval.json --type final_response
 #   rag             - Question -> retrieved chunks -> answer
 
 # Generate and upload to LangSmith in one step
-langsmith-cli dataset generate -i ./traces -o eval.json --type rag --upload my-rag-eval
+langsmith dataset generate -i ./traces -o eval.json --type rag --upload my-rag-eval
 
 # Advanced options
-langsmith-cli dataset generate -i ./traces -o eval.json --type single_step --run-name ChatOpenAI
-langsmith-cli dataset generate -i ./traces -o eval.json --type trajectory --depth 2
-langsmith-cli dataset generate -i ./traces -o eval.json --type final_response --input-fields query --output-fields answer
+langsmith dataset generate -i ./traces -o eval.json --type single_step --run-name ChatOpenAI
+langsmith dataset generate -i ./traces -o eval.json --type trajectory --depth 2
+langsmith dataset generate -i ./traces -o eval.json --type final_response --input-fields query --output-fields answer
 ```
 
 ### `example` — Manage dataset examples
 
 ```bash
 # List examples
-langsmith-cli example list --dataset my-dataset
-langsmith-cli example list --dataset my-dataset --split test --limit 50
+langsmith example list --dataset my-dataset
+langsmith example list --dataset my-dataset --split test --limit 50
 
 # Create an example
-langsmith-cli example create --dataset my-dataset \
+langsmith example create --dataset my-dataset \
   --inputs '{"question": "What is LangSmith?"}' \
   --outputs '{"answer": "A platform for LLM observability"}'
 
 # Delete an example
-langsmith-cli example delete <example-id> --yes
+langsmith example delete <example-id> --yes
 ```
 
 ### `evaluator` — Manage evaluator rules
 
 ```bash
 # List evaluators
-langsmith-cli evaluator list
+langsmith evaluator list
 
 # Upload an offline evaluator (for experiments)
-langsmith-cli evaluator upload evals.py \
+langsmith evaluator upload evals.py \
   --name accuracy --function check_accuracy --dataset my-eval-set
 
 # Upload an online evaluator (for production monitoring)
-langsmith-cli evaluator upload evals.py \
+langsmith evaluator upload evals.py \
   --name latency-check --function check_latency --project my-app
 
 # Replace an existing evaluator
-langsmith-cli evaluator upload evals.py \
+langsmith evaluator upload evals.py \
   --name accuracy --function check_accuracy_v2 --dataset my-eval-set --replace --yes
 
 # Delete an evaluator
-langsmith-cli evaluator delete accuracy --yes
+langsmith evaluator delete accuracy --yes
 ```
 
 ### `experiment` — Query experiment results
 
 ```bash
 # List experiments
-langsmith-cli experiment list
-langsmith-cli experiment list --dataset my-eval-set
+langsmith experiment list
+langsmith experiment list --dataset my-eval-set
 
 # Get experiment results (feedback stats, run stats)
-langsmith-cli experiment get my-experiment-2024-01-15
+langsmith experiment get my-experiment-2024-01-15
 ```
 
 ## Filter Options
@@ -326,13 +326,13 @@ Example agent workflow:
 
 ```bash
 # Agent investigates a production issue
-langsmith-cli trace list --project prod-app --error --last-n-minutes 30 --full
+langsmith trace list --project prod-app --error --last-n-minutes 30 --full
 
 # Agent examines a specific failing trace
-langsmith-cli trace get <trace-id> --project prod-app --full
+langsmith trace get <trace-id> --project prod-app --full
 
 # Agent checks the LLM call that failed
-langsmith-cli run get <run-id> --full
+langsmith run get <run-id> --full
 ```
 
 ## Development

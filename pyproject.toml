@@ -1,5 +1,5 @@
 [project]
-name = "langsmith-cli"
+name = "langsmith-cli-tools"
 version = "0.1.0"
 description = "A coding agent-first CLI for querying and managing LangSmith resources"
 readme = "README.md"
@@ -32,7 +32,7 @@ Repository = "https://github.com/langchain-ai/langsmith-cli"
 Issues = "https://github.com/langchain-ai/langsmith-cli/issues"
 
 [project.scripts]
-langsmith-cli = "langsmith_cli.main:cli"
+langsmith = "langsmith_cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]

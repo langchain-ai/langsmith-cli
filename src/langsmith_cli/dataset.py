@@ -31,12 +31,12 @@ def dataset_group():
 
     \b
     Examples:
-      langsmith-cli dataset list
-      langsmith-cli dataset list --name-contains eval
-      langsmith-cli dataset get my-dataset
-      langsmith-cli dataset create --name my-dataset --description "Eval set for v2"
-      langsmith-cli dataset export my-dataset ./export.json
-      langsmith-cli dataset upload data.json --name new-dataset
+      langsmith dataset list
+      langsmith dataset list --name-contains eval
+      langsmith dataset get my-dataset
+      langsmith dataset create --name my-dataset --description "Eval set for v2"
+      langsmith dataset export my-dataset ./export.json
+      langsmith dataset upload data.json --name new-dataset
     """
 
 
@@ -57,8 +57,8 @@ def dataset_list(ctx, limit, name_contains, output_file):
 
     \b
     Examples:
-      langsmith-cli dataset list
-      langsmith-cli dataset list --name-contains eval --limit 10
+      langsmith dataset list
+      langsmith dataset list --name-contains eval --limit 10
 
     \b
     JSON output: [{id, name, description, data_type, example_count, created_at}, ...]
@@ -110,8 +110,8 @@ def dataset_get(ctx, name_or_id, output_file):
 
     \b
     Examples:
-      langsmith-cli dataset get my-eval-dataset
-      langsmith-cli dataset get 550e8400-e29b-41d4-a716-446655440000
+      langsmith dataset get my-eval-dataset
+      langsmith dataset get 550e8400-e29b-41d4-a716-446655440000
 
     \b
     JSON output: {id, name, description, data_type, example_count, created_at}
@@ -145,8 +145,8 @@ def dataset_create(ctx, name, description):
 
     \b
     Examples:
-      langsmith-cli dataset create --name my-eval-dataset
-      langsmith-cli dataset create --name my-eval-dataset --description "QA pairs for v2"
+      langsmith dataset create --name my-eval-dataset
+      langsmith dataset create --name my-eval-dataset --description "QA pairs for v2"
 
     \b
     JSON output: {status: "created", id, name, description, created_at}
@@ -176,8 +176,8 @@ def dataset_delete(ctx, name_or_id, yes):
 
     \b
     Examples:
-      langsmith-cli dataset delete my-old-dataset --yes
-      langsmith-cli dataset delete 550e8400-e29b-41d4-a716-446655440000 --yes
+      langsmith dataset delete my-old-dataset --yes
+      langsmith dataset delete 550e8400-e29b-41d4-a716-446655440000 --yes
 
     \b
     JSON output: {status: "deleted", id, name}
@@ -207,8 +207,8 @@ def dataset_export(ctx, name_or_id, output_file, limit):
 
     \b
     Examples:
-      langsmith-cli dataset export my-dataset ./data.json
-      langsmith-cli dataset export my-dataset ./data.json --limit 500
+      langsmith dataset export my-dataset ./data.json
+      langsmith dataset export my-dataset ./data.json --limit 500
 
     \b
     JSON output to stdout: {status: "exported", dataset, count, path}
@@ -252,8 +252,8 @@ def dataset_upload(ctx, file_path, name, description):
 
     \b
     Examples:
-      langsmith-cli dataset upload data.json --name my-dataset
-      langsmith-cli dataset upload pairs.json --name eval-v2 --description "QA pairs"
+      langsmith dataset upload data.json --name my-dataset
+      langsmith dataset upload pairs.json --name eval-v2 --description "QA pairs"
 
     \b
     JSON output: {status: "uploaded", dataset_id, dataset_name, example_count}
@@ -340,9 +340,9 @@ def dataset_generate(ctx, input_path, dataset_type, output_path, upload_name,
 
     \b
     Typical workflow:
-      langsmith-cli trace export ./traces --project my-app --full --limit 50
-      langsmith-cli dataset generate -i ./traces -o eval.json --type final_response
-      langsmith-cli dataset generate -i ./traces -o eval.json --type rag --upload my-rag-eval
+      langsmith trace export ./traces --project my-app --full --limit 50
+      langsmith dataset generate -i ./traces -o eval.json --type final_response
+      langsmith dataset generate -i ./traces -o eval.json --type rag --upload my-rag-eval
 
     \b
     JSON output: {status: "generated", type, count, output, [uploaded_to]}
@@ -432,9 +432,9 @@ def dataset_view_file(ctx, file_path, limit):
 
     \b
     Examples:
-      langsmith-cli dataset view-file data.json
-      langsmith-cli dataset view-file data.csv --limit 10
-      langsmith-cli --format pretty dataset view-file data.json
+      langsmith dataset view-file data.json
+      langsmith dataset view-file data.csv --limit 10
+      langsmith --format pretty dataset view-file data.json
 
     \b
     JSON output: [{...}, ...] (first N examples)
@@ -496,8 +496,8 @@ def dataset_structure(ctx, file_path):
 
     \b
     Examples:
-      langsmith-cli dataset structure data.json
-      langsmith-cli dataset structure data.csv
+      langsmith dataset structure data.json
+      langsmith dataset structure data.csv
 
     \b
     JSON output: {format, example_count, first_example_preview, field_coverage: {field: "N/M (P%)"}}

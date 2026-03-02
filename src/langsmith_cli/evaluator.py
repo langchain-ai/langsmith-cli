@@ -31,10 +31,10 @@ def evaluator_group():
 
     \b
     Examples:
-      langsmith-cli evaluator list
-      langsmith-cli evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
-      langsmith-cli evaluator upload eval.py --name latency-check --function check_latency --project my-app
-      langsmith-cli evaluator delete accuracy --yes
+      langsmith evaluator list
+      langsmith evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
+      langsmith evaluator upload eval.py --name latency-check --function check_latency --project my-app
+      langsmith evaluator delete accuracy --yes
     """
 
 
@@ -51,8 +51,8 @@ def evaluator_list(ctx, output_file):
 
     \b
     Examples:
-      langsmith-cli evaluator list
-      langsmith-cli evaluator list -o evaluators.json
+      langsmith evaluator list
+      langsmith evaluator list -o evaluators.json
 
     \b
     JSON output: [{id, name, sampling_rate, is_enabled, dataset_id, session_id}, ...]
@@ -140,17 +140,17 @@ def evaluator_upload(ctx, evaluator_file, name, func_name, target_dataset,
     \b
     Examples:
       # Offline evaluator for experiments
-      langsmith-cli evaluator upload evals.py \\
+      langsmith evaluator upload evals.py \\
         --name accuracy --function check_accuracy --dataset my-eval-set
 
     \b
       # Online evaluator for production monitoring
-      langsmith-cli evaluator upload evals.py \\
+      langsmith evaluator upload evals.py \\
         --name latency-check --function check_latency --project my-app
 
     \b
       # Replace an existing evaluator
-      langsmith-cli evaluator upload evals.py \\
+      langsmith evaluator upload evals.py \\
         --name accuracy --function check_accuracy_v2 --dataset my-eval-set --replace --yes
 
     \b
@@ -265,8 +265,8 @@ def evaluator_delete(ctx, name, yes):
 
     \b
     Examples:
-      langsmith-cli evaluator delete accuracy --yes
-      langsmith-cli evaluator delete my-evaluator --yes
+      langsmith evaluator delete accuracy --yes
+      langsmith evaluator delete my-evaluator --yes
 
     \b
     JSON output: {status: "deleted", name, count}

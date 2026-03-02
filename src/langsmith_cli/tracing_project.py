@@ -20,13 +20,13 @@ def project_group():
     \b
     Note: This lists tracing projects only (not experiments). Experiments
     are projects with an associated reference dataset — use
-    'langsmith-cli experiment list' for those.
+    'langsmith experiment list' for those.
 
     \b
     Examples:
-      langsmith-cli project list
-      langsmith-cli project list --limit 10
-      langsmith-cli project list --name-contains chatbot
+      langsmith project list
+      langsmith project list --limit 10
+      langsmith project list --name-contains chatbot
     """
 
 
@@ -47,10 +47,10 @@ def project_list(ctx, limit, name_contains, output_file):
 
     \b
     Examples:
-      langsmith-cli project list
-      langsmith-cli project list --limit 50
-      langsmith-cli project list --name-contains my-app
-      langsmith-cli project list --format pretty
+      langsmith project list
+      langsmith project list --limit 50
+      langsmith project list --name-contains my-app
+      langsmith project list --format pretty
 
     \b
     JSON output: [{id, name, description, run_count, latency_p50,

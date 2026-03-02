@@ -24,10 +24,10 @@ def trace_group():
 
     \b
     Examples:
-      langsmith-cli trace list --project my-app --limit 5
-      langsmith-cli trace list --project my-app --last-n-minutes 60 --error
-      langsmith-cli trace get <trace-id> --project my-app --full
-      langsmith-cli trace export ./traces --project my-app --limit 20 --full
+      langsmith trace list --project my-app --limit 5
+      langsmith trace list --project my-app --last-n-minutes 60 --error
+      langsmith trace get <trace-id> --project my-app --full
+      langsmith trace export ./traces --project my-app --limit 20 --full
     """
 
 
@@ -60,19 +60,19 @@ def trace_list(ctx, trace_ids, limit, project, last_n_minutes, since, error,
     \b
     Examples:
       # Recent traces in a project
-      langsmith-cli trace list --project my-app --limit 10
+      langsmith trace list --project my-app --limit 10
 
     \b
       # Traces with errors from the last hour
-      langsmith-cli trace list --project my-app --last-n-minutes 60 --error
+      langsmith trace list --project my-app --last-n-minutes 60 --error
 
     \b
       # Slow traces with full detail
-      langsmith-cli trace list --project my-app --min-latency 5.0 --full
+      langsmith trace list --project my-app --min-latency 5.0 --full
 
     \b
       # Traces with specific tags
-      langsmith-cli trace list --project my-app --tags production,v2
+      langsmith trace list --project my-app --tags production,v2
 
     \b
     JSON output: [{run_id, trace_id, name, run_type, ...}, ...]
@@ -148,9 +148,9 @@ def trace_get(ctx, trace_id, project, include_metadata, include_io, full, output
 
     \b
     Examples:
-      langsmith-cli trace get abc123-def456 --project my-app
-      langsmith-cli trace get abc123-def456 --project my-app --full
-      langsmith-cli trace get abc123-def456 --project my-app -o trace.json
+      langsmith trace get abc123-def456 --project my-app
+      langsmith trace get abc123-def456 --project my-app --full
+      langsmith trace get abc123-def456 --project my-app -o trace.json
     """
     if full:
         include_metadata = True
@@ -203,8 +203,8 @@ def trace_export(ctx, output_dir, trace_ids, limit, project, last_n_minutes, sin
 
     \b
     Examples:
-      langsmith-cli trace export ./traces --project my-app --limit 20 --full
-      langsmith-cli trace export ./data --project my-app --last-n-minutes 60
+      langsmith trace export ./traces --project my-app --limit 20 --full
+      langsmith trace export ./data --project my-app --last-n-minutes 60
 
     \b
     JSON output: {status, count, output_dir}

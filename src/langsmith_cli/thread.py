@@ -21,8 +21,8 @@ def thread_group():
 
     \b
     Examples:
-      langsmith-cli thread list --project my-chatbot --limit 10
-      langsmith-cli thread get <thread-id> --project my-chatbot --full
+      langsmith thread list --project my-chatbot --limit 10
+      langsmith thread get <thread-id> --project my-chatbot --full
     """
 
 
@@ -49,8 +49,8 @@ def thread_list(ctx, project, limit, offset, raw_filter, last_n_minutes, output_
 
     \b
     Examples:
-      langsmith-cli thread list --project my-chatbot
-      langsmith-cli thread list --project my-chatbot --last-n-minutes 120 --limit 5
+      langsmith thread list --project my-chatbot
+      langsmith thread list --project my-chatbot --last-n-minutes 120 --limit 5
 
     \b
     JSON output: [{thread_id, run_count, min_start_time, max_start_time}, ...]
@@ -119,8 +119,8 @@ def thread_get(ctx, thread_id, project, include_metadata, include_io, full, limi
 
     \b
     Examples:
-      langsmith-cli thread get <thread-id> --project my-chatbot
-      langsmith-cli thread get <thread-id> --project my-chatbot --full
+      langsmith thread get <thread-id> --project my-chatbot
+      langsmith thread get <thread-id> --project my-chatbot --full
 
     \b
     JSON output: {thread_id, run_count, runs: [...]}

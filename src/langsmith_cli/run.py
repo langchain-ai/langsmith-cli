@@ -23,10 +23,10 @@ def run_group():
 
     \b
     Examples:
-      langsmith-cli run list --project my-app --run-type llm --limit 10
-      langsmith-cli run list --project my-app --run-type tool --name search
-      langsmith-cli run get <run-id> --full
-      langsmith-cli run export runs.jsonl --project my-app --run-type llm
+      langsmith run list --project my-app --run-type llm --limit 10
+      langsmith run list --project my-app --run-type tool --name search
+      langsmith run get <run-id> --full
+      langsmith run export runs.jsonl --project my-app --run-type llm
     """
 
 
@@ -57,19 +57,19 @@ def run_list(ctx, trace_ids, limit, project, last_n_minutes, since, run_type,
     \b
     Examples:
       # All LLM calls in the last hour
-      langsmith-cli run list --project my-app --run-type llm --last-n-minutes 60
+      langsmith run list --project my-app --run-type llm --last-n-minutes 60
 
     \b
       # Tool calls with errors
-      langsmith-cli run list --project my-app --run-type tool --error
+      langsmith run list --project my-app --run-type tool --error
 
     \b
       # Runs by name with full I/O
-      langsmith-cli run list --project my-app --name ChatOpenAI --full --limit 5
+      langsmith run list --project my-app --name ChatOpenAI --full --limit 5
 
     \b
       # Expensive LLM calls
-      langsmith-cli run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
+      langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
 
     \b
     JSON output: [{run_id, trace_id, name, run_type, ...}, ...]
@@ -119,9 +119,9 @@ def run_get(ctx, run_id, include_metadata, include_io, full, output_file):
 
     \b
     Examples:
-      langsmith-cli run get abc123-def456
-      langsmith-cli run get abc123-def456 --full
-      langsmith-cli run get abc123-def456 --include-io -o run.json
+      langsmith run get abc123-def456
+      langsmith run get abc123-def456 --full
+      langsmith run get abc123-def456 --include-io -o run.json
 
     \b
     JSON output: {run_id, trace_id, name, run_type, ...}
@@ -162,8 +162,8 @@ def run_export(ctx, output_file, trace_ids, limit, project, last_n_minutes, sinc
 
     \b
     Examples:
-      langsmith-cli run export llm_calls.jsonl --project my-app --run-type llm
-      langsmith-cli run export errors.jsonl --project my-app --error --full
+      langsmith run export llm_calls.jsonl --project my-app --run-type llm
+      langsmith run export errors.jsonl --project my-app --error --full
 
     \b
     JSON output to stderr: {status, path, count}
