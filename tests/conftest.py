@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -52,7 +52,7 @@ def make_run(
     if trace_id is None:
         trace_id = uuid.uuid4()
     if start_time is None:
-        start_time = datetime.now(UTC)
+        start_time = datetime.now(timezone.utc)
     if end_time is None:
         end_time = start_time + timedelta(seconds=1)
 
@@ -91,7 +91,7 @@ def make_dataset(
     if dataset_id is None:
         dataset_id = uuid.uuid4()
     if created_at is None:
-        created_at = datetime.now(UTC)
+        created_at = datetime.now(timezone.utc)
 
     dt = SimpleNamespace(value="kv") if data_type is None else data_type
 
@@ -120,7 +120,7 @@ def make_example(
     if dataset_id is None:
         dataset_id = uuid.uuid4()
     if created_at is None:
-        created_at = datetime.now(UTC)
+        created_at = datetime.now(timezone.utc)
 
     return SimpleNamespace(
         id=example_id,

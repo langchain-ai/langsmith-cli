@@ -55,7 +55,7 @@ def thread_list(ctx, project, limit, offset, raw_filter, last_n_minutes, output_
     \b
     JSON output: [{thread_id, run_count, min_start_time, max_start_time}, ...]
     """
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     client = get_client(ctx)
     kwargs = {
@@ -66,7 +66,7 @@ def thread_list(ctx, project, limit, offset, raw_filter, last_n_minutes, output_
     if raw_filter:
         kwargs["filter"] = raw_filter
     if last_n_minutes:
-        kwargs["start_time"] = datetime.now(UTC) - timedelta(minutes=last_n_minutes)
+        kwargs["start_time"] = datetime.now(timezone.utc) - timedelta(minutes=last_n_minutes)
 
     threads = client.list_threads(**kwargs)
     fmt = ctx.obj["output_format"]

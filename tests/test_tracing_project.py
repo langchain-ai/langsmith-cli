@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from langsmith_cli.main import cli
@@ -30,7 +30,7 @@ def _make_project(
         total_cost=total_cost,
         error_rate=error_rate,
         last_run_start_time=last_run_start_time,
-        start_time=datetime.now(UTC),
+        start_time=datetime.now(timezone.utc),
         reference_dataset_id=None,
     )
 
@@ -177,7 +177,7 @@ class TestProjectList:
                 name="pretty-app",
                 latency_p50=timedelta(milliseconds=250),
                 error_rate=0.1,
-                last_run_start_time=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
+                last_run_start_time=datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc),
             ),
         ]
         mock_client.list_projects.return_value = projects

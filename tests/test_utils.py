@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -20,23 +20,23 @@ from tests.conftest import make_run
 class TestCalcDuration:
     def test_normal_duration(self):
         run = make_run(
-            start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC),
-            end_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            end_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
         )
         assert calc_duration(run) == 2000
 
     def test_sub_second_duration(self):
-        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         end = start + timedelta(milliseconds=150)
         run = make_run(start_time=start, end_time=end)
         assert calc_duration(run) == 150
 
     def test_no_start_time(self):
-        run = SimpleNamespace(start_time=None, end_time=datetime.now(UTC))
+        run = SimpleNamespace(start_time=None, end_time=datetime.now(timezone.utc))
         assert calc_duration(run) is None
 
     def test_no_end_time(self):
-        run = SimpleNamespace(start_time=datetime.now(UTC), end_time=None)
+        run = SimpleNamespace(start_time=datetime.now(timezone.utc), end_time=None)
         assert calc_duration(run) is None
 
     def test_both_none(self):
