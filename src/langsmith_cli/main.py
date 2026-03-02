@@ -27,12 +27,12 @@ Authentication:
 
 \b
 Quick start:
-  langsmith-cli project list
-  langsmith-cli trace list --project my-project --limit 5
-  langsmith-cli run list --project my-project --run-type llm --limit 10
-  langsmith-cli dataset list
-  langsmith-cli evaluator list
-  langsmith-cli experiment list --dataset my-eval-dataset
+  langsmith project list
+  langsmith trace list --project my-project --limit 5
+  langsmith run list --project my-project --run-type llm --limit 10
+  langsmith dataset list
+  langsmith evaluator list
+  langsmith experiment list --dataset my-eval-dataset
 
 \b
 Output:
@@ -60,7 +60,7 @@ Output:
     default="json",
     help="Output format. 'json' for machine-readable, 'pretty' for human-readable.",
 )
-@click.version_option(package_name="langsmith-cli")
+@click.version_option(package_name="langsmith")
 @click.pass_context
 def cli(ctx: click.Context, api_key: str, api_url: str, output_format: str) -> None:
     """LangSmith CLI - Query and manage LangSmith resources."""

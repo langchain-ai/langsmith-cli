@@ -24,9 +24,9 @@ def experiment_group():
 
     \b
     Examples:
-      langsmith-cli experiment list
-      langsmith-cli experiment list --dataset my-eval-dataset
-      langsmith-cli experiment get my-experiment-name
+      langsmith experiment list
+      langsmith experiment list --dataset my-eval-dataset
+      langsmith experiment get my-experiment-name
     """
 
 
@@ -47,9 +47,9 @@ def experiment_list(ctx, dataset_name, limit, output_file):
 
     \b
     Examples:
-      langsmith-cli experiment list
-      langsmith-cli experiment list --dataset my-eval-dataset --limit 10
-      langsmith-cli experiment list -o experiments.json
+      langsmith experiment list
+      langsmith experiment list --dataset my-eval-dataset --limit 10
+      langsmith experiment list -o experiments.json
 
     \b
     JSON output: [{id, name, reference_dataset_id, run_count, feedback_stats}, ...]
@@ -110,8 +110,8 @@ def experiment_get(ctx, name_or_id, output_file):
 
     \b
     Examples:
-      langsmith-cli experiment get my-experiment-2024-01-15
-      langsmith-cli experiment get my-experiment -o results.json
+      langsmith experiment get my-experiment-2024-01-15
+      langsmith experiment get my-experiment -o results.json
 
     \b
     JSON output: {name, feedback_stats, run_stats, example_count}

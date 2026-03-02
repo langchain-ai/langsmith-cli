@@ -21,9 +21,9 @@ def example_group():
 
     \b
     Examples:
-      langsmith-cli example list --dataset my-dataset
-      langsmith-cli example create --dataset my-dataset --inputs '{"question": "What is LangSmith?"}'
-      langsmith-cli example delete <example-id> --yes
+      langsmith example list --dataset my-dataset
+      langsmith example create --dataset my-dataset --inputs '{"question": "What is LangSmith?"}'
+      langsmith example delete <example-id> --yes
     """
 
 
@@ -48,9 +48,9 @@ def example_list(ctx, dataset_name, limit, offset, split, output_file):
 
     \b
     Examples:
-      langsmith-cli example list --dataset my-dataset
-      langsmith-cli example list --dataset my-dataset --split test --limit 50
-      langsmith-cli example list --dataset my-dataset -o examples.json
+      langsmith example list --dataset my-dataset
+      langsmith example list --dataset my-dataset --split test --limit 50
+      langsmith example list --dataset my-dataset -o examples.json
 
     \b
     JSON output: [{id, inputs, outputs, metadata, split, created_at}, ...]
@@ -114,12 +114,12 @@ def example_create(ctx, dataset_name, inputs, outputs, metadata, split):
 
     \b
     Examples:
-      langsmith-cli example create --dataset my-dataset \\
+      langsmith example create --dataset my-dataset \\
         --inputs '{"question": "What is LangSmith?"}' \\
         --outputs '{"answer": "A platform for LLM observability"}'
 
     \b
-      langsmith-cli example create --dataset my-dataset \\
+      langsmith example create --dataset my-dataset \\
         --inputs '{"query": "hello"}' --split test
 
     \b
@@ -175,7 +175,7 @@ def example_delete(ctx, example_id, yes):
 
     \b
     Examples:
-      langsmith-cli example delete 550e8400-e29b-41d4-a716-446655440000 --yes
+      langsmith example delete 550e8400-e29b-41d4-a716-446655440000 --yes
 
     \b
     JSON output: {status: "deleted", id}
