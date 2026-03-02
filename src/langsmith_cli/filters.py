@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import click
 
@@ -141,7 +141,7 @@ def build_query_params(
 
     # Time filters
     if last_n_minutes is not None:
-        params["start_time"] = datetime.now(UTC) - timedelta(minutes=last_n_minutes)
+        params["start_time"] = datetime.now(timezone.utc) - timedelta(minutes=last_n_minutes)
     elif since:
         params["start_time"] = datetime.fromisoformat(since.replace("Z", "+00:00"))
 

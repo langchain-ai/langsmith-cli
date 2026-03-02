@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -177,9 +177,9 @@ class TestLoadTracesFromFile:
 
 class TestSortTraces:
     def _make_traces(self):
-        t1 = ("t1", SimpleNamespace(start_time=datetime(2024, 1, 1, tzinfo=UTC)), [])
-        t2 = ("t2", SimpleNamespace(start_time=datetime(2024, 1, 3, tzinfo=UTC)), [])
-        t3 = ("t3", SimpleNamespace(start_time=datetime(2024, 1, 2, tzinfo=UTC)), [])
+        t1 = ("t1", SimpleNamespace(start_time=datetime(2024, 1, 1, tzinfo=timezone.utc)), [])
+        t2 = ("t2", SimpleNamespace(start_time=datetime(2024, 1, 3, tzinfo=timezone.utc)), [])
+        t3 = ("t3", SimpleNamespace(start_time=datetime(2024, 1, 2, tzinfo=timezone.utc)), [])
         return [t1, t2, t3]
 
     def test_newest_first(self):
@@ -338,31 +338,31 @@ class TestExtractTraceOutput:
 class TestExtractFinalOutput:
     def test_finds_output_from_newest_run(self):
         runs = [
-            SimpleNamespace(outputs={"answer": "old"}, start_time=datetime(2024, 1, 1, tzinfo=UTC)),
-            SimpleNamespace(outputs={"answer": "new"}, start_time=datetime(2024, 1, 2, tzinfo=UTC)),
+            SimpleNamespace(outputs={"answer": "old"}, start_time=datetime(2024, 1, 1, tzinfo=timezone.utc)),
+            SimpleNamespace(outputs={"answer": "new"}, start_time=datetime(2024, 1, 2, tzinfo=timezone.utc)),
         ]
         assert extract_final_output(runs) == "new"
 
     def test_skips_empty_outputs(self):
         runs = [
-            SimpleNamespace(outputs=None, start_time=datetime(2024, 1, 2, tzinfo=UTC)),
-            SimpleNamespace(outputs={"answer": "found"}, start_time=datetime(2024, 1, 1, tzinfo=UTC)),
+            SimpleNamespace(outputs=None, start_time=datetime(2024, 1, 2, tzinfo=timezone.utc)),
+            SimpleNamespace(outputs={"answer": "found"}, start_time=datetime(2024, 1, 1, tzinfo=timezone.utc)),
         ]
         assert extract_final_output(runs) == "found"
 
     def test_no_outputs_returns_none(self):
-        runs = [SimpleNamespace(outputs=None, start_time=datetime(2024, 1, 1, tzinfo=UTC))]
+        runs = [SimpleNamespace(outputs=None, start_time=datetime(2024, 1, 1, tzinfo=timezone.utc))]
         assert extract_final_output(runs) is None
 
 
 class TestExtractToolSequence:
     def test_basic_sequence(self):
         runs = [
-            SimpleNamespace(run_type="tool", name="Search", start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC),
+            SimpleNamespace(run_type="tool", name="Search", start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
                             run_id="r1", parent_run_id=None),
-            SimpleNamespace(run_type="tool", name="Calculator", start_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC),
+            SimpleNamespace(run_type="tool", name="Calculator", start_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
                             run_id="r2", parent_run_id=None),
-            SimpleNamespace(run_type="llm", name="ChatOpenAI", start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC),
+            SimpleNamespace(run_type="llm", name="ChatOpenAI", start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
                             run_id="r3", parent_run_id=None),
         ]
         tools = extract_tool_sequence(runs)
@@ -471,13 +471,13 @@ class TestFindRetrievalData:
                 run_type="retriever",
                 inputs={"query": "What is LangSmith?"},
                 outputs={"documents": [{"page_content": "LangSmith is..."}]},
-                start_time=datetime(2024, 1, 1, tzinfo=UTC),
+                start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
             ),
             SimpleNamespace(
                 run_type="llm",
                 inputs={"prompt": "Answer the question"},
                 outputs={"answer": "LangSmith is a platform"},
-                start_time=datetime(2024, 1, 2, tzinfo=UTC),
+                start_time=datetime(2024, 1, 2, tzinfo=timezone.utc),
             ),
         ]
         result = find_retrieval_data(runs)
@@ -488,7 +488,7 @@ class TestFindRetrievalData:
     def test_no_retrievers(self):
         runs = [
             SimpleNamespace(run_type="llm", inputs={}, outputs={"answer": "hi"},
-                            start_time=datetime(2024, 1, 1, tzinfo=UTC)),
+                            start_time=datetime(2024, 1, 1, tzinfo=timezone.utc)),
         ]
         result = find_retrieval_data(runs)
         assert result["query"] is None
@@ -500,13 +500,13 @@ class TestFindRetrievalData:
                 run_type="retriever",
                 inputs={"query": "q1"},
                 outputs={"documents": [{"page_content": "chunk1"}]},
-                start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC),
+                start_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
             ),
             SimpleNamespace(
                 run_type="retriever",
                 inputs={"query": "q2"},
                 outputs={"documents": [{"page_content": "chunk2"}]},
-                start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC),
+                start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
             ),
         ]
         result = find_retrieval_data(runs)
@@ -527,7 +527,7 @@ class TestGenerateDataset:
             parent_run_id=None,
             inputs={"query": "hello"} if root_inputs is _SENTINEL else root_inputs,
             outputs={"answer": "world"} if root_outputs is _SENTINEL else root_outputs,
-            start_time=datetime(2024, 1, 1, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         runs = [root] + (extra_runs or [])
         return (trace_id, root, runs)
@@ -554,7 +554,7 @@ class TestGenerateDataset:
         node = SimpleNamespace(
             run_id="r2", id="r2", name="ChatOpenAI", run_type="llm",
             parent_run_id="r1", inputs={"prompt": "hi"},
-            outputs={"text": "bye"}, start_time=datetime(2024, 1, 1, tzinfo=UTC),
+            outputs={"text": "bye"}, start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         traces = [self._make_trace(extra_runs=[node])]
         dataset = generate_dataset(traces, "single_step", run_name="ChatOpenAI")
@@ -566,7 +566,7 @@ class TestGenerateDataset:
             SimpleNamespace(
                 run_id=f"r{i}", id=f"r{i}", name="Node", run_type="llm",
                 parent_run_id="r1", inputs={"p": f"i{i}"},
-                outputs={"t": f"o{i}"}, start_time=datetime(2024, 1, 1, tzinfo=UTC),
+                outputs={"t": f"o{i}"}, start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
             )
             for i in range(10)
         ]
@@ -578,12 +578,12 @@ class TestGenerateDataset:
         tool1 = SimpleNamespace(
             run_id="r2", id="r2", name="Search", run_type="tool",
             parent_run_id="r1", inputs={}, outputs={},
-            start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
         )
         tool2 = SimpleNamespace(
             run_id="r3", id="r3", name="Calculator", run_type="tool",
             parent_run_id="r1", inputs={}, outputs={},
-            start_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
         )
         traces = [self._make_trace(extra_runs=[tool1, tool2])]
         dataset = generate_dataset(traces, "trajectory")
@@ -594,7 +594,7 @@ class TestGenerateDataset:
         tool = SimpleNamespace(
             run_id="r2", id="r2", name="Tool", run_type="tool",
             parent_run_id="r1", inputs={}, outputs={},
-            start_time=datetime(2024, 1, 1, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         traces = [self._make_trace(extra_runs=[tool])]
         dataset = generate_dataset(traces, "trajectory", depth=1)
@@ -606,13 +606,13 @@ class TestGenerateDataset:
             parent_run_id="r1",
             inputs={"query": "What is LangSmith?"},
             outputs={"documents": [{"page_content": "LangSmith is a platform."}]},
-            start_time=datetime(2024, 1, 1, tzinfo=UTC),
+            start_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         llm = SimpleNamespace(
             run_id="r3", id="r3", name="LLM", run_type="llm",
             parent_run_id="r1", inputs={},
             outputs={"answer": "LangSmith is a platform for LLM observability."},
-            start_time=datetime(2024, 1, 2, tzinfo=UTC),
+            start_time=datetime(2024, 1, 2, tzinfo=timezone.utc),
         )
         traces = [self._make_trace(extra_runs=[retriever, llm])]
         dataset = generate_dataset(traces, "rag")
