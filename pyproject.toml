@@ -1,0 +1,52 @@
+[project]
+name = "langsmith-cli"
+version = "0.1.0"
+description = "A coding agent-first CLI for querying and managing LangSmith resources"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["langsmith", "langchain", "llm", "cli", "observability", "evaluation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "langsmith>=0.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/langchain-ai/langsmith-cli"
+Repository = "https://github.com/langchain-ai/langsmith-cli"
+Issues = "https://github.com/langchain-ai/langsmith-cli/issues"
+
+[project.scripts]
+langsmith-cli = "langsmith_cli.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/langsmith_cli"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-mock>=3.12", "responses>=0.24", "ruff>=0.1.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
