@@ -1,4 +1,4 @@
-# langsmith
+# langsmith-cli-tools
 
 A coding agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
@@ -8,16 +8,16 @@ Built for AI coding agents (Claude Code, Cursor, etc.) and developers who need f
 
 ```bash
 # With uv (recommended)
-uv tool install langsmith-tools
+uv tool install langsmith-cli-tools
 
 # With pipx
-pipx install langsmith-tools
+pipx install langsmith-cli-tools
 
 # With pip
-pip install langsmith-tools
+pip install langsmith-cli-tools
 
 # From source
-uv tool install git+https://github.com/langchain-ai/langsmith
+uv tool install git+https://github.com/langchain-ai/langsmith-cli
 ```
 
 ## Authentication
@@ -338,8 +338,8 @@ langsmith run get <run-id> --full
 ## Development
 
 ```bash
-git clone https://github.com/langchain-ai/langsmith
-cd langsmith
+git clone https://github.com/langchain-ai/langsmith-cli
+cd langsmith-cli
 
 # Install with dev dependencies
 uv sync --extra dev

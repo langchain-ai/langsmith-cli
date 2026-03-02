@@ -60,7 +60,7 @@ Output:
     default="json",
     help="Output format. 'json' for machine-readable, 'pretty' for human-readable.",
 )
-@click.version_option(package_name="langsmith")
+@click.version_option(package_name="langsmith-cli-tools")
 @click.pass_context
 def cli(ctx: click.Context, api_key: str, api_url: str, output_format: str) -> None:
     """LangSmith CLI - Query and manage LangSmith resources."""
