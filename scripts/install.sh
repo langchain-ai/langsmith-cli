@@ -3,14 +3,13 @@
 # Usage: curl -sSL https://raw.githubusercontent.com/langchain-ai/langsmith-cli/main/scripts/install.sh | sh
 #
 # Environment variables:
-#   INSTALL_DIR   — directory to install to (default: /usr/local/bin)
+#   INSTALL_DIR   — directory to install to (default: auto-detect)
 #   VERSION       — specific version to install (default: latest)
 
 set -e
 
 REPO="langchain-ai/langsmith-cli"
 BINARY="langsmith"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Detect OS
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -27,6 +26,16 @@ case "$ARCH" in
   arm64|aarch64) ARCH="arm64" ;;
   *)             echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
+
+# Determine install directory
+if [ -z "$INSTALL_DIR" ]; then
+  # Try /usr/local/bin first, fall back to ~/.local/bin
+  if [ -w /usr/local/bin ]; then
+    INSTALL_DIR="/usr/local/bin"
+  else
+    INSTALL_DIR="${HOME}/.local/bin"
+  fi
+fi
 
 # Get version
 if [ -z "$VERSION" ]; then
@@ -85,6 +94,18 @@ mv "${BINARY}" "${INSTALL_DIR}/${BINARY}"
 chmod +x "${INSTALL_DIR}/${BINARY}"
 
 echo "Installed ${BINARY} to ${INSTALL_DIR}/${BINARY}"
+
+# Check if INSTALL_DIR is in PATH
+case ":$PATH:" in
+  *":${INSTALL_DIR}:"*) ;;
+  *)
+    echo ""
+    echo "Add ${INSTALL_DIR} to your PATH:"
+    echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+    echo ""
+    echo "To make it permanent, add that line to your ~/.bashrc or ~/.zshrc"
+    ;;
+esac
+
 echo ""
-echo "Make sure ${INSTALL_DIR} is in your PATH, then run:"
-echo "  ${BINARY} --version"
+echo "Run: ${BINARY} --version"
