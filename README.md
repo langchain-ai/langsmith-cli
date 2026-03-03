@@ -2,9 +2,9 @@
 
 > **Alpha** — This CLI is under active development. Commands, flags, and output schemas may change between releases. Feedback and bug reports welcome via [GitHub Issues](https://github.com/langchain-ai/langsmith-cli/issues).
 
-A coding agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
+An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
-Built for AI coding agents (Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads. Ships as a single static binary with near-instant startup (~5ms). All commands output JSON by default for easy parsing.
+Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads.
 
 ## Installation
 
