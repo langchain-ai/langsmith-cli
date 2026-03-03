@@ -22,6 +22,8 @@ A trace is a tree of runs representing one end-to-end invocation of your
 application. The root run is the top-level entry point; child runs are
 LLM calls, tool calls, retriever steps, etc.
 
+Results are sorted newest-first by start time.
+
 Examples:
   langsmith trace list --project my-app --limit 5
   langsmith trace get <trace-id> --project my-app --full
