@@ -300,20 +300,20 @@ func TestAddCommonFilterFlags_LimitShorthand(t *testing.T) {
 func TestAddCommonFilterFlags_DefaultValues(t *testing.T) {
 	cmd := newRunListCmd()
 	defaults := map[string]string{
-		"trace-ids":     "",
-		"limit":         "0",
-		"project":       "",
+		"trace-ids":      "",
+		"limit":          "0",
+		"project":        "",
 		"last-n-minutes": "0",
-		"since":         "",
-		"error":         "false",
-		"no-error":      "false",
-		"name":          "",
-		"min-latency":   "0",
-		"max-latency":   "0",
-		"min-tokens":    "0",
-		"tags":          "",
-		"filter":        "",
-		"run-type":      "",
+		"since":          "",
+		"error":          "false",
+		"no-error":       "false",
+		"name":           "",
+		"min-latency":    "0",
+		"max-latency":    "0",
+		"min-tokens":     "0",
+		"tags":           "",
+		"filter":         "",
+		"run-type":       "",
 	}
 	for name, defVal := range defaults {
 		f := cmd.Flags().Lookup(name)

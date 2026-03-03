@@ -20,6 +20,8 @@ A run is a single step within a trace. Unlike trace commands (which
 filter on root runs only), run commands can query any run at any
 depth in the hierarchy.
 
+Results are sorted oldest-first by start time.
+
 Examples:
   langsmith run list --project my-app --run-type llm --limit 10
   langsmith run get <run-id> --full

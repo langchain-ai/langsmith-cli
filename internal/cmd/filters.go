@@ -66,6 +66,9 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 	// Is root
 	if isRoot {
 		params.IsRoot = langsmith.F(true)
+		params.Order = langsmith.F(langsmith.RunQueryParamsOrderDesc)
+	} else {
+		params.Order = langsmith.F(langsmith.RunQueryParamsOrderAsc)
 	}
 
 	// Start time
