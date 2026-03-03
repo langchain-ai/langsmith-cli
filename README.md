@@ -192,36 +192,6 @@ langsmith dataset export my-dataset ./data.json --limit 500
 
 # Upload from JSON file
 langsmith dataset upload data.json --name new-dataset
-
-# Inspect local files without uploading
-langsmith dataset view-file data.json
-langsmith dataset structure data.json
-```
-
-#### Dataset Generation from Traces
-
-Generate evaluation datasets from exported trace files:
-
-```bash
-# Step 1: Export traces
-langsmith trace export ./traces --project my-app --full --limit 50
-
-# Step 2: Generate dataset
-langsmith dataset generate -i ./traces -o eval.json --type final_response
-
-# Dataset types:
-#   final_response  - Root input -> root output pairs
-#   single_step     - Individual node I/O (use --run-name to target specific nodes)
-#   trajectory      - Input -> tool call sequence
-#   rag             - Question -> retrieved chunks -> answer
-
-# Generate and upload to LangSmith in one step
-langsmith dataset generate -i ./traces -o eval.json --type rag --upload my-rag-eval
-
-# Advanced options
-langsmith dataset generate -i ./traces -o eval.json --type single_step --run-name ChatOpenAI
-langsmith dataset generate -i ./traces -o eval.json --type trajectory --depth 2
-langsmith dataset generate -i ./traces -o eval.json --type final_response --input-fields query --output-fields answer
 ```
 
 ### `example` — Manage dataset examples
@@ -320,49 +290,6 @@ With `--include-io`:
 
 ```json
 {"inputs", "outputs", "error"}
-```
-
-## Usage with AI Agents
-
-This CLI is designed to be called by AI coding agents. Key design decisions:
-
-1. **JSON by default** — all output is valid JSON, parseable without regex
-2. **Predictable schemas** — list commands return arrays, get commands return objects
-3. **`--yes` flags** — all destructive operations have `--yes` to skip interactive prompts
-4. **Errors to stderr** — error JSON goes to stderr so stdout is always clean data
-5. **Env var auth** — no interactive login flows; set `LANGSMITH_API_KEY` and go
-
-Example agent workflow:
-
-```bash
-# Agent investigates a production issue
-langsmith trace list --project prod-app --error --last-n-minutes 30 --full
-
-# Agent examines a specific failing trace
-langsmith trace get <trace-id> --project prod-app --full
-
-# Agent checks the LLM call that failed
-langsmith run get <run-id> --full
-```
-
-## Development
-
-```bash
-git clone https://github.com/langchain-ai/langsmith-cli
-cd langsmith-cli
-
-# Build
-make build
-# or: go build -o bin/langsmith ./cmd/langsmith
-
-# Run tests
-go test ./...
-
-# Lint (requires golangci-lint)
-make lint
-
-# Install locally
-make install
 ```
 
 ### Requirements

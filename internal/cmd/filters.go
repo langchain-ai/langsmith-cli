@@ -142,10 +142,8 @@ func buildFilterDSL(f *FilterFlags) string {
 		parts = append(parts, fmt.Sprintf("lte(latency, %g)", f.MaxLatency))
 	}
 
-	// Token filter
-	if f.MinTokens > 0 {
-		parts = append(parts, fmt.Sprintf("gte(total_tokens, %d)", f.MinTokens))
-	}
+	// Note: total_tokens is not accepted as a server-side filter attribute.
+	// --min-tokens filtering is applied client-side in queryRuns().
 
 	// Tags
 	if f.Tags != "" {

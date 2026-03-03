@@ -54,18 +54,29 @@ func newExampleListCmd() *cobra.Command {
 				exitErrorf("%v", err)
 			}
 
-			params := langsmith.ExampleListParams{
-				Dataset: langsmith.F(ds.ID),
-				Limit:   langsmith.F(int64(limit)),
-				Offset:  langsmith.F(int64(offset)),
+			var examples []langsmith.Example
+			remaining := limit
+			pageOffset := offset
+			for remaining > 0 {
+				pageSize := remaining
+				if pageSize > 100 {
+					pageSize = 100
+				}
+				resp, err := c.SDK.Examples.List(ctx, langsmith.ExampleListParams{
+					Dataset: langsmith.F(ds.ID),
+					Limit:   langsmith.F(int64(pageSize)),
+					Offset:  langsmith.F(int64(pageOffset)),
+				})
+				if err != nil {
+					exitErrorf("listing examples: %v", err)
+				}
+				examples = append(examples, resp.Items...)
+				if len(resp.Items) < pageSize {
+					break
+				}
+				remaining -= len(resp.Items)
+				pageOffset += len(resp.Items)
 			}
-
-			resp, err := c.SDK.Examples.List(ctx, params)
-			if err != nil {
-				exitErrorf("listing examples: %v", err)
-			}
-
-			examples := resp.Items
 			fmt_ := getFormat()
 
 			// Filter by split if specified

@@ -59,7 +59,7 @@ func newRunListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit)
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
@@ -170,7 +170,7 @@ func newRunExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit)
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
