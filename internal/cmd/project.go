@@ -49,6 +49,7 @@ func newProjectListCmd() *cobra.Command {
 			params := langsmith.SessionListParams{
 				Limit:         langsmith.F(int64(limit)),
 				ReferenceFree: langsmith.F(true),
+				IncludeStats:  langsmith.F(true),
 			}
 			if nameContains != "" {
 				params.NameContains = langsmith.F(nameContains)

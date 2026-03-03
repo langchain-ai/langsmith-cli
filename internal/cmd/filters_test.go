@@ -67,11 +67,11 @@ func TestBuildFilterDSL_MultipleTags(t *testing.T) {
 }
 
 func TestBuildFilterDSL_TokenFilter(t *testing.T) {
+	// MinTokens is filtered client-side, not via server-side DSL
 	f := &FilterFlags{MinTokens: 1000}
 	result := buildFilterDSL(f)
-	expected := `gte(total_tokens, 1000)`
-	if result != expected {
-		t.Errorf("expected %q, got %q", expected, result)
+	if result != "" {
+		t.Errorf("expected empty filter DSL for MinTokens (client-side only), got %q", result)
 	}
 }
 

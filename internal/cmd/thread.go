@@ -228,7 +228,7 @@ func newThreadGetCmd() *cobra.Command {
 				Limit:   langsmith.F(int64(queryLimit)),
 			}
 
-			runs, err := queryRuns(ctx, c, params, "", queryLimit)
+			runs, err := queryRuns(ctx, c, params, "", queryLimit, 0)
 			if err != nil {
 				exitErrorf("querying thread runs: %v", err)
 			}

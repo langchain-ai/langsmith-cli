@@ -46,6 +46,7 @@ func newExperimentListCmd() *cobra.Command {
 			params := langsmith.SessionListParams{
 				Limit:         langsmith.F(int64(limit)),
 				ReferenceFree: langsmith.F(false),
+				IncludeStats:  langsmith.F(true),
 			}
 
 			if datasetName != "" {
@@ -132,6 +133,7 @@ func newExperimentGetCmd() *cobra.Command {
 				Name:          langsmith.F(nameOrID),
 				Limit:         langsmith.F(int64(1)),
 				ReferenceFree: langsmith.F(false),
+				IncludeStats:  langsmith.F(true),
 			}
 
 			resp, err := c.SDK.Sessions.List(ctx, params)

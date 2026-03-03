@@ -63,7 +63,7 @@ func newTraceListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit)
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
@@ -75,7 +75,7 @@ func newTraceListCmd() *cobra.Command {
 					for _, run := range runs {
 						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
 							Trace: langsmith.F(run.TraceID),
-						}, projectName, 1000)
+						}, projectName, 1000, 0)
 						if err != nil {
 							exitErrorf("%v", err)
 						}
@@ -91,7 +91,7 @@ func newTraceListCmd() *cobra.Command {
 					for _, run := range runs {
 						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
 							Trace: langsmith.F(run.TraceID),
-						}, projectName, 1000)
+						}, projectName, 1000, 0)
 						if err != nil {
 							exitErrorf("%v", err)
 						}
@@ -149,7 +149,7 @@ func newTraceGetCmd() *cobra.Command {
 				Trace: langsmith.F(traceID),
 			}
 
-			runs, err := queryRuns(ctx, c, params, projectName, 1000)
+			runs, err := queryRuns(ctx, c, params, projectName, 1000, 0)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
@@ -212,7 +212,7 @@ func newTraceExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
-			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit)
+			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
@@ -223,7 +223,7 @@ func newTraceExportCmd() *cobra.Command {
 
 				allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
 					Trace: langsmith.F(tid),
-				}, projectName, 1000)
+				}, projectName, 1000, 0)
 				if err != nil {
 					exitErrorf("%v", err)
 				}

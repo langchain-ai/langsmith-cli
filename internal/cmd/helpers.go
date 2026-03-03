@@ -14,7 +14,8 @@ import (
 )
 
 // queryRuns queries runs with the given params and optional session resolution.
-func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int) ([]langsmith.RunQueryResponseRun, error) {
+// minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
+func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunQueryResponseRun, error) {
 	// Resolve project name → session ID
 	if projectName != "" {
 		sessionID, err := c.ResolveSessionID(ctx, projectName)
@@ -36,6 +37,10 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 		for _, run := range resp.Runs {
 			if remaining <= 0 {
 				return allRuns, nil
+			}
+			// Client-side token filter
+			if minTokens > 0 && run.TotalTokens < int64(minTokens) {
+				continue
 			}
 			allRuns = append(allRuns, run)
 			remaining--
