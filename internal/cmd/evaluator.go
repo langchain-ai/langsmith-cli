@@ -182,7 +182,10 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				exitErrorf("reading evaluator file: %v", err)
 			}
 
-			sourceStr := string(source)
+			sourceStr := extractPythonFunction(string(source), funcName)
+			if sourceStr == "" {
+				exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+			}
 
 			// Rename function to perform_eval
 			re := regexp.MustCompile(`\bdef\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
@@ -295,6 +298,43 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
+}
+
+// extractPythonFunction extracts a single top-level function from Python source.
+// It finds "def funcName(" and collects all lines until the next top-level
+// definition (def/class at column 0) or end of file.
+func extractPythonFunction(source string, funcName string) string {
+	lines := strings.Split(source, "\n")
+	defPattern := regexp.MustCompile(`^def\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
+
+	startIdx := -1
+	for i, line := range lines {
+		if defPattern.MatchString(line) {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return ""
+	}
+
+	// Collect lines: the def line plus all following indented/blank lines,
+	// stopping at the next top-level definition.
+	topLevelDef := regexp.MustCompile(`^(def |class )\S`)
+	endIdx := len(lines)
+	for i := startIdx + 1; i < len(lines); i++ {
+		if topLevelDef.MatchString(lines[i]) {
+			endIdx = i
+			break
+		}
+	}
+
+	// Trim trailing blank lines
+	for endIdx > startIdx+1 && strings.TrimSpace(lines[endIdx-1]) == "" {
+		endIdx--
+	}
+
+	return strings.Join(lines[startIdx:endIdx], "\n") + "\n"
 }
 
 func findEvaluator(rules []evaluatorRule, name, datasetID, projectID string) *evaluatorRule {
