@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -59,7 +60,7 @@ func TestRawGet_Success(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected Content-Type=application/json, got %q", r.Header.Get("Content-Type"))
 		}
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}))
 	defer ts.Close()
 
@@ -86,7 +87,7 @@ func TestRawGet_HTTPError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 403")
 	}
-	if !containsStr(err.Error(), "403") {
+	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("expected error to contain 403, got %q", err.Error())
 	}
 }
@@ -94,7 +95,7 @@ func TestRawGet_HTTPError(t *testing.T) {
 func TestRawGet_NilResult(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
@@ -113,11 +114,13 @@ func TestRawPost_Success(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("failed to decode body: %v", err)
+		}
 		if body["name"] != "test" {
 			t.Errorf("expected body name=test, got %v", body["name"])
 		}
-		json.NewEncoder(w).Encode(map[string]string{"id": "123"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "123"})
 	}))
 	defer ts.Close()
 
@@ -135,7 +138,7 @@ func TestRawPost_Success(t *testing.T) {
 func TestRawPost_NilBody(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
@@ -157,7 +160,7 @@ func TestRawDelete_Success(t *testing.T) {
 			t.Errorf("expected /items/abc, got %s", r.URL.Path)
 		}
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
@@ -189,12 +192,12 @@ func TestRawRequest_SetsAPIKeyHeader(t *testing.T) {
 			t.Errorf("expected x-api-key=secret-key, got %q", got)
 		}
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
 	c := New("secret-key", ts.URL)
-	c.RawGet(context.Background(), "/test", nil)
+	_ = c.RawGet(context.Background(), "/test", nil)
 }
 
 func TestRawRequest_SetsWorkspaceHeader(t *testing.T) {
@@ -205,12 +208,12 @@ func TestRawRequest_SetsWorkspaceHeader(t *testing.T) {
 			t.Errorf("expected x-tenant-id=ws-123, got %q", got)
 		}
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
 	c := New("key", ts.URL)
-	c.RawGet(context.Background(), "/test", nil)
+	_ = c.RawGet(context.Background(), "/test", nil)
 }
 
 func TestRawRequest_NoWorkspaceHeaderWhenUnset(t *testing.T) {
@@ -221,12 +224,12 @@ func TestRawRequest_NoWorkspaceHeaderWhenUnset(t *testing.T) {
 			t.Errorf("expected empty x-tenant-id, got %q", got)
 		}
 		w.WriteHeader(200)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer ts.Close()
 
 	c := New("key", ts.URL)
-	c.RawGet(context.Background(), "/test", nil)
+	_ = c.RawGet(context.Background(), "/test", nil)
 }
 
 // ---------- Error cases ----------
@@ -242,7 +245,7 @@ func TestRawGet_InvalidURL(t *testing.T) {
 func TestRawGet_InvalidJSON(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer ts.Close()
 
@@ -252,7 +255,7 @@ func TestRawGet_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
-	if !containsStr(err.Error(), "decoding") {
+	if !strings.Contains(err.Error(), "decoding") {
 		t.Errorf("expected decoding error, got %q", err.Error())
 	}
 }
@@ -270,7 +273,7 @@ func TestRawRequest_400Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 400")
 	}
-	if !containsStr(err.Error(), "400") {
+	if !strings.Contains(err.Error(), "400") {
 		t.Errorf("expected 400 in error, got %q", err.Error())
 	}
 }
@@ -286,17 +289,7 @@ func TestRawRequest_500Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 500")
 	}
-	if !containsStr(err.Error(), "500") {
+	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("expected 500 in error, got %q", err.Error())
 	}
-}
-
-// helper
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

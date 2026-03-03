@@ -494,7 +494,7 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]evaluatorRule{
+			_ = json.NewEncoder(w).Encode([]evaluatorRule{
 				{
 					ID:           "eval-1",
 					DisplayName:  "accuracy",
@@ -553,7 +553,7 @@ func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]evaluatorRule{
+			_ = json.NewEncoder(w).Encode([]evaluatorRule{
 				{
 					ID:           "eval-1",
 					DisplayName:  "accuracy",
@@ -590,7 +590,7 @@ func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/runs/rules" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte("[]"))
+			_, _ = w.Write([]byte("[]"))
 			return
 		}
 		http.Error(w, "not found", 404)
@@ -617,7 +617,7 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		receivedKey = r.Header.Get("x-api-key")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
+		_, _ = w.Write([]byte("[]"))
 	})
 
 	cleanup := setupTestEnv(t, ts.URL)
