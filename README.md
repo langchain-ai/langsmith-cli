@@ -14,21 +14,9 @@ Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developer
 curl -sSL https://raw.githubusercontent.com/langchain-ai/langsmith-cli/main/scripts/install.sh | sh
 ```
 
-Install to a custom directory (useful for non-root agents):
-
-```bash
-INSTALL_DIR=$HOME/.local/bin curl -sSL https://raw.githubusercontent.com/langchain-ai/langsmith-cli/main/scripts/install.sh | sh
-```
-
 ### GitHub releases
 
 Download the latest binary for your platform from [GitHub Releases](https://github.com/langchain-ai/langsmith-cli/releases).
-
-### Go install
-
-```bash
-go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest
-```
 
 ## Authentication
 
@@ -75,7 +63,7 @@ langsmith experiment list --dataset my-eval-set
 
 ## Output Formats
 
-All commands default to **JSON** output for machine consumption:
+All commands default to **JSON** output for agent consumption:
 
 ```bash
 langsmith trace list --project my-app  # JSON array to stdout
@@ -139,6 +127,9 @@ langsmith trace get <trace-id> --project my-app --full
 
 # Export traces to JSONL files (one per trace)
 langsmith trace export ./traces --project my-app --limit 20 --full
+
+# Custom filename pattern (supports {trace_id} and {name} placeholders)
+langsmith trace export ./traces --project my-app --filename-pattern "{name}_{trace_id}.jsonl"
 ```
 
 ### `run` — Query individual runs
@@ -201,10 +192,20 @@ langsmith dataset upload data.json --name new-dataset
 langsmith example list --dataset my-dataset
 langsmith example list --dataset my-dataset --split test --limit 50
 
+# Paginate through examples
+langsmith example list --dataset my-dataset --limit 20 --offset 20
+
 # Create an example
 langsmith example create --dataset my-dataset \
   --inputs '{"question": "What is LangSmith?"}' \
   --outputs '{"answer": "A platform for LLM observability"}'
+
+# Create with metadata and split assignment
+langsmith example create --dataset my-dataset \
+  --inputs '{"question": "What is tracing?"}' \
+  --outputs '{"answer": "Recording LLM application execution"}' \
+  --metadata '{"source": "manual", "version": 2}' \
+  --split test
 
 # Delete an example
 langsmith example delete <example-id> --yes
@@ -223,6 +224,10 @@ langsmith evaluator upload evals.py \
 # Upload an online evaluator (for production monitoring)
 langsmith evaluator upload evals.py \
   --name latency-check --function check_latency --project my-app
+
+# Set sampling rate (evaluate a fraction of runs, 0.0-1.0)
+langsmith evaluator upload evals.py \
+  --name latency-check --function check_latency --project my-app --sampling-rate 0.5
 
 # Replace an existing evaluator
 langsmith evaluator upload evals.py \
@@ -262,35 +267,6 @@ Most `trace` and `run` commands share these filter options:
 | `--tags` | Tags (comma-separated, OR logic) | `--tags prod,v2` |
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
-
-## JSON Output Schemas
-
-All commands produce predictable JSON:
-
-- **List commands**: `[{...}, {...}, ...]` (array)
-- **Get commands**: `{...}` (single object)
-- **Mutating commands**: `{"status": "created|deleted|uploaded", ...}`
-- **Errors**: `{"error": "message"}` (written to stderr)
-
-### Run fields
-
-Base fields (always included):
-
-```json
-{"run_id", "trace_id", "name", "run_type", "parent_run_id", "start_time", "end_time"}
-```
-
-With `--include-metadata`:
-
-```json
-{"status", "duration_ms", "custom_metadata", "token_usage", "costs", "tags"}
-```
-
-With `--include-io`:
-
-```json
-{"inputs", "outputs", "error"}
-```
 
 ### Requirements
 
