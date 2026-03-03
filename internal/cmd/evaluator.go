@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -17,13 +18,15 @@ func newEvaluatorCmd() *cobra.Command {
 		Short: "Manage online and offline evaluator rules",
 		Long: `Manage online and offline evaluator rules.
 
-Evaluators are Python functions uploaded to LangSmith that automatically
-score runs. They can target a specific dataset (offline/experiment
-evaluators) or a project (online evaluators that score production runs).
+Evaluators are Python or JavaScript/TypeScript functions uploaded to LangSmith
+that automatically score runs. They can target a specific dataset
+(offline/experiment evaluators) or a project (online evaluators that score
+production runs).
 
 Examples:
   langsmith evaluator list
   langsmith evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
+  langsmith evaluator upload eval.ts --name accuracy --function checkAccuracy --dataset my-eval-set
   langsmith evaluator delete accuracy --yes`,
 	}
 
@@ -114,7 +117,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "upload EVALUATOR_FILE",
-		Short: "Upload a Python evaluator function to LangSmith",
+		Short: "Upload an evaluator function to LangSmith",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			evaluatorFile := args[0]
@@ -182,14 +185,27 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				exitErrorf("reading evaluator file: %v", err)
 			}
 
-			sourceStr := extractPythonFunction(string(source), funcName)
-			if sourceStr == "" {
-				exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+			language, evalFuncName := detectLanguage(evaluatorFile)
+			if language == "" {
+				exitErrorf("unsupported file extension: %s (use .py, .js, .ts, .tsx, or .mjs)", evaluatorFile)
 			}
 
-			// Rename function to perform_eval
-			re := regexp.MustCompile(`\bdef\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
-			sourceStr = re.ReplaceAllString(sourceStr, "def perform_eval(")
+			var sourceStr string
+			switch language {
+			case "python":
+				sourceStr = extractPythonFunction(string(source), funcName)
+				if sourceStr == "" {
+					exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+				}
+				re := regexp.MustCompile(`\bdef\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
+				sourceStr = re.ReplaceAllString(sourceStr, "def "+evalFuncName+"(")
+			case "javascript":
+				sourceStr = extractJSFunction(string(source), funcName)
+				if sourceStr == "" {
+					exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+				}
+				sourceStr = renameJSFunction(sourceStr, funcName)
+			}
 
 			// Build payload
 			payload := map[string]any{
@@ -198,7 +214,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				"is_enabled":             true,
 				"include_extended_stats": false,
 				"code_evaluators": []map[string]any{
-					{"code": sourceStr, "language": "python"},
+					{"code": sourceStr, "language": language},
 				},
 			}
 
@@ -229,7 +245,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Display name for the evaluator (required)")
-	cmd.Flags().StringVar(&funcName, "function", "", "Name of the Python function to upload (required)")
+	cmd.Flags().StringVar(&funcName, "function", "", "Name of the function to upload (required)")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
@@ -335,6 +351,104 @@ func extractPythonFunction(source string, funcName string) string {
 	}
 
 	return strings.Join(lines[startIdx:endIdx], "\n") + "\n"
+}
+
+// detectLanguage returns the API language value and the canonical eval function
+// name based on the file extension.
+func detectLanguage(filename string) (language, evalFuncName string) {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".py":
+		return "python", "perform_eval"
+	case ".js", ".ts", ".tsx", ".mjs":
+		return "javascript", "performEval"
+	default:
+		return "", ""
+	}
+}
+
+// extractJSFunction extracts a single top-level function from JavaScript/TypeScript
+// source. It matches function declarations and const/let/var arrow/function
+// expressions, then uses brace-counting to find the end of the function body.
+func extractJSFunction(source string, funcName string) string {
+	lines := strings.Split(source, "\n")
+	qName := regexp.QuoteMeta(funcName)
+
+	// Pattern 1: (export)? (async)? function funcName(
+	funcDeclRe := regexp.MustCompile(`^(export\s+)?(async\s+)?function\s+` + qName + `\s*\(`)
+	// Pattern 2: (export)? (const|let|var) funcName =
+	varDeclRe := regexp.MustCompile(`^(export\s+)?(const|let|var)\s+` + qName + `\s*=`)
+
+	startIdx := -1
+	for i, line := range lines {
+		if funcDeclRe.MatchString(line) || varDeclRe.MatchString(line) {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return ""
+	}
+
+	// Use brace-counting to find function end
+	braceCount := 0
+	foundOpen := false
+	endIdx := len(lines)
+	for i := startIdx; i < len(lines); i++ {
+		for _, ch := range lines[i] {
+			if ch == '{' {
+				braceCount++
+				foundOpen = true
+			} else if ch == '}' {
+				braceCount--
+			}
+		}
+		if foundOpen && braceCount <= 0 {
+			endIdx = i + 1
+			break
+		}
+	}
+
+	// Trim trailing blank lines
+	for endIdx > startIdx+1 && strings.TrimSpace(lines[endIdx-1]) == "" {
+		endIdx--
+	}
+
+	return strings.Join(lines[startIdx:endIdx], "\n") + "\n"
+}
+
+// renameJSFunction renames the given function to performEval, strips export
+// keywords, and converts arrow functions to function declarations.
+func renameJSFunction(source string, funcName string) string {
+	qName := regexp.QuoteMeta(funcName)
+
+	// Pattern 1: (export)? async function funcName( → async function performEval(
+	asyncFuncRe := regexp.MustCompile(`^(export\s+)?async\s+function\s+` + qName + `\s*\(`)
+	// Pattern 2: (export)? function funcName( → function performEval(
+	funcRe := regexp.MustCompile(`^(export\s+)?function\s+` + qName + `\s*\(`)
+	// Pattern 3: (export)? const funcName = async (params) => { → async function performEval(params) {
+	asyncArrowRe := regexp.MustCompile(`^(export\s+)?(const|let|var)\s+` + qName + `\s*=\s*async\s*\(([^)]*)\)\s*=>\s*\{`)
+	// Pattern 4: (export)? const funcName = (params) => { → function performEval(params) {
+	arrowRe := regexp.MustCompile(`^(export\s+)?(const|let|var)\s+` + qName + `\s*=\s*\(([^)]*)\)\s*=>\s*\{`)
+
+	lines := strings.Split(source, "\n")
+	if len(lines) == 0 {
+		return source
+	}
+
+	firstLine := lines[0]
+	switch {
+	case asyncArrowRe.MatchString(firstLine):
+		lines[0] = asyncArrowRe.ReplaceAllString(firstLine, "async function performEval($3) {")
+	case arrowRe.MatchString(firstLine):
+		lines[0] = arrowRe.ReplaceAllString(firstLine, "function performEval($3) {")
+	case asyncFuncRe.MatchString(firstLine):
+		lines[0] = asyncFuncRe.ReplaceAllString(firstLine, "async function performEval(")
+	case funcRe.MatchString(firstLine):
+		lines[0] = funcRe.ReplaceAllString(firstLine, "function performEval(")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func findEvaluator(rules []evaluatorRule, name, datasetID, projectID string) *evaluatorRule {
