@@ -238,7 +238,7 @@ func TestRunsToTreeData_ParentRunID(t *testing.T) {
 // ---------- extractRunsToMaps ----------
 
 func TestExtractRunsToMaps_Empty(t *testing.T) {
-	result := extractRunsToMaps(nil, false, false)
+	result := extractRunsToMaps(nil, false, false, false)
 	if len(result) != 0 {
 		t.Errorf("expected empty slice, got %d items", len(result))
 	}
@@ -253,7 +253,7 @@ func TestExtractRunsToMaps_BasicFields(t *testing.T) {
 			RunType: "llm",
 		},
 	}
-	result := extractRunsToMaps(runs, false, false)
+	result := extractRunsToMaps(runs, false, false, false)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(result))
 	}

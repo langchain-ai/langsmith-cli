@@ -39,6 +39,7 @@ func newRunListCmd() *cobra.Command {
 		ff              FilterFlags
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		outputFile      string
 	)
@@ -50,6 +51,7 @@ func newRunListCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			if ff.Limit == 0 {
@@ -61,6 +63,9 @@ func newRunListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
@@ -69,10 +74,10 @@ func newRunListCmd() *cobra.Command {
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
-				data := extractRunsToMaps(runs, includeMetadata, includeIO)
+				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 				output.PrintRunsTable(os.Stdout, data, includeMetadata, "Runs")
 			} else {
-				data := extractRunsToMaps(runs, includeMetadata, includeIO)
+				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 				output.OutputJSON(data, outputFile)
 			}
 		},
@@ -81,7 +86,8 @@ func newRunListCmd() *cobra.Command {
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -91,6 +97,7 @@ func newRunGetCmd() *cobra.Command {
 	var (
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		outputFile      string
 	)
@@ -105,6 +112,7 @@ func newRunGetCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			c := mustGetClient()
@@ -115,6 +123,9 @@ func newRunGetCmd() *cobra.Command {
 				ID:    langsmith.F([]string{runID}),
 				Limit: langsmith.F(int64(1)),
 			}
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			}
 
 			resp, err := c.SDK.Runs.Query(ctx, params)
 			if err != nil {
@@ -124,7 +135,7 @@ func newRunGetCmd() *cobra.Command {
 				exitErrorf("run not found: %s", runID)
 			}
 
-			data := extract.ExtractRun(resp.Runs[0], includeMetadata, includeIO)
+			data := extract.ExtractRun(resp.Runs[0], includeMetadata, includeIO, includeFeedback)
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
@@ -137,7 +148,8 @@ func newRunGetCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -148,6 +160,7 @@ func newRunExportCmd() *cobra.Command {
 		ff              FilterFlags
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 	)
 
@@ -161,6 +174,7 @@ func newRunExportCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			if ff.Limit == 0 {
@@ -172,12 +186,15 @@ func newRunExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
 			}
 
-			data := extractRunsToMaps(runs, includeMetadata, includeIO)
+			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 			output.OutputJSONL(data, outputFile)
 		},
 	}
@@ -185,7 +202,8 @@ func newRunExportCmd() *cobra.Command {
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 
 	return cmd
 }

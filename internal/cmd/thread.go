@@ -90,7 +90,7 @@ func newThreadListCmd() *cobra.Command {
 				for _, run := range resp.Runs {
 					tid := run.ThreadID
 					if tid != "" {
-						m := extract.ExtractRun(run, true, true)
+						m := extract.ExtractRun(run, true, true, false)
 						threadsMap[tid] = append(threadsMap[tid], m)
 					}
 				}
@@ -233,7 +233,7 @@ func newThreadGetCmd() *cobra.Command {
 				exitErrorf("querying thread runs: %v", err)
 			}
 
-			extracted := extractRunsToMaps(runs, includeMetadata, includeIO)
+			extracted := extractRunsToMaps(runs, includeMetadata, includeIO, false)
 
 			fmt_ := getFormat()
 

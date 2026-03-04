@@ -10,7 +10,7 @@ import (
 
 // ExtractRun normalizes a LangSmith RunQueryResponseRun to a flat map.
 // This mirrors the Python extract_run() function exactly.
-func ExtractRun(run langsmith.RunQueryResponseRun, includeMetadata, includeIO bool) map[string]any {
+func ExtractRun(run langsmith.RunQueryResponseRun, includeMetadata, includeIO, includeFeedback bool) map[string]any {
 	result := map[string]any{
 		"run_id":        run.ID,
 		"trace_id":      run.TraceID,
@@ -81,6 +81,14 @@ func ExtractRun(run langsmith.RunQueryResponseRun, includeMetadata, includeIO bo
 		result["inputs"] = nilIfEmptyMap(run.Inputs)
 		result["outputs"] = nilIfEmptyMap(run.Outputs)
 		result["error"] = nilIfEmpty(run.Error)
+	}
+
+	if includeFeedback {
+		var feedbackStats any
+		if len(run.FeedbackStats) > 0 {
+			feedbackStats = run.FeedbackStats
+		}
+		result["feedback_stats"] = feedbackStats
 	}
 
 	return result
