@@ -57,10 +57,10 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 }
 
 // extractRunsToMaps extracts a slice of runs to maps.
-func extractRunsToMaps(runs []langsmith.RunQueryResponseRun, includeMetadata, includeIO bool) []map[string]any {
+func extractRunsToMaps(runs []langsmith.RunQueryResponseRun, includeMetadata, includeIO, includeFeedback bool) []map[string]any {
 	result := make([]map[string]any, 0, len(runs))
 	for _, r := range runs {
-		result = append(result, extract.ExtractRun(r, includeMetadata, includeIO))
+		result = append(result, extract.ExtractRun(r, includeMetadata, includeIO, includeFeedback))
 	}
 	return result
 }

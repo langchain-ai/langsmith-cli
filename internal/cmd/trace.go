@@ -41,6 +41,7 @@ func newTraceListCmd() *cobra.Command {
 		ff              FilterFlags
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		showHierarchy   bool
 		outputFile      string
@@ -53,6 +54,7 @@ func newTraceListCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			defaultLimit := 20
@@ -65,6 +67,9 @@ func newTraceListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
@@ -84,7 +89,7 @@ func newTraceListCmd() *cobra.Command {
 						output.OutputTree(runsToTreeData(allRuns), "")
 					}
 				} else {
-					data := extractRunsToMaps(runs, includeMetadata, includeIO)
+					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					output.PrintRunsTable(os.Stdout, data, includeMetadata, "Traces")
 				}
 			} else {
@@ -100,12 +105,12 @@ func newTraceListCmd() *cobra.Command {
 						result = append(result, map[string]any{
 							"trace_id":  run.TraceID,
 							"run_count": len(allRuns),
-							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO),
+							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO, includeFeedback),
 						})
 					}
 					output.OutputJSON(result, outputFile)
 				} else {
-					data := extractRunsToMaps(runs, includeMetadata, includeIO)
+					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					output.OutputJSON(data, outputFile)
 				}
 			}
@@ -115,7 +120,8 @@ func newTraceListCmd() *cobra.Command {
 	addCommonFilterFlags(cmd, &ff, false)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().BoolVar(&showHierarchy, "show-hierarchy", false, "Fetch the full run tree for each trace")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
@@ -127,6 +133,7 @@ func newTraceGetCmd() *cobra.Command {
 		project         string
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		outputFile      string
 	)
@@ -141,6 +148,7 @@ func newTraceGetCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			c := mustGetClient()
@@ -149,6 +157,9 @@ func newTraceGetCmd() *cobra.Command {
 
 			params := langsmith.RunQueryParams{
 				Trace: langsmith.F(traceID),
+			}
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
 			}
 
 			runs, err := queryRuns(ctx, c, params, projectName, 1000, 0)
@@ -164,7 +175,7 @@ func newTraceGetCmd() *cobra.Command {
 				data := map[string]any{
 					"trace_id":  traceID,
 					"run_count": len(runs),
-					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO),
+					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback),
 				}
 				output.OutputJSON(data, outputFile)
 			}
@@ -174,7 +185,8 @@ func newTraceGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -185,6 +197,7 @@ func newTraceExportCmd() *cobra.Command {
 		ff              FilterFlags
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		filenamePattern string
 	)
@@ -199,6 +212,7 @@ func newTraceExportCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			if ff.Limit == 0 {
@@ -214,6 +228,9 @@ func newTraceExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
+			if includeFeedback {
+				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			}
 			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				exitErrorf("%v", err)
@@ -247,7 +264,7 @@ func newTraceExportCmd() *cobra.Command {
 				}
 
 				for _, run := range allRuns {
-					data := extractRunsToMaps([]langsmith.RunQueryResponseRun{run}, includeMetadata, includeIO)
+					data := extractRunsToMaps([]langsmith.RunQueryResponseRun{run}, includeMetadata, includeIO, includeFeedback)
 					line, _ := json.Marshal(data[0])
 					_, _ = f.Write(line)
 					_, _ = f.WriteString("\n")
@@ -267,7 +284,8 @@ func newTraceExportCmd() *cobra.Command {
 	addCommonFilterFlags(cmd, &ff, false)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{trace_id}.jsonl",
 		"Filename pattern. Supports {trace_id} and {name} placeholders.")
 

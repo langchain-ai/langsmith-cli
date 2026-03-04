@@ -21,7 +21,7 @@ func TestExtractRunBase(t *testing.T) {
 		EndTime:     end,
 	}
 
-	result := ExtractRun(run, false, false)
+	result := ExtractRun(run, false, false, false)
 
 	if result["run_id"] != "run-123" {
 		t.Errorf("expected run_id=run-123, got %v", result["run_id"])
@@ -70,7 +70,7 @@ func TestExtractRunWithMetadata(t *testing.T) {
 		Extra:            map[string]any{"metadata": map[string]any{"model": "gpt-4"}},
 	}
 
-	result := ExtractRun(run, true, false)
+	result := ExtractRun(run, true, false, false)
 
 	if result["status"] != "success" {
 		t.Errorf("expected status=success, got %v", result["status"])
@@ -117,7 +117,7 @@ func TestExtractRunWithIO(t *testing.T) {
 		Error:     "some error",
 	}
 
-	result := ExtractRun(run, false, true)
+	result := ExtractRun(run, false, true, false)
 
 	inputs := result["inputs"].(map[string]any)
 	if inputs["query"] != "hello" {
@@ -143,10 +143,76 @@ func TestExtractRunNilParent(t *testing.T) {
 		StartTime: time.Now(),
 	}
 
-	result := ExtractRun(run, false, false)
+	result := ExtractRun(run, false, false, false)
 
 	if result["parent_run_id"] != nil {
 		t.Errorf("expected parent_run_id=nil, got %v", result["parent_run_id"])
+	}
+}
+
+func TestExtractRunWithFeedback(t *testing.T) {
+	run := langsmith.RunQueryResponseRun{
+		ID:        "run-123",
+		TraceID:   "trace-456",
+		Name:      "ChatOpenAI",
+		RunType:   "llm",
+		StartTime: time.Now(),
+		FeedbackStats: map[string]map[string]interface{}{
+			"correctness": {"avg": 0.8, "count": float64(5)},
+			"helpfulness": {"avg": 1.0, "count": float64(3)},
+		},
+	}
+
+	result := ExtractRun(run, false, false, true)
+
+	fs, ok := result["feedback_stats"]
+	if !ok {
+		t.Fatal("expected feedback_stats key to be present")
+	}
+	stats, ok := fs.(map[string]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected feedback_stats to be map, got %T", fs)
+	}
+	if stats["correctness"]["avg"] != 0.8 {
+		t.Errorf("expected correctness avg=0.8, got %v", stats["correctness"]["avg"])
+	}
+	if stats["helpfulness"]["avg"] != 1.0 {
+		t.Errorf("expected helpfulness avg=1.0, got %v", stats["helpfulness"]["avg"])
+	}
+}
+
+func TestExtractRunWithFeedbackEmpty(t *testing.T) {
+	run := langsmith.RunQueryResponseRun{
+		ID:        "run-123",
+		TraceID:   "trace-456",
+		Name:      "ChatOpenAI",
+		RunType:   "llm",
+		StartTime: time.Now(),
+	}
+
+	result := ExtractRun(run, false, false, true)
+
+	if result["feedback_stats"] != nil {
+		t.Errorf("expected feedback_stats=nil for run with no feedback, got %v", result["feedback_stats"])
+	}
+}
+
+func TestExtractRunWithoutFeedbackFlag(t *testing.T) {
+	run := langsmith.RunQueryResponseRun{
+		ID:        "run-123",
+		TraceID:   "trace-456",
+		Name:      "ChatOpenAI",
+		RunType:   "llm",
+		StartTime: time.Now(),
+		FeedbackStats: map[string]map[string]interface{}{
+			"correctness": {"avg": 0.8},
+		},
+	}
+
+	result := ExtractRun(run, false, false, false)
+
+	if _, ok := result["feedback_stats"]; ok {
+		t.Error("feedback_stats should not be present when includeFeedback=false")
 	}
 }
 

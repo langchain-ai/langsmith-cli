@@ -115,9 +115,10 @@ langsmith trace list --project my-app --tags production  # By tag
 langsmith trace list --project my-app --name "agent"     # By name
 
 # Include additional fields
-langsmith trace list --project my-app --include-metadata  # + status, duration, tokens, costs
-langsmith trace list --project my-app --include-io        # + inputs, outputs, error
-langsmith trace list --project my-app --full              # All fields
+langsmith trace list --project my-app --include-metadata   # + status, duration, tokens, costs
+langsmith trace list --project my-app --include-io         # + inputs, outputs, error
+langsmith trace list --project my-app --include-feedback   # + feedback_stats
+langsmith trace list --project my-app --full               # All fields (metadata + io + feedback)
 
 # Show trace hierarchy (fetches full run tree for each trace)
 langsmith trace list --project my-app --show-hierarchy --limit 3
@@ -143,6 +144,9 @@ langsmith run list --project my-app --run-type tool --name search
 
 # Find expensive calls
 langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
+
+# Include feedback scores
+langsmith run list --project my-app --include-feedback
 
 # Get a specific run
 langsmith run get <run-id> --full
