@@ -45,8 +45,9 @@ func newThreadListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List conversation threads in a project",
 		Run: func(cmd *cobra.Command, args []string) {
+			project = ResolveProject(project)
 			if project == "" {
-				exitError("--project is required for thread list")
+				exitError("--project is required for thread list (or set LANGSMITH_PROJECT)")
 			}
 
 			c := mustGetClient()
@@ -170,12 +171,11 @@ func newThreadListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name (required)")
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum number of threads to return")
 	cmd.Flags().StringVar(&rawFilter, "filter", "", "Raw LangSmith filter DSL string")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include threads active in last N minutes")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
 }
@@ -202,8 +202,9 @@ func newThreadGetCmd() *cobra.Command {
 				includeIO = true
 			}
 
+			project = ResolveProject(project)
 			if project == "" {
-				exitError("--project is required for thread get")
+				exitError("--project is required for thread get (or set LANGSMITH_PROJECT)")
 			}
 
 			c := mustGetClient()
@@ -250,13 +251,12 @@ func newThreadGetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name (required)")
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of runs (turns) to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	_ = cmd.MarkFlagRequired("project")
 
 	return cmd
 }

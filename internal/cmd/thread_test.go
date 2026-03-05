@@ -58,18 +58,38 @@ func TestThreadListCmd_Flags(t *testing.T) {
 	}
 }
 
-func TestThreadListCmd_ProjectRequired(t *testing.T) {
+func TestThreadListCmd_ProjectNotCobraRequired(t *testing.T) {
 	cmd := newThreadListCmd()
 	f := cmd.Flags().Lookup("project")
 	if f == nil {
 		t.Fatal("--project flag not found")
 	}
+	// project should NOT be marked as cobra-required so that
+	// ResolveProject can fall back to LANGSMITH_PROJECT env var
 	ann := f.Annotations
-	if ann == nil {
-		t.Fatal("--project has no annotations (not marked required)")
+	if ann != nil {
+		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; ok {
+			t.Error("--project should not be marked as cobra-required; use ResolveProject instead")
+		}
 	}
-	if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
-		t.Error("--project not marked as required")
+}
+
+func TestThreadListCmd_ProjectEnvFallback(t *testing.T) {
+	t.Setenv("LANGSMITH_PROJECT", "env-project")
+	result := ResolveProject("")
+	if result != "env-project" {
+		t.Errorf("expected ResolveProject to return env-project, got %q", result)
+	}
+}
+
+func TestThreadListCmd_ProjectFlagHelpMentionsEnv(t *testing.T) {
+	cmd := newThreadListCmd()
+	f := cmd.Flags().Lookup("project")
+	if f == nil {
+		t.Fatal("--project flag not found")
+	}
+	if f.Usage != "Project name [env: LANGSMITH_PROJECT]" {
+		t.Errorf("expected project flag usage to mention env var, got %q", f.Usage)
 	}
 }
 
@@ -114,17 +134,29 @@ func TestThreadGetCmd_ExactArgs(t *testing.T) {
 	}
 }
 
-func TestThreadGetCmd_ProjectRequired(t *testing.T) {
+func TestThreadGetCmd_ProjectNotCobraRequired(t *testing.T) {
 	cmd := newThreadGetCmd()
 	f := cmd.Flags().Lookup("project")
 	if f == nil {
 		t.Fatal("--project flag not found")
 	}
+	// project should NOT be marked as cobra-required so that
+	// ResolveProject can fall back to LANGSMITH_PROJECT env var
 	ann := f.Annotations
-	if ann == nil {
-		t.Fatal("--project has no annotations (not marked required)")
+	if ann != nil {
+		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; ok {
+			t.Error("--project should not be marked as cobra-required; use ResolveProject instead")
+		}
 	}
-	if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
-		t.Error("--project not marked as required")
+}
+
+func TestThreadGetCmd_ProjectFlagHelpMentionsEnv(t *testing.T) {
+	cmd := newThreadGetCmd()
+	f := cmd.Flags().Lookup("project")
+	if f == nil {
+		t.Fatal("--project flag not found")
+	}
+	if f.Usage != "Project name [env: LANGSMITH_PROJECT]" {
+		t.Errorf("expected project flag usage to mention env var, got %q", f.Usage)
 	}
 }
