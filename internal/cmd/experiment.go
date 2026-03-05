@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/google/uuid"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -137,24 +138,33 @@ func newExperimentGetCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 
-			// Try to find experiment by name (sessions with reference_free=false)
-			params := langsmith.SessionListParams{
-				Name:          langsmith.F(nameOrID),
-				Limit:         langsmith.F(int64(1)),
-				ReferenceFree: langsmith.F(false),
-				IncludeStats:  langsmith.F(true),
-			}
+			var p langsmith.TracerSession
 
-			resp, err := c.SDK.Sessions.List(ctx, params)
-			if err != nil {
-				exitErrorf("fetching experiment: %v", err)
+			// Try UUID first (direct GET), fall back to name search
+			if _, err := uuid.Parse(nameOrID); err == nil {
+				session, err := c.SDK.Sessions.Get(ctx, nameOrID, langsmith.SessionGetParams{
+					IncludeStats: langsmith.F(true),
+				})
+				if err != nil {
+					exitErrorf("fetching experiment by ID: %v", err)
+				}
+				p = *session
+			} else {
+				params := langsmith.SessionListParams{
+					Name:          langsmith.F(nameOrID),
+					Limit:         langsmith.F(int64(1)),
+					ReferenceFree: langsmith.F(false),
+					IncludeStats:  langsmith.F(true),
+				}
+				resp, err := c.SDK.Sessions.List(ctx, params)
+				if err != nil {
+					exitErrorf("fetching experiment: %v", err)
+				}
+				if len(resp.Items) == 0 {
+					exitErrorf("experiment not found: %s", nameOrID)
+				}
+				p = resp.Items[0]
 			}
-
-			if len(resp.Items) == 0 {
-				exitErrorf("experiment not found: %s", nameOrID)
-			}
-
-			p := resp.Items[0]
 
 			// Build output
 			data := map[string]any{
