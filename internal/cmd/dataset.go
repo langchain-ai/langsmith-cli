@@ -54,19 +54,28 @@ func newDatasetListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 
+			pageSize := int64(20)
+			if limit > 0 && int64(limit) < pageSize {
+				pageSize = int64(limit)
+			}
 			params := langsmith.DatasetListParams{
-				Limit: langsmith.F(int64(limit)),
+				Limit: langsmith.F(pageSize),
 			}
 			if nameContains != "" {
 				params.NameContains = langsmith.F(nameContains)
 			}
 
-			resp, err := c.SDK.Datasets.List(ctx, params)
-			if err != nil {
+			var datasets []langsmith.Dataset
+			pager := c.SDK.Datasets.ListAutoPaging(ctx, params)
+			for pager.Next() {
+				datasets = append(datasets, pager.Current())
+				if limit > 0 && len(datasets) >= limit {
+					break
+				}
+			}
+			if err := pager.Err(); err != nil {
 				exitErrorf("listing datasets: %v", err)
 			}
-
-			datasets := resp.Items
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
@@ -257,28 +266,23 @@ func newDatasetExportCmd() *cobra.Command {
 				exitErrorf("%v", err)
 			}
 
+			exportPageSize := int64(20)
+			if limit > 0 && int64(limit) < exportPageSize {
+				exportPageSize = int64(limit)
+			}
 			var allExamples []langsmith.Example
-			remaining := limit
-			offset := 0
-			for remaining > 0 {
-				pageSize := remaining
-				if pageSize > 100 {
-					pageSize = 100
-				}
-				resp, err := c.SDK.Examples.List(ctx, langsmith.ExampleListParams{
-					Dataset: langsmith.F(ds.ID),
-					Limit:   langsmith.F(int64(pageSize)),
-					Offset:  langsmith.F(int64(offset)),
-				})
-				if err != nil {
-					exitErrorf("listing examples: %v", err)
-				}
-				allExamples = append(allExamples, resp.Items...)
-				if len(resp.Items) < pageSize {
+			pager := c.SDK.Examples.ListAutoPaging(ctx, langsmith.ExampleListParams{
+				Dataset: langsmith.F(ds.ID),
+				Limit:   langsmith.F(exportPageSize),
+			})
+			for pager.Next() {
+				allExamples = append(allExamples, pager.Current())
+				if limit > 0 && len(allExamples) >= limit {
 					break
 				}
-				remaining -= len(resp.Items)
-				offset += len(resp.Items)
+			}
+			if err := pager.Err(); err != nil {
+				exitErrorf("listing examples: %v", err)
 			}
 
 			var data []map[string]any

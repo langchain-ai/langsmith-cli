@@ -54,28 +54,27 @@ func newExampleListCmd() *cobra.Command {
 				exitErrorf("%v", err)
 			}
 
+			pageSize := int64(20)
+			if limit > 0 && int64(limit) < pageSize {
+				pageSize = int64(limit)
+			}
+			params := langsmith.ExampleListParams{
+				Dataset: langsmith.F(ds.ID),
+				Limit:   langsmith.F(pageSize),
+			}
+			if offset > 0 {
+				params.Offset = langsmith.F(int64(offset))
+			}
 			var examples []langsmith.Example
-			remaining := limit
-			pageOffset := offset
-			for remaining > 0 {
-				pageSize := remaining
-				if pageSize > 100 {
-					pageSize = 100
-				}
-				resp, err := c.SDK.Examples.List(ctx, langsmith.ExampleListParams{
-					Dataset: langsmith.F(ds.ID),
-					Limit:   langsmith.F(int64(pageSize)),
-					Offset:  langsmith.F(int64(pageOffset)),
-				})
-				if err != nil {
-					exitErrorf("listing examples: %v", err)
-				}
-				examples = append(examples, resp.Items...)
-				if len(resp.Items) < pageSize {
+			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
+			for pager.Next() {
+				examples = append(examples, pager.Current())
+				if limit > 0 && len(examples) >= limit {
 					break
 				}
-				remaining -= len(resp.Items)
-				pageOffset += len(resp.Items)
+			}
+			if err := pager.Err(); err != nil {
+				exitErrorf("listing examples: %v", err)
 			}
 			fmt_ := getFormat()
 

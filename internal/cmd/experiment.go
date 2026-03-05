@@ -43,8 +43,12 @@ func newExperimentListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 
+			pageSize := int64(20)
+			if limit > 0 && int64(limit) < pageSize {
+				pageSize = int64(limit)
+			}
 			params := langsmith.SessionListParams{
-				Limit:         langsmith.F(int64(limit)),
+				Limit:         langsmith.F(pageSize),
 				ReferenceFree: langsmith.F(false),
 				IncludeStats:  langsmith.F(true),
 			}
@@ -57,12 +61,17 @@ func newExperimentListCmd() *cobra.Command {
 				params.ReferenceDataset = langsmith.F([]string{ds.ID})
 			}
 
-			resp, err := c.SDK.Sessions.List(ctx, params)
-			if err != nil {
+			var projects []langsmith.TracerSession
+			pager := c.SDK.Sessions.ListAutoPaging(ctx, params)
+			for pager.Next() {
+				projects = append(projects, pager.Current())
+				if limit > 0 && len(projects) >= limit {
+					break
+				}
+			}
+			if err := pager.Err(); err != nil {
 				exitErrorf("listing experiments: %v", err)
 			}
-
-			projects := resp.Items
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
