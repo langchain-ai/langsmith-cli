@@ -67,8 +67,8 @@ func newTraceListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
@@ -94,11 +94,14 @@ func newTraceListCmd() *cobra.Command {
 				}
 			} else {
 				if showHierarchy {
+					childParams := langsmith.RunQueryParams{}
+					if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+						childParams.Select = langsmith.F(sel)
+					}
 					var result []map[string]any
 					for _, run := range runs {
-						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
-							Trace: langsmith.F(run.TraceID),
-						}, projectName, 1000, 0)
+						childParams.Trace = langsmith.F(run.TraceID)
+						allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 						if err != nil {
 							exitErrorf("%v", err)
 						}
@@ -158,8 +161,8 @@ func newTraceGetCmd() *cobra.Command {
 			params := langsmith.RunQueryParams{
 				Trace: langsmith.F(traceID),
 			}
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 
 			runs, err := queryRuns(ctx, c, params, projectName, 1000, 0)
@@ -228,8 +231,9 @@ func newTraceExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			sel := buildRunSelect(includeIO, includeFeedback)
+			if sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
@@ -240,9 +244,13 @@ func newTraceExportCmd() *cobra.Command {
 			for _, root := range rootRuns {
 				tid := root.TraceID
 
-				allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
+				childParams := langsmith.RunQueryParams{
 					Trace: langsmith.F(tid),
-				}, projectName, 1000, 0)
+				}
+				if sel != nil {
+					childParams.Select = langsmith.F(sel)
+				}
+				allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 				if err != nil {
 					exitErrorf("%v", err)
 				}
