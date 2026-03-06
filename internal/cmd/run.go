@@ -63,8 +63,8 @@ func newRunListCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
@@ -123,8 +123,8 @@ func newRunGetCmd() *cobra.Command {
 				ID:    langsmith.F([]string{runID}),
 				Limit: langsmith.F(int64(1)),
 			}
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 
 			resp, err := c.SDK.Runs.Query(ctx, params)
@@ -186,8 +186,8 @@ func newRunExportCmd() *cobra.Command {
 			projectName := ResolveProject(ff.Project)
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
-			if includeFeedback {
-				params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectFeedbackStats})
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {

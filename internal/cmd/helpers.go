@@ -56,6 +56,52 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 	return allRuns, nil
 }
 
+// buildRunSelect returns the Select fields needed for the given include flags.
+// Returns nil when neither IO nor feedback is requested, letting the API use its defaults.
+// When set, includes all base/metadata fields so they aren't stripped from the response.
+func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsSelect {
+	if !includeIO && !includeFeedback {
+		return nil
+	}
+
+	fields := []langsmith.RunQueryParamsSelect{
+		// Base fields
+		langsmith.RunQueryParamsSelectID,
+		langsmith.RunQueryParamsSelectTraceID,
+		langsmith.RunQueryParamsSelectName,
+		langsmith.RunQueryParamsSelectRunType,
+		langsmith.RunQueryParamsSelectParentRunID,
+		langsmith.RunQueryParamsSelectStartTime,
+		langsmith.RunQueryParamsSelectEndTime,
+		langsmith.RunQueryParamsSelectStatus,
+		// Metadata fields
+		langsmith.RunQueryParamsSelectExtra,
+		langsmith.RunQueryParamsSelectPromptTokens,
+		langsmith.RunQueryParamsSelectCompletionTokens,
+		langsmith.RunQueryParamsSelectTotalTokens,
+		langsmith.RunQueryParamsSelectPromptCost,
+		langsmith.RunQueryParamsSelectCompletionCost,
+		langsmith.RunQueryParamsSelectTotalCost,
+		langsmith.RunQueryParamsSelectTags,
+	}
+
+	if includeIO {
+		fields = append(fields,
+			langsmith.RunQueryParamsSelectInputs,
+			langsmith.RunQueryParamsSelectOutputs,
+			langsmith.RunQueryParamsSelectError,
+		)
+	}
+
+	if includeFeedback {
+		fields = append(fields,
+			langsmith.RunQueryParamsSelectFeedbackStats,
+		)
+	}
+
+	return fields
+}
+
 // extractRunsToMaps extracts a slice of runs to maps.
 func extractRunsToMaps(runs []langsmith.RunQueryResponseRun, includeMetadata, includeIO, includeFeedback bool) []map[string]any {
 	result := make([]map[string]any, 0, len(runs))

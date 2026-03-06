@@ -235,6 +235,159 @@ func TestRunsToTreeData_ParentRunID(t *testing.T) {
 	}
 }
 
+// ---------- buildRunSelect ----------
+
+func TestBuildRunSelect_NeitherFlag(t *testing.T) {
+	sel := buildRunSelect(false, false)
+	if sel != nil {
+		t.Errorf("expected nil when neither IO nor feedback requested, got %d fields", len(sel))
+	}
+}
+
+func TestBuildRunSelect_IOOnly(t *testing.T) {
+	sel := buildRunSelect(true, false)
+	if sel == nil {
+		t.Fatal("expected non-nil when IO requested")
+	}
+
+	has := selectSet(sel)
+
+	// Must include IO fields
+	for _, f := range []langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectInputs,
+		langsmith.RunQueryParamsSelectOutputs,
+		langsmith.RunQueryParamsSelectError,
+	} {
+		if !has[f] {
+			t.Errorf("missing IO field %q", f)
+		}
+	}
+
+	// Must NOT include feedback
+	if has[langsmith.RunQueryParamsSelectFeedbackStats] {
+		t.Error("should not include feedback_stats when only IO requested")
+	}
+
+	// Must include base fields
+	assertBaseFields(t, has)
+}
+
+func TestBuildRunSelect_FeedbackOnly(t *testing.T) {
+	sel := buildRunSelect(false, true)
+	if sel == nil {
+		t.Fatal("expected non-nil when feedback requested")
+	}
+
+	has := selectSet(sel)
+
+	// Must include feedback
+	if !has[langsmith.RunQueryParamsSelectFeedbackStats] {
+		t.Error("missing feedback_stats")
+	}
+
+	// Must NOT include IO fields
+	for _, f := range []langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectInputs,
+		langsmith.RunQueryParamsSelectOutputs,
+	} {
+		if has[f] {
+			t.Errorf("should not include %q when only feedback requested", f)
+		}
+	}
+
+	// Must include base fields
+	assertBaseFields(t, has)
+}
+
+func TestBuildRunSelect_Both(t *testing.T) {
+	sel := buildRunSelect(true, true)
+	if sel == nil {
+		t.Fatal("expected non-nil when both requested")
+	}
+
+	has := selectSet(sel)
+
+	// Must include IO fields
+	for _, f := range []langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectInputs,
+		langsmith.RunQueryParamsSelectOutputs,
+		langsmith.RunQueryParamsSelectError,
+	} {
+		if !has[f] {
+			t.Errorf("missing IO field %q", f)
+		}
+	}
+
+	// Must include feedback
+	if !has[langsmith.RunQueryParamsSelectFeedbackStats] {
+		t.Error("missing feedback_stats")
+	}
+
+	// Must include base fields
+	assertBaseFields(t, has)
+}
+
+func TestBuildRunSelect_NoDuplicates(t *testing.T) {
+	sel := buildRunSelect(true, true)
+	seen := make(map[langsmith.RunQueryParamsSelect]bool)
+	for _, f := range sel {
+		if seen[f] {
+			t.Errorf("duplicate select field: %q", f)
+		}
+		seen[f] = true
+	}
+}
+
+func TestBuildRunSelect_IncludesMetadataFields(t *testing.T) {
+	sel := buildRunSelect(true, false)
+	has := selectSet(sel)
+
+	metadataFields := []langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectStatus,
+		langsmith.RunQueryParamsSelectExtra,
+		langsmith.RunQueryParamsSelectPromptTokens,
+		langsmith.RunQueryParamsSelectCompletionTokens,
+		langsmith.RunQueryParamsSelectTotalTokens,
+		langsmith.RunQueryParamsSelectPromptCost,
+		langsmith.RunQueryParamsSelectCompletionCost,
+		langsmith.RunQueryParamsSelectTotalCost,
+		langsmith.RunQueryParamsSelectTags,
+	}
+	for _, f := range metadataFields {
+		if !has[f] {
+			t.Errorf("missing metadata field %q (needed so --include-metadata works alongside --include-io)", f)
+		}
+	}
+}
+
+// selectSet converts a slice to a set for easy lookup.
+func selectSet(sel []langsmith.RunQueryParamsSelect) map[langsmith.RunQueryParamsSelect]bool {
+	m := make(map[langsmith.RunQueryParamsSelect]bool, len(sel))
+	for _, f := range sel {
+		m[f] = true
+	}
+	return m
+}
+
+// assertBaseFields checks that all fields required by ExtractRun's base output are present.
+func assertBaseFields(t *testing.T, has map[langsmith.RunQueryParamsSelect]bool) {
+	t.Helper()
+	baseFields := []langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectID,
+		langsmith.RunQueryParamsSelectTraceID,
+		langsmith.RunQueryParamsSelectName,
+		langsmith.RunQueryParamsSelectRunType,
+		langsmith.RunQueryParamsSelectParentRunID,
+		langsmith.RunQueryParamsSelectStartTime,
+		langsmith.RunQueryParamsSelectEndTime,
+	}
+	for _, f := range baseFields {
+		if !has[f] {
+			t.Errorf("missing base field %q", f)
+		}
+	}
+}
+
 // ---------- extractRunsToMaps ----------
 
 func TestExtractRunsToMaps_Empty(t *testing.T) {
