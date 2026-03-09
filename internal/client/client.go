@@ -25,20 +25,30 @@ type Client struct {
 	sessionCache map[string]string
 }
 
+// NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
+// slash) so that the SDK — which appends "api/v1" itself — does not double it.
+// Self-hosted users commonly set LANGSMITH_ENDPOINT to "https://host/api/v1".
+func NormalizeURL(apiURL string) string {
+	u := strings.TrimRight(apiURL, "/")
+	return strings.TrimSuffix(u, "/api/v1")
+}
+
 // New creates a new Client.
 func New(apiKey, apiURL string) *Client {
+	normalized := NormalizeURL(apiURL)
+
 	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).
-	if apiURL != "" {
-		opts = append(opts, option.WithBaseURL(apiURL))
+	if normalized != "" {
+		opts = append(opts, option.WithBaseURL(normalized))
 	}
 
 	return &Client{
 		SDK:          langsmith.NewClient(opts...),
 		apiKey:       apiKey,
-		apiURL:       strings.TrimRight(apiURL, "/"),
+		apiURL:       normalized,
 		sessionCache: make(map[string]string),
 	}
 }
