@@ -11,7 +11,7 @@ Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developer
 ### Install script (recommended)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/langchain-ai/langsmith-cli/main/scripts/install.sh | sh
+curl -fsSL https://cli.langsmith.com/install.sh | sh
 ```
 
 ### GitHub releases
