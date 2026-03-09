@@ -9,6 +9,28 @@ import (
 	"testing"
 )
 
+// ---------- NormalizeURL ----------
+
+func TestNormalizeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"no-op", "https://api.smith.langchain.com", "https://api.smith.langchain.com"},
+		{"strips /api/v1", "https://myhost.com/api/v1", "https://myhost.com"},
+		{"strips /api/v1/", "https://myhost.com/api/v1/", "https://myhost.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeURL(tt.in)
+			if got != tt.want {
+				t.Errorf("NormalizeURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 // ---------- New ----------
 
 func TestNew_CreatesClient(t *testing.T) {
