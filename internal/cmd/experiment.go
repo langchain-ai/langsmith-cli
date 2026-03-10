@@ -168,6 +168,7 @@ func newExperimentGetCmd() *cobra.Command {
 
 			// Build output
 			data := map[string]any{
+				"id":            p.ID,
 				"name":          p.Name,
 				"feedback_stats": p.FeedbackStats,
 				"run_stats": map[string]any{
