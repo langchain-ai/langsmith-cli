@@ -60,6 +60,7 @@ Output:
 	rootCmd.AddCommand(newExampleCmd())
 	rootCmd.AddCommand(newEvaluatorCmd())
 	rootCmd.AddCommand(newExperimentCmd())
+	rootCmd.AddCommand(newSandboxCmd())
 
 	return rootCmd
 }
