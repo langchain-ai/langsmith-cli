@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -187,5 +191,109 @@ func TestRunExportCmd_NoOutputFlag(t *testing.T) {
 	// run export takes OUTPUT_FILE as positional arg, not --output flag
 	if cmd.Flags().Lookup("output") != nil {
 		t.Error("run export should not have --output flag (uses positional arg)")
+	}
+}
+
+// ==================== Execution tests ====================
+
+// runTestServer returns a handler that mocks /sessions and /runs/query.
+// sessions maps project name → session ID.
+// runs is returned for any /runs/query POST.
+func newRunTestServer(t *testing.T, sessions map[string]string, runs []map[string]any) *httptest.Server {
+	t.Helper()
+	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
+			name := r.URL.Query().Get("name")
+			id, ok := sessions[name]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": id, "name": name}})
+		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
+			_ = json.NewEncoder(w).Encode(map[string]any{"runs": runs})
+		default:
+			http.Error(w, "not found", 404)
+		}
+	})
+}
+
+func TestRunListCmd_Execute_WithProject_Succeeds(t *testing.T) {
+	ts := newRunTestServer(t,
+		map[string]string{"my-app": "session-123"},
+		[]map[string]any{
+			{"id": "run-1", "name": "ChatOpenAI", "run_type": "llm"},
+			{"id": "run-2", "name": "tool_call", "run_type": "tool"},
+		},
+	)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	cmd := newRunListCmd()
+	_ = cmd.Flags().Set("project", "my-app")
+
+	out := captureStdout(t, func() { cmd.Run(cmd, nil) })
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 runs, got %d", len(result))
+	}
+	if result[0]["run_id"] != "run-1" {
+		t.Errorf("expected run_id=run-1, got %v", result[0]["run_id"])
+	}
+}
+
+func TestRunListCmd_Execute_WithEnvProject_Succeeds(t *testing.T) {
+	ts := newRunTestServer(t,
+		map[string]string{"env-project": "session-456"},
+		[]map[string]any{{"id": "run-3", "name": "agent", "run_type": "chain"}},
+	)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	t.Setenv("LANGSMITH_PROJECT", "env-project")
+
+	cmd := newRunListCmd()
+	out := captureStdout(t, func() { cmd.Run(cmd, nil) })
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 run, got %d", len(result))
+	}
+	if result[0]["run_id"] != "run-3" {
+		t.Errorf("expected run_id=run-3, got %v", result[0]["run_id"])
+	}
+}
+
+func TestRunGetCmd_Execute_NoProjectNeeded(t *testing.T) {
+	// run get should NOT require --project; it fetches by ID directly
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/runs/query" && r.Method == "POST" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"runs": []map[string]any{
+					{"id": "run-abc", "name": "my_run", "run_type": "llm"},
+				},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	t.Setenv("LANGSMITH_PROJECT", "")
+
+	cmd := newRunGetCmd()
+	out := captureStdout(t, func() { cmd.Run(cmd, []string{"run-abc"}) })
+
+	if !strings.Contains(out, "run-abc") {
+		t.Errorf("expected output to contain run-abc, got: %s", out)
 	}
 }
