@@ -61,6 +61,9 @@ func newRunListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for run list (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
