@@ -185,6 +185,7 @@ func newThreadGetCmd() *cobra.Command {
 		project         string
 		includeMetadata bool
 		includeIO       bool
+		includeFeedback bool
 		full            bool
 		limit           int
 		outputFile      string
@@ -200,6 +201,7 @@ func newThreadGetCmd() *cobra.Command {
 			if full {
 				includeMetadata = true
 				includeIO = true
+				includeFeedback = true
 			}
 
 			project = ResolveProject(project)
@@ -228,13 +230,16 @@ func newThreadGetCmd() *cobra.Command {
 				Filter:  langsmith.F(filterDSL),
 				Limit:   langsmith.F(int64(queryLimit)),
 			}
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
+			}
 
 			runs, err := queryRuns(ctx, c, params, "", queryLimit, 0)
 			if err != nil {
 				exitErrorf("querying thread runs: %v", err)
 			}
 
-			extracted := extractRunsToMaps(runs, includeMetadata, includeIO, false)
+			extracted := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 
 			fmt_ := getFormat()
 
@@ -254,7 +259,8 @@ func newThreadGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
-	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io")
+	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of runs (turns) to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
