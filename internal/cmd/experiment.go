@@ -2,13 +2,39 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// getUIBaseURL derives the LangSmith UI base URL from the API endpoint.
+// Converts https://api.smith.langchain.com → https://smith.langchain.com.
+// For self-hosted instances, strips /api/v1 suffix only.
+func getUIBaseURL() string {
+	apiURL := getAPIURL()
+	u := strings.TrimRight(apiURL, "/")
+	u = strings.TrimSuffix(u, "/api/v1")
+	// Convert cloud API URL to UI URL
+	u = strings.Replace(u, "https://api.smith.langchain.com", "https://smith.langchain.com", 1)
+	return u
+}
+
+// buildExperimentURL constructs a clickable LangSmith UI URL for an experiment.
+// Returns empty string if orgID or datasetID are not available.
+func buildExperimentURL(experimentID, datasetID string) string {
+	orgID := os.Getenv("LANGSMITH_ORG_ID")
+	if orgID == "" || datasetID == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/o/%s/datasets/%s/compare?selectedSessions=%s",
+		getUIBaseURL(), orgID, datasetID, experimentID)
+}
 
 func newExperimentCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -168,6 +194,7 @@ func newExperimentGetCmd() *cobra.Command {
 
 			// Build output
 			data := map[string]any{
+				"id":            p.ID,
 				"name":          p.Name,
 				"feedback_stats": p.FeedbackStats,
 				"run_stats": map[string]any{
@@ -175,7 +202,8 @@ func newExperimentGetCmd() *cobra.Command {
 					"token_count": p.TotalTokens,
 					"error_rate":  p.ErrorRate,
 				},
-				"example_count": p.RunCount,
+				"example_count":        p.RunCount,
+				"reference_dataset_id": nilStr(p.ReferenceDatasetID),
 			}
 
 			// Try to get total cost
@@ -183,6 +211,11 @@ func newExperimentGetCmd() *cobra.Command {
 				if f, err := strconv.ParseFloat(p.TotalCost, 64); err == nil {
 					data["run_stats"].(map[string]any)["total_cost"] = f
 				}
+			}
+
+			// Add clickable UI URL if org ID and dataset ID are available
+			if url := buildExperimentURL(p.ID, p.ReferenceDatasetID); url != "" {
+				data["url"] = url
 			}
 
 			fmt_ := getFormat()
