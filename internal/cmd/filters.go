@@ -25,6 +25,7 @@ type FilterFlags struct {
 	MaxLatency   float64
 	MinTokens    int
 	Tags         string
+	Metadata     string
 	RawFilter    string
 }
 
@@ -42,6 +43,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().Float64Var(&f.MaxLatency, "max-latency", 0, "Maximum latency in seconds")
 	cmd.Flags().IntVar(&f.MinTokens, "min-tokens", 0, "Minimum total tokens")
 	cmd.Flags().StringVar(&f.Tags, "tags", "", "Comma-separated tags (OR logic)")
+	cmd.Flags().StringVar(&f.Metadata, "metadata", "", "Filter by metadata key=value (e.g. revision_id=abc123)")
 	cmd.Flags().StringVar(&f.RawFilter, "filter", "", "Raw LangSmith filter DSL string")
 
 	if includeRunType {
@@ -159,6 +161,17 @@ func buildFilterDSL(f *FilterFlags) string {
 				clauses[i] = fmt.Sprintf("has(tags, %q)", t)
 			}
 			parts = append(parts, fmt.Sprintf("or(%s)", strings.Join(clauses, ", ")))
+		}
+	}
+
+	// Metadata key=value filter
+	if f.Metadata != "" {
+		key, val, ok := strings.Cut(f.Metadata, "=")
+		if !ok {
+			// key-only: filter by key existence
+			parts = append(parts, fmt.Sprintf("eq(metadata_key, %q)", key))
+		} else {
+			parts = append(parts, fmt.Sprintf("and(eq(metadata_key, %q), eq(metadata_value, %q))", key, val))
 		}
 	}
 
