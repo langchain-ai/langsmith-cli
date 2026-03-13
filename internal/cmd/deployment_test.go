@@ -182,7 +182,7 @@ func TestDeploymentDeployLogsFlags(t *testing.T) {
 func TestDeploymentDeployListEndToEnd(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v2/deployments" {
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"resources": []map[string]any{
 					{
 						"id":   "dep-123",
@@ -215,7 +215,7 @@ func TestDeploymentDeployListEndToEnd(t *testing.T) {
 
 func TestDeploymentDeployListEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"resources": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"resources": []any{}})
 	}))
 	defer server.Close()
 

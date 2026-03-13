@@ -91,11 +91,11 @@ func (p *Progress) spin() {
 
 		if msg != "" {
 			display := fmt.Sprintf("%c %s", chars[idx%len(chars)], msg)
-			fmt.Fprint(os.Stdout, display)
+			_, _ = fmt.Fprint(os.Stdout, display)
 			time.Sleep(p.delay)
 			// Clear the line
 			clear := fmt.Sprintf("\r%s\r", spacePad(len(display)))
-			fmt.Fprint(os.Stdout, clear)
+			_, _ = fmt.Fprint(os.Stdout, clear)
 		} else {
 			time.Sleep(p.delay)
 		}

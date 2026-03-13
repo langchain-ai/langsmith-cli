@@ -557,7 +557,7 @@ Examples:
 			if err != nil {
 				exitErrorf("Creating temp dir: %v", err)
 			}
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			authB64 := base64.StdEncoding.EncodeToString([]byte("oauth2accesstoken:" + token))
 			dockerConfig := map[string]any{
@@ -587,10 +587,7 @@ Examples:
 			// Update deployment with secrets
 			secrets := deployment.SecretsFromEnv(cfg)
 			fmt.Fprintln(os.Stderr, "Updating deployment...")
-			var secretMaps []map[string]string
-			for _, s := range secrets {
-				secretMaps = append(secretMaps, s)
-			}
+			secretMaps := append([]map[string]string{}, secrets...)
 			_, err = client.UpdateDeployment(deploymentID, imageURI, secretMaps)
 			if err != nil {
 				exitErrorf("Updating deployment: %v", err)
@@ -737,7 +734,7 @@ func newDeploymentDeployDeleteCmd() *cobra.Command {
 			if !force {
 				fmt.Fprintf(os.Stderr, "Are you sure you want to delete deployment ID %s? (Y/n): ", deploymentID)
 				var confirm string
-				fmt.Scanln(&confirm)
+				_, _ = fmt.Scanln(&confirm)
 				confirm = strings.TrimSpace(strings.ToLower(confirm))
 				if confirm != "" && confirm != "y" && confirm != "yes" {
 					fmt.Fprintln(os.Stderr, "Aborted!")

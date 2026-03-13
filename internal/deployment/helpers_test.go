@@ -114,7 +114,7 @@ func TestResolveDeploymentID(t *testing.T) {
 
 	// By name with mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"resources": []map[string]any{
 				{"id": "found-id", "name": "my-dep"},
 			},

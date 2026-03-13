@@ -88,7 +88,7 @@ func (c *HostBackendClient) request(method, path string, payload map[string]inte
 	if err != nil {
 		return nil, &HostBackendError{Message: fmt.Sprintf("request failed: %v", err)}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

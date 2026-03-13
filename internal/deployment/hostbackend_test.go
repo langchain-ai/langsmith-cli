@@ -19,7 +19,7 @@ func TestHostBackendClientListDeployments(t *testing.T) {
 			t.Errorf("unexpected API key: %s", r.Header.Get("X-Api-Key"))
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"resources": []map[string]any{
 				{"id": "dep-1", "name": "test-dep"},
 			},
@@ -61,7 +61,7 @@ func TestHostBackendClientDeleteDeployment(t *testing.T) {
 func TestHostBackendClientError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("not found"))
+		_, _ = w.Write([]byte("not found"))
 	}))
 	defer server.Close()
 
@@ -85,7 +85,7 @@ func TestHostBackendClientTenantID(t *testing.T) {
 		if r.Header.Get("X-Tenant-ID") != "tenant-123" {
 			t.Errorf("expected X-Tenant-ID=tenant-123, got %s", r.Header.Get("X-Tenant-ID"))
 		}
-		json.NewEncoder(w).Encode(map[string]any{"resources": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"resources": []any{}})
 	}))
 	defer server.Close()
 
@@ -106,12 +106,12 @@ func TestHostBackendClientCreateDeployment(t *testing.T) {
 		}
 
 		var payload map[string]any
-		json.NewDecoder(r.Body).Decode(&payload)
+		_ = json.NewDecoder(r.Body).Decode(&payload)
 		if payload["name"] != "my-dep" {
 			t.Errorf("expected name=my-dep, got %v", payload["name"])
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{"id": "new-dep-1", "name": "my-dep"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "new-dep-1", "name": "my-dep"})
 	}))
 	defer server.Close()
 
@@ -135,13 +135,13 @@ func TestHostBackendClientUpdateDeployment(t *testing.T) {
 		}
 
 		var payload map[string]any
-		json.NewDecoder(r.Body).Decode(&payload)
+		_ = json.NewDecoder(r.Body).Decode(&payload)
 		srcConfig, _ := payload["source_revision_config"].(map[string]any)
 		if srcConfig["image_uri"] != "my-image:latest" {
 			t.Errorf("expected image_uri=my-image:latest, got %v", srcConfig["image_uri"])
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{"id": "dep-1"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "dep-1"})
 	}))
 	defer server.Close()
 

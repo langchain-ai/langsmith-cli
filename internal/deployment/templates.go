@@ -112,7 +112,7 @@ func downloadAndExtract(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloading %s: HTTP %d", url, resp.StatusCode)
@@ -173,13 +173,13 @@ func downloadAndExtract(url, destPath string) error {
 
 		rc, err := f.Open()
 		if err != nil {
-			outFile.Close()
+			_ = outFile.Close()
 			return err
 		}
 
 		_, err = io.Copy(outFile, rc)
-		rc.Close()
-		outFile.Close()
+		_ = rc.Close()
+		_ = outFile.Close()
 		if err != nil {
 			return err
 		}

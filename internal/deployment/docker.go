@@ -76,22 +76,22 @@ func ParseVersion(version string) Version {
 func CheckCapabilities() (*DockerCapabilities, error) {
 	// Check docker available
 	if _, err := exec.LookPath("docker"); err != nil {
-		return nil, fmt.Errorf("Docker not installed")
+		return nil, fmt.Errorf("docker not installed")
 	}
 
 	stdout, _, err := RunCommand("docker", "info", "-f", "{{json .}}")
 	if err != nil {
-		return nil, fmt.Errorf("Docker not installed or not running")
+		return nil, fmt.Errorf("docker not installed or not running")
 	}
 
 	var info map[string]interface{}
 	if err := json.Unmarshal([]byte(stdout), &info); err != nil {
-		return nil, fmt.Errorf("Docker not installed or not running")
+		return nil, fmt.Errorf("docker not installed or not running")
 	}
 
 	serverVersion, _ := info["ServerVersion"].(string)
 	if serverVersion == "" {
-		return nil, fmt.Errorf("Docker not running")
+		return nil, fmt.Errorf("docker not running")
 	}
 
 	var composeVersionStr string
@@ -116,11 +116,11 @@ func CheckCapabilities() (*DockerCapabilities, error) {
 	if composeVersionStr == "" {
 		// Try standalone
 		if _, err := exec.LookPath("docker-compose"); err != nil {
-			return nil, fmt.Errorf("Docker Compose not installed")
+			return nil, fmt.Errorf("docker compose not installed")
 		}
 		composeVersionStr, _, err = RunCommand("docker-compose", "--version", "--short")
 		if err != nil {
-			return nil, fmt.Errorf("Docker Compose not installed")
+			return nil, fmt.Errorf("docker compose not installed")
 		}
 		composeType = ComposeStandalone
 	}

@@ -36,10 +36,7 @@ func HasDisallowedBuildCommandContent(command string) bool {
 			return true
 		}
 	}
-	if singleAmpersandRe.MatchString(command) {
-		return true
-	}
-	return false
+	return singleAmpersandRe.MatchString(command)
 }
 
 // Config represents the validated langgraph.json configuration.
@@ -109,7 +106,7 @@ func ValidateConfig(raw map[string]interface{}) (map[string]interface{}, error) 
 
 		// Check for bullseye
 		if strings.Contains(pyVer, "bullseye") {
-			return nil, fmt.Errorf("Bullseye images were deprecated. Please use 'bookworm' or 'wolfi' instead")
+			return nil, fmt.Errorf("bullseye images were deprecated: please use 'bookworm' or 'wolfi' instead")
 		}
 
 		// Extract base version for validation (handle suffixes like -slim)
@@ -121,19 +118,19 @@ func ValidateConfig(raw map[string]interface{}) (map[string]interface{}, error) 
 		// Validate format: must be major.minor
 		parts := strings.Split(basePyVer, ".")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("Invalid Python version format: '%s'. Must be in 'major.minor' format (e.g., '3.11')", pyVer)
+			return nil, fmt.Errorf("invalid Python version format: '%s', must be in 'major.minor' format (e.g., '3.11')", pyVer)
 		}
 		major, errMajor := strconv.Atoi(parts[0])
 		minor, errMinor := strconv.Atoi(parts[1])
 		if errMajor != nil || errMinor != nil {
-			return nil, fmt.Errorf("Invalid Python version format: '%s'. Must be in 'major.minor' format (e.g., '3.11')", pyVer)
+			return nil, fmt.Errorf("invalid Python version format: '%s', must be in 'major.minor' format (e.g., '3.11')", pyVer)
 		}
 
 		minParts := strings.Split(MinPythonVersion, ".")
 		minMajor, _ := strconv.Atoi(minParts[0])
 		minMinor, _ := strconv.Atoi(minParts[1])
 		if major < minMajor || (major == minMajor && minor < minMinor) {
-			return nil, fmt.Errorf("Minimum required version is %s, got %s", MinPythonVersion, basePyVer)
+			return nil, fmt.Errorf("minimum required version is %s, got %s", MinPythonVersion, basePyVer)
 		}
 
 		config["python_version"] = pyVer
@@ -158,7 +155,7 @@ func ValidateConfig(raw map[string]interface{}) (map[string]interface{}, error) 
 	if distro, ok := config["image_distro"]; ok && distro != nil {
 		distroStr := fmt.Sprintf("%v", distro)
 		if distroStr == "bullseye" {
-			return nil, fmt.Errorf("Bullseye images were deprecated. Please use 'bookworm' or 'wolfi' instead")
+			return nil, fmt.Errorf("bullseye images were deprecated: please use 'bookworm' or 'wolfi' instead")
 		}
 		validDistros := map[string]bool{"debian": true, "wolfi": true, "bookworm": true}
 		if !validDistros[distroStr] {
@@ -183,7 +180,7 @@ func ValidateConfig(raw map[string]interface{}) (map[string]interface{}, error) 
 	if httpConfig, ok := config["http"].(map[string]interface{}); ok {
 		if app, ok := httpConfig["app"].(string); ok {
 			if !strings.Contains(app, ":") || strings.HasPrefix(app, "..") {
-				return nil, fmt.Errorf("Invalid http.app format: '%s'. Must be 'path/to/file.py:attribute'", app)
+				return nil, fmt.Errorf("invalid http.app format: '%s', must be 'path/to/file.py:attribute'", app)
 			}
 		}
 	}
