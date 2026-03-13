@@ -338,7 +338,10 @@ func ConfigToDocker(config map[string]interface{}, configDir string, baseImage s
 	// Set LANGSERVE_GRAPHS environment variable
 	if graphs, ok := config["graphs"].(map[string]interface{}); ok && len(graphs) > 0 {
 		graphsJSON, _ := json.Marshal(graphs)
-		lines = append(lines, fmt.Sprintf("ENV LANGSERVE_GRAPHS='%s'", string(graphsJSON)))
+		// Use double quotes and escape any embedded double quotes/backslashes
+		escaped := strings.ReplaceAll(string(graphsJSON), `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		lines = append(lines, fmt.Sprintf(`ENV LANGSERVE_GRAPHS="%s"`, escaped))
 	}
 
 	// Handle additional dockerfile_lines

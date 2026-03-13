@@ -154,6 +154,12 @@ func downloadAndExtract(url, destPath string) error {
 
 		targetPath := filepath.Join(destPath, name)
 
+		// Zip Slip protection: ensure the target path is within destPath
+		if !strings.HasPrefix(filepath.Clean(targetPath)+string(os.PathSeparator), filepath.Clean(destPath)+string(os.PathSeparator)) &&
+			filepath.Clean(targetPath) != filepath.Clean(destPath) {
+			return fmt.Errorf("illegal file path in archive: %s", name)
+		}
+
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return err
