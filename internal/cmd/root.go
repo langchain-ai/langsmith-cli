@@ -61,6 +61,7 @@ Output:
 	rootCmd.AddCommand(newEvaluatorCmd())
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
+	rootCmd.AddCommand(newDeploymentCmd())
 
 	return rootCmd
 }
