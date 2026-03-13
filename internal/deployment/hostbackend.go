@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -54,13 +55,13 @@ func NewHostBackendClient(baseURL, apiKey string, tenantID string) *HostBackendC
 func (c *HostBackendClient) request(method, path string, payload map[string]interface{}, params map[string]string) (map[string]interface{}, error) {
 	url := c.baseURL + path
 
-	// Add query params
+	// Add query params (URL-encoded)
 	if len(params) > 0 {
-		parts := make([]string, 0, len(params))
+		q := make(neturl.Values)
 		for k, v := range params {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+			q.Set(k, v)
 		}
-		url += "?" + strings.Join(parts, "&")
+		url += "?" + q.Encode()
 	}
 
 	var body io.Reader

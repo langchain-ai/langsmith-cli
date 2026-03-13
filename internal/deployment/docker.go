@@ -209,11 +209,13 @@ func ComposeAsDict(caps *DockerCapabilities, opts ComposeOptions) map[string]int
 		debugger.Set("image", "langchain/langgraph-debugger")
 		debugger.Set("restart", "on-failure")
 
-		debuggerDeps := newOrderedMap()
-		pgDep := newOrderedMap()
-		pgDep.Set("condition", "service_healthy")
-		debuggerDeps.Set("langgraph-postgres", pgDep)
-		debugger.Set("depends_on", debuggerDeps)
+		if includeDB {
+			debuggerDeps := newOrderedMap()
+			pgDep := newOrderedMap()
+			pgDep.Set("condition", "service_healthy")
+			debuggerDeps.Set("langgraph-postgres", pgDep)
+			debugger.Set("depends_on", debuggerDeps)
+		}
 
 		debugger.Set("ports", []string{fmt.Sprintf(`"%d:3968"`, opts.DebuggerPort)})
 

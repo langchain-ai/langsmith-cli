@@ -859,7 +859,7 @@ Examples:
 					return
 				}
 
-				// Print log entries
+				// Print log entries and track last timestamp for follow mode
 				entries, _ := result["entries"].([]any)
 				for _, e := range entries {
 					entry, ok := e.(map[string]any)
@@ -873,6 +873,11 @@ Examples:
 						fmt.Printf("%s%s%s\n", color, formatted, deployment.ColorReset)
 					} else {
 						fmt.Println(formatted)
+					}
+
+					// Update start_time for next fetch so we only get new entries
+					if ts := entry["timestamp"]; ts != nil {
+						payload["start_time"] = ts
 					}
 				}
 			}
