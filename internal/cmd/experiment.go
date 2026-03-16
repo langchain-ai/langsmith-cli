@@ -80,15 +80,9 @@ func newExperimentListCmd() *cobra.Command {
 				var rows [][]string
 				for _, p := range projects {
 					id := p.ID
-					if len(id) > 16 {
-						id = id[:16] + "..."
-					}
 					dsID := "N/A"
 					if p.ReferenceDatasetID != "" {
 						dsID = p.ReferenceDatasetID
-						if len(dsID) > 16 {
-							dsID = dsID[:16] + "..."
-						}
 					}
 					runCount := "N/A"
 					if p.RunCount > 0 {

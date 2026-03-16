@@ -83,9 +83,6 @@ func newDatasetListCmd() *cobra.Command {
 				var rows [][]string
 				for _, ds := range datasets {
 					id := ds.ID
-					if len(id) > 16 {
-						id = id[:16] + "..."
-					}
 					desc := ds.Description
 					if len(desc) > 50 {
 						desc = desc[:50]
