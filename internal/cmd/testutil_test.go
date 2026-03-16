@@ -61,7 +61,7 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 // and returns captured stdout and any error.
 func executeCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	cmd := NewRootCmd("test")
+	cmd := NewRootCmd("test", "test")
 	var outBuf bytes.Buffer
 	cmd.SetOut(&outBuf)
 	cmd.SetErr(&outBuf)
