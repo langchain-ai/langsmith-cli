@@ -16,7 +16,7 @@ var (
 )
 
 // NewRootCmd creates the top-level `langsmith` command.
-func NewRootCmd(version string) *cobra.Command {
+func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "langsmith",
 		Short: "LangSmith CLI — query and manage LangSmith resources",
@@ -44,7 +44,7 @@ Output:
   --format pretty  Human-readable tables, trees, and syntax-highlighted JSON.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       version,
+		Version:       displayVersion,
 	}
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
@@ -61,6 +61,7 @@ Output:
 	rootCmd.AddCommand(newEvaluatorCmd())
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
+	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 
 	return rootCmd
 }
