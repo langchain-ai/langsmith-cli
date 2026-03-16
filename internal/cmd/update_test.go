@@ -70,7 +70,7 @@ func TestVerifyChecksum_Correct(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(archiveFile.Name())
-	archiveFile.Write(content)
+	_, _ = archiveFile.Write(content)
 	archiveFile.Close()
 
 	// Compute its hash
@@ -99,7 +99,7 @@ func TestVerifyChecksum_Mismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(archiveFile.Name())
-	archiveFile.Write(content)
+	_, _ = archiveFile.Write(content)
 	archiveFile.Close()
 
 	checksumFile, err := os.CreateTemp("", "test-checksums-*")
@@ -123,7 +123,7 @@ func TestVerifyChecksum_MissingEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Remove(archiveFile.Name())
-	archiveFile.Write(content)
+	_, _ = archiveFile.Write(content)
 	archiveFile.Close()
 
 	checksumFile, err := os.CreateTemp("", "test-checksums-*")
@@ -149,7 +149,7 @@ func TestFetchLatestVersion(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"tag_name": "v0.2.0",
 		})
 	}))
@@ -188,7 +188,7 @@ func TestFetchLatestVersion_APIError(t *testing.T) {
 
 func TestRunUpdate_AlreadyUpToDate(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"tag_name": "v0.1.7",
 		})
 	}))
@@ -220,7 +220,7 @@ func TestRunUpdate_AlreadyUpToDate(t *testing.T) {
 
 func TestRunUpdate_DryRun(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"tag_name": "v0.2.0",
 		})
 	}))
@@ -277,13 +277,13 @@ func TestExtractBinary(t *testing.T) {
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
 
-	tw.WriteHeader(&tar.Header{
+	_ = tw.WriteHeader(&tar.Header{
 		Name:     "langsmith",
 		Mode:     0755,
 		Size:     int64(len(binaryContent)),
 		Typeflag: tar.TypeReg,
 	})
-	tw.Write(binaryContent)
+	_, _ = tw.Write(binaryContent)
 	tw.Close()
 	gw.Close()
 	f.Close()
