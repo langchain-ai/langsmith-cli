@@ -30,7 +30,7 @@ func newUpdateCmd(rawVersion string) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "update",
+		Use:   "self-update",
 		Short: "Update langsmith to the latest version",
 		Long:  "Check for and install the latest version of the langsmith CLI.",
 		RunE: func(cmd *cobra.Command, args []string) error {

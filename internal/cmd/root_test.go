@@ -9,7 +9,7 @@ import (
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "update"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))

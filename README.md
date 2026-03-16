@@ -14,6 +14,12 @@ Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developer
 curl -fsSL https://cli.langsmith.com/install.sh | sh
 ```
 
+### Upgrade
+
+```bash
+langsmith self-update
+```
+
 ### GitHub releases
 
 Download the latest binary for your platform from [GitHub Releases](https://github.com/langchain-ai/langsmith-cli/releases).
@@ -250,6 +256,16 @@ langsmith experiment list --dataset my-eval-set
 
 # Get experiment results (feedback stats, run stats)
 langsmith experiment get my-experiment-2024-01-15
+```
+
+### `self-update` — Update langsmith to the latest version
+
+```bash
+# Check if an update is available
+langsmith self-update --dry-run
+
+# Update to the latest version
+langsmith self-update
 ```
 
 ## Filter Options
