@@ -97,9 +97,6 @@ func newExampleListCmd() *cobra.Command {
 				var rows [][]string
 				for _, ex := range examples {
 					id := ex.ID
-					if len(id) > 16 {
-						id = id[:16] + "..."
-					}
 					splitVal := "N/A"
 					if ex.Metadata != nil {
 						if s, ok := ex.Metadata["split"].(string); ok {

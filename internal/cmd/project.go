@@ -92,9 +92,6 @@ func newProjectListCmd() *cobra.Command {
 					}
 
 					id := p.ID
-					if len(id) > 16 {
-						id = id[:16] + "..."
-					}
 
 					rows = append(rows, []string{p.Name, id, runCount, latency, errorRate, lastActive})
 				}
