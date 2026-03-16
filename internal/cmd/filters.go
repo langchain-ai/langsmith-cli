@@ -134,9 +134,9 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (exact match via eq; use --filter for advanced name queries)
+	// Name filter (substring search)
 	if f.Name != "" {
-		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
+		parts = append(parts, fmt.Sprintf("search(name, %q)", f.Name))
 	}
 
 	// Latency filters
