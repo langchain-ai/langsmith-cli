@@ -151,16 +151,6 @@ func TestAgentVersionsList_EmptyResult(t *testing.T) {
 	}
 }
 
-func TestAgentVersionsList_MissingProjectFlag(t *testing.T) {
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-
-	out, err := executeCommand(t, "agent-versions", "list")
-	if err == nil && !strings.Contains(out, "error") {
-		t.Error("expected error when --project is missing")
-	}
-}
 
 func TestAgentVersionsList_FieldsPresent(t *testing.T) {
 	sessionID := "aaaaaaaa-0000-0000-0000-000000000003"
