@@ -49,7 +49,7 @@ func newTraceListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List traces (root runs) matching filter criteria",
+		Short: "List traces (root runs) matching filter criteria (default: 20, newest first)",
 		Run: func(cmd *cobra.Command, args []string) {
 			if full {
 				includeMetadata = true

@@ -22,6 +22,10 @@ func newThreadCmd() *cobra.Command {
 A thread groups multiple root runs that share a thread_id, representing
 a multi-turn conversation.
 
+Results are paginated and return at most 20 threads by default
+(use --limit to change). Threads are sorted by most recent activity
+(newest first).
+
 Examples:
   langsmith thread list --project my-chatbot --limit 10
   langsmith thread get <thread-id> --project my-chatbot --full`,
@@ -43,7 +47,7 @@ func newThreadListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List conversation threads in a project",
+		Short: "List conversation threads in a project (default: 20, newest first)",
 		Run: func(cmd *cobra.Command, args []string) {
 			project = ResolveProject(project)
 			if project == "" {

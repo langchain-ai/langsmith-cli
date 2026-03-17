@@ -46,7 +46,7 @@ func newRunListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List runs matching filter criteria (any run type at any depth)",
+		Short: "List runs matching filter criteria (default: 50, oldest first)",
 		Run: func(cmd *cobra.Command, args []string) {
 			if full {
 				includeMetadata = true

@@ -19,6 +19,9 @@ func newExperimentCmd() *cobra.Command {
 Experiments are evaluation runs that test your application against a
 dataset. Each experiment produces feedback scores and run statistics.
 
+List results are paginated and return at most 20 experiments by default
+(use --limit to change).
+
 Examples:
   langsmith experiment list
   langsmith experiment list --dataset my-eval-dataset
@@ -39,7 +42,7 @@ func newExperimentListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List experiments, optionally filtered by dataset",
+		Short: "List experiments, optionally filtered by dataset (default: 20)",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()

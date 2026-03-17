@@ -21,6 +21,9 @@ func newExampleCmd() *cobra.Command {
 Examples are the individual input/output pairs stored in a dataset.
 Use these commands to list, add, or remove examples.
 
+List results are paginated and return at most 20 examples by default
+(use --limit to change). Use --offset to paginate through results.
+
 Examples:
   langsmith example list --dataset my-dataset
   langsmith example create --dataset my-dataset --inputs '{"question": "What is LangSmith?"}'
@@ -44,7 +47,7 @@ func newExampleListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List examples in a dataset",
+		Short: "List examples in a dataset (default: 20)",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()
