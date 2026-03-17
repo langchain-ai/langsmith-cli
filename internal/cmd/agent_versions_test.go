@@ -10,28 +10,28 @@ import (
 
 // ==================== Command structure ====================
 
-func TestDeploymentCmd_Subcommands(t *testing.T) {
-	cmd := newDeploymentCmd()
+func TestAgentVersionsCmd_Subcommands(t *testing.T) {
+	cmd := newAgentVersionsCmd()
 	names := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
 		names[sub.Name()] = true
 	}
 	if !names["list"] {
-		t.Error("deployment missing subcommand 'list'")
+		t.Error("agent-versions missing subcommand 'list'")
 	}
 }
 
-func TestDeploymentCmd_UseField(t *testing.T) {
-	cmd := newDeploymentCmd()
-	if cmd.Use != "deployment" {
-		t.Errorf("expected Use=deployment, got %q", cmd.Use)
+func TestAgentVersionsCmd_UseField(t *testing.T) {
+	cmd := newAgentVersionsCmd()
+	if cmd.Use != "agent-versions" {
+		t.Errorf("expected Use=agent-versions, got %q", cmd.Use)
 	}
 }
 
-// ==================== deployment list flags ====================
+// ==================== agent-versions list flags ====================
 
-func TestDeploymentListCmd_Flags(t *testing.T) {
-	cmd := newDeploymentListCmd()
+func TestAgentVersionsListCmd_Flags(t *testing.T) {
+	cmd := newAgentVersionsListCmd()
 	tests := []struct {
 		name   string
 		defVal string
@@ -55,16 +55,16 @@ func TestDeploymentListCmd_Flags(t *testing.T) {
 	}
 }
 
-func TestDeploymentListCmd_UseField(t *testing.T) {
-	cmd := newDeploymentListCmd()
+func TestAgentVersionsListCmd_UseField(t *testing.T) {
+	cmd := newAgentVersionsListCmd()
 	if cmd.Use != "list" {
 		t.Errorf("expected Use=list, got %q", cmd.Use)
 	}
 }
 
-// ==================== deployment list execution ====================
+// ==================== agent-versions list execution ====================
 
-func newDeploymentTestServer(t *testing.T, sessions map[string]string, deployments map[string][]map[string]any) *httptest.Server {
+func newAgentVersionsTestServer(t *testing.T, sessions map[string]string, versions map[string][]map[string]any) *httptest.Server {
 	t.Helper()
 	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -79,24 +79,24 @@ func newDeploymentTestServer(t *testing.T, sessions map[string]string, deploymen
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{{"id": id, "name": name}},
 			})
-		case strings.HasPrefix(r.URL.Path, "/api/v1/sessions/") && strings.HasSuffix(r.URL.Path, "/deployments") && r.Method == "GET":
+		case strings.HasPrefix(r.URL.Path, "/api/v1/sessions/") && strings.HasSuffix(r.URL.Path, "/agent-versions") && r.Method == "GET":
 			parts := strings.Split(r.URL.Path, "/")
 			sessionID := parts[len(parts)-2]
-			d, ok := deployments[sessionID]
+			v, ok := versions[sessionID]
 			if !ok {
 				_ = json.NewEncoder(w).Encode([]map[string]any{})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(d)
+			_ = json.NewEncoder(w).Encode(v)
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
 		}
 	})
 }
 
-func TestDeploymentList_JSONOutput(t *testing.T) {
+func TestAgentVersionsList_JSONOutput(t *testing.T) {
 	sessionID := "aaaaaaaa-0000-0000-0000-000000000001"
-	ts := newDeploymentTestServer(t,
+	ts := newAgentVersionsTestServer(t,
 		map[string]string{"my-agent": sessionID},
 		map[string][]map[string]any{
 			sessionID: {
@@ -109,7 +109,7 @@ func TestDeploymentList_JSONOutput(t *testing.T) {
 	defer cleanup()
 
 	out := captureStdout(t, func() {
-		cmd := newDeploymentListCmd()
+		cmd := newAgentVersionsListCmd()
 		cmd.SetArgs([]string{"--project", "my-agent"})
 		_ = cmd.Execute()
 	})
@@ -119,7 +119,7 @@ func TestDeploymentList_JSONOutput(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %v\nout: %s", err, out)
 	}
 	if len(result) != 2 {
-		t.Fatalf("expected 2 deployments, got %d", len(result))
+		t.Fatalf("expected 2 agent versions, got %d", len(result))
 	}
 	if result[0]["commit_sha"] != "abc123" {
 		t.Errorf("expected first commit_sha=abc123, got %v", result[0]["commit_sha"])
@@ -129,18 +129,18 @@ func TestDeploymentList_JSONOutput(t *testing.T) {
 	}
 }
 
-func TestDeploymentList_EmptyResult(t *testing.T) {
+func TestAgentVersionsList_EmptyResult(t *testing.T) {
 	sessionID := "aaaaaaaa-0000-0000-0000-000000000002"
-	ts := newDeploymentTestServer(t,
-		map[string]string{"no-deployments": sessionID},
+	ts := newAgentVersionsTestServer(t,
+		map[string]string{"no-versions": sessionID},
 		map[string][]map[string]any{},
 	)
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
 	out := captureStdout(t, func() {
-		cmd := newDeploymentListCmd()
-		cmd.SetArgs([]string{"--project", "no-deployments"})
+		cmd := newAgentVersionsListCmd()
+		cmd.SetArgs([]string{"--project", "no-versions"})
 		_ = cmd.Execute()
 	})
 
@@ -149,25 +149,24 @@ func TestDeploymentList_EmptyResult(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %v\nout: %s", err, out)
 	}
 	if len(result) != 0 {
-		t.Errorf("expected 0 deployments, got %d", len(result))
+		t.Errorf("expected 0 agent versions, got %d", len(result))
 	}
 }
 
-func TestDeploymentList_MissingProjectFlag(t *testing.T) {
+func TestAgentVersionsList_MissingProjectFlag(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
-	// Should exit with error when --project is not provided
-	out, err := executeCommand(t, "deployment", "list")
+	out, err := executeCommand(t, "agent-versions", "list")
 	if err == nil && !strings.Contains(out, "error") {
 		t.Error("expected error when --project is missing")
 	}
 }
 
-func TestDeploymentList_FieldsPresent(t *testing.T) {
+func TestAgentVersionsList_FieldsPresent(t *testing.T) {
 	sessionID := "aaaaaaaa-0000-0000-0000-000000000003"
-	ts := newDeploymentTestServer(t,
+	ts := newAgentVersionsTestServer(t,
 		map[string]string{"my-agent": sessionID},
 		map[string][]map[string]any{
 			sessionID: {
@@ -179,7 +178,7 @@ func TestDeploymentList_FieldsPresent(t *testing.T) {
 	defer cleanup()
 
 	out := captureStdout(t, func() {
-		cmd := newDeploymentListCmd()
+		cmd := newAgentVersionsListCmd()
 		cmd.SetArgs([]string{"--project", "my-agent"})
 		_ = cmd.Execute()
 	})
@@ -189,13 +188,13 @@ func TestDeploymentList_FieldsPresent(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %v\nout: %s", err, out)
 	}
 	if len(result) == 0 {
-		t.Fatal("expected at least one deployment")
+		t.Fatal("expected at least one agent version")
 	}
 	entry := result[0]
 	if _, ok := entry["commit_sha"]; !ok {
-		t.Error("deployment entry missing 'commit_sha' field")
+		t.Error("agent version entry missing 'commit_sha' field")
 	}
 	if _, ok := entry["first_seen_at"]; !ok {
-		t.Error("deployment entry missing 'first_seen_at' field")
+		t.Error("agent version entry missing 'first_seen_at' field")
 	}
 }

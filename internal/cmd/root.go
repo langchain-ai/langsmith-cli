@@ -62,7 +62,7 @@ Output:
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
-	rootCmd.AddCommand(newDeploymentCmd())
+	rootCmd.AddCommand(newAgentVersionsCmd())
 
 	return rootCmd
 }

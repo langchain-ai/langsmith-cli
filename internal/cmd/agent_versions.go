@@ -9,31 +9,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type deploymentEntry struct {
+type agentVersionEntry struct {
 	CommitSHA   string    `json:"commit_sha"`
 	FirstSeenAt time.Time `json:"first_seen_at"`
 }
 
-func newDeploymentCmd() *cobra.Command {
+func newAgentVersionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "deployment",
-		Short: "Inspect agent deployment history for a tracing project",
+		Use:   "agent-versions",
+		Short: "Inspect agent version history for a tracing project",
 		Long: `Inspect which agent versions (commit SHAs) have been active in a tracing project.
 
-Deployments are recorded automatically when traces include the LANGSMITH_AGENT_VERSION
-metadata key on root runs. Each unique commit SHA seen in a project is recorded as a
-deployment with the timestamp of the earliest trace that carried that version.
+Agent versions are recorded automatically when traces include the LANGSMITH_AGENT_VERSION
+metadata key on root runs. Each unique commit SHA seen in a project is recorded with the
+timestamp of the earliest trace that carried that version.
 
 Examples:
-  langsmith deployment list --project my-agent
-  langsmith deployment list --project my-agent --format pretty`,
+  langsmith agent-versions list --project my-agent
+  langsmith agent-versions list --project my-agent --format pretty`,
 	}
 
-	cmd.AddCommand(newDeploymentListCmd())
+	cmd.AddCommand(newAgentVersionsListCmd())
 	return cmd
 }
 
-func newDeploymentListCmd() *cobra.Command {
+func newAgentVersionsListCmd() *cobra.Command {
 	var (
 		projectName string
 		outputFile  string
@@ -41,7 +41,7 @@ func newDeploymentListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List agent deployments for a tracing project",
+		Short: "List agent versions for a tracing project",
 		Run: func(cmd *cobra.Command, args []string) {
 			if projectName == "" {
 				exitError("--project is required")
@@ -55,24 +55,24 @@ func newDeploymentListCmd() *cobra.Command {
 				exitErrorf("resolving project: %v", err)
 			}
 
-			var deployments []deploymentEntry
-			if err := c.RawGet(ctx, fmt.Sprintf("/api/v1/sessions/%s/deployments", sessionID), &deployments); err != nil {
-				exitErrorf("fetching deployments: %v", err)
+			var versions []agentVersionEntry
+			if err := c.RawGet(ctx, fmt.Sprintf("/api/v1/sessions/%s/agent-versions", sessionID), &versions); err != nil {
+				exitErrorf("fetching agent versions: %v", err)
 			}
 
 			if getFormat() == "pretty" {
 				columns := []string{"Commit SHA", "First Seen At"}
 				var rows [][]string
-				for _, d := range deployments {
-					rows = append(rows, []string{d.CommitSHA, formatTimeShort(d.FirstSeenAt)})
+				for _, v := range versions {
+					rows = append(rows, []string{v.CommitSHA, formatTimeShort(v.FirstSeenAt)})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Agent Deployments — %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Agent Versions — %s", projectName))
 			} else {
 				var data []map[string]any
-				for _, d := range deployments {
+				for _, v := range versions {
 					data = append(data, map[string]any{
-						"commit_sha":    d.CommitSHA,
-						"first_seen_at": formatTimeISO(d.FirstSeenAt),
+						"commit_sha":    v.CommitSHA,
+						"first_seen_at": formatTimeISO(v.FirstSeenAt),
 					})
 				}
 				output.OutputJSON(data, outputFile)
