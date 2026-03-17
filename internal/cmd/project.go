@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +19,16 @@ func newProjectCmd() *cobra.Command {
 Tracing projects collect runs from your application. Each project
 is a namespace that groups related traces together.
 
+Results are paginated and return at most 20 projects by default
+(use --limit to change). Projects are sorted by most recent activity
+(last_run_start_time, descending).
+
 Note: This lists tracing projects only (not experiments). Use
 'langsmith experiment list' for experiments.
 
 Examples:
-  langsmith project list
-  langsmith project list --limit 10
+  langsmith project list                        # first 20 projects, most recently active first
+  langsmith project list --limit 10             # first 10 projects
   langsmith project list --name-contains chatbot`,
 	}
 
@@ -41,7 +45,7 @@ func newProjectListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List tracing projects in the workspace",
+		Short: "List tracing projects in the workspace (default: 20, sorted by most recent activity)",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()

@@ -93,8 +93,10 @@ langsmith trace list --project my-app -o traces.json
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
+Results are **paginated** — by default, only the first **20** projects are returned (use `--limit` to change). Projects are sorted by **most recent activity** (`last_run_start_time`, descending).
+
 ```bash
-# List tracing projects (default limit: 20)
+# List tracing projects (default: 20 results, most recently active first)
 langsmith project list
 langsmith project list --limit 50
 
