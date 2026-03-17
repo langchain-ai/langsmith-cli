@@ -111,8 +111,10 @@ langsmith --format pretty project list
 
 A trace is a tree of runs representing one end-to-end invocation of your application.
 
+Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time.
+
 ```bash
-# List recent traces (default limit: 20)
+# List recent traces (default: 20 results, newest first)
 langsmith trace list --project my-app
 langsmith trace list --project my-app --limit 50 --last-n-minutes 60
 
@@ -145,8 +147,10 @@ langsmith trace export ./traces --project my-app --filename-pattern "{name}_{tra
 
 A run is a single step within a trace (LLM call, tool call, chain step, etc.).
 
+Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **oldest-first** by start time.
+
 ```bash
-# List LLM calls (default limit: 50)
+# List LLM calls (default: 50 results, oldest first)
 langsmith run list --project my-app --run-type llm
 langsmith run list --project my-app --run-type tool --name search
 
@@ -167,8 +171,10 @@ langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 
 A thread groups multiple root runs sharing a thread_id (multi-turn conversations).
 
+Results are **paginated** — by default, only the first **20** threads are returned (use `--limit` to change). Threads are sorted by **most recent activity** (newest first).
+
 ```bash
-# List threads (requires --project)
+# List threads (default: 20 results, newest first; requires --project)
 langsmith thread list --project my-chatbot
 langsmith thread list --project my-chatbot --last-n-minutes 120
 
@@ -178,8 +184,10 @@ langsmith thread get <thread-id> --project my-chatbot --full
 
 ### `dataset` — Manage evaluation datasets
 
+List results are **paginated** — by default, only the first **100** datasets are returned (use `--limit` to change).
+
 ```bash
-# List datasets
+# List datasets (default: 100 results)
 langsmith dataset list
 langsmith dataset list --name-contains eval
 
@@ -199,8 +207,10 @@ langsmith dataset upload data.json --name new-dataset
 
 ### `example` — Manage dataset examples
 
+List results are **paginated** — by default, only the first **20** examples are returned (use `--limit` to change). Use `--offset` to paginate through results.
+
 ```bash
-# List examples
+# List examples (default: 20 results)
 langsmith example list --dataset my-dataset
 langsmith example list --dataset my-dataset --split test --limit 50
 
@@ -251,8 +261,10 @@ langsmith evaluator delete accuracy --yes
 
 ### `experiment` — Query experiment results
 
+List results are **paginated** — by default, only the first **20** experiments are returned (use `--limit` to change).
+
 ```bash
-# List experiments
+# List experiments (default: 20 results)
 langsmith experiment list
 langsmith experiment list --dataset my-eval-set
 
