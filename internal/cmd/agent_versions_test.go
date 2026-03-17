@@ -77,7 +77,7 @@ func newAgentVersionsTestServer(t *testing.T, sessions map[string]string, versio
 				return
 			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": id, "name": name}})
-		case strings.HasPrefix(r.URL.Path, "/api/v1/sessions/") && strings.HasSuffix(r.URL.Path, "/agent-versions") && r.Method == "GET":
+		case strings.HasPrefix(r.URL.Path, "/sessions/") && strings.HasSuffix(r.URL.Path, "/agent-versions") && r.Method == "GET":
 			parts := strings.Split(r.URL.Path, "/")
 			sessionID := parts[len(parts)-2]
 			v, ok := versions[sessionID]

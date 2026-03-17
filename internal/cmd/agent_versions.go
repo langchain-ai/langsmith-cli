@@ -56,7 +56,7 @@ func newAgentVersionsListCmd() *cobra.Command {
 			}
 
 			var versions []agentVersionEntry
-			if err := c.RawGet(ctx, fmt.Sprintf("/api/v1/sessions/%s/agent-versions", sessionID), &versions); err != nil {
+			if err := c.RawGet(ctx, fmt.Sprintf("/sessions/%s/agent-versions", sessionID), &versions); err != nil {
 				exitErrorf("fetching agent versions: %v", err)
 			}
 
