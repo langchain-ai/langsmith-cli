@@ -25,8 +25,8 @@ metadata key on root runs. Each unique commit SHA seen in a project is recorded 
 timestamp of the earliest trace that carried that version.
 
 Examples:
-  langsmith project agent-versions list --project my-agent
-  langsmith project agent-versions list --project my-agent --format pretty`,
+  langsmith project agent-versions list my-agent
+  langsmith project agent-versions list my-agent --format pretty`,
 	}
 
 	cmd.AddCommand(newAgentVersionsListCmd())
@@ -34,18 +34,14 @@ Examples:
 }
 
 func newAgentVersionsListCmd() *cobra.Command {
-	var (
-		projectName string
-		outputFile  string
-	)
+	var outputFile string
 
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   "list <project>",
 		Short: "List agent versions for a tracing project",
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if projectName == "" {
-				exitError("--project is required")
-			}
+			projectName := args[0]
 
 			c := mustGetClient()
 			ctx := context.Background()
@@ -80,7 +76,6 @@ func newAgentVersionsListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&projectName, "project", "p", "", "Tracing project name (required)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd

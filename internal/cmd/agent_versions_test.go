@@ -37,7 +37,6 @@ func TestAgentVersionsListCmd_Flags(t *testing.T) {
 		defVal string
 		short  string
 	}{
-		{"project", "", "p"},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {
@@ -57,8 +56,8 @@ func TestAgentVersionsListCmd_Flags(t *testing.T) {
 
 func TestAgentVersionsListCmd_UseField(t *testing.T) {
 	cmd := newAgentVersionsListCmd()
-	if cmd.Use != "list" {
-		t.Errorf("expected Use=list, got %q", cmd.Use)
+	if cmd.Use != "list <project>" {
+		t.Errorf("expected Use=\"list <project>\", got %q", cmd.Use)
 	}
 }
 
@@ -108,7 +107,7 @@ func TestAgentVersionsList_JSONOutput(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newAgentVersionsListCmd()
-		cmd.SetArgs([]string{"--project", "my-agent"})
+		cmd.SetArgs([]string{"my-agent"})
 		_ = cmd.Execute()
 	})
 
@@ -138,7 +137,7 @@ func TestAgentVersionsList_EmptyResult(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newAgentVersionsListCmd()
-		cmd.SetArgs([]string{"--project", "no-versions"})
+		cmd.SetArgs([]string{"no-versions"})
 		_ = cmd.Execute()
 	})
 
@@ -167,7 +166,7 @@ func TestAgentVersionsList_FieldsPresent(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newAgentVersionsListCmd()
-		cmd.SetArgs([]string{"--project", "my-agent"})
+		cmd.SetArgs([]string{"my-agent"})
 		_ = cmd.Execute()
 	})
 
