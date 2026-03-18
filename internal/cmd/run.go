@@ -98,6 +98,7 @@ func newRunListCmd() *cobra.Command {
 
 func newRunGetCmd() *cobra.Command {
 	var (
+		project         string
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -120,8 +121,11 @@ func newRunGetCmd() *cobra.Command {
 
 			c := mustGetClient()
 			ctx := context.Background()
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				exitError("--project is required for run get (or set LANGSMITH_PROJECT)")
+			}
 
-			// Query for the specific run by ID
 			params := langsmith.RunQueryParams{
 				ID:    langsmith.F([]string{runID}),
 				Limit: langsmith.F(int64(1)),
@@ -130,15 +134,15 @@ func newRunGetCmd() *cobra.Command {
 				params.Select = langsmith.F(sel)
 			}
 
-			resp, err := c.SDK.Runs.Query(ctx, params)
+			runs, err := queryRuns(ctx, c, params, projectName, 1, 0)
 			if err != nil {
 				exitErrorf("fetching run: %v", err)
 			}
-			if len(resp.Runs) == 0 {
+			if len(runs) == 0 {
 				exitErrorf("run not found: %s", runID)
 			}
 
-			data := extract.ExtractRun(resp.Runs[0], includeMetadata, includeIO, includeFeedback)
+			data := extract.ExtractRun(runs[0], includeMetadata, includeIO, includeFeedback)
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
@@ -149,6 +153,7 @@ func newRunGetCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -187,6 +192,9 @@ func newRunExportCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for run export (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {

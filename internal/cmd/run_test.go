@@ -91,6 +91,7 @@ func TestRunGetCmd_Flags(t *testing.T) {
 		name   string
 		defVal string
 	}{
+		{"project", ""},
 		{"include-metadata", "false"},
 		{"include-io", "false"},
 		{"full", "false"},
@@ -272,23 +273,32 @@ func TestRunListCmd_Execute_WithEnvProject_Succeeds(t *testing.T) {
 	}
 }
 
-func TestRunGetCmd_Execute_NoProjectNeeded(t *testing.T) {
-	// run get should NOT require --project; it fetches by ID directly
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/runs/query" && r.Method == "POST" {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"runs": []map[string]any{
-					{"id": "run-abc", "name": "my_run", "run_type": "llm"},
-				},
-			})
-			return
-		}
-		http.Error(w, "not found", 404)
-	})
+func TestRunGetCmd_Execute_WithProject_Succeeds(t *testing.T) {
+	ts := newRunTestServer(t,
+		map[string]string{"my-app": "session-123"},
+		[]map[string]any{{"id": "run-abc", "name": "my_run", "run_type": "llm"}},
+	)
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
-	t.Setenv("LANGSMITH_PROJECT", "")
+
+	cmd := newRunGetCmd()
+	_ = cmd.Flags().Set("project", "my-app")
+
+	out := captureStdout(t, func() { cmd.Run(cmd, []string{"run-abc"}) })
+
+	if !strings.Contains(out, "run-abc") {
+		t.Errorf("expected output to contain run-abc, got: %s", out)
+	}
+}
+
+func TestRunGetCmd_Execute_WithEnvProject_Succeeds(t *testing.T) {
+	ts := newRunTestServer(t,
+		map[string]string{"env-project": "session-456"},
+		[]map[string]any{{"id": "run-abc", "name": "my_run", "run_type": "llm"}},
+	)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	t.Setenv("LANGSMITH_PROJECT", "env-project")
 
 	cmd := newRunGetCmd()
 	out := captureStdout(t, func() { cmd.Run(cmd, []string{"run-abc"}) })
