@@ -56,7 +56,7 @@ func newAgentVersionsListCmd() *cobra.Command {
 			}
 
 			var versions []agentVersionEntry
-			if err := c.RawGet(ctx, fmt.Sprintf("/sessions/%s/agent-versions", sessionID), &versions); err != nil {
+			if err := c.RawGet(ctx, fmt.Sprintf("/v1/platform/sessions/%s/agent-versions", sessionID), &versions); err != nil {
 				exitErrorf("fetching agent versions: %v", err)
 			}
 
@@ -68,7 +68,7 @@ func newAgentVersionsListCmd() *cobra.Command {
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Agent Versions — %s", projectName))
 			} else {
-				var data []map[string]any
+				data := make([]map[string]any, 0, len(versions))
 				for _, v := range versions {
 					data = append(data, map[string]any{
 						"commit_sha":    v.CommitSHA,
