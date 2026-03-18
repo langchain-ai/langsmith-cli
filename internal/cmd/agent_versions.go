@@ -25,8 +25,8 @@ metadata key on root runs. Each unique commit SHA seen in a project is recorded 
 timestamp of the earliest trace that carried that version.
 
 Examples:
-  langsmith agent-versions list --project my-agent
-  langsmith agent-versions list --project my-agent --format pretty`,
+  langsmith project agent-versions list --project my-agent
+  langsmith project agent-versions list --project my-agent --format pretty`,
 	}
 
 	cmd.AddCommand(newAgentVersionsListCmd())
