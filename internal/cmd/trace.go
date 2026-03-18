@@ -65,6 +65,9 @@ func newTraceListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
@@ -157,6 +160,9 @@ func newTraceGetCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(project)
+			if projectName == "" {
+				exitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
+			}
 
 			params := langsmith.RunQueryParams{
 				Trace: langsmith.F(traceID),
@@ -229,6 +235,9 @@ func newTraceExportCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
 			sel := buildRunSelect(includeIO, includeFeedback)
