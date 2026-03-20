@@ -34,8 +34,8 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().StringVar(&f.TraceIDs, "trace-ids", "", "Comma-separated trace IDs to filter by")
 	cmd.Flags().IntVarP(&f.Limit, "limit", "n", 0, "Maximum number of results to return")
 	cmd.Flags().StringVar(&f.Project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes")
-	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this ISO timestamp")
+	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
+	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
 	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
@@ -49,6 +49,25 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	if includeRunType {
 		cmd.Flags().StringVar(&f.RunType, "run-type", "", "Filter by run type (llm, chain, tool, retriever, prompt, parser)")
 	}
+}
+
+// resolveStartTime returns the start time for a query.
+// Priority: lastNMinutes > since > default (7 days ago).
+func resolveStartTime(since string, lastNMinutes int) time.Time {
+	if lastNMinutes > 0 {
+		return time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
+	}
+	if since != "" {
+		t, err := time.Parse(time.RFC3339, since)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05", since)
+			if err != nil {
+				exitErrorf("invalid --since timestamp: %s", since)
+			}
+		}
+		return t
+	}
+	return time.Now().UTC().Add(-7 * 24 * time.Hour)
 }
 
 // BuildRunQueryParams builds RunQueryParams from FilterFlags.
@@ -68,26 +87,11 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 	// Is root
 	if isRoot {
 		params.IsRoot = langsmith.F(true)
-		params.Order = langsmith.F(langsmith.RunQueryParamsOrderDesc)
-	} else {
-		params.Order = langsmith.F(langsmith.RunQueryParamsOrderAsc)
 	}
+	params.Order = langsmith.F(langsmith.RunQueryParamsOrderDesc)
 
 	// Start time
-	if f.LastNMinutes > 0 {
-		t := time.Now().UTC().Add(-time.Duration(f.LastNMinutes) * time.Minute)
-		params.StartTime = langsmith.F(t)
-	} else if f.Since != "" {
-		t, err := time.Parse(time.RFC3339, f.Since)
-		if err != nil {
-			// Try without timezone suffix
-			t, err = time.Parse("2006-01-02T15:04:05", f.Since)
-			if err != nil {
-				exitErrorf("invalid --since timestamp: %s", f.Since)
-			}
-		}
-		params.StartTime = langsmith.F(t)
-	}
+	params.StartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
 
 	// Run type
 	if f.RunType != "" {

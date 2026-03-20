@@ -111,7 +111,7 @@ langsmith --format pretty project list
 
 A trace is a tree of runs representing one end-to-end invocation of your application.
 
-Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time.
+Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time. By default, only traces from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
 
 ```bash
 # List recent traces (default: 20 results, newest first)
@@ -147,7 +147,7 @@ langsmith trace export ./traces --project my-app --filename-pattern "{name}_{tra
 
 A run is a single step within a trace (LLM call, tool call, chain step, etc.).
 
-Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **oldest-first** by start time.
+Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **newest-first** by start time. By default, only runs from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
 
 ```bash
 # List LLM calls (default: 50 results, oldest first)
@@ -290,8 +290,8 @@ Most `trace` and `run` commands share these filter options:
 |------|-------------|---------|
 | `--project` | Project name | `--project my-app` |
 | `--limit, -n` | Max results | `-n 10` |
-| `--last-n-minutes` | Time window | `--last-n-minutes 60` |
-| `--since` | After ISO timestamp | `--since 2024-01-15T00:00:00Z` |
+| `--last-n-minutes` | Time window (overrides 7-day default) | `--last-n-minutes 60` |
+| `--since` | After ISO timestamp (overrides 7-day default) | `--since 2024-01-15T00:00:00Z` |
 | `--error / --no-error` | Error status | `--error` |
 | `--name` | Name search (case-insensitive) | `--name ChatOpenAI` |
 | `--run-type` | Run type (run commands only) | `--run-type llm` |

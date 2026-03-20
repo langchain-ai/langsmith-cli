@@ -120,6 +120,15 @@ func TestRunGetCmd_OutputShorthand(t *testing.T) {
 	}
 }
 
+func TestRunGetCmd_TimeFlags(t *testing.T) {
+	cmd := newRunGetCmd()
+	for _, name := range []string{"since", "last-n-minutes"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("run get missing flag --%s", name)
+		}
+	}
+}
+
 func TestRunGetCmd_ExactArgs(t *testing.T) {
 	cmd := newRunGetCmd()
 	if err := cmd.Args(cmd, []string{}); err == nil {
