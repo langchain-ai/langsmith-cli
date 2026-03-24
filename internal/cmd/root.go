@@ -62,6 +62,7 @@ Output:
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newInsightsCmd())
+	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 
 	return rootCmd
