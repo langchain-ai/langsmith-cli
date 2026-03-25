@@ -10,8 +10,16 @@ Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developer
 
 ### Install script (recommended)
 
+macOS / Linux:
+
 ```bash
 curl -fsSL https://cli.langsmith.com/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://cli.langsmith.com/install.ps1 | iex
 ```
 
 ### Upgrade
