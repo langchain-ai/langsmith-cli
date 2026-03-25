@@ -10,8 +10,19 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: ['1.23', '1.24']
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            go-version: '1.23'
+            build-output: langsmith
+          - os: ubuntu-latest
+            go-version: '1.24'
+            build-output: langsmith
+          - os: windows-latest
+            go-version: '1.24'
+            build-output: langsmith.exe
+          - os: macos-latest
+            go-version: '1.24'
+            build-output: langsmith
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -28,7 +39,33 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: CGO_ENABLED=0 go build -o bin/langsmith ./cmd/langsmith
+        run: go build -o ${{ matrix.build-output }} ./cmd/langsmith
+        env:
+          CGO_ENABLED: 0
+
+  installer-smoke:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test install.sh
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p "$RUNNER_TEMP/langsmith-bin"
+          INSTALL_DIR="$RUNNER_TEMP/langsmith-bin" sh scripts/install.sh
+          "$RUNNER_TEMP/langsmith-bin/langsmith" --version
+
+      - name: Smoke test install.ps1
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP "langsmith-bin"
+          & .\scripts\install.ps1 -InstallDir $installDir
+          & (Join-Path $installDir "langsmith.exe") --version
 
   lint:
     runs-on: ubuntu-latest
