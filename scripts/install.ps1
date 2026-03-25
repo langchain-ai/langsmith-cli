@@ -88,7 +88,7 @@ try {
     Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ChecksumPath
 
     $Expected = Select-String -Path $ChecksumPath -Pattern ([regex]::Escape($Archive)) | ForEach-Object {
-        ($_ -split '\s+')[0]
+        ($_.Line -split '\s+')[0]
     } | Select-Object -First 1
 
     if ($Expected) {
