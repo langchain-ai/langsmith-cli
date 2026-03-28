@@ -16,5 +16,8 @@ Examples:
 	}
 
 	cmd.AddCommand(newSandboxTunnelCmd())
+	cmd.AddCommand(newSandboxSnapshotCmd())
+	cmd.AddCommand(newSandboxBoxCmd())
+	cmd.AddCommand(newSandboxConsoleCmd())
 	return cmd
 }

@@ -10,6 +10,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.1
 	github.com/xlab/treeprint v1.2.0
+	golang.org/x/term v0.38.0
 )
 
 require (
