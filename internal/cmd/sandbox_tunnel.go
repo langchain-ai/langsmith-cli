@@ -27,6 +27,7 @@ func newSandboxTunnelCmd() *cobra.Command {
 		remotePort int
 		localPort  int
 		logLevel   string
+		stdio      bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,9 +39,14 @@ The tunnel multiplexes many TCP connections over a single WebSocket,
 so you can connect tools like psql, redis-cli, or curl to services
 running in the sandbox as if they were local.
 
+With --stdio, the tunnel bridges stdin/stdout directly to a single
+remote port instead of listening locally. This is designed for use
+as an SSH ProxyCommand.
+
 Examples:
   langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432
-  langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432 --local-port 15432`,
+  langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432 --local-port 15432
+  langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 22 --stdio`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sandboxURL == "" {
 				return fmt.Errorf("--url is required")
@@ -48,16 +54,24 @@ Examples:
 			if remotePort < 1 || remotePort > 65535 {
 				return fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", remotePort)
 			}
+
+			apiKey := getAPIKey()
+			if apiKey == "" {
+				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
+			}
+
+			if stdio {
+				logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+				ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+				defer cancel()
+				return runTunnelStdio(ctx, logger, sandboxURL, apiKey, uint16(remotePort))
+			}
+
 			if localPort == 0 {
 				localPort = remotePort
 			}
 			if localPort < 1 || localPort > 65535 {
 				return fmt.Errorf("--local-port must be between 1 and 65535 (got %d)", localPort)
-			}
-
-			apiKey := getAPIKey()
-			if apiKey == "" {
-				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
 			}
 
 			logger := newTunnelLogger(logLevel)
@@ -73,6 +87,7 @@ Examples:
 	cmd.Flags().IntVar(&remotePort, "remote-port", 0, "Port inside the sandbox to tunnel to")
 	cmd.Flags().IntVar(&localPort, "local-port", 0, "Local port to listen on (defaults to remote-port)")
 	cmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	cmd.Flags().BoolVar(&stdio, "stdio", false, "Bridge stdin/stdout to the remote port (for use as SSH ProxyCommand)")
 
 	_ = cmd.MarkFlagRequired("url")
 	_ = cmd.MarkFlagRequired("remote-port")
@@ -151,7 +166,9 @@ func connectTunnel(ctx context.Context, logger *slog.Logger, sandboxURL, apiKey 
 		HandshakeTimeout: 15 * time.Second,
 	}
 	header := http.Header{}
-	header.Set("X-Api-Key", apiKey)
+	for k, v := range sandboxAuthHeaders("") {
+		header.Set(k, v)
+	}
 
 	wsConn, resp, err := dialer.DialContext(ctx, wsURL, header)
 	if err != nil {
@@ -177,6 +194,60 @@ func connectTunnel(ctx context.Context, logger *slog.Logger, sandboxURL, apiKey 
 
 	logger.Info("tunnel session established", "url", wsURL)
 	return session, nil
+}
+
+// runTunnelStdio connects a single yamux stream and bridges it to
+// stdin/stdout. Intended for use as an SSH ProxyCommand.
+func runTunnelStdio(ctx context.Context, logger *slog.Logger, sandboxURL, apiKey string, remotePort uint16) error {
+	session, err := connectTunnel(ctx, logger, sandboxURL, apiKey)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	stream, err := session.OpenStream()
+	if err != nil {
+		return fmt.Errorf("open stream: %w", err)
+	}
+	defer func() { _ = stream.Close() }()
+
+	if err := tunnel.WriteConnectHeader(stream, remotePort); err != nil {
+		return fmt.Errorf("write connect header: %w", err)
+	}
+
+	status, err := tunnel.ReadStatus(stream)
+	if err != nil {
+		return fmt.Errorf("read status: %w", err)
+	}
+	if status != tunnel.StatusOK {
+		reason := "unknown"
+		switch status {
+		case tunnel.StatusPortNotAllowed:
+			reason = "port not allowed"
+		case tunnel.StatusDialFailed:
+			reason = "dial failed (is the service running?)"
+		case tunnel.StatusUnsupportedVersion:
+			reason = "unsupported protocol version"
+		}
+		return fmt.Errorf("tunnel rejected: %s", reason)
+	}
+
+	done := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(stream, os.Stdin)
+		done <- err
+	}()
+	go func() {
+		_, err := io.Copy(os.Stdout, stream)
+		done <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-done:
+		return err
+	}
 }
 
 func handleLocalConn(ctx context.Context, logger *slog.Logger, session *yamux.Session, tcpConn net.Conn, remotePort uint16) {

@@ -19,5 +19,6 @@ Examples:
 	cmd.AddCommand(newSandboxSnapshotCmd())
 	cmd.AddCommand(newSandboxBoxCmd())
 	cmd.AddCommand(newSandboxConsoleCmd())
+	cmd.AddCommand(newSandboxSSHCopyIDCmd())
 	return cmd
 }

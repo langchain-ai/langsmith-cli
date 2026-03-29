@@ -29,7 +29,7 @@ type boxResponse struct {
 }
 
 type boxListResponse struct {
-	Claims []boxResponse `json:"claims"`
+	Sandboxes []boxResponse `json:"sandboxes"`
 }
 
 type boxStatusResponse struct {
@@ -129,14 +129,14 @@ func newBoxListCmd() *cobra.Command {
 				exitErrorf("listing sandboxes: %v", err)
 			}
 
-			if len(resp.Claims) == 0 {
-				output.OutputJSON(resp.Claims, "")
+			if len(resp.Sandboxes) == 0 {
+				output.OutputJSON(resp.Sandboxes, "")
 				return
 			}
 
 			columns := []string{"Name", "Status", "Snapshot", "Created"}
 			var rows [][]string
-			for _, b := range resp.Claims {
+			for _, b := range resp.Sandboxes {
 				snap := "-"
 				if b.SnapshotID != nil {
 					snap = (*b.SnapshotID)[:8] + "..."

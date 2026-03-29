@@ -96,9 +96,12 @@ func newSnapshotListCmd() *cobra.Command {
 
 func newSnapshotCreateCmd() *cobra.Command {
 	var (
-		name        string
-		dockerImage string
-		fsSizeGB    int
+		name             string
+		dockerImage      string
+		fsSizeGB         int
+		registryURL      string
+		registryUsername string
+		registryPassword string
 	)
 
 	cmd := &cobra.Command{
@@ -120,6 +123,11 @@ func newSnapshotCreateCmd() *cobra.Command {
 				"docker_image":  dockerImage,
 				"fs_size_bytes": int64(fsSizeGB) * 1024 * 1024 * 1024,
 			}
+			if registryURL != "" {
+				body["registry_url"] = registryURL
+				body["registry_username"] = registryUsername
+				body["registry_password"] = registryPassword
+			}
 
 			var resp snapshotResponse
 			if err := c.RawPost(ctx, "/v2/sandboxes/snapshots", body, &resp); err != nil {
@@ -133,6 +141,9 @@ func newSnapshotCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Snapshot name (required)")
 	cmd.Flags().StringVar(&dockerImage, "docker-image", "", "Docker image to build from (required)")
 	cmd.Flags().IntVar(&fsSizeGB, "fs-size-gb", 4, "Filesystem size in GB (default: 4)")
+	cmd.Flags().StringVar(&registryURL, "registry-url", "", "Registry URL for private images")
+	cmd.Flags().StringVar(&registryUsername, "registry-username", "", "Registry username")
+	cmd.Flags().StringVar(&registryPassword, "registry-password", "", "Registry password")
 
 	return cmd
 }
