@@ -310,6 +310,23 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+## Local Development
+
+For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
+
+```bash
+cat > ~/.local/bin/langsmith << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cd /path/to/langsmith-cli
+set -a && source .env && set +a
+exec go run ./cmd/langsmith "$@"
+EOF
+chmod +x ~/.local/bin/langsmith
+```
+
+Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands like `langsmith sandbox box list` and SSH ProxyCommand entries work without manually sourcing `.env` each time.
+
 ### Requirements
 
 - Go 1.23+

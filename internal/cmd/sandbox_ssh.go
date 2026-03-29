@@ -85,17 +85,59 @@ func runSSHCopyID(name, identity string) error {
 
 	// Build the sandbox URL for ProxyCommand.
 	sandboxURL := dpURL
+	hostAlias := "sandbox-" + name
 
-	// Print ssh-config block to stdout.
-	fmt.Printf("# Added by: langsmith sandbox ssh-copy-id %s\n", name)
-	fmt.Printf("Host sandbox-%s\n", name)
-	fmt.Printf("    User root\n")
-	fmt.Printf("    ProxyCommand langsmith sandbox tunnel --url %s --remote-port 22 --stdio\n", sandboxURL)
-	fmt.Printf("    StrictHostKeyChecking no\n")
+	configBlock := fmt.Sprintf(
+		"# Added by: langsmith sandbox ssh-copy-id %s\nHost %s\n    User root\n    ProxyCommand langsmith sandbox tunnel --url %s --remote-port 22 --stdio\n    StrictHostKeyChecking no\n    ForwardAgent yes\n",
+		name, hostAlias, sandboxURL,
+	)
 
-	// Hint on stderr so it doesn't pollute piped output.
-	fmt.Fprintf(os.Stderr, "\nKey uploaded (%s). Add the above to ~/.ssh/config, then:\n  ssh sandbox-%s\n", pubkeyPath, name)
+	// Write to ~/.ssh/config if this host isn't already configured.
+	if err := ensureSSHConfig(hostAlias, configBlock); err != nil {
+		return fmt.Errorf("updating ssh config: %w", err)
+	}
 
+	fmt.Fprintf(os.Stderr, "Key uploaded (%s). Connect with:\n  ssh %s\n", pubkeyPath, hostAlias)
+
+	return nil
+}
+
+// ensureSSHConfig appends a config block to ~/.ssh/config if the host
+// alias is not already present. Existing entries are left untouched.
+func ensureSSHConfig(hostAlias, block string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(home, ".ssh", "config")
+
+	existing, _ := os.ReadFile(configPath)
+	// Check if "Host <alias>" already exists.
+	for _, line := range strings.Split(string(existing), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "Host "+hostAlias {
+			fmt.Fprintf(os.Stderr, "SSH config for %s already exists in %s\n", hostAlias, configPath)
+			return nil
+		}
+	}
+
+	os.MkdirAll(filepath.Dir(configPath), 0700)
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Add a blank line separator if file is non-empty and doesn't end with newline.
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		f.WriteString("\n")
+	}
+	_, err = f.WriteString(block)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "Wrote SSH config for %s to %s\n", hostAlias, configPath)
 	return nil
 }
 
