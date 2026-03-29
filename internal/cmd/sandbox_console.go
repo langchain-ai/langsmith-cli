@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/gorilla/websocket"
@@ -26,15 +29,18 @@ giving you a full interactive shell (bash by default).
 
 Examples:
   langsmith sandbox console my-vm
-  langsmith sandbox console my-vm --shell /bin/sh`,
+  langsmith sandbox console my-vm --shell /bin/sh
+  langsmith sandbox console my-vm --forward-ssh-agent`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell, _ := cmd.Flags().GetString("shell")
-			return runConsole(args[0], shell)
+			forwardSSHAgent, _ := cmd.Flags().GetBool("forward-ssh-agent")
+			return runConsole(args[0], shell, forwardSSHAgent)
 		},
 	}
 
 	cmd.Flags().String("shell", "", "Shell to use (default: sandbox default, usually /bin/bash)")
+	cmd.Flags().Bool("forward-ssh-agent", false, "Forward the local SSH agent (SSH_AUTH_SOCK) into the sandbox")
 
 	return cmd
 }
@@ -42,15 +48,17 @@ Examples:
 // consoleBoxResponse is the subset of the box API response we need.
 type consoleBoxResponse struct {
 	DataplaneURL *string `json:"dataplane_url"`
+	TenantID     string  `json:"tenant_id"`
 	Status       string  `json:"status"`
 }
 
-func runConsole(name, shell string) error {
+func runConsole(name, shell string, forwardSSHAgent bool) error {
 	ctx := context.Background()
 
 	// SANDBOX_DIRECT_URL overrides API lookup — connect directly to a
 	// port-forwarded sandbox (e.g. http://localhost:8888).
 	dpURL := os.Getenv("SANDBOX_DIRECT_URL")
+	var tenantID string
 	if dpURL == "" {
 		apiKey := getAPIKey()
 		if apiKey == "" {
@@ -71,6 +79,7 @@ func runConsole(name, shell string) error {
 			return fmt.Errorf("sandbox %q has no dataplane URL", name)
 		}
 		dpURL = *box.DataplaneURL
+		tenantID = box.TenantID
 	}
 
 	// Build WebSocket URL.
@@ -85,8 +94,8 @@ func runConsole(name, shell string) error {
 	// Connect.
 	dialer := websocket.Dialer{}
 	header := http.Header{}
-	if apiKey := getAPIKey(); apiKey != "" {
-		header.Set("X-Api-Key", apiKey)
+	for k, v := range sandboxAuthHeaders(tenantID) {
+		header.Set(k, v)
 	}
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
@@ -108,6 +117,13 @@ func runConsole(name, shell string) error {
 	}
 	if shell != "" {
 		execMsg["shell"] = shell
+	}
+	if forwardSSHAgent {
+		sock := os.Getenv("SSH_AUTH_SOCK")
+		if sock == "" {
+			return fmt.Errorf("--forward-ssh-agent requires SSH_AUTH_SOCK to be set (is ssh-agent running?)")
+		}
+		execMsg["ssh_agent_forward"] = true
 	}
 	if err := ws.WriteJSON(execMsg); err != nil {
 		return fmt.Errorf("send execute: %w", err)
@@ -152,6 +168,19 @@ func runConsole(name, shell string) error {
 		}
 	}()
 
+	// SSH agent forwarding state (client side).
+	var agentMu sync.Mutex
+	agentConns := make(map[string]net.Conn)
+	agentSock := os.Getenv("SSH_AUTH_SOCK")
+
+	defer func() {
+		agentMu.Lock()
+		for _, c := range agentConns {
+			c.Close()
+		}
+		agentMu.Unlock()
+	}()
+
 	// Read from WebSocket → stdout.
 	done := make(chan error, 1)
 	go func() {
@@ -162,10 +191,11 @@ func runConsole(name, shell string) error {
 				return
 			}
 			var msg struct {
-				Type     string `json:"type"`
-				Data     string `json:"data,omitempty"`
-				ExitCode *int   `json:"exit_code,omitempty"`
-				Error    string `json:"error,omitempty"`
+				Type      string `json:"type"`
+				Data      string `json:"data,omitempty"`
+				ChannelID string `json:"channel_id,omitempty"`
+				ExitCode  *int   `json:"exit_code,omitempty"`
+				Error     string `json:"error,omitempty"`
 			}
 			if err := json.Unmarshal(raw, &msg); err != nil {
 				os.Stdout.Write(raw)
@@ -180,6 +210,50 @@ func runConsole(name, shell string) error {
 			case "error":
 				done <- fmt.Errorf("server: %s", msg.Error)
 				return
+			case "ssh_agent_data":
+				data, err := base64.StdEncoding.DecodeString(msg.Data)
+				if err != nil {
+					continue
+				}
+				agentMu.Lock()
+				conn, ok := agentConns[msg.ChannelID]
+				if !ok && agentSock != "" {
+					conn, err = net.Dial("unix", agentSock)
+					if err != nil {
+						agentMu.Unlock()
+						continue
+					}
+					agentConns[msg.ChannelID] = conn
+					// Read responses from local agent and send back.
+					go func(chID string, c net.Conn) {
+						buf := make([]byte, 16384)
+						for {
+							n, err := c.Read(buf)
+							if err != nil {
+								return
+							}
+							resp, _ := json.Marshal(map[string]string{
+								"type":       "ssh_agent_data",
+								"channel_id": chID,
+								"data":       base64.StdEncoding.EncodeToString(buf[:n]),
+							})
+							if err := ws.WriteMessage(websocket.TextMessage, resp); err != nil {
+								return
+							}
+						}
+					}(msg.ChannelID, conn)
+				}
+				agentMu.Unlock()
+				if conn != nil {
+					conn.Write(data)
+				}
+			case "ssh_agent_close":
+				agentMu.Lock()
+				if conn, ok := agentConns[msg.ChannelID]; ok {
+					conn.Close()
+					delete(agentConns, msg.ChannelID)
+				}
+				agentMu.Unlock()
 			}
 		}
 	}()

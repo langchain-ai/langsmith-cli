@@ -47,6 +47,7 @@ Examples:
 
 	cmd.AddCommand(newSnapshotListCmd())
 	cmd.AddCommand(newSnapshotCreateCmd())
+	cmd.AddCommand(newSnapshotCaptureCmd())
 	cmd.AddCommand(newSnapshotGetCmd())
 	cmd.AddCommand(newSnapshotDeleteCmd())
 	cmd.AddCommand(newSnapshotWaitCmd())
@@ -132,6 +133,89 @@ func newSnapshotCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Snapshot name (required)")
 	cmd.Flags().StringVar(&dockerImage, "docker-image", "", "Docker image to build from (required)")
 	cmd.Flags().IntVar(&fsSizeGB, "fs-size-gb", 4, "Filesystem size in GB (default: 4)")
+
+	return cmd
+}
+
+func newSnapshotCaptureCmd() *cobra.Command {
+	var (
+		name       string
+		boxName    string
+		checkpoint string
+		fsSizeGB   int
+		wait       bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "capture",
+		Short: "Capture a snapshot from a sandbox",
+		Long: `Capture a snapshot from a sandbox VM. If --checkpoint is specified, uses
+that existing checkpoint (no VM interaction needed). Otherwise creates a
+fresh checkpoint from the running VM's current state.
+
+Examples:
+  langsmith sandbox snapshot capture --name my-snap --box my-vm
+  langsmith sandbox snapshot capture --name my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if name == "" {
+				exitError("--name is required")
+			}
+			if boxName == "" {
+				exitError("--box is required")
+			}
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			// Resolve sandbox name to ID.
+			var box boxResponse
+			if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+boxName, &box); err != nil {
+				exitErrorf("getting sandbox %q: %v", boxName, err)
+			}
+
+			body := map[string]any{
+				"name":              name,
+				"source_sandbox_id": box.ID,
+				"fs_size_bytes":     int64(fsSizeGB) * 1024 * 1024 * 1024,
+			}
+			if checkpoint != "" {
+				body["checkpoint"] = checkpoint
+			}
+
+			var resp snapshotResponse
+			if err := c.RawPost(ctx, "/v2/sandboxes/snapshots", body, &resp); err != nil {
+				exitErrorf("capturing snapshot: %v", err)
+			}
+
+			if wait {
+				deadline := time.Now().Add(60 * time.Second)
+				for time.Now().Before(deadline) {
+					if err := c.RawGet(ctx, "/v2/sandboxes/snapshots/"+resp.ID, &resp); err != nil {
+						exitErrorf("getting snapshot: %v", err)
+					}
+					if resp.Status == "ready" {
+						break
+					}
+					if resp.Status == "failed" {
+						msg := "unknown error"
+						if resp.StatusMessage != nil {
+							msg = *resp.StatusMessage
+						}
+						exitErrorf("capture failed: %s", msg)
+					}
+					time.Sleep(time.Second)
+				}
+			}
+
+			output.OutputJSON(resp, "")
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Snapshot name (required)")
+	cmd.Flags().StringVar(&boxName, "box", "", "Sandbox name to capture from (required)")
+	cmd.Flags().StringVar(&checkpoint, "checkpoint", "", "Checkpoint timestamp to use (omit for fresh checkpoint)")
+	cmd.Flags().IntVar(&fsSizeGB, "fs-size-gb", 4, "Filesystem size in GB (default: 4)")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the snapshot to become ready")
 
 	return cmd
 }

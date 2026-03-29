@@ -1,8 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -12,12 +18,14 @@ import (
 // Sandbox box (claim) API types.
 
 type boxResponse struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	SnapshotID *string `json:"snapshot_id,omitempty"`
-	Status     string  `json:"status"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	TenantID     string  `json:"tenant_id"`
+	SnapshotID   *string `json:"snapshot_id,omitempty"`
+	Status       string  `json:"status"`
+	DataplaneURL *string `json:"dataplane_url,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 type boxListResponse struct {
@@ -51,6 +59,7 @@ Examples:
 	cmd.AddCommand(newBoxGetCmd())
 	cmd.AddCommand(newBoxDeleteCmd())
 	cmd.AddCommand(newBoxWaitCmd())
+	cmd.AddCommand(newBoxExecCmd())
 
 	return cmd
 }
@@ -216,5 +225,99 @@ func newBoxWaitCmd() *cobra.Command {
 
 	cmd.Flags().IntVar(&timeoutSec, "timeout", 120, "Timeout in seconds (default: 120)")
 
+	return cmd
+}
+
+func newBoxExecCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "exec <name> -- <command>",
+		Short: "Execute a command inside a sandbox",
+		Long: `Execute a one-off command inside a running sandbox and print its output.
+
+Examples:
+  langsmith sandbox box exec my-vm -- uname -a
+  langsmith sandbox box exec my-vm -- ls -la /
+  langsmith sandbox box exec my-vm -- cat /etc/os-release`,
+		Args:               cobra.MinimumNArgs(1),
+		DisableFlagParsing: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			// Everything after "--" is the command.
+			cmdArgs := cmd.ArgsLenAtDash()
+			if cmdArgs < 0 || cmdArgs >= len(args) {
+				return fmt.Errorf("usage: langsmith sandbox box exec <name> -- <command>")
+			}
+			command := strings.Join(args[cmdArgs:], " ")
+			if command == "" {
+				return fmt.Errorf("no command specified")
+			}
+
+			// Resolve dataplane URL.
+			dpURL := os.Getenv("SANDBOX_DIRECT_URL")
+			var tenantID string
+			if dpURL == "" {
+				c := mustGetClient()
+				ctx := context.Background()
+
+				var box boxResponse
+				if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name, &box); err != nil {
+					return fmt.Errorf("getting sandbox: %w", err)
+				}
+				if box.Status != "ready" {
+					return fmt.Errorf("sandbox %q is not ready (status: %s)", name, box.Status)
+				}
+				if box.DataplaneURL == nil || *box.DataplaneURL == "" {
+					return fmt.Errorf("sandbox %q has no dataplane URL", name)
+				}
+				dpURL = *box.DataplaneURL
+				tenantID = box.TenantID
+			}
+
+			// POST /execute
+			execURL := strings.TrimRight(dpURL, "/") + "/execute"
+			body, _ := json.Marshal(map[string]string{"command": command})
+
+			req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
+			if err != nil {
+				return fmt.Errorf("build request: %w", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			for k, v := range sandboxAuthHeaders(tenantID) {
+				req.Header.Set(k, v)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("execute: %w", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				return fmt.Errorf("execute failed (HTTP %d): %s", resp.StatusCode, string(body))
+			}
+
+			var result struct {
+				Stdout   string `json:"stdout"`
+				Stderr   string `json:"stderr"`
+				ExitCode int    `json:"exit_code"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return fmt.Errorf("decode response: %w", err)
+			}
+
+			if result.Stdout != "" {
+				fmt.Print(result.Stdout)
+			}
+			if result.Stderr != "" {
+				fmt.Fprint(os.Stderr, result.Stderr)
+			}
+			if result.ExitCode != 0 {
+				os.Exit(result.ExitCode)
+			}
+			return nil
+		},
+	}
 	return cmd
 }
