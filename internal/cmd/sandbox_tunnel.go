@@ -23,11 +23,12 @@ import (
 
 func newSandboxTunnelCmd() *cobra.Command {
 	var (
-		sandboxURL string
-		remotePort int
-		localPort  int
-		logLevel   string
-		stdio      bool
+		sandboxURL  string
+		sandboxName string
+		remotePort  int
+		localPort   int
+		logLevel    string
+		stdio       bool
 	)
 
 	cmd := &cobra.Command{
@@ -48,8 +49,20 @@ Examples:
   langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432 --local-port 15432
   langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 22 --stdio`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if sandboxURL == "" && sandboxName == "" {
+				return fmt.Errorf("--name or --url is required")
+			}
 			if sandboxURL == "" {
-				return fmt.Errorf("--url is required")
+				// Resolve sandbox name to dataplane URL.
+				c := mustGetClient()
+				var box boxResponse
+				if err := c.RawGet(context.Background(), "/v2/sandboxes/boxes/"+sandboxName, &box); err != nil {
+					return fmt.Errorf("resolving sandbox %q: %w", sandboxName, err)
+				}
+				if box.DataplaneURL == nil || *box.DataplaneURL == "" {
+					return fmt.Errorf("sandbox %q has no dataplane URL", sandboxName)
+				}
+				sandboxURL = *box.DataplaneURL
 			}
 			if remotePort < 1 || remotePort > 65535 {
 				return fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", remotePort)
@@ -83,13 +96,13 @@ Examples:
 		},
 	}
 
+	cmd.Flags().StringVar(&sandboxName, "name", "", "Sandbox name (resolves dataplane URL automatically)")
 	cmd.Flags().StringVar(&sandboxURL, "url", "", "Sandbox URL (e.g. https://sandboxes.langsmith.com/my-sandbox)")
 	cmd.Flags().IntVar(&remotePort, "remote-port", 0, "Port inside the sandbox to tunnel to")
 	cmd.Flags().IntVar(&localPort, "local-port", 0, "Local port to listen on (defaults to remote-port)")
 	cmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
 	cmd.Flags().BoolVar(&stdio, "stdio", false, "Bridge stdin/stdout to the remote port (for use as SSH ProxyCommand)")
 
-	_ = cmd.MarkFlagRequired("url")
 	_ = cmd.MarkFlagRequired("remote-port")
 
 	return cmd
