@@ -33,6 +33,7 @@ Examples:
 	}
 
 	cmd.AddCommand(newProjectListCmd())
+	cmd.AddCommand(newAgentVersionsCmd())
 	return cmd
 }
 
