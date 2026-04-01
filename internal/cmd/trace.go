@@ -291,7 +291,7 @@ func newTraceExportCmd() *cobra.Command {
 				}
 
 				for _, run := range allRuns {
-					data := extractRunsToMaps([]langsmith.RunQueryResponseRun{run}, includeMetadata, includeIO, includeFeedback)
+					data := extractRunsToMaps([]langsmith.RunSchema{run}, includeMetadata, includeIO, includeFeedback)
 					line, _ := json.Marshal(data[0])
 					_, _ = f.Write(line)
 					_, _ = f.WriteString("\n")

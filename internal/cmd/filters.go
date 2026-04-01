@@ -95,7 +95,7 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 
 	// Run type
 	if f.RunType != "" {
-		params.RunType = langsmith.F(langsmith.RunQueryParamsRunType(f.RunType))
+		params.RunType = langsmith.F(langsmith.RunTypeEnum(f.RunType))
 	}
 
 	// Error

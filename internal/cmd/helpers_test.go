@@ -148,7 +148,7 @@ func TestRunsToTreeData_Empty(t *testing.T) {
 func TestRunsToTreeData_WithDuration(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(2500 * time.Millisecond)
-	runs := []langsmith.RunQueryResponseRun{
+	runs := []langsmith.RunSchema{
 		{
 			ID:          "run-1",
 			ParentRunID: "",
@@ -186,7 +186,7 @@ func TestRunsToTreeData_WithDuration(t *testing.T) {
 }
 
 func TestRunsToTreeData_NoDuration(t *testing.T) {
-	runs := []langsmith.RunQueryResponseRun{
+	runs := []langsmith.RunSchema{
 		{
 			ID:        "run-2",
 			Name:      "llm",
@@ -204,7 +204,7 @@ func TestRunsToTreeData_NoDuration(t *testing.T) {
 func TestRunsToTreeData_WithError(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(100 * time.Millisecond)
-	runs := []langsmith.RunQueryResponseRun{
+	runs := []langsmith.RunSchema{
 		{
 			ID:        "run-3",
 			Name:      "tool",
@@ -221,7 +221,7 @@ func TestRunsToTreeData_WithError(t *testing.T) {
 }
 
 func TestRunsToTreeData_ParentRunID(t *testing.T) {
-	runs := []langsmith.RunQueryResponseRun{
+	runs := []langsmith.RunSchema{
 		{
 			ID:          "child-1",
 			ParentRunID: "parent-1",
@@ -398,7 +398,7 @@ func TestExtractRunsToMaps_Empty(t *testing.T) {
 }
 
 func TestExtractRunsToMaps_BasicFields(t *testing.T) {
-	runs := []langsmith.RunQueryResponseRun{
+	runs := []langsmith.RunSchema{
 		{
 			ID:      "r1",
 			TraceID: "t1",

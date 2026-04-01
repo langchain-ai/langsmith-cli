@@ -15,7 +15,7 @@ import (
 
 // queryRuns queries runs with the given params and optional session resolution.
 // minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
-func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunQueryResponseRun, error) {
+func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
 	// Resolve project name → session ID
 	if projectName != "" {
 		sessionID, err := c.ResolveSessionID(ctx, projectName)
@@ -25,7 +25,7 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 		params.Session = langsmith.F([]string{sessionID})
 	}
 
-	var allRuns []langsmith.RunQueryResponseRun
+	var allRuns []langsmith.RunSchema
 	remaining := limit
 
 	for {
@@ -103,7 +103,7 @@ func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsS
 }
 
 // extractRunsToMaps extracts a slice of runs to maps.
-func extractRunsToMaps(runs []langsmith.RunQueryResponseRun, includeMetadata, includeIO, includeFeedback bool) []map[string]any {
+func extractRunsToMaps(runs []langsmith.RunSchema, includeMetadata, includeIO, includeFeedback bool) []map[string]any {
 	result := make([]map[string]any, 0, len(runs))
 	for _, r := range runs {
 		result = append(result, extract.ExtractRun(r, includeMetadata, includeIO, includeFeedback))
@@ -112,7 +112,7 @@ func extractRunsToMaps(runs []langsmith.RunQueryResponseRun, includeMetadata, in
 }
 
 // runsToTreeData converts runs to tree data for output.
-func runsToTreeData(runs []langsmith.RunQueryResponseRun) []output.RunTreeData {
+func runsToTreeData(runs []langsmith.RunSchema) []output.RunTreeData {
 	var treeData []output.RunTreeData
 	for _, r := range runs {
 		var durationMs *int64
