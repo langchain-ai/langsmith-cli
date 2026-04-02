@@ -11,7 +11,7 @@ func TestExtractRunBase(t *testing.T) {
 	start := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 15, 10, 30, 5, 0, time.UTC)
 
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:          "run-123",
 		TraceID:     "trace-456",
 		Name:        "ChatOpenAI",
@@ -52,7 +52,7 @@ func TestExtractRunWithMetadata(t *testing.T) {
 	start := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 15, 10, 30, 5, 0, time.UTC)
 
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:               "run-123",
 		TraceID:          "trace-456",
 		Name:             "ChatOpenAI",
@@ -106,7 +106,7 @@ func TestExtractRunWithMetadata(t *testing.T) {
 }
 
 func TestExtractRunWithIO(t *testing.T) {
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:        "run-123",
 		TraceID:   "trace-456",
 		Name:      "ChatOpenAI",
@@ -135,7 +135,7 @@ func TestExtractRunWithIO(t *testing.T) {
 }
 
 func TestExtractRunNilParent(t *testing.T) {
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:        "run-123",
 		TraceID:   "trace-456",
 		Name:      "root",
@@ -151,7 +151,7 @@ func TestExtractRunNilParent(t *testing.T) {
 }
 
 func TestExtractRunWithFeedback(t *testing.T) {
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:        "run-123",
 		TraceID:   "trace-456",
 		Name:      "ChatOpenAI",
@@ -182,7 +182,7 @@ func TestExtractRunWithFeedback(t *testing.T) {
 }
 
 func TestExtractRunWithFeedbackEmpty(t *testing.T) {
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:        "run-123",
 		TraceID:   "trace-456",
 		Name:      "ChatOpenAI",
@@ -198,7 +198,7 @@ func TestExtractRunWithFeedbackEmpty(t *testing.T) {
 }
 
 func TestExtractRunWithoutFeedbackFlag(t *testing.T) {
-	run := langsmith.RunQueryResponseRun{
+	run := langsmith.RunSchema{
 		ID:        "run-123",
 		TraceID:   "trace-456",
 		Name:      "ChatOpenAI",

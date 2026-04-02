@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"testing"
+	"time"
 )
 
 // ==================== Command structure ====================
@@ -160,13 +161,13 @@ func TestFormatShape_Nil(t *testing.T) {
 }
 
 func TestFormatShape_Empty(t *testing.T) {
-	if got := formatShape(map[string]any{}); got != "N/A" {
+	if got := formatShape(map[string]int64{}); got != "N/A" {
 		t.Errorf("expected N/A for empty shape, got %q", got)
 	}
 }
 
 func TestFormatShape_WithData(t *testing.T) {
-	shape := map[string]any{"Tooling": 19, "Integrations": 53}
+	shape := map[string]int64{"Tooling": 19, "Integrations": 53}
 	got := formatShape(shape)
 	expected := "Integrations:53, Tooling:19"
 	if got != expected {
@@ -174,38 +175,17 @@ func TestFormatShape_WithData(t *testing.T) {
 	}
 }
 
-func TestFormatInsightTime_Empty(t *testing.T) {
-	if got := formatInsightTime(""); got != "N/A" {
-		t.Errorf("expected N/A for empty time, got %q", got)
+func TestFormatInsightTime_Zero(t *testing.T) {
+	if got := formatInsightTime(time.Time{}); got != "N/A" {
+		t.Errorf("expected N/A for zero time, got %q", got)
 	}
 }
 
-func TestFormatInsightTime_ValidRFC3339(t *testing.T) {
-	got := formatInsightTime("2026-03-17T12:58:12.701921+00:00")
+func TestFormatInsightTime_Valid(t *testing.T) {
+	ts := time.Date(2026, 3, 17, 12, 58, 12, 0, time.UTC)
+	got := formatInsightTime(ts)
 	expected := "2026-03-17 12:58"
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
-	}
-}
-
-func TestFormatInsightTime_ValidNoTimezone(t *testing.T) {
-	got := formatInsightTime("2026-03-17T12:58:12.701921")
-	expected := "2026-03-17 12:58"
-	if got != expected {
-		t.Errorf("expected %q, got %q", expected, got)
-	}
-}
-
-func TestFormatInsightTime_InvalidFallback(t *testing.T) {
-	got := formatInsightTime("not-a-valid-timestamp-at-all")
-	if got != "not-a-valid-time" {
-		t.Errorf("expected truncated fallback, got %q", got)
-	}
-}
-
-func TestFormatInsightTime_ShortInvalid(t *testing.T) {
-	got := formatInsightTime("bad")
-	if got != "bad" {
-		t.Errorf("expected 'bad' for short invalid input, got %q", got)
 	}
 }

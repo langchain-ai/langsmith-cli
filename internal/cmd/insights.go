@@ -7,61 +7,10 @@ import (
 	"strings"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
-
-// --- Response structs for the insights API ---
-
-type insightsListResponse struct {
-	ClusteringJobs []insightJob `json:"clustering_jobs"`
-}
-
-type insightJob struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Status    string         `json:"status"`
-	StartTime string         `json:"start_time"`
-	EndTime   string         `json:"end_time"`
-	CreatedAt string         `json:"created_at"`
-	Error     *string        `json:"error"`
-	ConfigID  string         `json:"config_id"`
-	Shape     map[string]any `json:"shape"`
-	Metadata  map[string]any `json:"metadata"`
-}
-
-type insightDetail struct {
-	insightJob
-	Clusters []insightCluster `json:"clusters"`
-	Report   *insightReport   `json:"report"`
-}
-
-type insightCluster struct {
-	ID          string         `json:"id"`
-	ParentID    *string        `json:"parent_id"`
-	Level       int            `json:"level"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	ParentName  *string        `json:"parent_name"`
-	NumRuns     int            `json:"num_runs"`
-	Stats       map[string]any `json:"stats"`
-}
-
-type insightReport struct {
-	Title             string             `json:"title"`
-	KeyPoints         []string           `json:"key_points"`
-	HighlightedTraces []highlightedTrace `json:"highlighted_traces"`
-	CreatedAt         string             `json:"created_at"`
-}
-
-type highlightedTrace struct {
-	RunID           string `json:"run_id"`
-	ClusterID       string `json:"cluster_id"`
-	ClusterName     string `json:"cluster_name"`
-	Rank            int    `json:"rank"`
-	HighlightReason string `json:"highlight_reason"`
-	Summary         string `json:"summary"`
-}
 
 // --- Commands ---
 
@@ -119,15 +68,16 @@ for full details including the executive summary and category breakdown.`,
 				exitErrorf("%v", err)
 			}
 
-			var result insightsListResponse
-			path := fmt.Sprintf("/api/v1/sessions/%s/insights", sessionID)
-			if err := c.RawGet(ctx, path, &result); err != nil {
-				exitErrorf("listing insights: %v", err)
+			var jobs []langsmith.SessionInsightListResponse
+			pager := c.SDK.Sessions.Insights.ListAutoPaging(ctx, sessionID, langsmith.SessionInsightListParams{})
+			for pager.Next() {
+				jobs = append(jobs, pager.Current())
+				if limit > 0 && len(jobs) >= limit {
+					break
+				}
 			}
-
-			jobs := result.ClusteringJobs
-			if limit > 0 && len(jobs) > limit {
-				jobs = jobs[:limit]
+			if err := pager.Err(); err != nil {
+				exitErrorf("listing insights: %v", err)
 			}
 
 			fmt_ := getFormat()
@@ -194,9 +144,8 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 				exitErrorf("%v", err)
 			}
 
-			var detail insightDetail
-			path := fmt.Sprintf("/api/v1/sessions/%s/insights/%s", sessionID, insightID)
-			if err := c.RawGet(ctx, path, &detail); err != nil {
+			detail, err := c.SDK.Sessions.Insights.GetJob(ctx, sessionID, insightID)
+			if err != nil {
 				exitErrorf("fetching insight: %v", err)
 			}
 
@@ -219,28 +168,41 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 
 // --- Helpers ---
 
-func insightJobToMap(job insightJob) map[string]any {
+func insightJobToMap(job langsmith.SessionInsightListResponse) map[string]any {
 	m := map[string]any{
 		"id":         job.ID,
 		"name":       job.Name,
 		"status":     job.Status,
-		"created_at": nilStr(job.CreatedAt),
-		"start_time": nilStr(job.StartTime),
-		"end_time":   nilStr(job.EndTime),
+		"created_at": formatTimeISO(job.CreatedAt),
+		"start_time": formatTimeISO(job.StartTime),
+		"end_time":   formatTimeISO(job.EndTime),
 		"shape":      job.Shape,
 	}
-	if job.Error != nil {
-		m["error"] = *job.Error
-	} else {
+	if job.JSON.Error.IsNull() {
 		m["error"] = nil
+	} else {
+		m["error"] = job.Error
 	}
 	return m
 }
 
-func buildInsightDetailJSON(d insightDetail) map[string]any {
-	data := insightJobToMap(d.insightJob)
-	data["config_id"] = nilStr(d.ConfigID)
-	data["metadata"] = d.Metadata
+func buildInsightDetailJSON(d *langsmith.SessionInsightGetJobResponse) map[string]any {
+	data := map[string]any{
+		"id":         d.ID,
+		"name":       d.Name,
+		"status":     d.Status,
+		"created_at": formatTimeISO(d.CreatedAt),
+		"start_time": formatTimeISO(d.StartTime),
+		"end_time":   formatTimeISO(d.EndTime),
+		"shape":      d.Shape,
+		"config_id":  nilStr(d.ConfigID),
+		"metadata":   d.Metadata,
+	}
+	if d.JSON.Error.IsNull() {
+		data["error"] = nil
+	} else {
+		data["error"] = d.Error
+	}
 
 	var clusterData []map[string]any
 	for _, cl := range d.Clusters {
@@ -252,21 +214,23 @@ func buildInsightDetailJSON(d insightDetail) map[string]any {
 			"num_runs":    cl.NumRuns,
 			"stats":       cl.Stats,
 		}
-		if cl.ParentID != nil {
-			cm["parent_id"] = *cl.ParentID
-		} else {
+		if cl.JSON.ParentID.IsNull() {
 			cm["parent_id"] = nil
-		}
-		if cl.ParentName != nil {
-			cm["parent_name"] = *cl.ParentName
 		} else {
+			cm["parent_id"] = cl.ParentID
+		}
+		if cl.JSON.ParentName.IsNull() {
 			cm["parent_name"] = nil
+		} else {
+			cm["parent_name"] = cl.ParentName
 		}
 		clusterData = append(clusterData, cm)
 	}
 	data["clusters"] = clusterData
 
-	if d.Report != nil {
+	if d.JSON.Report.IsNull() {
+		data["report"] = nil
+	} else {
 		var traces []map[string]any
 		for _, ht := range d.Report.HighlightedTraces {
 			traces = append(traces, map[string]any{
@@ -282,18 +246,16 @@ func buildInsightDetailJSON(d insightDetail) map[string]any {
 			"title":              d.Report.Title,
 			"key_points":         d.Report.KeyPoints,
 			"highlighted_traces": traces,
-			"created_at":         nilStr(d.Report.CreatedAt),
+			"created_at":         formatTimeISO(d.Report.CreatedAt),
 		}
-	} else {
-		data["report"] = nil
 	}
 
 	return data
 }
 
-func printInsightPretty(d insightDetail) {
+func printInsightPretty(d *langsmith.SessionInsightGetJobResponse) {
 	// Header
-	if d.Report != nil && d.Report.Title != "" {
+	if !d.JSON.Report.IsNull() && d.Report.Title != "" {
 		fmt.Println(d.Report.Title)
 		fmt.Println(strings.Repeat("=", len(d.Report.Title)))
 	} else {
@@ -304,7 +266,7 @@ func printInsightPretty(d insightDetail) {
 	fmt.Printf("ID: %s  Status: %s  Created: %s\n\n", d.ID, d.Status, formatInsightTime(d.CreatedAt))
 
 	// Key points
-	if d.Report != nil && len(d.Report.KeyPoints) > 0 {
+	if !d.JSON.Report.IsNull() && len(d.Report.KeyPoints) > 0 {
 		fmt.Println("Key Points")
 		fmt.Println(strings.Repeat("-", 10))
 		for i, kp := range d.Report.KeyPoints {
@@ -314,7 +276,7 @@ func printInsightPretty(d insightDetail) {
 	}
 
 	// Highlighted traces
-	if d.Report != nil && len(d.Report.HighlightedTraces) > 0 {
+	if !d.JSON.Report.IsNull() && len(d.Report.HighlightedTraces) > 0 {
 		fmt.Println("Highlighted Traces")
 		fmt.Println(strings.Repeat("-", 18))
 		for _, ht := range d.Report.HighlightedTraces {
@@ -364,30 +326,20 @@ func printInsightPretty(d insightDetail) {
 	}
 }
 
-func formatInsightTime(ts string) string {
-	if ts == "" {
+func formatInsightTime(t time.Time) string {
+	if t.IsZero() {
 		return "N/A"
-	}
-	t, err := time.Parse(time.RFC3339, ts)
-	if err != nil {
-		t, err = time.Parse("2006-01-02T15:04:05.999999", ts)
-		if err != nil {
-			if len(ts) > 16 {
-				return ts[:16]
-			}
-			return ts
-		}
 	}
 	return t.Format("2006-01-02 15:04")
 }
 
-func formatShape(shape map[string]any) string {
+func formatShape(shape map[string]int64) string {
 	if len(shape) == 0 {
 		return "N/A"
 	}
 	var parts []string
 	for k, v := range shape {
-		parts = append(parts, fmt.Sprintf("%s:%v", k, v))
+		parts = append(parts, fmt.Sprintf("%s:%d", k, v))
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ", ")
