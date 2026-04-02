@@ -530,20 +530,19 @@ func newPromptTagCmd() *cobra.Command {
 		Short: "Manage commit tags for a Prompt Hub repo",
 		Long: `Manage commit tags for a Prompt Hub repo.
 
-Tags are named pointers to specific commits (e.g. "production", "staging").
-Use them to promote a commit without changing the repo URL consumers depend on.
+Commit tags are named pointers to specific commits (e.g. "production", "staging").
+Each org has a fixed set of tags — use them to promote a commit to an environment
+without changing the repo URL that consumers depend on.
 
 Examples:
   langsmith prompt tag list myorg/my-prompt
   langsmith prompt tag create myorg/my-prompt --tag production --commit-id <uuid>
-  langsmith prompt tag update myorg/my-prompt production --commit-id <uuid>
-  langsmith prompt tag delete myorg/my-prompt production`,
+  langsmith prompt tag update myorg/my-prompt production --commit-id <uuid>`,
 	}
 
 	cmd.AddCommand(newPromptTagListCmd())
 	cmd.AddCommand(newPromptTagCreateCmd())
 	cmd.AddCommand(newPromptTagUpdateCmd())
-	cmd.AddCommand(newPromptTagDeleteCmd())
 	return cmd
 }
 
@@ -678,50 +677,6 @@ func newPromptTagUpdateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&commitID, "commit-id", "", "New commit UUID to point this tag at (required)")
 	_ = cmd.MarkFlagRequired("commit-id")
-	return cmd
-}
-
-func newPromptTagDeleteCmd() *cobra.Command {
-	var yes bool
-
-	cmd := &cobra.Command{
-		Use:   "delete OWNER/REPO TAG_NAME",
-		Short: "Delete a commit tag",
-		Args:  cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			owner, repo, _, err := parseOwnerRepo(args[0])
-			if err != nil {
-				exitErrorf("%v", err)
-			}
-			tagName := args[1]
-
-			if !yes {
-				fmt.Fprintf(os.Stderr, "Delete tag '%s' from '%s/%s'? [y/N] ", tagName, owner, repo)
-				var confirm string
-				_, _ = fmt.Scanln(&confirm)
-				if strings.ToLower(confirm) != "y" {
-					exitError("aborted")
-				}
-			}
-
-			c := mustGetClient()
-			ctx := context.Background()
-
-			path := fmt.Sprintf("/api/v1/hub/repos/%s/%s/tags/%s", owner, repo, tagName)
-			if err := c.RawDelete(ctx, path, nil); err != nil {
-				exitErrorf("deleting tag %q: %v", tagName, err)
-			}
-
-			output.OutputJSON(map[string]any{
-				"status":   "deleted",
-				"tag_name": tagName,
-				"owner":    owner,
-				"repo":     repo,
-			}, "")
-		},
-	}
-
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
 }
 
