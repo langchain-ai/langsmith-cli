@@ -532,7 +532,7 @@ func newPromptTagListCmd() *cobra.Command {
 			ctx := context.Background()
 
 			var tags []repoTag
-			path := fmt.Sprintf("/api/v1/hub/repos/%s/%s/tags", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
 			if err := c.RawGet(ctx, path, &tags); err != nil {
 				exitErrorf("listing tags for %s/%s: %v", owner, repo, err)
 			}
@@ -591,7 +591,7 @@ func newPromptTagCreateCmd() *cobra.Command {
 				"commit_id": commitID,
 			}
 			var tag repoTag
-			path := fmt.Sprintf("/api/v1/hub/repos/%s/%s/tags", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
 			if err := c.RawPost(ctx, path, body, &tag); err != nil {
 				exitErrorf("creating tag %q: %v", tagName, err)
 			}
@@ -629,10 +629,13 @@ func newPromptTagUpdateCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{"commit_id": commitID}
+			body := map[string]any{
+				"tag_name":  tagName,
+				"commit_id": commitID,
+			}
 			var tag repoTag
-			path := fmt.Sprintf("/api/v1/hub/repos/%s/%s/tags/%s", owner, repo, tagName)
-			if err := c.RawPatch(ctx, path, body, &tag); err != nil {
+			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
+			if err := c.RawPost(ctx, path, body, &tag); err != nil {
 				exitErrorf("updating tag %q: %v", tagName, err)
 			}
 
