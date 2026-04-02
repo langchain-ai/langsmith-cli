@@ -13,16 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// parseOwnerRepo splits "owner/repo" or "owner/repo:commit" into components.
-// Returns owner, repo, commit (commit may be empty).
 func parseOwnerRepo(arg string) (owner, repo, commit string, err error) {
-	// Split off an optional ":commit" suffix
 	repoCommit := arg
 	if idx := strings.Index(arg, ":"); idx != -1 {
 		repoCommit = arg[:idx]
 		commit = arg[idx+1:]
 	}
-
 	parts := strings.SplitN(repoCommit, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", "", fmt.Errorf("invalid format %q — expected owner/repo or owner/repo:commit", arg)
@@ -63,8 +59,6 @@ Examples:
 
 	return cmd
 }
-
-// ── list ─────────────────────────────────────────────────────────────────────
 
 func newPromptListCmd() *cobra.Command {
 	var (
@@ -126,7 +120,9 @@ func newPromptListCmd() *cobra.Command {
 				exitErrorf("listing prompts: %v", err)
 			}
 
-			if getFormat() == "pretty" {
+			fmt_ := getFormat()
+
+			if fmt_ == "pretty" {
 				columns := []string{"Full Name", "Public", "Commits", "Likes", "Updated"}
 				var rows [][]string
 				for _, r := range repos {
@@ -143,14 +139,13 @@ func newPromptListCmd() *cobra.Command {
 					})
 				}
 				output.OutputTable(columns, rows, "Prompts")
-				return
+			} else {
+				var data []map[string]any
+				for _, r := range repos {
+					data = append(data, repoToMap(r))
+				}
+				output.OutputJSON(data, outputFile)
 			}
-
-			var data []map[string]any
-			for _, r := range repos {
-				data = append(data, repoToMap(r))
-			}
-			output.OutputJSON(data, outputFile)
 		},
 	}
 
@@ -163,8 +158,6 @@ func newPromptListCmd() *cobra.Command {
 
 	return cmd
 }
-
-// ── get ──────────────────────────────────────────────────────────────────────
 
 func newPromptGetCmd() *cobra.Command {
 	var outputFile string
@@ -194,19 +187,18 @@ func newPromptGetCmd() *cobra.Command {
 				data["manifest"] = r.LatestCommitManifest.Manifest
 			}
 
-			if getFormat() == "pretty" {
+			fmt_ := getFormat()
+			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
-				return
+			} else {
+				output.OutputJSON(data, outputFile)
 			}
-			output.OutputJSON(data, outputFile)
 		},
 	}
 
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
-
-// ── create ───────────────────────────────────────────────────────────────────
 
 func newPromptCreateCmd() *cobra.Command {
 	var (
@@ -252,8 +244,6 @@ func newPromptCreateCmd() *cobra.Command {
 	return cmd
 }
 
-// ── delete ───────────────────────────────────────────────────────────────────
-
 func newPromptDeleteCmd() *cobra.Command {
 	var yes bool
 
@@ -296,8 +286,6 @@ func newPromptDeleteCmd() *cobra.Command {
 	return cmd
 }
 
-// ── pull ─────────────────────────────────────────────────────────────────────
-
 func newPromptPullCmd() *cobra.Command {
 	var (
 		commitRef  string
@@ -307,16 +295,7 @@ func newPromptPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull OWNER/REPO[:COMMIT_OR_TAG]",
 		Short: "Fetch a prompt's manifest (latest or a specific commit/tag)",
-		Long: `Fetch a prompt's manifest content.
-
-The commit can be specified as part of the argument (OWNER/REPO:ref)
-or via the --commit flag. Use "latest" or omit to get the most recent commit.
-
-Examples:
-  langsmith prompt pull myorg/my-prompt
-  langsmith prompt pull myorg/my-prompt:production
-  langsmith prompt pull myorg/my-prompt --commit abc123`,
-		Args: cobra.ExactArgs(1),
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, inlineRef, err := parseOwnerRepo(args[0])
 			if err != nil {
@@ -346,11 +325,12 @@ Examples:
 				"manifest":    resp.Manifest,
 			}
 
-			if getFormat() == "pretty" {
+			fmt_ := getFormat()
+			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
-				return
+			} else {
+				output.OutputJSON(data, outputFile)
 			}
-			output.OutputJSON(data, outputFile)
 		},
 	}
 
@@ -358,8 +338,6 @@ Examples:
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
-
-// ── push ─────────────────────────────────────────────────────────────────────
 
 func newPromptPushCmd() *cobra.Command {
 	var (
@@ -370,14 +348,7 @@ func newPromptPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push OWNER/REPO",
 		Short: "Push a new commit (manifest) to a Prompt Hub repo",
-		Long: `Create a new commit in a Prompt Hub repo.
-
-The manifest JSON is read from --file or from stdin if --file is omitted.
-
-Examples:
-  langsmith prompt push myorg/my-prompt --file manifest.json
-  cat manifest.json | langsmith prompt push myorg/my-prompt`,
-		Args: cobra.ExactArgs(1),
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
@@ -433,8 +404,6 @@ Examples:
 	return cmd
 }
 
-// ── commits ──────────────────────────────────────────────────────────────────
-
 func newPromptCommitsCmd() *cobra.Command {
 	var (
 		limit      int
@@ -473,7 +442,9 @@ func newPromptCommitsCmd() *cobra.Command {
 				exitErrorf("listing commits: %v", err)
 			}
 
-			if getFormat() == "pretty" {
+			fmt_ := getFormat()
+
+			if fmt_ == "pretty" {
 				columns := []string{"Hash", "Author", "Downloads", "Created"}
 				var rows [][]string
 				for _, c := range commits {
@@ -489,22 +460,21 @@ func newPromptCommitsCmd() *cobra.Command {
 					})
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Commits for %s/%s", owner, repo))
-				return
+			} else {
+				var data []map[string]any
+				for _, c := range commits {
+					data = append(data, map[string]any{
+						"id":                 c.ID,
+						"commit_hash":        c.CommitHash,
+						"parent_commit_hash": nilStr(c.ParentCommitHash),
+						"full_name":          c.FullName,
+						"num_downloads":      c.NumDownloads,
+						"num_views":          c.NumViews,
+						"created_at":         formatTimeISO(c.CreatedAt),
+					})
+				}
+				output.OutputJSON(data, outputFile)
 			}
-
-			var data []map[string]any
-			for _, c := range commits {
-				data = append(data, map[string]any{
-					"id":                 c.ID,
-					"commit_hash":        c.CommitHash,
-					"parent_commit_hash": nilStr(c.ParentCommitHash),
-					"full_name":          c.FullName,
-					"num_downloads":      c.NumDownloads,
-					"num_views":          c.NumViews,
-					"created_at":         formatTimeISO(c.CreatedAt),
-				})
-			}
-			output.OutputJSON(data, outputFile)
 		},
 	}
 
@@ -513,8 +483,7 @@ func newPromptCommitsCmd() *cobra.Command {
 	return cmd
 }
 
-// ── tag ──────────────────────────────────────────────────────────────────────
-
+// repoTag matches the JSON returned by the hub tag endpoints.
 type repoTag struct {
 	ID         string `json:"id"`
 	TagName    string `json:"tag_name"`
@@ -568,28 +537,29 @@ func newPromptTagListCmd() *cobra.Command {
 				exitErrorf("listing tags for %s/%s: %v", owner, repo, err)
 			}
 
-			if getFormat() == "pretty" {
+			fmt_ := getFormat()
+
+			if fmt_ == "pretty" {
 				columns := []string{"Tag", "Commit ID", "Created"}
 				var rows [][]string
 				for _, t := range tags {
 					rows = append(rows, []string{t.TagName, t.CommitID, t.CreatedAt})
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Tags for %s/%s", owner, repo))
-				return
+			} else {
+				var data []map[string]any
+				for _, t := range tags {
+					data = append(data, map[string]any{
+						"id":          t.ID,
+						"tag_name":    t.TagName,
+						"commit_id":   t.CommitID,
+						"commit_hash": t.CommitHash,
+						"created_at":  t.CreatedAt,
+						"updated_at":  t.UpdatedAt,
+					})
+				}
+				output.OutputJSON(data, outputFile)
 			}
-
-			var data []map[string]any
-			for _, t := range tags {
-				data = append(data, map[string]any{
-					"id":          t.ID,
-					"tag_name":    t.TagName,
-					"commit_id":   t.CommitID,
-					"commit_hash": t.CommitHash,
-					"created_at":  t.CreatedAt,
-					"updated_at":  t.UpdatedAt,
-				})
-			}
-			output.OutputJSON(data, outputFile)
 		},
 	}
 
@@ -679,8 +649,6 @@ func newPromptTagUpdateCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("commit-id")
 	return cmd
 }
-
-// ── helpers ───────────────────────────────────────────────────────────────────
 
 func repoToMap(r langsmith.RepoWithLookups) map[string]any {
 	return map[string]any{
