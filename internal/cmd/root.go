@@ -62,6 +62,7 @@ Output:
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newDeploymentCmd())
+	rootCmd.AddCommand(newPromptCmd())
 
 	return rootCmd
 }
