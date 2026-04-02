@@ -77,8 +77,12 @@ func newPromptListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 
+			pageSize := int64(20)
+			if limit > 0 && int64(limit) < pageSize {
+				pageSize = int64(limit)
+			}
 			params := langsmith.RepoListParams{
-				Limit: langsmith.F(int64(20)),
+				Limit: langsmith.F(pageSize),
 			}
 			if query != "" {
 				params.Query = langsmith.F(query)
