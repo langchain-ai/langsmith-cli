@@ -191,14 +191,8 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 		}
 
 		traceID := getStr(r, "trace_id")
-		if len(traceID) > 16 {
-			traceID = traceID[:16] + "..."
-		}
 
 		runID := getStr(r, "run_id")
-		if len(runID) > 16 {
-			runID = runID[:16] + "..."
-		}
 
 		row := []string{timeStr, name, getStr(r, "run_type"), traceID, runID}
 

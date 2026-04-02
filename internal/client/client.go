@@ -44,6 +44,12 @@ func New(apiKey, apiURL string) *Client {
 	if normalized != "" {
 		opts = append(opts, option.WithBaseURL(normalized))
 	}
+	// Forward LANGSMITH_WORKSPACE_ID to the SDK as the tenant ID.
+	// The SDK already reads LANGSMITH_TENANT_ID, but LANGSMITH_WORKSPACE_ID
+	// is the documented env var for the CLI and MCP server.
+	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
+		opts = append(opts, option.WithTenantID(wsID))
+	}
 
 	return &Client{
 		SDK:          langsmith.NewClient(opts...),

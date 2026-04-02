@@ -113,6 +113,15 @@ func TestTraceGetCmd_OutputShorthand(t *testing.T) {
 	}
 }
 
+func TestTraceGetCmd_TimeFlags(t *testing.T) {
+	cmd := newTraceGetCmd()
+	for _, name := range []string{"since", "last-n-minutes"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("trace get missing flag --%s", name)
+		}
+	}
+}
+
 func TestTraceGetCmd_ExactArgs(t *testing.T) {
 	cmd := newTraceGetCmd()
 	if err := cmd.Args(cmd, []string{}); err == nil {

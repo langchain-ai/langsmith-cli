@@ -8,8 +8,8 @@ import (
 // ---------- Command tree structure ----------
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
-	root := NewRootCmd("1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment"}
+	root := NewRootCmd("1.0.0", "1.0.0")
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -24,21 +24,21 @@ func TestRootCmd_HasAllSubcommands(t *testing.T) {
 }
 
 func TestRootCmd_Version(t *testing.T) {
-	root := NewRootCmd("2.3.4")
-	if root.Version != "2.3.4" {
-		t.Errorf("expected version 2.3.4, got %s", root.Version)
+	root := NewRootCmd("2.3.4", "2.3.4 (commit: abc, built: now)")
+	if root.Version != "2.3.4 (commit: abc, built: now)" {
+		t.Errorf("expected display version, got %s", root.Version)
 	}
 }
 
 func TestRootCmd_UseField(t *testing.T) {
-	root := NewRootCmd("dev")
+	root := NewRootCmd("dev", "dev")
 	if root.Use != "langsmith" {
 		t.Errorf("expected Use=langsmith, got %q", root.Use)
 	}
 }
 
 func TestRootCmd_SilenceFlags(t *testing.T) {
-	root := NewRootCmd("dev")
+	root := NewRootCmd("dev", "dev")
 	if !root.SilenceUsage {
 		t.Error("expected SilenceUsage=true")
 	}
@@ -50,7 +50,7 @@ func TestRootCmd_SilenceFlags(t *testing.T) {
 // ---------- Global persistent flags ----------
 
 func TestRootCmd_PersistentFlags_APIKey(t *testing.T) {
-	root := NewRootCmd("dev")
+	root := NewRootCmd("dev", "dev")
 	f := root.PersistentFlags().Lookup("api-key")
 	if f == nil {
 		t.Fatal("--api-key flag not found")
@@ -61,7 +61,7 @@ func TestRootCmd_PersistentFlags_APIKey(t *testing.T) {
 }
 
 func TestRootCmd_PersistentFlags_APIURL(t *testing.T) {
-	root := NewRootCmd("dev")
+	root := NewRootCmd("dev", "dev")
 	f := root.PersistentFlags().Lookup("api-url")
 	if f == nil {
 		t.Fatal("--api-url flag not found")
@@ -72,7 +72,7 @@ func TestRootCmd_PersistentFlags_APIURL(t *testing.T) {
 }
 
 func TestRootCmd_PersistentFlags_Format(t *testing.T) {
-	root := NewRootCmd("dev")
+	root := NewRootCmd("dev", "dev")
 	f := root.PersistentFlags().Lookup("format")
 	if f == nil {
 		t.Fatal("--format flag not found")

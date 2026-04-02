@@ -10,8 +10,22 @@ Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developer
 
 ### Install script (recommended)
 
+macOS / Linux:
+
 ```bash
 curl -fsSL https://cli.langsmith.com/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://cli.langsmith.com/install.ps1 | iex
+```
+
+### Upgrade
+
+```bash
+langsmith self-update
 ```
 
 ### GitHub releases
@@ -87,8 +101,10 @@ langsmith trace list --project my-app -o traces.json
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
+Results are **paginated** — by default, only the first **20** projects are returned (use `--limit` to change). Projects are sorted by **most recent activity** (`last_run_start_time`, descending).
+
 ```bash
-# List tracing projects (default limit: 20)
+# List tracing projects (default: 20 results, most recently active first)
 langsmith project list
 langsmith project list --limit 50
 
@@ -103,8 +119,10 @@ langsmith --format pretty project list
 
 A trace is a tree of runs representing one end-to-end invocation of your application.
 
+Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time. By default, only traces from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
+
 ```bash
-# List recent traces (default limit: 20)
+# List recent traces (default: 20 results, newest first)
 langsmith trace list --project my-app
 langsmith trace list --project my-app --limit 50 --last-n-minutes 60
 
@@ -137,8 +155,10 @@ langsmith trace export ./traces --project my-app --filename-pattern "{name}_{tra
 
 A run is a single step within a trace (LLM call, tool call, chain step, etc.).
 
+Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **newest-first** by start time. By default, only runs from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
+
 ```bash
-# List LLM calls (default limit: 50)
+# List LLM calls (default: 50 results, oldest first)
 langsmith run list --project my-app --run-type llm
 langsmith run list --project my-app --run-type tool --name search
 
@@ -159,8 +179,10 @@ langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 
 A thread groups multiple root runs sharing a thread_id (multi-turn conversations).
 
+Results are **paginated** — by default, only the first **20** threads are returned (use `--limit` to change). Threads are sorted by **most recent activity** (newest first).
+
 ```bash
-# List threads (requires --project)
+# List threads (default: 20 results, newest first; requires --project)
 langsmith thread list --project my-chatbot
 langsmith thread list --project my-chatbot --last-n-minutes 120
 
@@ -170,8 +192,10 @@ langsmith thread get <thread-id> --project my-chatbot --full
 
 ### `dataset` — Manage evaluation datasets
 
+List results are **paginated** — by default, only the first **100** datasets are returned (use `--limit` to change).
+
 ```bash
-# List datasets
+# List datasets (default: 100 results)
 langsmith dataset list
 langsmith dataset list --name-contains eval
 
@@ -191,8 +215,10 @@ langsmith dataset upload data.json --name new-dataset
 
 ### `example` — Manage dataset examples
 
+List results are **paginated** — by default, only the first **20** examples are returned (use `--limit` to change). Use `--offset` to paginate through results.
+
 ```bash
-# List examples
+# List examples (default: 20 results)
 langsmith example list --dataset my-dataset
 langsmith example list --dataset my-dataset --split test --limit 50
 
@@ -243,13 +269,25 @@ langsmith evaluator delete accuracy --yes
 
 ### `experiment` — Query experiment results
 
+List results are **paginated** — by default, only the first **20** experiments are returned (use `--limit` to change).
+
 ```bash
-# List experiments
+# List experiments (default: 20 results)
 langsmith experiment list
 langsmith experiment list --dataset my-eval-set
 
 # Get experiment results (feedback stats, run stats)
 langsmith experiment get my-experiment-2024-01-15
+```
+
+### `self-update` — Update langsmith to the latest version
+
+```bash
+# Check if an update is available
+langsmith self-update --dry-run
+
+# Update to the latest version
+langsmith self-update
 ```
 
 ## Filter Options
@@ -260,8 +298,8 @@ Most `trace` and `run` commands share these filter options:
 |------|-------------|---------|
 | `--project` | Project name | `--project my-app` |
 | `--limit, -n` | Max results | `-n 10` |
-| `--last-n-minutes` | Time window | `--last-n-minutes 60` |
-| `--since` | After ISO timestamp | `--since 2024-01-15T00:00:00Z` |
+| `--last-n-minutes` | Time window (overrides 7-day default) | `--last-n-minutes 60` |
+| `--since` | After ISO timestamp (overrides 7-day default) | `--since 2024-01-15T00:00:00Z` |
 | `--error / --no-error` | Error status | `--error` |
 | `--name` | Name search (case-insensitive) | `--name ChatOpenAI` |
 | `--run-type` | Run type (run commands only) | `--run-type llm` |

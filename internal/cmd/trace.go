@@ -49,7 +49,7 @@ func newTraceListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List traces (root runs) matching filter criteria",
+		Short: "List traces (root runs) matching filter criteria (default: 20, newest first)",
 		Run: func(cmd *cobra.Command, args []string) {
 			if full {
 				includeMetadata = true
@@ -65,6 +65,9 @@ func newTraceListCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
@@ -82,6 +85,7 @@ func newTraceListCmd() *cobra.Command {
 					for _, run := range runs {
 						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
 							Trace: langsmith.F(run.TraceID),
+							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
 						}, projectName, 1000, 0)
 						if err != nil {
 							exitErrorf("%v", err)
@@ -94,7 +98,9 @@ func newTraceListCmd() *cobra.Command {
 				}
 			} else {
 				if showHierarchy {
-					childParams := langsmith.RunQueryParams{}
+					childParams := langsmith.RunQueryParams{
+						Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
+					}
 					if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 						childParams.Select = langsmith.F(sel)
 					}
@@ -134,6 +140,8 @@ func newTraceListCmd() *cobra.Command {
 func newTraceGetCmd() *cobra.Command {
 	var (
 		project         string
+		since           string
+		lastNMinutes    int
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -157,9 +165,14 @@ func newTraceGetCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(project)
+			if projectName == "" {
+				exitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
+			}
 
 			params := langsmith.RunQueryParams{
-				Trace: langsmith.F(traceID),
+				Trace:     langsmith.F(traceID),
+				StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
+				Order:     langsmith.F(langsmith.RunQueryParamsOrderAsc),
 			}
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
@@ -186,6 +199,8 @@ func newTraceGetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
+	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -229,6 +244,9 @@ func newTraceExportCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
 			sel := buildRunSelect(includeIO, includeFeedback)
@@ -246,6 +264,7 @@ func newTraceExportCmd() *cobra.Command {
 
 				childParams := langsmith.RunQueryParams{
 					Trace: langsmith.F(tid),
+					Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
 				}
 				if sel != nil {
 					childParams.Select = langsmith.F(sel)

@@ -16,7 +16,7 @@ func TestBuildFilterDSL_Empty(t *testing.T) {
 func TestBuildFilterDSL_SingleName(t *testing.T) {
 	f := &FilterFlags{Name: "ChatOpenAI"}
 	result := buildFilterDSL(f)
-	expected := `eq(name, "ChatOpenAI")`
+	expected := `search(name, "ChatOpenAI")`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -92,7 +92,7 @@ func TestBuildFilterDSL_Combined(t *testing.T) {
 		Tags:       "prod",
 	}
 	result := buildFilterDSL(f)
-	expected := `and(eq(name, "ChatOpenAI"), gte(latency, 2.5), has(tags, "prod"))`
+	expected := `and(search(name, "ChatOpenAI"), gte(latency, 2.5), has(tags, "prod"))`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -160,6 +160,22 @@ func TestBuildRunQueryParams_IsRoot(t *testing.T) {
 	params2 := BuildRunQueryParams(f, false, 20)
 	if params2.IsRoot.Present {
 		t.Error("expected IsRoot not set when isRoot arg is false")
+	}
+}
+
+func TestBuildRunQueryParams_OrderAlwaysDesc(t *testing.T) {
+	f := &FilterFlags{}
+
+	// root queries (trace list) → newest first
+	params := BuildRunQueryParams(f, true, 20)
+	if !params.Order.Present || params.Order.Value != "desc" {
+		t.Errorf("expected Order=desc for isRoot=true, got %v", params.Order)
+	}
+
+	// generic run queries (run list) → also newest first
+	params2 := BuildRunQueryParams(f, false, 20)
+	if !params2.Order.Present || params2.Order.Value != "desc" {
+		t.Errorf("expected Order=desc for isRoot=false, got %v", params2.Order)
 	}
 }
 
@@ -249,7 +265,7 @@ func TestBuildRunQueryParams_FilterDSLWithName(t *testing.T) {
 	if !params.Filter.Present {
 		t.Fatal("expected Filter to be set")
 	}
-	expected := `eq(name, "ChatOpenAI")`
+	expected := `search(name, "ChatOpenAI")`
 	if params.Filter.Value != expected {
 		t.Errorf("expected %q, got %q", expected, params.Filter.Value)
 	}
@@ -324,6 +340,56 @@ func TestAddCommonFilterFlags_DefaultValues(t *testing.T) {
 		if f.DefValue != defVal {
 			t.Errorf("flag --%s: expected default %q, got %q", name, defVal, f.DefValue)
 		}
+	}
+}
+
+// ---------- resolveStartTime ----------
+
+func TestResolveStartTime_Default(t *testing.T) {
+	before := time.Now().UTC().Add(-7*24*time.Hour - time.Second)
+	st := resolveStartTime("", 0)
+	after := time.Now().UTC().Add(-7*24*time.Hour + time.Second)
+	if st.Before(before) || st.After(after) {
+		t.Errorf("expected ~7 days ago, got %v", st)
+	}
+}
+
+func TestResolveStartTime_LastNMinutes(t *testing.T) {
+	before := time.Now().UTC().Add(-31 * time.Minute)
+	st := resolveStartTime("", 30)
+	after := time.Now().UTC().Add(-29 * time.Minute)
+	if st.Before(before) || st.After(after) {
+		t.Errorf("expected ~30 minutes ago, got %v", st)
+	}
+}
+
+func TestResolveStartTime_Since(t *testing.T) {
+	st := resolveStartTime("2024-01-15T10:00:00Z", 0)
+	expected := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+	if !st.Equal(expected) {
+		t.Errorf("expected %v, got %v", expected, st)
+	}
+}
+
+func TestResolveStartTime_LastNMinutesTakesPrecedence(t *testing.T) {
+	before := time.Now().UTC().Add(-61 * time.Minute)
+	st := resolveStartTime("2024-01-15T10:00:00Z", 60)
+	after := time.Now().UTC().Add(-59 * time.Minute)
+	if st.Before(before) || st.After(after) {
+		t.Errorf("expected lastNMinutes to take precedence, got %v", st)
+	}
+}
+
+func TestBuildRunQueryParams_DefaultStartTime(t *testing.T) {
+	f := &FilterFlags{}
+	before := time.Now().UTC().Add(-7*24*time.Hour - time.Second)
+	params := BuildRunQueryParams(f, false, 20)
+	after := time.Now().UTC().Add(-7*24*time.Hour + time.Second)
+	if !params.StartTime.Present {
+		t.Fatal("expected StartTime to always be set")
+	}
+	if params.StartTime.Value.Before(before) || params.StartTime.Value.After(after) {
+		t.Errorf("expected ~7 days ago, got %v", params.StartTime.Value)
 	}
 }
 

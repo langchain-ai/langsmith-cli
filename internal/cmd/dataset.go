@@ -22,6 +22,9 @@ Datasets are collections of input/output examples used for evaluating
 LLM applications. They can be created manually, uploaded from files,
 or exported to local files.
 
+List results are paginated and return at most 100 datasets by default
+(use --limit to change).
+
 Examples:
   langsmith dataset list
   langsmith dataset get my-dataset
@@ -49,7 +52,7 @@ func newDatasetListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all datasets in the workspace",
+		Short: "List all datasets in the workspace (default: 100)",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()
@@ -83,9 +86,6 @@ func newDatasetListCmd() *cobra.Command {
 				var rows [][]string
 				for _, ds := range datasets {
 					id := ds.ID
-					if len(id) > 16 {
-						id = id[:16] + "..."
-					}
 					desc := ds.Description
 					if len(desc) > 50 {
 						desc = desc[:50]

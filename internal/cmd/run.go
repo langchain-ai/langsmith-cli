@@ -20,7 +20,7 @@ A run is a single step within a trace. Unlike trace commands (which
 filter on root runs only), run commands can query any run at any
 depth in the hierarchy.
 
-Results are sorted oldest-first by start time.
+Results are sorted newest-first by start time.
 
 Examples:
   langsmith run list --project my-app --run-type llm --limit 10
@@ -46,7 +46,7 @@ func newRunListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List runs matching filter criteria (any run type at any depth)",
+		Short: "List runs matching filter criteria (default: 50, newest first)",
 		Run: func(cmd *cobra.Command, args []string) {
 			if full {
 				includeMetadata = true
@@ -98,6 +98,9 @@ func newRunListCmd() *cobra.Command {
 
 func newRunGetCmd() *cobra.Command {
 	var (
+		project         string
+		since           string
+		lastNMinutes    int
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -120,25 +123,29 @@ func newRunGetCmd() *cobra.Command {
 
 			c := mustGetClient()
 			ctx := context.Background()
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				exitError("--project is required for run get (or set LANGSMITH_PROJECT)")
+			}
 
-			// Query for the specific run by ID
 			params := langsmith.RunQueryParams{
-				ID:    langsmith.F([]string{runID}),
-				Limit: langsmith.F(int64(1)),
+				ID:        langsmith.F([]string{runID}),
+				Limit:     langsmith.F(int64(1)),
+				StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
 			}
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
 
-			resp, err := c.SDK.Runs.Query(ctx, params)
+			runs, err := queryRuns(ctx, c, params, projectName, 1, 0)
 			if err != nil {
 				exitErrorf("fetching run: %v", err)
 			}
-			if len(resp.Runs) == 0 {
+			if len(runs) == 0 {
 				exitErrorf("run not found: %s", runID)
 			}
 
-			data := extract.ExtractRun(resp.Runs[0], includeMetadata, includeIO, includeFeedback)
+			data := extract.ExtractRun(runs[0], includeMetadata, includeIO, includeFeedback)
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
@@ -149,6 +156,9 @@ func newRunGetCmd() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
+	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -187,6 +197,9 @@ func newRunExportCmd() *cobra.Command {
 			c := mustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				exitError("--project is required for run export (or set LANGSMITH_PROJECT)")
+			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
