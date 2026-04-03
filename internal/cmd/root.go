@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	"github.com/spf13/cobra"
 )
 
@@ -65,6 +66,7 @@ Output:
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
+	rootCmd.AddCommand(api.NewCmd())
 
 	return rootCmd
 }
