@@ -19,8 +19,17 @@ func runRequest(apiURL, apiKey, method, path, body string, headers []string, inc
 	c := client.New(apiKey, apiURL)
 
 	fullURL := resolveEndpoint(apiURL, path)
-	// Compute relative path for RawDo (which prepends apiURL)
-	relPath := strings.TrimPrefix(fullURL, apiURL)
+	// RawDo prepends apiURL, so compute the relative path.
+	// For full URLs with a different host, pass the full URL as the path
+	// to a client constructed with an empty base URL.
+	relPath := fullURL
+	if strings.HasPrefix(fullURL, apiURL) {
+		relPath = strings.TrimPrefix(fullURL, apiURL)
+	} else if strings.HasPrefix(fullURL, "http://") || strings.HasPrefix(fullURL, "https://") {
+		// Full URL to a different host — use empty-base client so RawDo
+		// doesn't prepend apiURL.
+		c = client.New(apiKey, "")
+	}
 
 	// Resolve body
 	bodyReader, err := resolveBody(body)

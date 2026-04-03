@@ -149,6 +149,33 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 	}
 }
 
+func TestRunRequest_FullURLDifferentHost(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/custom/endpoint" {
+			t.Errorf("expected /custom/endpoint, got %s", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "key" {
+			t.Errorf("expected x-api-key=key, got %q", r.Header.Get("x-api-key"))
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"full_url":true}`))
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	// Pass a full URL as the path — should NOT prepend apiURL
+	code, err := runRequest("https://different.host", "key", "GET", ts.URL+"/custom/endpoint", "", nil, false, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 200 {
+		t.Errorf("expected 200, got %d", code)
+	}
+	if !strings.Contains(out.String(), "full_url") {
+		t.Errorf("expected full_url in response, got %q", out.String())
+	}
+}
+
 func TestResolveBody_InlineJSON(t *testing.T) {
 	r, err := resolveBody(`{"key":"val"}`)
 	if err != nil {
