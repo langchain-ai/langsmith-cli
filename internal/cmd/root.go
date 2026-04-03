@@ -14,6 +14,7 @@ var (
 	flagAPIKey       string
 	flagAPIURL       string
 	flagOutputFormat string
+	flagProfile      string
 )
 
 // NewRootCmd creates the top-level `langsmith` command.
@@ -51,6 +52,7 @@ Output:
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "json", "Output format: json or pretty")
+	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
@@ -67,11 +69,12 @@ Output:
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
+	rootCmd.AddCommand(newProfileCmd())
 
 	return rootCmd
 }
 
-// GetAPIKey resolves the API key from flag → env → error.
+// GetAPIKey resolves the API key from flag → env → empty.
 func GetAPIKey() string {
 	if flagAPIKey != "" {
 		return flagAPIKey

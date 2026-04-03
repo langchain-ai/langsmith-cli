@@ -224,8 +224,6 @@ func TestRawRequest_SetsAPIKeyHeader(t *testing.T) {
 }
 
 func TestRawRequest_SetsWorkspaceHeader(t *testing.T) {
-	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-123")
-
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-tenant-id"); got != "ws-123" {
 			t.Errorf("expected x-tenant-id=ws-123, got %q", got)
@@ -235,13 +233,12 @@ func TestRawRequest_SetsWorkspaceHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-123")
 	c := New("key", ts.URL)
 	_ = c.RawGet(context.Background(), "/test", nil)
 }
 
 func TestRawRequest_NoWorkspaceHeaderWhenUnset(t *testing.T) {
-	t.Setenv("LANGSMITH_WORKSPACE_ID", "")
-
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-tenant-id"); got != "" {
 			t.Errorf("expected empty x-tenant-id, got %q", got)

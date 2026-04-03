@@ -9,7 +9,7 @@ import (
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update", "api"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update", "api", "profile"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -183,3 +183,17 @@ func TestRootCmd_UnknownSubcommand(t *testing.T) {
 		t.Error("expected error for unknown subcommand")
 	}
 }
+
+// ---------- --profile flag ----------
+
+func TestRootCmd_PersistentFlags_Profile(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("profile")
+	if f == nil {
+		t.Fatal("--profile flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
+	}
+}
+
