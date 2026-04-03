@@ -74,7 +74,7 @@ func newPromptListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List Prompt Hub repos",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			pageSize := int64(20)
@@ -108,7 +108,7 @@ func newPromptListCmd() *cobra.Command {
 				case "updated":
 					params.SortField = langsmith.F(langsmith.RepoListParamsSortFieldUpdatedAt)
 				default:
-					exitErrorf("unknown --sort-by %q (valid: likes, downloads, views, updated)", sortBy)
+					ExitErrorf("unknown --sort-by %q (valid: likes, downloads, views, updated)", sortBy)
 				}
 			}
 
@@ -121,10 +121,10 @@ func newPromptListCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing prompts: %v", err)
+				ExitErrorf("listing prompts: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Full Name", "Public", "Commits", "Likes", "Updated"}
@@ -173,15 +173,15 @@ func newPromptGetCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			resp, err := c.SDK.Repos.Get(ctx, owner, repo)
 			if err != nil {
-				exitErrorf("getting prompt %s/%s: %v", owner, repo, err)
+				ExitErrorf("getting prompt %s/%s: %v", owner, repo, err)
 			}
 
 			r := resp.Repo
@@ -191,7 +191,7 @@ func newPromptGetCmd() *cobra.Command {
 				data["manifest"] = r.LatestCommitManifest.Manifest
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
 			} else {
@@ -216,7 +216,7 @@ func newPromptCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new Prompt Hub repo",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			params := langsmith.RepoNewParams{
@@ -232,7 +232,7 @@ func newPromptCreateCmd() *cobra.Command {
 
 			resp, err := c.SDK.Repos.New(ctx, params)
 			if err != nil {
-				exitErrorf("creating prompt: %v", err)
+				ExitErrorf("creating prompt: %v", err)
 			}
 
 			output.OutputJSON(repoToMap(resp.Repo), "")
@@ -258,7 +258,7 @@ func newPromptDeleteCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			if !yes {
@@ -266,16 +266,16 @@ func newPromptDeleteCmd() *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					exitError("aborted")
+					ExitError("aborted")
 				}
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			_, err = c.SDK.Repos.Delete(ctx, owner, repo)
 			if err != nil {
-				exitErrorf("deleting prompt %s/%s: %v", owner, repo, err)
+				ExitErrorf("deleting prompt %s/%s: %v", owner, repo, err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -303,7 +303,7 @@ func newPromptPullCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, inlineRef, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			ref := "latest"
@@ -314,12 +314,12 @@ func newPromptPullCmd() *cobra.Command {
 				ref = commitRef
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			resp, err := c.SDK.Commits.Get(ctx, owner, repo, ref, langsmith.CommitGetParams{})
 			if err != nil {
-				exitErrorf("pulling %s/%s@%s: %v", owner, repo, ref, err)
+				ExitErrorf("pulling %s/%s@%s: %v", owner, repo, ref, err)
 			}
 
 			data := map[string]any{
@@ -329,7 +329,7 @@ func newPromptPullCmd() *cobra.Command {
 				"manifest":    resp.Manifest,
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
 			} else {
@@ -356,28 +356,28 @@ func newPromptPushCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			var manifestBytes []byte
 			if manifestFile != "" {
 				manifestBytes, err = os.ReadFile(manifestFile)
 				if err != nil {
-					exitErrorf("reading manifest file: %v", err)
+					ExitErrorf("reading manifest file: %v", err)
 				}
 			} else {
 				manifestBytes, err = io.ReadAll(os.Stdin)
 				if err != nil {
-					exitErrorf("reading stdin: %v", err)
+					ExitErrorf("reading stdin: %v", err)
 				}
 			}
 
 			var manifest any
 			if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-				exitErrorf("parsing manifest JSON: %v", err)
+				ExitErrorf("parsing manifest JSON: %v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			params := langsmith.CommitNewParams{
@@ -389,7 +389,7 @@ func newPromptPushCmd() *cobra.Command {
 
 			resp, err := c.SDK.Commits.New(ctx, owner, repo, params)
 			if err != nil {
-				exitErrorf("pushing commit to %s/%s: %v", owner, repo, err)
+				ExitErrorf("pushing commit to %s/%s: %v", owner, repo, err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -421,10 +421,10 @@ func newPromptCommitsCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			pageSize := int64(20)
@@ -443,10 +443,10 @@ func newPromptCommitsCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing commits: %v", err)
+				ExitErrorf("listing commits: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Hash", "Author", "Downloads", "Created"}
@@ -529,19 +529,19 @@ func newPromptTagListCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			var tags []repoTag
 			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
 			if err := c.RawGet(ctx, path, &tags); err != nil {
-				exitErrorf("listing tags for %s/%s: %v", owner, repo, err)
+				ExitErrorf("listing tags for %s/%s: %v", owner, repo, err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Tag", "Commit ID", "Created"}
@@ -584,10 +584,10 @@ func newPromptTagCreateCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{
@@ -597,7 +597,7 @@ func newPromptTagCreateCmd() *cobra.Command {
 			var tag repoTag
 			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
 			if err := c.RawPost(ctx, path, body, &tag); err != nil {
-				exitErrorf("creating tag %q: %v", tagName, err)
+				ExitErrorf("creating tag %q: %v", tagName, err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -626,11 +626,11 @@ func newPromptTagUpdateCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			owner, repo, _, err := parseOwnerRepo(args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 			tagName := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{
@@ -640,7 +640,7 @@ func newPromptTagUpdateCmd() *cobra.Command {
 			var tag repoTag
 			path := fmt.Sprintf("/repos/%s/%s/tags", owner, repo)
 			if err := c.RawPost(ctx, path, body, &tag); err != nil {
-				exitErrorf("updating tag %q: %v", tagName, err)
+				ExitErrorf("updating tag %q: %v", tagName, err)
 			}
 
 			output.OutputJSON(map[string]any{

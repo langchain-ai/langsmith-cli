@@ -54,7 +54,7 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
 	}
 
 	cmp := compareVersions(currentVersion, latest)
-	format := getFormat()
+	format := GetFormat()
 
 	if cmp >= 0 {
 		if format == "pretty" {

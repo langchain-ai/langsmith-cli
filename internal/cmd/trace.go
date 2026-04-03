@@ -63,11 +63,11 @@ func newTraceListCmd() *cobra.Command {
 				ff.Limit = defaultLimit
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -76,10 +76,10 @@ func newTraceListCmd() *cobra.Command {
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				if showHierarchy {
@@ -89,7 +89,7 @@ func newTraceListCmd() *cobra.Command {
 							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
 						}, projectName, 1000, 0)
 						if err != nil {
-							exitErrorf("%v", err)
+							ExitErrorf("%v", err)
 						}
 						output.OutputTree(runsToTreeData(allRuns), "")
 					}
@@ -110,7 +110,7 @@ func newTraceListCmd() *cobra.Command {
 						childParams.Trace = langsmith.F(run.TraceID)
 						allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 						if err != nil {
-							exitErrorf("%v", err)
+							ExitErrorf("%v", err)
 						}
 						result = append(result, map[string]any{
 							"trace_id":  run.TraceID,
@@ -163,11 +163,11 @@ func newTraceGetCmd() *cobra.Command {
 				includeFeedback = true
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
 			}
 
 			params := langsmith.RunQueryParams{
@@ -181,10 +181,10 @@ func newTraceGetCmd() *cobra.Command {
 
 			runs, err := queryRuns(ctx, c, params, projectName, 1000, 0)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				output.OutputTree(runsToTreeData(runs), "")
@@ -239,14 +239,14 @@ func newTraceExportCmd() *cobra.Command {
 			}
 
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				exitErrorf("creating output directory: %v", err)
+				ExitErrorf("creating output directory: %v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -256,7 +256,7 @@ func newTraceExportCmd() *cobra.Command {
 			}
 			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			exported := 0
@@ -272,7 +272,7 @@ func newTraceExportCmd() *cobra.Command {
 				}
 				allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 				if err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 
 				name := root.Name
@@ -288,7 +288,7 @@ func newTraceExportCmd() *cobra.Command {
 
 				f, err := os.Create(fpath)
 				if err != nil {
-					exitErrorf("creating file %s: %v", fpath, err)
+					ExitErrorf("creating file %s: %v", fpath, err)
 				}
 
 				for _, run := range allRuns {

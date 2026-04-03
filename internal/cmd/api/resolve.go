@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -9,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveAPIKey resolves the API key from cobra persistent flags → env → empty.
+// resolveAPIKey reads the API key from cobra's inherited persistent flags → env.
+// This is not a duplicate of cmd.GetAPIKey — that reads from package-level flag
+// vars, while this reads from cobra's flag tree (needed because the api sub-package
+// cannot import cmd due to circular dependency).
 func resolveAPIKey(cmd *cobra.Command) string {
 	if v, _ := cmd.Flags().GetString("api-key"); v != "" {
 		return v
@@ -17,7 +19,7 @@ func resolveAPIKey(cmd *cobra.Command) string {
 	return os.Getenv("LANGSMITH_API_KEY")
 }
 
-// resolveAPIURL resolves the API URL from cobra persistent flags → env → default.
+// resolveAPIURL reads the API URL from cobra's inherited persistent flags → env → default.
 func resolveAPIURL(cmd *cobra.Command) string {
 	if v, _ := cmd.Flags().GetString("api-url"); v != "" {
 		return client.NormalizeURL(v)
@@ -28,22 +30,13 @@ func resolveAPIURL(cmd *cobra.Command) string {
 	return "https://api.smith.langchain.com"
 }
 
-// resolveFormat resolves the output format from cobra persistent flags.
+// resolveFormat reads the output format from cobra's inherited persistent flags.
 func resolveFormat(cmd *cobra.Command) string {
 	v, _ := cmd.Flags().GetString("format")
 	if v == "" {
 		return "json"
 	}
 	return v
-}
-
-// mustClient creates a client or exits with an error.
-func mustClient(cmd *cobra.Command) *client.Client {
-	apiKey := resolveAPIKey(cmd)
-	if apiKey == "" {
-		exitError("LANGSMITH_API_KEY not set")
-	}
-	return client.New(apiKey, resolveAPIURL(cmd))
 }
 
 // resolveEndpoint resolves an endpoint argument to a full URL.
@@ -67,15 +60,4 @@ func isHTTPMethod(s string) bool {
 		return true
 	}
 	return false
-}
-
-// exitError prints a JSON error to stderr and exits.
-func exitError(msg string) {
-	fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", msg)
-	os.Exit(1)
-}
-
-// exitErrorf prints a formatted JSON error to stderr and exits.
-func exitErrorf(format string, args ...any) {
-	exitError(fmt.Sprintf(format, args...))
 }

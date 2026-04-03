@@ -44,7 +44,7 @@ func newExperimentListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List experiments, optionally filtered by dataset (default: 20)",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			pageSize := int64(20)
@@ -60,7 +60,7 @@ func newExperimentListCmd() *cobra.Command {
 			if datasetName != "" {
 				ds, err := resolveDataset(ctx, c, datasetName)
 				if err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 				params.ReferenceDataset = langsmith.F([]string{ds.ID})
 			}
@@ -74,9 +74,9 @@ func newExperimentListCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing experiments: %v", err)
+				ExitErrorf("listing experiments: %v", err)
 			}
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "ID", "Dataset ID", "Runs"}
@@ -132,7 +132,7 @@ func newExperimentGetCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			nameOrID := args[0]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			var p langsmith.TracerSession
@@ -143,7 +143,7 @@ func newExperimentGetCmd() *cobra.Command {
 					IncludeStats: langsmith.F(true),
 				})
 				if err != nil {
-					exitErrorf("fetching experiment by ID: %v", err)
+					ExitErrorf("fetching experiment by ID: %v", err)
 				}
 				p = *session
 			} else {
@@ -155,10 +155,10 @@ func newExperimentGetCmd() *cobra.Command {
 				}
 				resp, err := c.SDK.Sessions.List(ctx, params)
 				if err != nil {
-					exitErrorf("fetching experiment: %v", err)
+					ExitErrorf("fetching experiment: %v", err)
 				}
 				if len(resp.Items) == 0 {
-					exitErrorf("experiment not found: %s", nameOrID)
+					ExitErrorf("experiment not found: %s", nameOrID)
 				}
 				p = resp.Items[0]
 			}
@@ -183,7 +183,7 @@ func newExperimentGetCmd() *cobra.Command {
 				}
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
 			} else {
