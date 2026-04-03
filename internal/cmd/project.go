@@ -47,7 +47,7 @@ func newProjectListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List tracing projects in the workspace (default: 20, sorted by most recent activity)",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			pageSize := int64(20)
@@ -72,9 +72,9 @@ func newProjectListCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing projects: %v", err)
+				ExitErrorf("listing projects: %v", err)
 			}
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "ID", "Runs", "Latency p50", "Error Rate", "Last Active"}

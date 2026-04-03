@@ -75,7 +75,7 @@ Use --copy to copy instead of symlink.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			skillName := args[0]
-			c := mustGetClient()
+			c := MustGetClient()
 
 			var canonicalDir string
 			if global {
@@ -176,7 +176,7 @@ Use --copy to copy instead of symlink.`,
 				Files:     written,
 			}
 
-			if getFormat() == "pretty" {
+			if GetFormat() == "pretty" {
 				fmt.Printf("Installed skill %q to %s\n", skillName, canonicalAbs)
 				for _, l := range linked {
 					fmt.Printf("  Linked: %s\n", l)
