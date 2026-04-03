@@ -96,6 +96,50 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 	return c.rawRequest(ctx, http.MethodDelete, path, nil, result)
 }
 
+// RawDo performs an arbitrary HTTP request and returns the raw response.
+// Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
+// does not treat 4xx/5xx as errors — callers decide how to handle status codes.
+// body may be nil. extraHeaders are merged on top of the default auth headers.
+func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, respHeaders http.Header, respBody []byte, err error) {
+	url := c.apiURL + path
+
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("x-api-key", c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
+		req.Header.Set("x-tenant-id", wsID)
+	}
+	for k, vals := range extraHeaders {
+		for _, v := range vals {
+			req.Header.Set(k, v)
+		}
+	}
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	return resp.StatusCode, resp.Header, respBody, nil
+}
+
+// APIKey returns the client's API key.
+func (c *Client) APIKey() string { return c.apiKey }
+
+// APIURL returns the client's normalized API URL.
+func (c *Client) APIURL() string { return c.apiURL }
+
 func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any) error {
 	url := c.apiURL + path
 
