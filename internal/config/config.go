@@ -15,8 +15,11 @@ import (
 )
 
 // Profile holds per-profile configuration.
+// A profile uses either APIKey (X-API-Key header) or BearerToken
+// (Authorization: Bearer header) for authentication, not both.
 type Profile struct {
 	APIKey      string
+	BearerToken string
 	APIURL      string
 	WorkspaceID string
 }
@@ -82,6 +85,9 @@ func LoadFrom(path string) (*Config, error) {
 		p := Profile{}
 		if v, ok := section["api_key"].(string); ok {
 			p.APIKey = v
+		}
+		if v, ok := section["bearer_token"].(string); ok {
+			p.BearerToken = v
 		}
 		if v, ok := section["api_url"].(string); ok {
 			p.APIURL = v
@@ -154,6 +160,9 @@ func (c *Config) SaveTo(path string) error {
 		w("\n[%s]\n", name)
 		if p.APIKey != "" {
 			w("api_key = %q\n", p.APIKey)
+		}
+		if p.BearerToken != "" {
+			w("bearer_token = %q\n", p.BearerToken)
 		}
 		if p.APIURL != "" {
 			w("api_url = %q\n", p.APIURL)
