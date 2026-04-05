@@ -25,27 +25,7 @@ type forgeIssue struct {
 	ResolvedAt   *string   `json:"resolved_at"`
 }
 
-func newIssuesCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "issues",
-		Short: "Manage issues on the LangSmith Issues Board",
-		Long: `Manage issues on the LangSmith Issues Board.
-
-The Issues Board surfaces problems detected in your tracing projects —
-e.g. repeated failures, regressions, or patterns flagged by the Issues
-Agent. Use this command group to list and inspect issues programmatically.
-
-Examples:
-  langsmith issues list --project my-app
-  langsmith issues list --project my-app --status open --priority high
-  langsmith issues list --project my-app --format pretty`,
-	}
-
-	cmd.AddCommand(newIssuesListCmd())
-	return cmd
-}
-
-func newIssuesListCmd() *cobra.Command {
+func newProjectIssuesCmd() *cobra.Command {
 	var (
 		project    string
 		status     string
@@ -55,8 +35,8 @@ func newIssuesListCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List forge issues for a tracing project",
+		Use:   "issues",
+		Short: "List issues for a tracing project",
 		Long: `List forge issues associated with a tracing project.
 
 Fetches issues from the Issues Board for the specified project. Results
@@ -64,10 +44,10 @@ can be filtered by status (open/closed) and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
-  langsmith issues list --project my-app
-  langsmith issues list --project my-app --status open
-  langsmith issues list --project my-app --priority high --limit 10
-  langsmith issues list --project my-app --format pretty -o issues.json`,
+  langsmith project issues --project my-app
+  langsmith project issues --project my-app --status open
+  langsmith project issues --project my-app --priority high --limit 10
+  langsmith project issues --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()
@@ -77,7 +57,6 @@ Examples:
 				exitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
-			// Build query path with optional filters.
 			path := fmt.Sprintf("/v1/platform/forge-issues?session_name=%s", urlEscape(projectName))
 			if status != "" {
 				path += "&status=" + urlEscape(status)
@@ -91,7 +70,6 @@ Examples:
 				exitErrorf("listing issues: %v", err)
 			}
 
-			// Apply client-side limit.
 			if limit > 0 && len(issues) > limit {
 				issues = issues[:limit]
 			}
@@ -135,7 +113,6 @@ Examples:
 	return cmd
 }
 
-// issueToMap converts a forgeIssue to a plain map for JSON output.
 func issueToMap(issue forgeIssue) map[string]any {
 	m := map[string]any{
 		"id":             issue.ID,
@@ -161,7 +138,6 @@ func issueToMap(issue forgeIssue) map[string]any {
 	return m
 }
 
-// formatIssueTime formats a time.Time for the pretty table.
 func formatIssueTime(t time.Time) string {
 	if t.IsZero() {
 		return "N/A"
@@ -169,8 +145,6 @@ func formatIssueTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-// urlEscape percent-encodes a string for use in a query parameter value.
-// Only encodes characters that would break URL parsing (space, &, =, +, #).
 func urlEscape(s string) string {
 	s = strings.ReplaceAll(s, "%", "%25")
 	s = strings.ReplaceAll(s, " ", "%20")
@@ -181,7 +155,6 @@ func urlEscape(s string) string {
 	return s
 }
 
-// truncate shortens a string to at most n runes, appending "…" if cut.
 func truncate(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {
