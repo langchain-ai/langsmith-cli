@@ -33,6 +33,7 @@ Examples:
 	cmd.AddCommand(newTraceListCmd())
 	cmd.AddCommand(newTraceGetCmd())
 	cmd.AddCommand(newTraceExportCmd())
+	cmd.AddCommand(newTraceMessagesCmd())
 	return cmd
 }
 

@@ -8,7 +8,7 @@ import (
 
 func TestTraceCmd_Subcommands(t *testing.T) {
 	cmd := newTraceCmd()
-	expected := map[string]bool{"list": false, "get": false, "export": false}
+	expected := map[string]bool{"list": false, "get": false, "export": false, "messages": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
