@@ -1,5 +1,6 @@
 # langsmith-cli
 
+> [!IMPORTANT]
 > **Alpha** — This CLI is under active development. Commands, flags, and output schemas may change between releases. Feedback and bug reports welcome via [GitHub Issues](https://github.com/langchain-ai/langsmith-cli/issues).
 
 An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
