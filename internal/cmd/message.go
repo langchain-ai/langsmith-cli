@@ -16,8 +16,9 @@ func newTraceMessagesCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "messages",
-		Short: "Get conversation messages for multiple traces (batch)",
-		Long: `Get conversation messages for multiple traces in a single request.
+		Short: "[Private Beta] Get conversation messages for multiple traces (batch)",
+		Long: `[Private Beta] Get conversation messages for multiple traces in a single request.
+This feature is currently in private beta and may not be available to all users.
 
 Queries root runs matching the given filters, then returns normalized
 conversation messages extracted from each trace's LLM and tool runs.
