@@ -35,9 +35,11 @@ func newProjectIssuesCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "issues",
-		Short: "List issues for a tracing project",
-		Long: `List forge issues associated with a tracing project.
+		Use:    "issues",
+		Short:  "[Private Beta] List issues for a tracing project",
+		Hidden: true,
+		Long: `[Private Beta] List forge issues associated with a tracing project.
+This feature is currently in private beta and may not be available to all users.
 
 Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).

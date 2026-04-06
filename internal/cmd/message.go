@@ -16,7 +16,8 @@ func newTraceMessagesCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "messages",
-		Short: "[Private Beta] Get conversation messages for multiple traces (batch)",
+		Short:  "[Private Beta] Get conversation messages for multiple traces (batch)",
+		Hidden: true,
 		Long: `[Private Beta] Get conversation messages for multiple traces in a single request.
 This feature is currently in private beta and may not be available to all users.
 
