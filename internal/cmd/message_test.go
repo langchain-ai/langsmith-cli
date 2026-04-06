@@ -69,12 +69,12 @@ func TestTraceMessages_Success(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]any{
+			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-123", "name": "my-project"},
 			})
 		case r.URL.Path == "/api/v1/v2/traces/messages" && r.Method == "POST":
 			var body map[string]any
-			json.NewDecoder(r.Body).Decode(&body)
+			_ = json.NewDecoder(r.Body).Decode(&body)
 
 			// Verify required fields
 			session, _ := body["session"].([]any)
@@ -83,7 +83,7 @@ func TestTraceMessages_Success(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"traces": []map[string]any{
 					{
 						"trace_id": "trace-1",
@@ -137,13 +137,13 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v1/sessions":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]any{
+			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-456", "name": "test-proj"},
 			})
 		case r.URL.Path == "/api/v1/v2/traces/messages":
-			json.NewDecoder(r.Body).Decode(&receivedBody)
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"traces":  []any{},
 				"cursors": map[string]string{},
 			})
@@ -181,12 +181,12 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v1/sessions":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]any{
+			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-pretty", "name": "my-project"},
 			})
 		case r.URL.Path == "/api/v1/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"traces": []map[string]any{
 					{
 						"trace_id": "trace-aaa",
@@ -282,12 +282,12 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v1/sessions":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]any{
+			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-789", "name": "empty-proj"},
 			})
 		case r.URL.Path == "/api/v1/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"traces":  []any{},
 				"cursors": map[string]string{},
 			})
