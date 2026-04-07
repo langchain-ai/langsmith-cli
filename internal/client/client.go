@@ -17,9 +17,10 @@ import (
 
 // Client wraps the LangSmith Go SDK and provides helpers for raw HTTP calls.
 type Client struct {
-	SDK    *langsmith.Client
-	apiKey string
-	apiURL string
+	SDK         *langsmith.Client
+	apiKey      string
+	apiURL      string
+	workspaceID string
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
@@ -55,6 +56,7 @@ func New(apiKey, apiURL string) *Client {
 		SDK:          langsmith.NewClient(opts...),
 		apiKey:       apiKey,
 		apiURL:       normalized,
+		workspaceID:  os.Getenv("LANGSMITH_WORKSPACE_ID"),
 		sessionCache: make(map[string]string),
 	}
 }
@@ -115,8 +117,8 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
-		req.Header.Set("x-tenant-id", wsID)
+	if c.workspaceID != "" {
+		req.Header.Set("x-tenant-id", c.workspaceID)
 	}
 	for k, vals := range extraHeaders {
 		req.Header[k] = vals
