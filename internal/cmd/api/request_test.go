@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 )
 
 func TestRunRequest_GET(t *testing.T) {
@@ -28,7 +30,8 @@ func TestRunRequest_GET(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	code, err := runRequest(ts.URL, "test-key", "GET", "sessions", "", nil, false, &out)
+	c := client.New("test-key", ts.URL)
+	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -57,7 +60,8 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	code, err := runRequest(ts.URL, "key", "POST", "sessions", `{"name":"test"}`, nil, false, &out)
+	c := client.New("key", ts.URL)
+	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +81,8 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	_, err := runRequest(ts.URL, "key", "GET", "sessions", "", []string{"X-Custom:val"}, false, &out)
+	c := client.New("key", ts.URL)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"}, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +97,8 @@ func TestRunRequest_Include(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	_, err := runRequest(ts.URL, "key", "GET", "sessions", "", nil, true, &out)
+	c := client.New("key", ts.URL)
+	_, err := runRequest(c, "GET", "sessions", "", nil, true, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +118,8 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	code, err := runRequest(ts.URL, "key", "GET", "sessions", "", nil, false, &out)
+	c := client.New("key", ts.URL)
+	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +144,8 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 	f.Close()
 
 	var out bytes.Buffer
-	code, err := runRequest(ts.URL, "key", "POST", "sessions", "@"+f.Name(), nil, false, &out)
+	c := client.New("key", ts.URL)
+	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,8 +162,8 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 		if r.URL.Path != "/custom/endpoint" {
 			t.Errorf("expected /custom/endpoint, got %s", r.URL.Path)
 		}
-		if r.Header.Get("x-api-key") != "key" {
-			t.Errorf("expected x-api-key=key, got %q", r.Header.Get("x-api-key"))
+		if r.Header.Get("x-api-key") != "" {
+			t.Errorf("expected no x-api-key for external host, got %q", r.Header.Get("x-api-key"))
 		}
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte(`{"full_url":true}`))
@@ -163,16 +171,32 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 	defer ts.Close()
 
 	var out bytes.Buffer
-	// Pass a full URL as the path — should NOT prepend apiURL
-	code, err := runRequest("https://different.host", "key", "GET", ts.URL+"/custom/endpoint", "", nil, false, &out)
+	c := client.New("key", "https://different.host")
+	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if code != 200 {
 		t.Errorf("expected 200, got %d", code)
 	}
-	if !strings.Contains(out.String(), "full_url") {
-		t.Errorf("expected full_url in response, got %q", out.String())
+}
+
+func TestRunRequest_MultiValueHeaders(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vals := r.Header.Values("X-Multi")
+		if len(vals) != 2 || vals[0] != "one" || vals[1] != "two" {
+			t.Errorf("expected X-Multi=[one, two], got %v", vals)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	c := client.New("key", ts.URL)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"}, false, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

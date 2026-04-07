@@ -1,16 +1,15 @@
 package api
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
 )
 
 const specCacheTTL = 24 * time.Hour
@@ -269,17 +268,21 @@ func (s *OpenAPISpec) resolveComponentRef(ref string) any {
 
 // loadSpec loads the OpenAPI spec, using cache if available and not expired.
 func loadSpec(apiURL, cacheDir string, forceRefresh bool) (*OpenAPISpec, error) {
-	cachePath := specCachePath(cacheDir, apiURL)
+	cachePath := cache.PathForKey(cacheDir, "openapi", apiURL)
 
 	if !forceRefresh {
-		if spec, err := loadCachedSpec(cachePath); err == nil {
-			return spec, nil
+		if data, err := cache.ReadIfFresh(cachePath, specCacheTTL); err == nil {
+			var spec OpenAPISpec
+			if err := json.Unmarshal(data, &spec); err == nil {
+				return &spec, nil
+			}
 		}
 	}
 
 	// Fetch from server
 	specURL := apiURL + "/openapi.json"
-	resp, err := http.Get(specURL)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Get(specURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching OpenAPI spec from %s: %w", specURL, err)
 	}
@@ -299,49 +302,8 @@ func loadSpec(apiURL, cacheDir string, forceRefresh bool) (*OpenAPISpec, error) 
 		return nil, fmt.Errorf("parsing OpenAPI spec: %w", err)
 	}
 
-	// Write cache (best-effort; ignore errors so a read-only cache dir doesn't break the command)
-	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
-		return &spec, nil
-	}
-	if err := os.WriteFile(cachePath, data, 0644); err != nil {
-		return &spec, nil
-	}
+	// Write cache (best-effort)
+	_ = cache.Write(cachePath, data)
 
 	return &spec, nil
-}
-
-// loadCachedSpec reads a cached spec if it exists and is within TTL.
-func loadCachedSpec(cachePath string) (*OpenAPISpec, error) {
-	info, err := os.Stat(cachePath)
-	if err != nil {
-		return nil, err
-	}
-	if time.Since(info.ModTime()) > specCacheTTL {
-		return nil, fmt.Errorf("cache expired")
-	}
-	data, err := os.ReadFile(cachePath)
-	if err != nil {
-		return nil, err
-	}
-	var spec OpenAPISpec
-	if err := json.Unmarshal(data, &spec); err != nil {
-		return nil, err
-	}
-	return &spec, nil
-}
-
-// specCachePath returns the cache file path for a given API URL.
-func specCachePath(cacheDir, apiURL string) string {
-	h := sha256.Sum256([]byte(apiURL))
-	name := fmt.Sprintf("openapi-%x.json", h[:8])
-	return filepath.Join(cacheDir, name)
-}
-
-// defaultCacheDir returns ~/.langsmith/cache.
-func defaultCacheDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "langsmith-cache")
-	}
-	return filepath.Join(home, ".langsmith", "cache")
 }

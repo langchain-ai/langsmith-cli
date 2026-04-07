@@ -40,18 +40,13 @@ func TestLsCmd_JSON(t *testing.T) {
 	ts := newTestSpecServer(t)
 	defer ts.Close()
 
-	cmd := newLsCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--refresh"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--refresh"})
 
-	lsAPIURL = ts.URL
-	lsCacheDir = t.TempDir()
-	lsFormat = "json"
-	defer func() { lsAPIURL = ""; lsCacheDir = ""; lsFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -68,18 +63,13 @@ func TestLsCmd_FilterByTag(t *testing.T) {
 	ts := newTestSpecServer(t)
 	defer ts.Close()
 
-	cmd := newLsCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--tag", "datasets", "--refresh"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--tag", "datasets", "--refresh"})
 
-	lsAPIURL = ts.URL
-	lsCacheDir = t.TempDir()
-	lsFormat = "json"
-	defer func() { lsAPIURL = ""; lsCacheDir = ""; lsFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -101,18 +91,13 @@ func TestLsCmd_Search(t *testing.T) {
 	ts := newTestSpecServer(t)
 	defer ts.Close()
 
-	cmd := newLsCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--search", "query", "--refresh"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--search", "query", "--refresh"})
 
-	lsAPIURL = ts.URL
-	lsCacheDir = t.TempDir()
-	lsFormat = "json"
-	defer func() { lsAPIURL = ""; lsCacheDir = ""; lsFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -129,18 +114,13 @@ func TestLsCmd_Pretty(t *testing.T) {
 	ts := newTestSpecServer(t)
 	defer ts.Close()
 
-	cmd := newLsCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--refresh"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--format", "pretty", "--refresh"})
 
-	lsAPIURL = ts.URL
-	lsCacheDir = t.TempDir()
-	lsFormat = "pretty"
-	defer func() { lsAPIURL = ""; lsCacheDir = ""; lsFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

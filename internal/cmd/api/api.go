@@ -2,9 +2,9 @@ package api
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +24,7 @@ func NewCmd() *cobra.Command {
 Browse endpoints:
   langsmith api ls                              List all endpoints
   langsmith api ls --tag datasets               Filter by tag
-  langsmith api ls --search "create"            Search endpoints
+  langsmith api ls --search create              Search endpoints
   langsmith api info GET sessions               Show endpoint details
 
 Make requests:
@@ -47,19 +47,18 @@ Make requests:
 
 			path := args[1]
 
-			apiKey := resolveAPIKey(cmd)
-			if apiKey == "" {
-				return fmt.Errorf("LANGSMITH_API_KEY not set")
+			c, err := cmdutil.GetClient(cmd)
+			if err != nil {
+				return err
 			}
-			apiURL := resolveAPIURL(cmd)
 
 			w := cmd.OutOrStdout()
-			statusCode, err := runRequest(apiURL, apiKey, method, path, body, headers, include, w)
+			statusCode, err := runRequest(c, method, path, body, headers, include, w)
 			if err != nil {
 				return err
 			}
 			if statusCode >= 400 {
-				os.Exit(1)
+				return fmt.Errorf("HTTP %d", statusCode)
 			}
 			return nil
 		},

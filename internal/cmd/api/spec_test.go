@@ -5,22 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
-)
 
-func TestSpecCachePath(t *testing.T) {
-	p1 := specCachePath("/tmp/test-cache", "https://api.smith.langchain.com")
-	p2 := specCachePath("/tmp/test-cache", "https://myhost.com")
-	if p1 == p2 {
-		t.Error("expected different cache paths for different API URLs")
-	}
-	wantDir := filepath.FromSlash("/tmp/test-cache")
-	if filepath.Dir(p1) != wantDir {
-		t.Errorf("expected cache dir %s, got %s", wantDir, filepath.Dir(p1))
-	}
-}
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
+)
 
 func TestLoadSpec_FromServer(t *testing.T) {
 	spec := map[string]any{
@@ -124,7 +113,7 @@ func TestLoadSpec_ExpiredCache(t *testing.T) {
 	cacheDir := t.TempDir()
 
 	_, _ = loadSpec(ts.URL, cacheDir, false)
-	cachePath := specCachePath(cacheDir, ts.URL)
+	cachePath := cache.PathForKey(cacheDir, "openapi", ts.URL)
 	old := time.Now().Add(-25 * time.Hour)
 	if err := os.Chtimes(cachePath, old, old); err != nil {
 		t.Fatal(err)

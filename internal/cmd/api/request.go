@@ -15,20 +15,20 @@ import (
 
 // runRequest executes an HTTP request and writes the response to w.
 // Returns the HTTP status code and any transport-level error.
-func runRequest(apiURL, apiKey, method, path, body string, headers []string, include bool, w io.Writer) (int, error) {
-	c := client.New(apiKey, apiURL)
-
+func runRequest(c *client.Client, method, path, body string, headers []string, include bool, w io.Writer) (int, error) {
+	apiURL := c.APIURL()
 	fullURL := resolveEndpoint(apiURL, path)
+
 	// RawDo prepends apiURL, so compute the relative path.
 	// For full URLs with a different host, pass the full URL as the path
-	// to a client constructed with an empty base URL.
+	// to a client constructed with an empty base URL and no API key
+	// (don't leak credentials to external hosts).
+	reqClient := c
 	relPath := fullURL
 	if strings.HasPrefix(fullURL, apiURL) {
 		relPath = strings.TrimPrefix(fullURL, apiURL)
 	} else if strings.HasPrefix(fullURL, "http://") || strings.HasPrefix(fullURL, "https://") {
-		// Full URL to a different host — use empty-base client so RawDo
-		// doesn't prepend apiURL.
-		c = client.New(apiKey, "")
+		reqClient = client.New("", "")
 	}
 
 	// Resolve body
@@ -44,10 +44,10 @@ func runRequest(apiURL, apiKey, method, path, body string, headers []string, inc
 		if !ok {
 			return 0, fmt.Errorf("invalid header format %q (expected Key:Value)", h)
 		}
-		extraHeaders.Set(strings.TrimSpace(k), strings.TrimSpace(v))
+		extraHeaders.Add(strings.TrimSpace(k), strings.TrimSpace(v))
 	}
 
-	statusCode, proto, respHeaders, respBody, err := c.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
+	statusCode, proto, respHeaders, respBody, err := reqClient.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
 	if err != nil {
 		return 0, err
 	}

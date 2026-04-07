@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-)
-
-// Test overrides — empty means "use real values from cobra flags".
-var (
-	lsAPIURL   string
-	lsCacheDir string
-	lsFormat   string
 )
 
 func newLsCmd() *cobra.Command {
@@ -33,22 +28,13 @@ The endpoint list is fetched from the OpenAPI spec and cached locally for 24 hou
 Examples:
   langsmith api ls
   langsmith api ls --tag datasets
-  langsmith api ls --search "create"
+  langsmith api ls --search create
   langsmith api ls --tag run --search query
   langsmith api ls --refresh`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			apiURL := lsAPIURL
-			if apiURL == "" {
-				apiURL = resolveAPIURL(cmd)
-			}
-			cacheDir := lsCacheDir
-			if cacheDir == "" {
-				cacheDir = defaultCacheDir()
-			}
-			format := lsFormat
-			if format == "" {
-				format = resolveFormat(cmd)
-			}
+			apiURL := cmdutil.ResolveAPIURL(cmd)
+			cacheDir := cache.DefaultDir()
+			format := cmdutil.ResolveFormat(cmd)
 
 			spec, err := loadSpec(apiURL, cacheDir, refresh)
 			if err != nil {

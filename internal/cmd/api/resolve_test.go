@@ -18,6 +18,7 @@ func TestResolveEndpoint(t *testing.T) {
 		{"full URL https", "https://api.smith.langchain.com", "https://other.host/foo", "https://other.host/foo"},
 		{"full URL http", "https://api.smith.langchain.com", "http://other.host/foo", "http://other.host/foo"},
 		{"self-hosted base", "https://myhost.com", "sessions", "https://myhost.com/api/v1/sessions"},
+		{"trailing slash on base", "https://api.smith.langchain.com/", "sessions", "https://api.smith.langchain.com/api/v1/sessions"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
-)
-
-// Test overrides.
-var (
-	infoAPIURL   string
-	infoCacheDir string
-	infoFormat   string
 )
 
 func newInfoCmd() *cobra.Command {
@@ -32,18 +27,9 @@ Examples:
 			method := args[0]
 			path := args[1]
 
-			apiURL := infoAPIURL
-			if apiURL == "" {
-				apiURL = resolveAPIURL(cmd)
-			}
-			cacheDir := infoCacheDir
-			if cacheDir == "" {
-				cacheDir = defaultCacheDir()
-			}
-			format := infoFormat
-			if format == "" {
-				format = resolveFormat(cmd)
-			}
+			apiURL := cmdutil.ResolveAPIURL(cmd)
+			cacheDir := cache.DefaultDir()
+			format := cmdutil.ResolveFormat(cmd)
 
 			spec, err := loadSpec(apiURL, cacheDir, refresh)
 			if err != nil {

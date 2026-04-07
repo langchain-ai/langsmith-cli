@@ -80,18 +80,13 @@ func TestInfoCmd_JSON(t *testing.T) {
 	ts := newDetailedSpecServer(t)
 	defer ts.Close()
 
-	cmd := newInfoCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"GET", "/api/v1/sessions"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "GET", "/api/v1/sessions"})
 
-	infoAPIURL = ts.URL
-	infoCacheDir = t.TempDir()
-	infoFormat = "json"
-	defer func() { infoAPIURL = ""; infoCacheDir = ""; infoFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -117,18 +112,13 @@ func TestInfoCmd_Shorthand(t *testing.T) {
 	ts := newDetailedSpecServer(t)
 	defer ts.Close()
 
-	cmd := newInfoCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"GET", "sessions"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "GET", "sessions"})
 
-	infoAPIURL = ts.URL
-	infoCacheDir = t.TempDir()
-	infoFormat = "json"
-	defer func() { infoAPIURL = ""; infoCacheDir = ""; infoFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -145,18 +135,13 @@ func TestInfoCmd_WithRequestBody(t *testing.T) {
 	ts := newDetailedSpecServer(t)
 	defer ts.Close()
 
-	cmd := newInfoCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"POST", "runs/query"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "POST", "runs/query"})
 
-	infoAPIURL = ts.URL
-	infoCacheDir = t.TempDir()
-	infoFormat = "json"
-	defer func() { infoAPIURL = ""; infoCacheDir = ""; infoFormat = "" }()
-
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -173,18 +158,13 @@ func TestInfoCmd_NotFound(t *testing.T) {
 	ts := newDetailedSpecServer(t)
 	defer ts.Close()
 
-	cmd := newInfoCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"GET", "nonexistent"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "GET", "nonexistent"})
 
-	infoAPIURL = ts.URL
-	infoCacheDir = t.TempDir()
-	infoFormat = "json"
-	defer func() { infoAPIURL = ""; infoCacheDir = ""; infoFormat = "" }()
-
-	err := cmd.Execute()
+	err := root.Execute()
 	if err == nil {
 		t.Fatal("expected error for nonexistent endpoint")
 	}
