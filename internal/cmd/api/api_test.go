@@ -43,7 +43,7 @@ func TestNewCmd_RequestFlags(t *testing.T) {
 func TestNewCmd_GETRequest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/openapi.json" {
-			json.NewEncoder(w).Encode(map[string]any{"openapi": "3.1.0", "paths": map[string]any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"openapi": "3.1.0", "paths": map[string]any{}})
 			return
 		}
 		if r.Method != "GET" {
@@ -74,7 +74,7 @@ func TestNewCmd_GETRequest(t *testing.T) {
 func TestNewCmd_POSTWithBody(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/openapi.json" {
-			json.NewEncoder(w).Encode(map[string]any{"openapi": "3.1.0", "paths": map[string]any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"openapi": "3.1.0", "paths": map[string]any{}})
 			return
 		}
 		if r.Method != "POST" {

@@ -65,7 +65,7 @@ func (s *OpenAPISpec) Endpoints() []Endpoint {
 				Summary string   `json:"summary"`
 				Tags    []string `json:"tags"`
 			}
-			json.Unmarshal(raw, &detail)
+			_ = json.Unmarshal(raw, &detail)
 			tag := ""
 			if len(detail.Tags) > 0 {
 				tag = detail.Tags[0]
@@ -114,7 +114,7 @@ func (s *OpenAPISpec) LookupEndpoint(method, path string) (*EndpointDetail, erro
 		RequestBody json.RawMessage   `json:"requestBody"`
 		Responses   json.RawMessage   `json:"responses"`
 	}
-	json.Unmarshal(raw, &parsed)
+	_ = json.Unmarshal(raw, &parsed)
 
 	tag := ""
 	if len(parsed.Tags) > 0 {
@@ -133,7 +133,7 @@ func (s *OpenAPISpec) LookupEndpoint(method, path string) (*EndpointDetail, erro
 				Type string `json:"type"`
 			} `json:"schema"`
 		}
-		json.Unmarshal(pRaw, &p)
+		_ = json.Unmarshal(pRaw, &p)
 		params = append(params, Parameter{
 			Name:        p.Name,
 			In:          p.In,
@@ -219,14 +219,14 @@ func (s *OpenAPISpec) resolveRef(raw json.RawMessage) any {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		var result any
-		json.Unmarshal(raw, &result)
+		_ = json.Unmarshal(raw, &result)
 		return result
 	}
 
 	// Check for $ref
 	if refRaw, ok := obj["$ref"]; ok {
 		var ref string
-		json.Unmarshal(refRaw, &ref)
+		_ = json.Unmarshal(refRaw, &ref)
 		resolved := s.resolveComponentRef(ref)
 		if resolved != nil {
 			return resolved
@@ -235,7 +235,7 @@ func (s *OpenAPISpec) resolveRef(raw json.RawMessage) any {
 
 	// Otherwise return as generic map
 	var result any
-	json.Unmarshal(raw, &result)
+	_ = json.Unmarshal(raw, &result)
 	return result
 }
 
@@ -263,7 +263,7 @@ func (s *OpenAPISpec) resolveComponentRef(ref string) any {
 
 	// Parse one level — don't recurse into nested $refs
 	var schema any
-	json.Unmarshal(schemaRaw, &schema)
+	_ = json.Unmarshal(schemaRaw, &schema)
 	return schema
 }
 
@@ -299,9 +299,13 @@ func loadSpec(apiURL, cacheDir string, forceRefresh bool) (*OpenAPISpec, error) 
 		return nil, fmt.Errorf("parsing OpenAPI spec: %w", err)
 	}
 
-	// Write cache
-	os.MkdirAll(filepath.Dir(cachePath), 0755)
-	os.WriteFile(cachePath, data, 0644)
+	// Write cache (best-effort; ignore errors so a read-only cache dir doesn't break the command)
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		return &spec, nil
+	}
+	if err := os.WriteFile(cachePath, data, 0644); err != nil {
+		return &spec, nil
+	}
 
 	return &spec, nil
 }

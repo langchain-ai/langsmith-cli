@@ -47,7 +47,7 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		var data map[string]any
-		json.Unmarshal(body, &data)
+		_ = json.Unmarshal(body, &data)
 		if data["name"] != "test" {
 			t.Errorf("expected name=test, got %v", data["name"])
 		}
@@ -128,12 +128,12 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		w.WriteHeader(200)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	defer ts.Close()
 
 	f, _ := os.CreateTemp(t.TempDir(), "body-*.json")
-	f.WriteString(`{"from":"file"}`)
+	_, _ = f.WriteString(`{"from":"file"}`)
 	f.Close()
 
 	var out bytes.Buffer

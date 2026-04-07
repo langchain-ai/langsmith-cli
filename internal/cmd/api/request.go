@@ -68,7 +68,9 @@ func runRequest(apiURL, apiKey, method, path, body string, headers []string, inc
 	if json.Indent(&prettyBuf, respBody, "", "  ") == nil {
 		fmt.Fprintln(w, prettyBuf.String())
 	} else {
-		w.Write(respBody)
+		if _, err := w.Write(respBody); err != nil {
+			return statusCode, fmt.Errorf("writing response: %w", err)
+		}
 		fmt.Fprintln(w)
 	}
 

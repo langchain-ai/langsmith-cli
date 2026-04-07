@@ -29,7 +29,7 @@ func newTestSpecServer(t *testing.T) *httptest.Server {
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/openapi.json" {
-			json.NewEncoder(w).Encode(spec)
+			_ = json.NewEncoder(w).Encode(spec)
 			return
 		}
 		http.NotFound(w, r)
@@ -84,7 +84,9 @@ func TestLsCmd_FilterByTag(t *testing.T) {
 	}
 
 	var endpoints []Endpoint
-	json.Unmarshal(out.Bytes(), &endpoints)
+	if err := json.Unmarshal(out.Bytes(), &endpoints); err != nil {
+		t.Fatal(err)
+	}
 	if len(endpoints) != 2 {
 		t.Errorf("expected 2 dataset endpoints, got %d", len(endpoints))
 	}
@@ -115,7 +117,9 @@ func TestLsCmd_Search(t *testing.T) {
 	}
 
 	var endpoints []Endpoint
-	json.Unmarshal(out.Bytes(), &endpoints)
+	if err := json.Unmarshal(out.Bytes(), &endpoints); err != nil {
+		t.Fatal(err)
+	}
 	if len(endpoints) != 1 {
 		t.Errorf("expected 1 match for 'query', got %d", len(endpoints))
 	}

@@ -38,7 +38,7 @@ func TestLoadSpec_FromServer(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(spec)
+		_ = json.NewEncoder(w).Encode(spec)
 	}))
 	defer ts.Close()
 
@@ -59,7 +59,7 @@ func TestLoadSpec_UsesCache(t *testing.T) {
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"openapi": "3.1.0",
 			"paths":   map[string]any{},
 		})
@@ -89,7 +89,7 @@ func TestLoadSpec_RefreshBypassesCache(t *testing.T) {
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"openapi": "3.1.0",
 			"paths":   map[string]any{},
 		})
@@ -113,7 +113,7 @@ func TestLoadSpec_ExpiredCache(t *testing.T) {
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"openapi": "3.1.0",
 			"paths":   map[string]any{},
 		})
@@ -125,7 +125,9 @@ func TestLoadSpec_ExpiredCache(t *testing.T) {
 	_, _ = loadSpec(ts.URL, cacheDir, false)
 	cachePath := specCachePath(cacheDir, ts.URL)
 	old := time.Now().Add(-25 * time.Hour)
-	os.Chtimes(cachePath, old, old)
+	if err := os.Chtimes(cachePath, old, old); err != nil {
+		t.Fatal(err)
+	}
 
 	_, _ = loadSpec(ts.URL, cacheDir, false)
 	if callCount != 2 {

@@ -69,7 +69,7 @@ func newDetailedSpecServer(t *testing.T) *httptest.Server {
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/openapi.json" {
-			json.NewEncoder(w).Encode(spec)
+			_ = json.NewEncoder(w).Encode(spec)
 			return
 		}
 		http.NotFound(w, r)
@@ -133,7 +133,9 @@ func TestInfoCmd_Shorthand(t *testing.T) {
 	}
 
 	var detail EndpointDetail
-	json.Unmarshal(out.Bytes(), &detail)
+	if err := json.Unmarshal(out.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
 	if detail.Path != "/api/v1/sessions" {
 		t.Errorf("expected resolved path /api/v1/sessions, got %q", detail.Path)
 	}
@@ -159,7 +161,9 @@ func TestInfoCmd_WithRequestBody(t *testing.T) {
 	}
 
 	var detail EndpointDetail
-	json.Unmarshal(out.Bytes(), &detail)
+	if err := json.Unmarshal(out.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
 	if detail.RequestBody == nil {
 		t.Fatal("expected request_body to be non-nil")
 	}
