@@ -89,7 +89,7 @@ Examples:
 			}
 
 			var result map[string]any
-			if err := c.RawPost(ctx, "/api/v1/v2/traces/messages", body, &result); err != nil {
+			if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
 				exitErrorf("%v", err)
 			}
 
