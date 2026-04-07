@@ -51,12 +51,12 @@ Examples:
   langsmith project issues --project my-app --priority high --limit 10
   langsmith project issues --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
 			path := fmt.Sprintf("/v1/platform/forge-issues?session_name=%s", urlEscape(projectName))
@@ -69,14 +69,14 @@ Examples:
 
 			var issues []forgeIssue
 			if err := c.RawGet(ctx, path, &issues); err != nil {
-				exitErrorf("listing issues: %v", err)
+				ExitErrorf("listing issues: %v", err)
 			}
 
 			if limit > 0 && len(issues) > limit {
 				issues = issues[:limit]
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"TITLE", "PRIORITY", "STATUS", "CATEGORY", "TRACES", "CREATED"}

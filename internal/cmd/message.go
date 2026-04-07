@@ -40,19 +40,19 @@ Examples:
 				ff.Limit = defaultLimit
 			}
 			if ff.Limit > 20 {
-				exitError("--limit cannot exceed 20 for trace messages")
+				ExitError("--limit cannot exceed 20 for trace messages")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			// Build request body for POST /v2/traces/messages
@@ -90,10 +90,10 @@ Examples:
 
 			var result map[string]any
 			if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				printTraceMessages(result)
