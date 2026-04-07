@@ -25,7 +25,7 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 	// (don't leak credentials to external hosts).
 	reqClient := c
 	relPath := fullURL
-	if strings.HasPrefix(fullURL, apiURL) {
+	if isSameHost(fullURL, apiURL) {
 		relPath = strings.TrimPrefix(fullURL, apiURL)
 	} else if strings.HasPrefix(fullURL, "http://") || strings.HasPrefix(fullURL, "https://") {
 		reqClient = client.New("", "")
@@ -99,3 +99,18 @@ func resolveBody(body string) (io.Reader, error) {
 	}
 	return strings.NewReader(body), nil
 }
+
+// isSameHost returns true if fullURL starts with baseURL and they share
+// the same host. A pure string-prefix check is insufficient because
+// "https://api.example.com.evil.com" starts with "https://api.example.com"
+// but is a different host.
+func isSameHost(fullURL, baseURL string) bool {
+	if !strings.HasPrefix(fullURL, baseURL) {
+		return false
+	}
+	// If fullURL is exactly baseURL or continues with "/" or "?", it's the same host.
+	// Any other continuation (e.g. ".evil.com") means a different host.
+	rest := fullURL[len(baseURL):]
+	return rest == "" || rest[0] == '/' || rest[0] == '?'
+}
+

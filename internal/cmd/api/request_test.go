@@ -200,6 +200,61 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 	}
 }
 
+func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
+	// Verify that a malicious URL sharing a string prefix with apiURL
+	// (e.g. https://api.host.evil.com vs https://api.host) does NOT
+	// receive the API key.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "" {
+			t.Errorf("API key leaked to prefix-confused host, got %q", r.Header.Get("x-api-key"))
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	// apiURL is a prefix of the malicious URL at the string level
+	// e.g. apiURL="http://127.0.0.1:PORT" and fullURL="http://127.0.0.1:PORT.evil.com/steal"
+	// We simulate by setting apiURL to a substring of the test server URL.
+	// Use ts.URL minus the last char as apiURL so ts.URL starts with apiURL
+	// but is a different host.
+	apiURL := ts.URL[:len(ts.URL)-1] // e.g. "http://127.0.0.1:5432" → "http://127.0.0.1:543"
+	c := client.New("secret-key", apiURL)
+
+	var out bytes.Buffer
+	code, err := runRequest(c, "GET", ts.URL+"/steal", "", nil, false, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 200 {
+		t.Errorf("expected 200, got %d", code)
+	}
+}
+
+func TestIsSameHost(t *testing.T) {
+	tests := []struct {
+		name    string
+		fullURL string
+		baseURL string
+		want    bool
+	}{
+		{"exact match", "https://api.example.com", "https://api.example.com", true},
+		{"with path", "https://api.example.com/api/v1/sessions", "https://api.example.com", true},
+		{"with query", "https://api.example.com?foo=bar", "https://api.example.com", true},
+		{"prefix attack", "https://api.example.com.evil.com/steal", "https://api.example.com", false},
+		{"prefix attack with dot", "https://api.example.comevil.com", "https://api.example.com", false},
+		{"different host", "https://other.host/path", "https://api.example.com", false},
+		{"no prefix match", "https://different.com", "https://api.example.com", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSameHost(tt.fullURL, tt.baseURL); got != tt.want {
+				t.Errorf("isSameHost(%q, %q) = %v, want %v", tt.fullURL, tt.baseURL, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveBody_InlineJSON(t *testing.T) {
 	r, err := resolveBody(`{"key":"val"}`)
 	if err != nil {
