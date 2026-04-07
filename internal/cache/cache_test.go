@@ -18,13 +18,14 @@ func TestDefaultDir(t *testing.T) {
 }
 
 func TestPathForKey(t *testing.T) {
-	p1 := PathForKey("/tmp/cache", "openapi", "https://api.smith.langchain.com")
-	p2 := PathForKey("/tmp/cache", "openapi", "https://myhost.com")
+	dir := filepath.Join("tmp", "cache")
+	p1 := PathForKey(dir, "openapi", "https://api.smith.langchain.com")
+	p2 := PathForKey(dir, "openapi", "https://myhost.com")
 	if p1 == p2 {
 		t.Error("expected different paths for different keys")
 	}
-	if filepath.Dir(p1) != "/tmp/cache" {
-		t.Errorf("expected dir /tmp/cache, got %s", filepath.Dir(p1))
+	if filepath.Dir(p1) != dir {
+		t.Errorf("expected dir %s, got %s", dir, filepath.Dir(p1))
 	}
 }
 
