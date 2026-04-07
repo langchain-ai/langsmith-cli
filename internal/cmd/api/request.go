@@ -47,14 +47,14 @@ func runRequest(apiURL, apiKey, method, path, body string, headers []string, inc
 		extraHeaders.Set(strings.TrimSpace(k), strings.TrimSpace(v))
 	}
 
-	statusCode, respHeaders, respBody, err := c.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
+	statusCode, proto, respHeaders, respBody, err := c.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
 	if err != nil {
 		return 0, err
 	}
 
 	// Print response headers if --include
 	if include {
-		fmt.Fprintf(w, "HTTP/1.1 %d %s\n", statusCode, http.StatusText(statusCode))
+		fmt.Fprintf(w, "%s %d %s\n", proto, statusCode, http.StatusText(statusCode))
 		for k, vals := range respHeaders {
 			for _, v := range vals {
 				fmt.Fprintf(w, "%s: %s\n", k, v)

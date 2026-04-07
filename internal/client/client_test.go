@@ -337,7 +337,7 @@ func TestRawDo_ReturnsStatusAndBody(t *testing.T) {
 	defer ts.Close()
 
 	c := New("my-key", ts.URL)
-	status, hdr, body, err := c.RawDo(context.Background(), "PATCH", "/api/v1/sessions", nil, nil)
+	status, _, hdr, body, err := c.RawDo(context.Background(), "PATCH", "/api/v1/sessions", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestRawDo_WithBodyReader(t *testing.T) {
 	defer ts.Close()
 
 	c := New("key", ts.URL)
-	status, _, body, err := c.RawDo(context.Background(), "POST", "/create", strings.NewReader(`{"name":"test"}`), nil)
+	status, _, _, body, err := c.RawDo(context.Background(), "POST", "/create", strings.NewReader(`{"name":"test"}`), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestRawDo_ExtraHeaders(t *testing.T) {
 
 	c := New("key", ts.URL)
 	extra := http.Header{"X-Custom": []string{"hello"}}
-	_, _, _, err := c.RawDo(context.Background(), "GET", "/test", nil, extra)
+	_, _, _, _, err := c.RawDo(context.Background(), "GET", "/test", nil, extra)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestRawDo_Returns4xxWithoutError(t *testing.T) {
 	defer ts.Close()
 
 	c := New("key", ts.URL)
-	status, _, body, err := c.RawDo(context.Background(), "GET", "/test", nil, nil)
+	status, _, _, body, err := c.RawDo(context.Background(), "GET", "/test", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

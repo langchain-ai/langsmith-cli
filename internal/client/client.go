@@ -96,16 +96,21 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 	return c.rawRequest(ctx, http.MethodDelete, path, nil, result)
 }
 
-// RawDo performs an arbitrary HTTP request and returns the raw response.
-// Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
-// does not treat 4xx/5xx as errors — callers decide how to handle status codes.
-// body may be nil. extraHeaders are merged on top of the default auth headers.
-func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, respHeaders http.Header, respBody []byte, err error) {
+// httpResponse holds the parsed result of a raw HTTP call.
+type httpResponse struct {
+	statusCode int
+	proto      string
+	headers    http.Header
+	body       []byte
+}
+
+// doHTTP is the shared low-level helper used by RawDo and rawRequest.
+func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
 	url := c.apiURL + path
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("x-api-key", c.apiKey)
@@ -120,16 +125,33 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err = io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("reading response: %w", err)
+		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
-	return resp.StatusCode, resp.Header, respBody, nil
+	return &httpResponse{
+		statusCode: resp.StatusCode,
+		proto:      resp.Proto,
+		headers:    resp.Header,
+		body:       respBody,
+	}, nil
+}
+
+// RawDo performs an arbitrary HTTP request and returns the raw response.
+// Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
+// does not treat 4xx/5xx as errors — callers decide how to handle status codes.
+// body may be nil. extraHeaders are merged on top of the default auth headers.
+func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, proto string, respHeaders http.Header, respBody []byte, err error) {
+	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders)
+	if err != nil {
+		return 0, "", nil, nil, err
+	}
+	return resp.statusCode, resp.proto, resp.headers, resp.body, nil
 }
 
 // APIKey returns the client's API key.
@@ -139,8 +161,6 @@ func (c *Client) APIKey() string { return c.apiKey }
 func (c *Client) APIURL() string { return c.apiURL }
 
 func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any) error {
-	url := c.apiURL + path
-
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -150,35 +170,17 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 		bodyReader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return err
 	}
 
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
-		req.Header.Set("x-tenant-id", wsID)
-	}
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("reading response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	if resp.statusCode >= 400 {
+		return fmt.Errorf("HTTP %d: %s", resp.statusCode, string(resp.body))
 	}
 
 	if result != nil {
-		if err := json.Unmarshal(respBody, result); err != nil {
+		if err := json.Unmarshal(resp.body, result); err != nil {
 			return fmt.Errorf("decoding response: %w", err)
 		}
 	}
