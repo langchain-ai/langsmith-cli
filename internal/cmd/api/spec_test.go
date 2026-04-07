@@ -16,8 +16,9 @@ func TestSpecCachePath(t *testing.T) {
 	if p1 == p2 {
 		t.Error("expected different cache paths for different API URLs")
 	}
-	if filepath.Dir(p1) != "/tmp/test-cache" {
-		t.Errorf("expected cache dir /tmp/test-cache, got %s", filepath.Dir(p1))
+	wantDir := filepath.FromSlash("/tmp/test-cache")
+	if filepath.Dir(p1) != wantDir {
+		t.Errorf("expected cache dir %s, got %s", wantDir, filepath.Dir(p1))
 	}
 }
 

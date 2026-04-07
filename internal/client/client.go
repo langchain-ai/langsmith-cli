@@ -114,9 +114,7 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 		req.Header.Set("x-tenant-id", wsID)
 	}
 	for k, vals := range extraHeaders {
-		for _, v := range vals {
-			req.Header.Set(k, v)
-		}
+		req.Header[k] = vals
 	}
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}

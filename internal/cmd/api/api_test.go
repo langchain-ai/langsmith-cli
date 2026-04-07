@@ -57,13 +57,13 @@ func TestNewCmd_GETRequest(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cmd := NewCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--api-key", "test-key", "--api-url", ts.URL, "GET", "sessions"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "GET", "sessions"})
 
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(out.String(), "ok") {
@@ -85,13 +85,13 @@ func TestNewCmd_POSTWithBody(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cmd := NewCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--api-key", "test-key", "--api-url", ts.URL, "POST", "sessions", "--body", `{"name":"x"}`})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "POST", "sessions", "--body", `{"name":"x"}`})
 
-	if err := cmd.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(out.String(), "created") {
@@ -114,13 +114,13 @@ func TestNewCmd_NoArgsShowsHelp(t *testing.T) {
 }
 
 func TestNewCmd_InvalidMethod(t *testing.T) {
-	cmd := NewCmd()
+	root := newTestRoot()
 	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--api-key", "key", "BOGUS", "sessions"})
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "key", "BOGUS", "sessions"})
 
-	err := cmd.Execute()
+	err := root.Execute()
 	if err == nil {
 		t.Fatal("expected error for invalid method")
 	}

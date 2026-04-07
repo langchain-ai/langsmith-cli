@@ -70,13 +70,6 @@ Make requests:
 	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "Additional headers (Key:Value, repeatable)")
 	cmd.Flags().BoolVarP(&include, "include", "i", false, "Include HTTP response headers in output")
 
-	// These persistent flags mirror root's so the api command works standalone
-	// in tests. When registered under root, cobra's flag inheritance means
-	// the root's values take precedence when set via CLI.
-	cmd.PersistentFlags().String("api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
-	cmd.PersistentFlags().String("api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
-	cmd.PersistentFlags().String("format", "json", "Output format: json or pretty")
-
 	cmd.AddCommand(newLsCmd())
 	cmd.AddCommand(newInfoCmd())
 
