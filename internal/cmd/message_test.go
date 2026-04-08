@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -241,7 +242,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 						},
 					},
 				},
-				"cursors": map[string]any{"next": "cursor-xyz"},
+				"cursors": map[string]any{},
 			})
 		}
 	})
@@ -251,7 +252,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "my-project"})
+		cmd.SetArgs([]string{"--project", "my-project", "--limit", "2"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -268,12 +269,153 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 		"[ai] The weather in SF is 72°F and sunny!",
 		"--- Trace trace-bbb (1 groups) ---",
 		"[human] Hello",
-		"Next cursor: cursor-xyz",
 	}
 	for _, s := range expects {
 		if !strings.Contains(out, s) {
 			t.Errorf("pretty output missing %q\nfull output:\n%s", s, out)
 		}
+	}
+}
+
+func TestTraceMessages_Pagination(t *testing.T) {
+	pageCount := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-pag", "name": "pag-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			pageCount++
+
+			// Verify page size is <= 10
+			limit, _ := body["limit"].(float64)
+			if int(limit) > 10 {
+				t.Errorf("page %d: limit sent to API was %d, expected <= 10", pageCount, int(limit))
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			switch pageCount {
+			case 1:
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"traces": []map[string]any{
+						{"trace_id": "trace-1", "groups": []any{}},
+						{"trace_id": "trace-2", "groups": []any{}},
+						{"trace_id": "trace-3", "groups": []any{}},
+						{"trace_id": "trace-4", "groups": []any{}},
+						{"trace_id": "trace-5", "groups": []any{}},
+						{"trace_id": "trace-6", "groups": []any{}},
+						{"trace_id": "trace-7", "groups": []any{}},
+						{"trace_id": "trace-8", "groups": []any{}},
+						{"trace_id": "trace-9", "groups": []any{}},
+						{"trace_id": "trace-10", "groups": []any{}},
+					},
+					"cursors": map[string]any{"next": "cursor-page2"},
+				})
+			case 2:
+				// Verify cursor was passed
+				if body["cursor"] != "cursor-page2" {
+					t.Errorf("page 2: expected cursor=cursor-page2, got %v", body["cursor"])
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"traces": []map[string]any{
+						{"trace_id": "trace-11", "groups": []any{}},
+						{"trace_id": "trace-12", "groups": []any{}},
+						{"trace_id": "trace-13", "groups": []any{}},
+						{"trace_id": "trace-14", "groups": []any{}},
+						{"trace_id": "trace-15", "groups": []any{}},
+					},
+					"cursors": map[string]any{},
+				})
+			default:
+				t.Errorf("unexpected page %d", pageCount)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"traces":  []any{},
+					"cursors": map[string]any{},
+				})
+			}
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "pag-proj", "--limit", "15"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	traces, _ := result["traces"].([]any)
+	if len(traces) != 15 {
+		t.Errorf("expected 15 traces, got %d", len(traces))
+	}
+	if pageCount != 2 {
+		t.Errorf("expected 2 API calls, got %d", pageCount)
+	}
+}
+
+func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
+	pageCount := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-lim", "name": "lim-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			pageCount++
+
+			w.Header().Set("Content-Type", "application/json")
+			// Page 1: return 10 traces with a next cursor
+			// The user only asked for 5, so the CLI should request limit=5
+			// and not make a second call
+			limit, _ := body["limit"].(float64)
+			traces := make([]map[string]any, int(limit))
+			for i := range traces {
+				traces[i] = map[string]any{
+					"trace_id": fmt.Sprintf("trace-%d", i+1),
+					"groups":   []any{},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"traces":  traces,
+				"cursors": map[string]any{"next": "cursor-more"},
+			})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "lim-proj", "--limit", "5"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	traces, _ := result["traces"].([]any)
+	if len(traces) != 5 {
+		t.Errorf("expected 5 traces, got %d", len(traces))
+	}
+	if pageCount != 1 {
+		t.Errorf("expected 1 API call (limit < page size), got %d", pageCount)
 	}
 }
 

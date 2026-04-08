@@ -28,7 +28,7 @@ Each trace in the response contains a list of conversation groups:
   - "message" groups contain a single normalized message (human, ai, system, tool)
   - "tool_interaction" groups contain an AI message with tool calls and their results
 
-Requires --project. Results are paginated (default limit: 10, max: 20).
+Requires --project. Results are paginated internally (default limit: 10).
 
 Examples:
   langsmith trace messages --project my-chatbot --limit 5
@@ -38,9 +38,6 @@ Examples:
 			defaultLimit := 10
 			if ff.Limit == 0 {
 				ff.Limit = defaultLimit
-			}
-			if ff.Limit > 20 {
-				exitError("--limit cannot exceed 20 for trace messages")
 			}
 
 			c := mustGetClient()
@@ -55,10 +52,9 @@ Examples:
 				exitErrorf("%v", err)
 			}
 
-			// Build request body for POST /v2/traces/messages
+			// Build base request body for POST /v2/traces/messages
 			body := map[string]any{
 				"session": []string{sessionID},
-				"limit":   ff.Limit,
 			}
 
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
@@ -88,17 +84,52 @@ Examples:
 				body["filter"] = filterStr
 			}
 
-			var result map[string]any
-			if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
-				exitErrorf("%v", err)
+			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
+			const maxPageSize = 10
+			remaining := ff.Limit
+			var allTraces []any
+
+			for {
+				pageSize := maxPageSize
+				if remaining < pageSize {
+					pageSize = remaining
+				}
+				body["limit"] = pageSize
+
+				var result map[string]any
+				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
+					exitErrorf("%v", err)
+				}
+
+				traces, _ := result["traces"].([]any)
+				allTraces = append(allTraces, traces...)
+				remaining -= len(traces)
+
+				// Stop if we have enough or no more pages
+				cursors, _ := result["cursors"].(map[string]any)
+				next, _ := cursors["next"].(string)
+				if next == "" || remaining <= 0 {
+					break
+				}
+				body["cursor"] = next
+			}
+
+			// Trim to exact limit if we overshot
+			if len(allTraces) > ff.Limit {
+				allTraces = allTraces[:ff.Limit]
+			}
+
+			combined := map[string]any{
+				"traces":  allTraces,
+				"cursors": map[string]any{},
 			}
 
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
-				printTraceMessages(result)
+				printTraceMessages(combined)
 			} else {
-				output.OutputJSON(result, outputFile)
+				output.OutputJSON(combined, outputFile)
 			}
 		},
 	}
