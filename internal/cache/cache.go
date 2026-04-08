@@ -31,6 +31,7 @@ func ReadIfFresh(path string, ttl time.Duration) ([]byte, error) {
 		return nil, err
 	}
 	if time.Since(info.ModTime()) > ttl {
+		_ = os.Remove(path)
 		return nil, fmt.Errorf("cache expired")
 	}
 	return os.ReadFile(path)
