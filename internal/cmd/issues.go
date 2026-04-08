@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,19 +11,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forgeIssue mirrors the JSON shape returned by GET /v1/platform/forge-issues.
+// forgeIssue mirrors the JSON shape returned by GET /v1/platform/issues.
 type forgeIssue struct {
-	ID           string    `json:"id"`
-	IssueBoardID string    `json:"issue_board_id"`
-	Title        string    `json:"title"`
-	Description  string    `json:"description"`
-	Priority     string    `json:"priority"`
-	Status       string    `json:"status"`
-	Category     *string   `json:"category"`
-	TraceIDs     []string  `json:"trace_ids"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	ResolvedAt   *string   `json:"resolved_at"`
+	ID          string          `json:"id"`
+	SessionID   string          `json:"session_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Severity    int             `json:"severity"`
+	Status      string          `json:"status"`
+	Tags        []string        `json:"tags"`
+	FixBranch   *string         `json:"fix_branch"`
+	FixPrompt   *string         `json:"fix_prompt"`
+	FixPRNumber *int            `json:"fix_pr_number"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	Traces      json.RawMessage `json:"traces"`
+}
+
+var severityLabels = map[int]string{
+	0: "URGENT",
+	1: "HIGH",
+	2: "MEDIUM",
+	3: "LOW",
 }
 
 func newProjectIssuesCmd() *cobra.Command {
@@ -59,12 +69,15 @@ Examples:
 				exitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
-			path := fmt.Sprintf("/v1/platform/forge-issues?session_name=%s", urlEscape(projectName))
+			path := fmt.Sprintf("/v1/platform/issues?session_name=%s", urlEscape(projectName))
 			if status != "" {
 				path += "&status=" + urlEscape(status)
 			}
 			if priority != "" {
-				path += "&priority=" + urlEscape(priority)
+				sev := priorityToSeverity(priority)
+				if sev >= 0 {
+					path += fmt.Sprintf("&severity=%d", sev)
+				}
 			}
 
 			var issues []forgeIssue
@@ -79,19 +92,18 @@ Examples:
 			fmt_ := getFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"TITLE", "PRIORITY", "STATUS", "CATEGORY", "TRACES", "CREATED"}
+				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
-					category := ""
-					if issue.Category != nil {
-						category = *issue.Category
+					sevLabel := severityLabels[issue.Severity]
+					if sevLabel == "" {
+						sevLabel = fmt.Sprintf("%d", issue.Severity)
 					}
 					rows = append(rows, []string{
-						truncate(issue.Title, 60),
-						issue.Priority,
+						truncate(issue.Name, 60),
+						sevLabel,
 						issue.Status,
-						category,
-						fmt.Sprintf("%d", len(issue.TraceIDs)),
+						strings.Join(issue.Tags, ", "),
 						formatIssueTime(issue.CreatedAt),
 					})
 				}
@@ -115,29 +127,36 @@ Examples:
 	return cmd
 }
 
+func priorityToSeverity(p string) int {
+	switch strings.ToLower(p) {
+	case "urgent":
+		return 0
+	case "high":
+		return 1
+	case "medium":
+		return 2
+	case "low":
+		return 3
+	default:
+		return -1
+	}
+}
+
 func issueToMap(issue forgeIssue) map[string]any {
-	m := map[string]any{
-		"id":             issue.ID,
-		"issue_board_id": issue.IssueBoardID,
-		"title":          issue.Title,
-		"description":    issue.Description,
-		"priority":       issue.Priority,
-		"status":         issue.Status,
-		"trace_ids":      issue.TraceIDs,
-		"created_at":     formatTimeISO(issue.CreatedAt),
-		"updated_at":     formatTimeISO(issue.UpdatedAt),
+	return map[string]any{
+		"id":            issue.ID,
+		"session_id":    issue.SessionID,
+		"name":          issue.Name,
+		"description":   issue.Description,
+		"severity":      issue.Severity,
+		"status":        issue.Status,
+		"tags":          issue.Tags,
+		"fix_branch":    issue.FixBranch,
+		"fix_prompt":    issue.FixPrompt,
+		"fix_pr_number": issue.FixPRNumber,
+		"created_at":    formatTimeISO(issue.CreatedAt),
+		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
-	if issue.Category != nil {
-		m["category"] = *issue.Category
-	} else {
-		m["category"] = nil
-	}
-	if issue.ResolvedAt != nil {
-		m["resolved_at"] = *issue.ResolvedAt
-	} else {
-		m["resolved_at"] = nil
-	}
-	return m
 }
 
 func formatIssueTime(t time.Time) string {
