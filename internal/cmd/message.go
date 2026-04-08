@@ -28,7 +28,7 @@ Each trace in the response contains a list of conversation groups:
   - "message" groups contain a single normalized message (human, ai, system, tool)
   - "tool_interaction" groups contain an AI message with tool calls and their results
 
-Requires --project. Results are paginated internally (default limit: 10).
+Requires --project. Results are paginated internally (default limit: 10, max: 100).
 
 Examples:
   langsmith trace messages --project my-chatbot --limit 5
@@ -38,6 +38,9 @@ Examples:
 			defaultLimit := 10
 			if ff.Limit == 0 {
 				ff.Limit = defaultLimit
+			}
+			if ff.Limit > 100 {
+				exitError("--limit cannot exceed 100 for trace messages")
 			}
 
 			c := mustGetClient()
