@@ -91,6 +91,11 @@ func (c *Client) RawPost(ctx context.Context, path string, body any, result any)
 	return c.rawRequest(ctx, http.MethodPost, path, body, result)
 }
 
+// RawPatch performs a PATCH request to the LangSmith API.
+func (c *Client) RawPatch(ctx context.Context, path string, body any, result any) error {
+	return c.rawRequest(ctx, http.MethodPatch, path, body, result)
+}
+
 // RawDelete performs a DELETE request to the LangSmith API.
 func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 	return c.rawRequest(ctx, http.MethodDelete, path, nil, result)
