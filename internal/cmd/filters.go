@@ -17,6 +17,7 @@ type FilterFlags struct {
 	Project      string
 	LastNMinutes int
 	Since        string
+	Before       string
 	ErrorFlag    bool
 	NoErrorFlag  bool
 	Name         string
@@ -36,6 +37,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().StringVar(&f.Project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
+	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
 	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
@@ -92,6 +94,18 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 
 	// Start time
 	params.StartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
+
+	// End time (--before flag for forward pagination)
+	if f.Before != "" {
+		t, err := time.Parse(time.RFC3339, f.Before)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
+			if err != nil {
+				exitErrorf("invalid --before timestamp: %s", f.Before)
+			}
+		}
+		params.EndTime = langsmith.F(t)
+	}
 
 	// Run type
 	if f.RunType != "" {
