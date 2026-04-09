@@ -36,6 +36,25 @@ var severityLabels = map[int]string{
 }
 
 func newProjectIssuesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "issues",
+		Short:  "[Private Beta] Manage issues for a tracing project",
+		Hidden: true,
+		Long: `[Private Beta] Manage Issues Board issues for a tracing project.
+This feature is currently in private beta and may not be available to all users.
+
+Examples:
+  langsmith project issues list --project my-app
+  langsmith project issues list --project my-app --status open --priority high
+  langsmith project issues events --project my-app`,
+	}
+
+	cmd.AddCommand(newProjectIssuesListCmd())
+	cmd.AddCommand(newProjectIssuesEventsCmd())
+	return cmd
+}
+
+func newProjectIssuesListCmd() *cobra.Command {
 	var (
 		project    string
 		status     string
@@ -45,21 +64,19 @@ func newProjectIssuesCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:    "issues",
-		Short:  "[Private Beta] List issues for a tracing project",
-		Hidden: true,
+		Use:   "list",
+		Short: "[Private Beta] List issues for a tracing project",
 		Long: `[Private Beta] List forge issues associated with a tracing project.
-This feature is currently in private beta and may not be available to all users.
 
 Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
-  langsmith project issues --project my-app
-  langsmith project issues --project my-app --status open
-  langsmith project issues --project my-app --priority high --limit 10
-  langsmith project issues --project my-app --format pretty`,
+  langsmith project issues list --project my-app
+  langsmith project issues list --project my-app --status open
+  langsmith project issues list --project my-app --priority high --limit 10
+  langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := mustGetClient()
 			ctx := context.Background()
@@ -122,6 +139,111 @@ Examples:
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open or closed")
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+
+	return cmd
+}
+
+// issueEvent mirrors the JSON shape returned by GET /v1/platform/sessions/{id}/issue-events.
+type issueEvent struct {
+	ID        string          `json:"id"`
+	TenantID  string          `json:"tenant_id"`
+	SessionID string          `json:"session_id"`
+	IssueID   *string         `json:"issue_id"`
+	EventType string          `json:"event_type"`
+	Payload   json.RawMessage `json:"payload"`
+	Actor     string          `json:"actor"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+func newProjectIssuesEventsCmd() *cobra.Command {
+	var (
+		project         string
+		lookBackMinutes int
+		limit           int
+		outputFile      string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "events",
+		Short: "[Private Beta] List issue events for a tracing project",
+		Long: `[Private Beta] List issue events for the Issues Board of a tracing project.
+
+Issue events record user and agent actions on issues: status changes, severity
+edits, evaluator deployments, and issue creation. The ABM agent reads these on
+cron runs to update the User Preferences section of the Agent Overview.
+
+Output is JSON by default; pass --format pretty for a human-readable table.
+
+Examples:
+  langsmith project issues events --project my-app
+  langsmith project issues events --project my-app --look-back-minutes 1440
+  langsmith project issues events --project my-app --limit 50 --format pretty`,
+		Run: func(cmd *cobra.Command, args []string) {
+			c := mustGetClient()
+			ctx := context.Background()
+
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				exitError("--project is required (or set LANGSMITH_PROJECT)")
+			}
+
+			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			if err != nil {
+				exitErrorf("resolving project %q: %v", projectName, err)
+			}
+
+			path := fmt.Sprintf("/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
+				sessionID, lookBackMinutes, limit)
+
+			var events []issueEvent
+			if err := c.RawGet(ctx, path, &events); err != nil {
+				exitErrorf("listing issue events: %v", err)
+			}
+
+			fmt_ := getFormat()
+
+			if fmt_ == "pretty" {
+				columns := []string{"EVENT TYPE", "ACTOR", "ISSUE ID", "CREATED"}
+				var rows [][]string
+				for _, e := range events {
+					issueRef := ""
+					if e.IssueID != nil {
+						issueRef = (*e.IssueID)[:8]
+					}
+					rows = append(rows, []string{
+						e.EventType,
+						e.Actor,
+						issueRef,
+						formatIssueTime(e.CreatedAt),
+					})
+				}
+				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectName))
+			} else {
+				var data []map[string]any
+				for _, e := range events {
+					issueID := any(nil)
+					if e.IssueID != nil {
+						issueID = *e.IssueID
+					}
+					data = append(data, map[string]any{
+						"id":         e.ID,
+						"session_id": e.SessionID,
+						"issue_id":   issueID,
+						"event_type": e.EventType,
+						"payload":    e.Payload,
+						"actor":      e.Actor,
+						"created_at": formatTimeISO(e.CreatedAt),
+					})
+				}
+				output.OutputJSON(data, outputFile)
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().IntVar(&lookBackMinutes, "look-back-minutes", 10080, "Look-back window in minutes (default 10080 = 7 days)")
+	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
