@@ -52,6 +52,7 @@ Examples:
 	cmd.AddCommand(newProjectIssuesListCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
+	cmd.AddCommand(newProjectIssuesRunsCmd())
 	return cmd
 }
 
@@ -377,4 +378,118 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n-1]) + "…"
+}
+
+func newProjectIssuesRunsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "runs",
+		Short:  "[Private Beta] Manage linked runs for an issue",
+		Hidden: true,
+		Long: `[Private Beta] Link and unlink runs to/from an issue.
+
+Examples:
+  langsmith project issues runs add <issue-id> --run-id <run-id> --trace-id <trace-id> --start-time 2026-04-10T00:00:00Z
+  langsmith project issues runs update <issue-id> <run-id> --comment "new comment"
+  langsmith project issues runs remove <issue-id> <run-id>`,
+	}
+
+	cmd.AddCommand(newProjectIssuesRunsAddCmd())
+	cmd.AddCommand(newProjectIssuesRunsUpdateCmd())
+	cmd.AddCommand(newProjectIssuesRunsRemoveCmd())
+	return cmd
+}
+
+func newProjectIssuesRunsAddCmd() *cobra.Command {
+	var (
+		runID     string
+		traceID   string
+		startTime string
+		comment   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "add <issue-id>",
+		Short: "Link a run to an issue",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			issueID := args[0]
+			if runID == "" || traceID == "" || startTime == "" {
+				exitError("--run-id, --trace-id, and --start-time are required")
+			}
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			body := map[string]any{
+				"run_id":     runID,
+				"trace_id":   traceID,
+				"start_time": startTime,
+			}
+			if comment != "" {
+				body["comment"] = comment
+			}
+
+			path := fmt.Sprintf("/v1/platform/issues/%s/runs", issueID)
+			if err := c.RawPost(ctx, path, body, nil); err != nil {
+				exitErrorf("linking run: %v", err)
+			}
+			fmt.Printf("Run %s linked to issue %s\n", runID, issueID)
+		},
+	}
+
+	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to link (required)")
+	cmd.Flags().StringVar(&traceID, "trace-id", "", "Trace ID of the run (required)")
+	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
+	cmd.Flags().StringVar(&comment, "comment", "", "Optional comment explaining why this run is evidence")
+	return cmd
+}
+
+func newProjectIssuesRunsUpdateCmd() *cobra.Command {
+	var comment string
+
+	cmd := &cobra.Command{
+		Use:   "update <issue-id> <run-id>",
+		Short: "Update the comment on a linked run",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			issueID := args[0]
+			runID := args[1]
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			body := map[string]any{"comment": comment}
+			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
+			if err := c.RawPatch(ctx, path, body, nil); err != nil {
+				exitErrorf("updating linked run: %v", err)
+			}
+			fmt.Printf("Updated comment on run %s for issue %s\n", runID, issueID)
+		},
+	}
+
+	cmd.Flags().StringVar(&comment, "comment", "", "Updated comment (pass empty string to clear)")
+	return cmd
+}
+
+func newProjectIssuesRunsRemoveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "remove <issue-id> <run-id>",
+		Short: "Unlink a run from an issue",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			issueID := args[0]
+			runID := args[1]
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
+			if err := c.RawDelete(ctx, path, nil); err != nil {
+				exitErrorf("unlinking run: %v", err)
+			}
+			fmt.Printf("Run %s unlinked from issue %s\n", runID, issueID)
+		},
+	}
+
+	return cmd
 }
