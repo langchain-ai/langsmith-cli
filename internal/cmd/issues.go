@@ -51,6 +51,7 @@ Examples:
 
 	cmd.AddCommand(newProjectIssuesListCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
+	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	return cmd
 }
 
@@ -244,6 +245,78 @@ Examples:
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().IntVar(&lookBackMinutes, "look-back-minutes", 10080, "Look-back window in minutes (default 10080 = 7 days)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to return")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+
+	return cmd
+}
+
+func newProjectIssuesUpdateCmd() *cobra.Command {
+	var (
+		addTraces   []string
+		title       string
+		description string
+		outputFile  string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "update <issue-id>",
+		Short: "[Private Beta] Update an existing issue (add evidence or correct a disproven finding)",
+		Long: `[Private Beta] Update an existing issue.
+
+Two use cases:
+  1. Add trace IDs as new supporting evidence (--add-traces)
+  2. Correct the title or description when evidence disproves the original finding
+     (--title / --description)
+
+The issue ID is the UUID returned by 'langsmith project issues list'.
+
+Examples:
+  langsmith project issues update <id> --add-traces <trace-id1>,<trace-id2>
+  langsmith project issues update <id> --title "Corrected title" --description "New finding..."`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			issueID := args[0]
+			if len(addTraces) == 0 && title == "" && description == "" {
+				exitError("at least one of --add-traces, --title, or --description is required")
+			}
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			body := map[string]any{}
+
+			if len(addTraces) > 0 {
+				type traceInput struct {
+					TraceID   string `json:"trace_id"`
+					StartTime string `json:"start_time"`
+				}
+				traces := make([]traceInput, 0, len(addTraces))
+				for _, tid := range addTraces {
+					traces = append(traces, traceInput{TraceID: tid, StartTime: time.Now().UTC().Format(time.RFC3339)})
+				}
+				body["traces"] = traces
+			}
+			if title != "" {
+				body["name"] = title
+			}
+			if description != "" {
+				body["description"] = description
+			}
+
+			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
+
+			var issue forgeIssue
+			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
+				exitErrorf("updating issue: %v", err)
+			}
+
+			output.OutputJSON(issueToMap(issue), outputFile)
+		},
+	}
+
+	cmd.Flags().StringArrayVar(&addTraces, "add-traces", nil, "Trace IDs to add as evidence (repeatable)")
+	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
+	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
