@@ -18,18 +18,23 @@ func newEvaluatorCmd() *cobra.Command {
 		Short: "Manage online and offline evaluator rules",
 		Long: `Manage online and offline evaluator rules.
 
-Evaluators are Python or JavaScript/TypeScript functions uploaded to LangSmith
-that automatically score runs. They can target a specific dataset
-(offline/experiment evaluators) or a project (online evaluators that score
-production runs).
+Evaluators automatically score runs against a dataset (offline) or a project
+(online). Two evaluator types are supported:
+
+  create   LLM-as-judge evaluator using a LangSmith Hub prompt
+  upload   Code evaluator from a Python or JavaScript/TypeScript file
 
 Examples:
   langsmith evaluator list
+  langsmith evaluator get accuracy
+  langsmith evaluator create --name accuracy --hub-ref langchain-ai/correctness:latest --dataset my-eval-set
   langsmith evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
   langsmith evaluator upload eval.ts --name accuracy --function checkAccuracy --dataset my-eval-set
   langsmith evaluator delete accuracy --yes`,
 	}
 
+	cmd.AddCommand(newEvaluatorCreateCmd())
+	cmd.AddCommand(newEvaluatorGetCmd())
 	cmd.AddCommand(newEvaluatorListCmd())
 	cmd.AddCommand(newEvaluatorUploadCmd())
 	cmd.AddCommand(newEvaluatorDeleteCmd())
@@ -38,14 +43,238 @@ Examples:
 
 // evaluatorRule matches the JSON from GET /runs/rules.
 type evaluatorRule struct {
-	ID               string   `json:"id"`
-	DisplayName      string   `json:"display_name"`
-	SamplingRate     float64  `json:"sampling_rate"`
-	IsEnabled        bool     `json:"is_enabled"`
-	DatasetID        string   `json:"dataset_id"`
-	SessionID        string   `json:"session_id"`
-	TargetDatasetIDs []string `json:"target_dataset_ids"`
-	TargetProjectIDs []string `json:"target_project_ids"`
+	ID               string          `json:"id"`
+	DisplayName      string          `json:"display_name"`
+	SamplingRate     float64         `json:"sampling_rate"`
+	IsEnabled        bool            `json:"is_enabled"`
+	DatasetID        string          `json:"dataset_id"`
+	SessionID        string          `json:"session_id"`
+	TargetDatasetIDs []string        `json:"target_dataset_ids"`
+	TargetProjectIDs []string        `json:"target_project_ids"`
+	CodeEvaluators   []codeEvaluator `json:"code_evaluators"`
+	Evaluators       []llmEvaluator  `json:"evaluators"`
+}
+
+type codeEvaluator struct {
+	Code     string `json:"code"`
+	Language string `json:"language"`
+}
+
+type llmEvaluator struct {
+	HubRef          string            `json:"hub_ref"`
+	VariableMapping map[string]string `json:"variable_mapping"`
+}
+
+func newEvaluatorCreateCmd() *cobra.Command {
+	var (
+		name            string
+		hubRef          string
+		targetDataset   string
+		targetProject   string
+		samplingRate    float64
+		variableMapping []string
+		replace         bool
+		yes             bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an LLM-as-judge evaluator from a LangSmith Hub prompt",
+		Long: `Create an LLM-as-judge evaluator rule that uses a LangSmith Hub prompt
+to automatically score runs.
+
+Specify the judge prompt via --hub-ref (owner/repo:tag). The evaluator can
+target a dataset (offline/experiment scoring) or a project (online scoring).
+
+Use --variable-mapping to map run or example fields to prompt variables:
+  --variable-mapping input=question --variable-mapping output=answer
+
+Examples:
+  langsmith evaluator create --name accuracy --hub-ref langchain-ai/correctness:latest --dataset my-eval-set
+  langsmith evaluator create --name quality --hub-ref myorg/quality-judge:v2 --project prod --sampling-rate 0.1
+  langsmith evaluator create --name relevance --hub-ref myorg/relevance:latest --dataset qa-set \
+    --variable-mapping input=question --variable-mapping output=answer`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if targetDataset == "" && targetProject == "" {
+				exitError("must specify --dataset or --project")
+			}
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			var datasetID, projectID string
+
+			if targetDataset != "" {
+				ds, err := resolveDataset(ctx, c, targetDataset)
+				if err != nil {
+					exitErrorf("%v", err)
+				}
+				datasetID = ds.ID
+			}
+
+			if targetProject != "" {
+				sid, err := c.ResolveSessionID(ctx, targetProject)
+				if err != nil {
+					exitErrorf("%v", err)
+				}
+				projectID = sid
+			}
+
+			var rules []evaluatorRule
+			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
+				exitErrorf("checking existing evaluators: %v", err)
+			}
+
+			existing := findEvaluator(rules, name, datasetID, projectID)
+			if existing != nil {
+				if !replace {
+					output.OutputJSON(map[string]any{
+						"error": fmt.Sprintf("evaluator %q already exists (use --replace to overwrite)", name),
+						"id":    existing.ID,
+					}, "")
+					return
+				}
+				if !yes {
+					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
+					var confirm string
+					_, _ = fmt.Scanln(&confirm)
+					if strings.ToLower(confirm) != "y" {
+						exitError("aborted")
+					}
+				}
+				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), nil); err != nil {
+					exitErrorf("deleting existing evaluator: %v", err)
+				}
+			}
+
+			varMap := map[string]string{}
+			for _, m := range variableMapping {
+				parts := strings.SplitN(m, "=", 2)
+				if len(parts) != 2 {
+					exitErrorf("invalid --variable-mapping %q: expected KEY=VALUE", m)
+				}
+				varMap[parts[0]] = parts[1]
+			}
+
+			evaluatorDef := map[string]any{"hub_ref": hubRef}
+			if len(varMap) > 0 {
+				evaluatorDef["variable_mapping"] = varMap
+			}
+
+			payload := map[string]any{
+				"display_name":           name,
+				"sampling_rate":          samplingRate,
+				"is_enabled":             true,
+				"include_extended_stats": false,
+				"evaluators":             []map[string]any{evaluatorDef},
+			}
+			if datasetID != "" {
+				payload["dataset_id"] = datasetID
+			}
+			if projectID != "" {
+				payload["session_id"] = projectID
+			}
+
+			var result map[string]any
+			if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
+				exitErrorf("creating evaluator: %v", err)
+			}
+
+			target := "project"
+			if datasetID != "" {
+				target = "dataset"
+			}
+
+			output.OutputJSON(map[string]any{
+				"status":  "created",
+				"id":      result["id"],
+				"name":    name,
+				"target":  target,
+				"hub_ref": hubRef,
+			}, "")
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Display name for the evaluator (required)")
+	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "LangSmith Hub prompt reference, e.g. owner/repo:tag (required)")
+	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
+	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
+	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
+	cmd.Flags().StringArrayVar(&variableMapping, "variable-mapping", nil, "Map run/example fields to prompt variables (KEY=VALUE, repeatable)")
+	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt when replacing")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("hub-ref")
+
+	return cmd
+}
+
+func newEvaluatorGetCmd() *cobra.Command {
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "get NAME",
+		Short: "Get details of an evaluator rule by display name",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
+
+			c := mustGetClient()
+			ctx := context.Background()
+
+			var rules []evaluatorRule
+			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
+				exitErrorf("fetching evaluators: %v", err)
+			}
+
+			var matching []evaluatorRule
+			for _, r := range rules {
+				if r.DisplayName == name {
+					matching = append(matching, r)
+				}
+			}
+
+			if len(matching) == 0 {
+				output.OutputJSON(map[string]any{
+					"error": fmt.Sprintf("evaluator %q not found", name),
+				}, "")
+				return
+			}
+
+			var data []map[string]any
+			for _, r := range matching {
+				entry := map[string]any{
+					"id":            r.ID,
+					"name":          r.DisplayName,
+					"sampling_rate": r.SamplingRate,
+					"is_enabled":    r.IsEnabled,
+					"dataset_id":    nilStr(r.DatasetID),
+					"session_id":    nilStr(r.SessionID),
+				}
+				if len(r.CodeEvaluators) > 0 {
+					entry["type"] = "code"
+					entry["language"] = r.CodeEvaluators[0].Language
+					entry["code"] = r.CodeEvaluators[0].Code
+				} else if len(r.Evaluators) > 0 {
+					entry["type"] = "llm"
+					entry["hub_ref"] = r.Evaluators[0].HubRef
+					if len(r.Evaluators[0].VariableMapping) > 0 {
+						entry["variable_mapping"] = r.Evaluators[0].VariableMapping
+					}
+				}
+				data = append(data, entry)
+			}
+
+			if len(data) == 1 {
+				output.OutputJSON(data[0], outputFile)
+			} else {
+				output.OutputJSON(data, outputFile)
+			}
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	return cmd
 }
 
 func newEvaluatorListCmd() *cobra.Command {
