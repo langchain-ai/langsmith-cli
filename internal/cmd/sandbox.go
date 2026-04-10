@@ -8,10 +8,6 @@ func newSandboxCmd() *cobra.Command {
 		Short: "Manage and interact with sandboxes (experimental)",
 		Long: `Manage and interact with sandboxes (currently in experimental preview).
 
-Sandboxes are isolated Firecracker microVMs booted from snapshots.
-Use 'snapshot build' to create a snapshot from a Docker image, then
-'sandbox create' to launch a VM from it.
-
 Examples:
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox list
