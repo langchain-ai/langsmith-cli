@@ -62,6 +62,11 @@ func runSSHSetup(name, identity string) error {
 	}
 	pubkey = bytes.TrimSpace(pubkey)
 
+	// Check if sshd is running inside the sandbox.
+	if !isSSHDRunning(dpURL) {
+		fmt.Fprintln(os.Stderr, "Warning: sshd does not appear to be running in the sandbox. SSH connections will likely not work.")
+	}
+
 	// Upload to /root/.ssh/authorized_keys via the sandbox upload endpoint.
 	if err := uploadAuthorizedKeys(dpURL, pubkey); err != nil {
 		return fmt.Errorf("uploading public key: %w", err)
@@ -173,31 +178,8 @@ func ensureSSHConfig(hostAlias, block string) error {
 
 // fetchHostKey retrieves the SSH host public key from the sandbox.
 func fetchHostKey(dpURL string) (string, error) {
-	execURL := strings.TrimRight(dpURL, "/") + "/execute"
-	body, _ := json.Marshal(map[string]interface{}{
-		"command": []string{"cat", "/etc/ssh/ssh_host_ed25519_key.pub"},
-	})
-
-	req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
+	result, err := sandboxExec(dpURL, []string{"cat", "/etc/ssh/ssh_host_ed25519_key.pub"})
 	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range sandboxAuthHeaders() {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Stdout   string `json:"stdout"`
-		ExitCode int    `json:"exit_code"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
 	if result.ExitCode != 0 {
@@ -299,4 +281,48 @@ func uploadAuthorizedKeys(dpURL string, pubkey []byte) error {
 		return fmt.Errorf("upload failed (HTTP %d): %s", resp.StatusCode, string(respBody))
 	}
 	return nil
+}
+
+// isSSHDRunning checks whether sshd is listening on port 22 inside the sandbox.
+func isSSHDRunning(dpURL string) bool {
+	result, err := sandboxExec(dpURL, []string{"sh", "-c", "ss -tlnp 2>/dev/null | grep -q ':22 ' || netstat -tlnp 2>/dev/null | grep -q ':22 '"})
+	if err != nil {
+		return false
+	}
+	return result.ExitCode == 0
+}
+
+type execResult struct {
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+	ExitCode int    `json:"exit_code"`
+}
+
+// sandboxExec runs a command inside the sandbox via the /execute endpoint.
+func sandboxExec(dpURL string, command []string) (*execResult, error) {
+	execURL := strings.TrimRight(dpURL, "/") + "/execute"
+	body, _ := json.Marshal(map[string]interface{}{
+		"command": command,
+	})
+
+	req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range sandboxAuthHeaders() {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result execResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
