@@ -90,10 +90,10 @@ func runSSHSetup(name, identity string) error {
 	}
 
 	proxyCmd := fmt.Sprintf("langsmith sandbox tunnel %s --remote-port 22 --stdio", name)
-	if apiKey := getAPIKey(); apiKey != "" {
+	if apiKey := GetAPIKey(); apiKey != "" {
 		proxyCmd += " --api-key " + apiKey
 	}
-	if apiURL := getAPIURL(); apiURL != "https://api.smith.langchain.com" {
+	if apiURL := GetAPIURL(); apiURL != "https://api.smith.langchain.com" {
 		proxyCmd += " --api-url " + apiURL
 	}
 

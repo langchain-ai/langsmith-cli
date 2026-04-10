@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -199,5 +202,99 @@ func TestSnapshotBuildCmd_CapacityFlag(t *testing.T) {
 	}
 	if f.DefValue != "4gb" {
 		t.Errorf("expected default 4gb, got %q", f.DefValue)
+	}
+}
+
+// ==================== loadJSONArg ====================
+
+func TestLoadJSONArg_InlineValid(t *testing.T) {
+	input := `{"rules":[{"name":"test","match_hosts":["example.com"]}]}`
+	raw, err := loadJSONArg(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	rules, ok := parsed["rules"].([]interface{})
+	if !ok || len(rules) != 1 {
+		t.Errorf("expected 1 rule, got %v", parsed["rules"])
+	}
+}
+
+func TestLoadJSONArg_InlineInvalid(t *testing.T) {
+	_, err := loadJSONArg(`{not json}`)
+	if err == nil {
+		t.Error("expected error for invalid inline JSON")
+	}
+}
+
+func TestLoadJSONArg_FileValid(t *testing.T) {
+	path := filepath.Join("testdata", "proxy_config.json")
+	raw, err := loadJSONArg("@" + path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	rules, ok := parsed["rules"].([]interface{})
+	if !ok || len(rules) != 1 {
+		t.Errorf("expected 1 rule, got %v", parsed["rules"])
+	}
+	noProxy, ok := parsed["no_proxy"].([]interface{})
+	if !ok || len(noProxy) != 1 {
+		t.Errorf("expected 1 no_proxy entry, got %v", parsed["no_proxy"])
+	}
+}
+
+func TestLoadJSONArg_FileInvalidJSON(t *testing.T) {
+	path := filepath.Join("testdata", "proxy_config_invalid.json")
+	_, err := loadJSONArg("@" + path)
+	if err == nil {
+		t.Error("expected error for invalid JSON file")
+	}
+}
+
+func TestLoadJSONArg_FileMissing(t *testing.T) {
+	_, err := loadJSONArg("@testdata/nonexistent.json")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestLoadJSONArg_FileAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pc.json")
+	if err := os.WriteFile(path, []byte(`{"rules":[]}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := loadJSONArg("@" + path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+}
+
+// ==================== proxy-config flag ====================
+
+func TestSandboxCreateCmd_ProxyConfigFlag(t *testing.T) {
+	cmd := newSandboxCreateCmd()
+	f := cmd.Flags().Lookup("proxy-config")
+	if f == nil {
+		t.Fatal("flag --proxy-config not found on create command")
+	}
+}
+
+func TestSandboxUpdateCmd_ProxyConfigFlag(t *testing.T) {
+	cmd := newSandboxUpdateCmd()
+	f := cmd.Flags().Lookup("proxy-config")
+	if f == nil {
+		t.Fatal("flag --proxy-config not found on update command")
 	}
 }

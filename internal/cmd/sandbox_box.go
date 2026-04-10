@@ -63,12 +63,13 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout
 
 func newSandboxCreateCmd() *cobra.Command {
 	var (
-		snapshotID string
-		vcpus      int
-		memory     string
-		rootfs     string
-		wait       bool
-		timeoutSec int
+		snapshotID  string
+		vcpus       int
+		memory      string
+		rootfs      string
+		proxyConfig string
+		wait        bool
+		timeoutSec  int
 	)
 
 	cmd := &cobra.Command{
@@ -76,10 +77,36 @@ func newSandboxCreateCmd() *cobra.Command {
 		Short: "Create a sandbox VM from a snapshot",
 		Long: `Create a sandbox VM from a snapshot.
 
+The --proxy-config flag accepts inline JSON or a file path prefixed with @.
+The proxy config controls which outbound HTTP requests the sandbox proxy
+allows and what headers to inject. Format:
+
+  {
+    "rules": [{
+      "name": "openai",
+      "match_hosts": ["api.openai.com"],
+      "match_paths": [],
+      "headers": [
+        {"name": "Authorization", "type": "opaque", "value": "Bearer sk-..."},
+        {"name": "X-Key", "type": "workspace_secret", "value": "Bearer {OPENAI_API_KEY}"}
+      ],
+      "enabled": true
+    }],
+    "no_proxy": ["internal.example.com"],
+    "access_control": {
+      "allow_list": ["*.openai.com", "*.anthropic.com"],
+      "deny_list": []
+    }
+  }
+
+Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
+responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
+
 Examples:
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
-  langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb --wait`,
+  langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb --wait
+  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			name := args[0]
@@ -108,6 +135,13 @@ Examples:
 				}
 				body["fs_capacity_bytes"] = rootfsBytes
 			}
+			if proxyConfig != "" {
+				pc, err := loadJSONArg(proxyConfig)
+				if err != nil {
+					ExitErrorf("invalid --proxy-config: %v", err)
+				}
+				body["proxy_config"] = pc
+			}
 			if wait {
 				body["wait_for_ready"] = true
 				body["timeout"] = timeoutSec
@@ -126,6 +160,7 @@ Examples:
 	cmd.Flags().IntVar(&vcpus, "vcpus", 2, "Number of vCPUs")
 	cmd.Flags().StringVar(&memory, "memory", "512mb", "Memory with unit (e.g. 512mb, 1gb)")
 	cmd.Flags().StringVar(&rootfs, "rootfs-capacity", "", "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
+	cmd.Flags().StringVar(&proxyConfig, "proxy-config", "", "Proxy config as JSON or @file.json")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the sandbox to become ready")
 	cmd.Flags().IntVar(&timeoutSec, "timeout", 120, "Timeout in seconds when using --wait")
 
@@ -206,15 +241,23 @@ func newSandboxGetCmd() *cobra.Command {
 
 func newSandboxUpdateCmd() *cobra.Command {
 	var (
-		vcpus  int
-		memory string
-		rootfs string
+		vcpus       int
+		memory      string
+		rootfs      string
+		proxyConfig string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "update <name>",
 		Short: "Update sandbox resources (takes effect on next start)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Update sandbox resources or proxy configuration.
+
+Resource changes (--vcpus, --memory, --rootfs-capacity) take effect on next start.
+Proxy config changes take effect immediately.
+
+The --proxy-config flag accepts inline JSON or @file.json. See "create --help"
+for the proxy config JSON format.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
@@ -237,9 +280,16 @@ func newSandboxUpdateCmd() *cobra.Command {
 				}
 				body["fs_capacity_bytes"] = rootfsBytes
 			}
+			if cmd.Flags().Changed("proxy-config") {
+				pc, err := loadJSONArg(proxyConfig)
+				if err != nil {
+					ExitErrorf("invalid --proxy-config: %v", err)
+				}
+				body["proxy_config"] = pc
+			}
 
 			if len(body) == 0 {
-				ExitError("nothing to update (use --vcpus, --memory, or --rootfs-capacity)")
+				ExitError("nothing to update (use --vcpus, --memory, --rootfs-capacity, or --proxy-config)")
 			}
 
 			var resp boxResponse
@@ -254,6 +304,7 @@ func newSandboxUpdateCmd() *cobra.Command {
 	cmd.Flags().IntVar(&vcpus, "vcpus", 0, "Number of vCPUs")
 	cmd.Flags().StringVar(&memory, "memory", "", "Memory with unit (e.g. 512mb, 1gb)")
 	cmd.Flags().StringVar(&rootfs, "rootfs-capacity", "", "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
+	cmd.Flags().StringVar(&proxyConfig, "proxy-config", "", "Proxy config as JSON or @file.json")
 
 	return cmd
 }

@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -372,6 +374,27 @@ func parseByteSize(s string) (int64, error) {
 	}
 
 	return bytes, nil
+}
+
+// loadJSONArg parses a JSON value from a CLI argument.
+// If the string starts with "@", it reads the rest as a file path.
+// Otherwise it parses it as inline JSON.
+func loadJSONArg(s string) (json.RawMessage, error) {
+	var data []byte
+	if strings.HasPrefix(s, "@") {
+		var err error
+		data, err = os.ReadFile(s[1:])
+		if err != nil {
+			return nil, fmt.Errorf("reading file %s: %w", s[1:], err)
+		}
+	} else {
+		data = []byte(s)
+	}
+	var raw json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	return raw, nil
 }
 
 func formatTime(ts string) string {
