@@ -89,9 +89,17 @@ func runSSHSetup(name, identity string) error {
 		}
 	}
 
+	proxyCmd := fmt.Sprintf("langsmith sandbox tunnel %s --remote-port 22 --stdio", name)
+	if apiKey := getAPIKey(); apiKey != "" {
+		proxyCmd += " --api-key " + apiKey
+	}
+	if apiURL := getAPIURL(); apiURL != "https://api.smith.langchain.com" {
+		proxyCmd += " --api-url " + apiURL
+	}
+
 	configBlock := fmt.Sprintf(
-		"# Added by: langsmith sandbox ssh-setup %s\nHost %s\n    User root\n    ProxyCommand langsmith sandbox tunnel %s --remote-port 22 --stdio\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
-		name, hostAlias, name, knownHostsPath,
+		"# Added by: langsmith sandbox ssh-setup %s\nHost %s\n    User root\n    ProxyCommand %s\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
+		name, hostAlias, proxyCmd, knownHostsPath,
 	)
 
 	if err := ensureSSHConfig(hostAlias, configBlock); err != nil {
