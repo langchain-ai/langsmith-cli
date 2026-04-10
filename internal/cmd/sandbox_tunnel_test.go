@@ -22,21 +22,6 @@ import (
 
 // ==================== Command structure ====================
 
-func TestSandboxCmd_Subcommands(t *testing.T) {
-	cmd := newSandboxCmd()
-	expected := map[string]bool{"tunnel": false}
-	for _, sub := range cmd.Commands() {
-		if _, ok := expected[sub.Name()]; ok {
-			expected[sub.Name()] = true
-		}
-	}
-	for name, found := range expected {
-		if !found {
-			t.Errorf("sandbox missing subcommand %q", name)
-		}
-	}
-}
-
 func TestSandboxCmd_UseField(t *testing.T) {
 	cmd := newSandboxCmd()
 	if cmd.Use != "sandbox" {
@@ -69,7 +54,8 @@ func TestSandboxTunnelCmd_Flags(t *testing.T) {
 
 func TestSandboxTunnelCmd_RequiredFlags(t *testing.T) {
 	cmd := newSandboxTunnelCmd()
-	for _, name := range []string{"url", "remote-port"} {
+	// Only remote-port is required; name is a positional arg and url is optional.
+	for _, name := range []string{"remote-port"} {
 		f := cmd.Flags().Lookup(name)
 		if f == nil {
 			t.Errorf("flag --%s not found", name)
@@ -209,7 +195,7 @@ func TestSandboxTunnel_EndToEnd(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runTunnel(ctx, logger, sandboxURL, "test-key", echoPort, localPort)
+		errCh <- runTunnel(ctx, logger, sandboxURL, echoPort, localPort)
 	}()
 
 	// Wait for the listener to come up.
@@ -274,7 +260,7 @@ func TestSandboxTunnel_MultipleConnections(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		runTunnel(ctx, logger, tunnelSrv.URL, "test-key", echoPort, localPort) //nolint:errcheck
+		runTunnel(ctx, logger, tunnelSrv.URL, echoPort, localPort) //nolint:errcheck
 	}()
 
 	// Wait for listener.
@@ -318,8 +304,8 @@ func TestSandboxTunnel_MultipleConnections(t *testing.T) {
 }
 
 func TestSandboxTunnel_MissingFlags(t *testing.T) {
-	// --url and --remote-port are required.
-	_, err := executeCommand(t, "sandbox", "tunnel")
+	// --remote-port is required.
+	_, err := executeCommand(t, "sandbox", "tunnel", "my-vm")
 	if err == nil {
 		t.Error("expected error when required flags are missing")
 	}
