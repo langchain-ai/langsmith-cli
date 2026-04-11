@@ -252,7 +252,6 @@ Examples:
 
 func newProjectIssuesUpdateCmd() *cobra.Command {
 	var (
-		addTraces   []string
 		title       string
 		description string
 		outputFile  string
@@ -260,42 +259,26 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update <issue-id>",
-		Short: "[Private Beta] Update an existing issue (add evidence or correct a disproven finding)",
-		Long: `[Private Beta] Update an existing issue.
+		Short: "[Private Beta] Correct an existing issue's title or description",
+		Long: `[Private Beta] Correct an existing issue when evidence disproves the original finding.
 
-Two use cases:
-  1. Add trace IDs as new supporting evidence (--add-traces)
-  2. Correct the title or description when evidence disproves the original finding
-     (--title / --description)
+To link runs as evidence, use 'langsmith project issues runs add' instead.
 
 The issue ID is the UUID returned by 'langsmith project issues list'.
 
 Examples:
-  langsmith project issues update <id> --add-traces <trace-id1>,<trace-id2>
   langsmith project issues update <id> --title "Corrected title" --description "New finding..."`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if len(addTraces) == 0 && title == "" && description == "" {
-				exitError("at least one of --add-traces, --title, or --description is required")
+			if title == "" && description == "" {
+				exitError("at least one of --title or --description is required")
 			}
 
 			c := mustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{}
-
-			if len(addTraces) > 0 {
-				type traceInput struct {
-					TraceID   string `json:"trace_id"`
-					StartTime string `json:"start_time"`
-				}
-				traces := make([]traceInput, 0, len(addTraces))
-				for _, tid := range addTraces {
-					traces = append(traces, traceInput{TraceID: tid, StartTime: time.Now().UTC().Format(time.RFC3339)})
-				}
-				body["traces"] = traces
-			}
 			if title != "" {
 				body["name"] = title
 			}
@@ -314,7 +297,6 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringArrayVar(&addTraces, "add-traces", nil, "Trace IDs to add as evidence (repeatable)")
 	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
