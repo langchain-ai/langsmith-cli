@@ -388,7 +388,7 @@ func newProjectIssuesRunsCmd() *cobra.Command {
 		Long: `[Private Beta] Link and unlink runs to/from an issue.
 
 Examples:
-  langsmith project issues runs add <issue-id> --run-id <run-id> --trace-id <trace-id> --start-time 2026-04-10T00:00:00Z
+  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
   langsmith project issues runs update <issue-id> <run-id> --comment "new comment"
   langsmith project issues runs remove <issue-id> <run-id>`,
 	}
@@ -402,7 +402,6 @@ Examples:
 func newProjectIssuesRunsAddCmd() *cobra.Command {
 	var (
 		runID     string
-		traceID   string
 		startTime string
 		comment   string
 	)
@@ -413,8 +412,8 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if runID == "" || traceID == "" || startTime == "" {
-				exitError("--run-id, --trace-id, and --start-time are required")
+			if runID == "" || startTime == "" {
+				exitError("--run-id and --start-time are required")
 			}
 
 			c := mustGetClient()
@@ -422,7 +421,6 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 
 			body := map[string]any{
 				"run_id":     runID,
-				"trace_id":   traceID,
 				"start_time": startTime,
 			}
 			if comment != "" {
@@ -438,7 +436,6 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to link (required)")
-	cmd.Flags().StringVar(&traceID, "trace-id", "", "Trace ID of the run (required)")
 	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional comment explaining why this run is evidence")
 	return cmd
