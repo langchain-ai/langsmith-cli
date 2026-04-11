@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -57,13 +56,7 @@ func runConsole(name, shell string, forwardSSHAgent bool) error {
 	dpURL := ep.DataplaneURL
 
 	// Build WebSocket URL.
-	wsScheme := "wss"
-	if strings.HasPrefix(dpURL, "http://") {
-		wsScheme = "ws"
-	}
-	// Strip scheme, keep host+path.
-	hostPath := strings.TrimPrefix(strings.TrimPrefix(dpURL, "https://"), "http://")
-	wsURL := fmt.Sprintf("%s://%s/execute/ws", wsScheme, hostPath)
+	wsURL := dataplaneWSURL(dpURL, "/execute/ws")
 
 	// Connect.
 	dialer := websocket.Dialer{}

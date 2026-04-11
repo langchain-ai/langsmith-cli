@@ -3,11 +3,8 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"mime/multipart"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,27 +265,7 @@ func uploadAuthorizedKeys(dpURL string, pubkey []byte) error {
 		return err
 	}
 
-	uploadURL := strings.TrimRight(dpURL, "/") + "/upload?path=/root/.ssh/authorized_keys"
-	req, err := http.NewRequest("POST", uploadURL, &body)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	for k, v := range sandboxAuthHeaders() {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("upload request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("upload failed (HTTP %d): %s", resp.StatusCode, string(respBody))
-	}
-	return nil
+	return dataplanePostRaw(dpURL, "/upload?path=/root/.ssh/authorized_keys", w.FormDataContentType(), &body)
 }
 
 // isSSHDRunning checks whether sshd is listening on port 22 inside the sandbox.
@@ -308,28 +285,8 @@ type execResult struct {
 
 // sandboxExec runs a command inside the sandbox via the /execute endpoint.
 func sandboxExec(dpURL string, command []string) (*execResult, error) {
-	execURL := strings.TrimRight(dpURL, "/") + "/execute"
-	body, _ := json.Marshal(map[string]interface{}{
-		"command": command,
-	})
-
-	req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range sandboxAuthHeaders() {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
 	var result execResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := dataplanePost(dpURL, "/execute", map[string]interface{}{"command": command}, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

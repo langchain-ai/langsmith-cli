@@ -1,14 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -383,37 +378,9 @@ Examples:
 				return err
 			}
 
-			// POST /execute
-			execURL := strings.TrimRight(ep.DataplaneURL, "/") + "/execute"
-			body, _ := json.Marshal(map[string]interface{}{"command": command})
-
-			req, err := http.NewRequest(http.MethodPost, execURL, bytes.NewReader(body))
-			if err != nil {
-				return fmt.Errorf("build request: %w", err)
-			}
-			req.Header.Set("Content-Type", "application/json")
-			for k, v := range sandboxAuthHeaders() {
-				req.Header.Set(k, v)
-			}
-
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
+			var result execResult
+			if err := dataplanePost(ep.DataplaneURL, "/execute", map[string]interface{}{"command": command}, &result); err != nil {
 				return fmt.Errorf("execute: %w", err)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
-				return fmt.Errorf("execute failed (HTTP %d): %s", resp.StatusCode, string(body))
-			}
-
-			var result struct {
-				Stdout   string `json:"stdout"`
-				Stderr   string `json:"stderr"`
-				ExitCode int    `json:"exit_code"`
-			}
-			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-				return fmt.Errorf("decode response: %w", err)
 			}
 
 			if result.Stdout != "" {
