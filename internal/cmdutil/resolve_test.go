@@ -1,0 +1,110 @@
+package cmdutil
+
+import (
+	"testing"
+
+	"github.com/spf13/cobra"
+)
+
+func newTestCmd() *cobra.Command {
+	root := &cobra.Command{Use: "test"}
+	root.PersistentFlags().String("api-key", "", "")
+	root.PersistentFlags().String("api-url", "", "")
+	root.PersistentFlags().String("format", "json", "")
+	return root
+}
+
+func TestResolveAPIKey_Flag(t *testing.T) {
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("api-key", "from-flag")
+	if got := ResolveAPIKey(cmd); got != "from-flag" {
+		t.Errorf("expected from-flag, got %q", got)
+	}
+}
+
+func TestResolveAPIKey_Env(t *testing.T) {
+	cmd := newTestCmd()
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	if got := ResolveAPIKey(cmd); got != "from-env" {
+		t.Errorf("expected from-env, got %q", got)
+	}
+}
+
+func TestResolveAPIKey_Empty(t *testing.T) {
+	t.Setenv("LANGSMITH_API_KEY", "")
+	cmd := newTestCmd()
+	if got := ResolveAPIKey(cmd); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestResolveAPIURL_Flag(t *testing.T) {
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("api-url", "http://custom.example.com")
+	if got := ResolveAPIURL(cmd); got != "http://custom.example.com" {
+		t.Errorf("expected http://custom.example.com, got %q", got)
+	}
+}
+
+func TestResolveAPIURL_Env(t *testing.T) {
+	cmd := newTestCmd()
+	t.Setenv("LANGSMITH_ENDPOINT", "http://env.example.com")
+	if got := ResolveAPIURL(cmd); got != "http://env.example.com" {
+		t.Errorf("expected http://env.example.com, got %q", got)
+	}
+}
+
+func TestResolveAPIURL_Default(t *testing.T) {
+	cmd := newTestCmd()
+	if got := ResolveAPIURL(cmd); got != "https://api.smith.langchain.com" {
+		t.Errorf("expected default, got %q", got)
+	}
+}
+
+func TestResolveAPIURL_NormalizesTrailingAPIV1(t *testing.T) {
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("api-url", "https://myhost.com/api/v1")
+	if got := ResolveAPIURL(cmd); got != "https://myhost.com" {
+		t.Errorf("expected normalized URL, got %q", got)
+	}
+}
+
+func TestResolveFormat_Flag(t *testing.T) {
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("format", "pretty")
+	if got := ResolveFormat(cmd); got != "pretty" {
+		t.Errorf("expected pretty, got %q", got)
+	}
+}
+
+func TestResolveFormat_Default(t *testing.T) {
+	cmd := newTestCmd()
+	if got := ResolveFormat(cmd); got != "json" {
+		t.Errorf("expected json, got %q", got)
+	}
+}
+
+func TestGetClient_Success(t *testing.T) {
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("api-key", "test-key")
+	_ = cmd.PersistentFlags().Set("api-url", "http://localhost:1234")
+	c, err := GetClient(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.APIKey() != "test-key" {
+		t.Errorf("expected api key test-key, got %q", c.APIKey())
+	}
+	if c.APIURL() != "http://localhost:1234" {
+		t.Errorf("expected api url http://localhost:1234, got %q", c.APIURL())
+	}
+}
+
+func TestGetClient_MissingKey(t *testing.T) {
+	t.Setenv("LANGSMITH_API_KEY", "")
+	cmd := newTestCmd()
+	_, err := GetClient(cmd)
+	if err == nil {
+		t.Fatal("expected error for missing API key")
+	}
+}

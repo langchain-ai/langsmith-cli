@@ -55,7 +55,7 @@ Examples:
 				return fmt.Errorf("--local-port must be between 1 and 65535 (got %d)", localPort)
 			}
 
-			apiKey := getAPIKey()
+			apiKey := GetAPIKey()
 			if apiKey == "" {
 				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
 			}

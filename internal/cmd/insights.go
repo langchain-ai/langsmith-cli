@@ -55,17 +55,17 @@ for full details including the executive summary and category breakdown.`,
   langsmith insights list --project my-app --limit 5
   langsmith insights list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			var jobs []langsmith.SessionInsightListResponse
@@ -77,10 +77,10 @@ for full details including the executive summary and category breakdown.`,
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing insights: %v", err)
+				ExitErrorf("listing insights: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "ID", "Status", "Created", "Clusters"}
@@ -131,25 +131,25 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			insightID := args[0]
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			detail, err := c.SDK.Sessions.Insights.GetJob(ctx, sessionID, insightID)
 			if err != nil {
-				exitErrorf("fetching insight: %v", err)
+				ExitErrorf("fetching insight: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				printInsightPretty(detail)

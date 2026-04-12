@@ -51,16 +51,16 @@ func newThreadListCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			project = ResolveProject(project)
 			if project == "" {
-				exitError("--project is required for thread list (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for thread list (or set LANGSMITH_PROJECT)")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			// Resolve project to session ID
 			sessionID, err := c.ResolveSessionID(ctx, project)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			// Query root runs (like the Python SDK does)
@@ -90,7 +90,7 @@ func newThreadListCmd() *cobra.Command {
 				}
 				resp, err := c.SDK.Runs.Query(ctx, params)
 				if err != nil {
-					exitErrorf("querying runs: %v", err)
+					ExitErrorf("querying runs: %v", err)
 				}
 				for _, run := range resp.Runs {
 					tid := run.ThreadID
@@ -146,7 +146,7 @@ func newThreadListCmd() *cobra.Command {
 				threads = threads[:limit]
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Thread ID", "Run Count", "Min Start", "Max Start"}
@@ -210,16 +210,16 @@ func newThreadGetCmd() *cobra.Command {
 
 			project = ResolveProject(project)
 			if project == "" {
-				exitError("--project is required for thread get (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for thread get (or set LANGSMITH_PROJECT)")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			// Resolve project to session ID
 			sessionID, err := c.ResolveSessionID(ctx, project)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			// Query root runs filtered by thread_id
@@ -240,12 +240,12 @@ func newThreadGetCmd() *cobra.Command {
 
 			runs, err := queryRuns(ctx, c, params, "", queryLimit, 0)
 			if err != nil {
-				exitErrorf("querying thread runs: %v", err)
+				ExitErrorf("querying thread runs: %v", err)
 			}
 
 			extracted := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				output.PrintRunsTable(os.Stdout, extracted, includeMetadata, fmt.Sprintf("Thread %s", threadID))

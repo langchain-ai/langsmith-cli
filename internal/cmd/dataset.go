@@ -54,7 +54,7 @@ func newDatasetListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all datasets in the workspace (default: 100)",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			pageSize := int64(20)
@@ -77,9 +77,9 @@ func newDatasetListCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing datasets: %v", err)
+				ExitErrorf("listing datasets: %v", err)
 			}
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "ID", "Description", "Examples", "Created"}
@@ -133,12 +133,12 @@ func newDatasetGetCmd() *cobra.Command {
 		Short: "Get dataset details by name or UUID",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			data := map[string]any{
@@ -150,7 +150,7 @@ func newDatasetGetCmd() *cobra.Command {
 				"created_at":    formatTimeISO(ds.CreatedAt),
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
 			} else {
@@ -173,7 +173,7 @@ func newDatasetCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new empty dataset",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			params := langsmith.DatasetNewParams{
@@ -185,7 +185,7 @@ func newDatasetCreateCmd() *cobra.Command {
 
 			ds, err := c.SDK.Datasets.New(ctx, params)
 			if err != nil {
-				exitErrorf("creating dataset: %v", err)
+				ExitErrorf("creating dataset: %v", err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -213,12 +213,12 @@ func newDatasetDeleteCmd() *cobra.Command {
 		Short: "Delete a dataset by name or UUID",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			if !yes {
@@ -226,13 +226,13 @@ func newDatasetDeleteCmd() *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					exitError("aborted")
+					ExitError("aborted")
 				}
 			}
 
 			_, err = c.SDK.Datasets.Delete(ctx, ds.ID)
 			if err != nil {
-				exitErrorf("deleting dataset: %v", err)
+				ExitErrorf("deleting dataset: %v", err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -258,12 +258,12 @@ func newDatasetExportCmd() *cobra.Command {
 			nameOrID := args[0]
 			outputFile := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			ds, err := resolveDataset(ctx, c, nameOrID)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			exportPageSize := int64(20)
@@ -282,7 +282,7 @@ func newDatasetExportCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing examples: %v", err)
+				ExitErrorf("listing examples: %v", err)
 			}
 
 			var data []map[string]any
@@ -295,7 +295,7 @@ func newDatasetExportCmd() *cobra.Command {
 
 			jsonBytes, _ := json.MarshalIndent(data, "", "  ")
 			if err := os.WriteFile(outputFile, jsonBytes, 0644); err != nil {
-				exitErrorf("writing file: %v", err)
+				ExitErrorf("writing file: %v", err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -324,17 +324,17 @@ func newDatasetUploadCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			filePath := args[0]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			fileData, err := os.ReadFile(filePath)
 			if err != nil {
-				exitErrorf("reading file: %v", err)
+				ExitErrorf("reading file: %v", err)
 			}
 
 			var rawData any
 			if err := json.Unmarshal(fileData, &rawData); err != nil {
-				exitErrorf("parsing JSON: %v", err)
+				ExitErrorf("parsing JSON: %v", err)
 			}
 
 			var items []map[string]any
@@ -348,7 +348,7 @@ func newDatasetUploadCmd() *cobra.Command {
 			case map[string]any:
 				items = []map[string]any{v}
 			default:
-				exitError("JSON file must be an array or object")
+				ExitError("JSON file must be an array or object")
 			}
 
 			// Create dataset
@@ -361,7 +361,7 @@ func newDatasetUploadCmd() *cobra.Command {
 
 			ds, err := c.SDK.Datasets.New(ctx, dsParams)
 			if err != nil {
-				exitErrorf("creating dataset: %v", err)
+				ExitErrorf("creating dataset: %v", err)
 			}
 
 			// Create examples
@@ -386,7 +386,7 @@ func newDatasetUploadCmd() *cobra.Command {
 
 				_, err := c.SDK.Examples.New(ctx, exParams)
 				if err != nil {
-					exitErrorf("creating example: %v", err)
+					ExitErrorf("creating example: %v", err)
 				}
 			}
 
