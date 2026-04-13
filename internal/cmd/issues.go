@@ -391,7 +391,16 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <issue-id>",
 		Short: "Link a run to an issue",
-		Args:  cobra.ExactArgs(1),
+		Long: `Link a run to an issue as evidence.
+
+The --min-start-time flag is a lower bound used to locate the run's storage
+partition. Use the parent trace's start_time from "langsmith trace list".
+The server resolves the run's exact start_time and trace_id automatically.
+
+Examples:
+  langsmith project issues runs add <issue-id> --run-id <run-id> --min-start-time 2026-04-10T00:00:00Z
+  langsmith project issues runs add <issue-id> --run-id <run-id> --min-start-time 2026-04-10T00:00:00Z --comment "evidence"`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
 			if runID == "" || minStartTime == "" {
