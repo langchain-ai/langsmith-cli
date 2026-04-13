@@ -182,17 +182,17 @@ Examples:
   langsmith project issues events --project my-app --look-back-minutes 1440
   langsmith project issues events --project my-app --limit 50 --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("resolving project %q: %v", projectName, err)
+				ExitErrorf("resolving project %q: %v", projectName, err)
 			}
 
 			path := fmt.Sprintf("/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
@@ -200,10 +200,10 @@ Examples:
 
 			var events []issueEvent
 			if err := c.RawGet(ctx, path, &events); err != nil {
-				exitErrorf("listing issue events: %v", err)
+				ExitErrorf("listing issue events: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"EVENT TYPE", "ACTOR", "ISSUE ID", "CREATED"}
@@ -273,10 +273,10 @@ Examples:
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
 			if title == "" && description == "" {
-				exitError("at least one of --title or --description is required")
+				ExitError("at least one of --title or --description is required")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{}
@@ -291,7 +291,7 @@ Examples:
 
 			var issue forgeIssue
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
-				exitErrorf("updating issue: %v", err)
+				ExitErrorf("updating issue: %v", err)
 			}
 
 			output.OutputJSON(issueToMap(issue), outputFile)
@@ -370,7 +370,7 @@ func newProjectIssuesRunsCmd() *cobra.Command {
 		Long: `[Private Beta] Link and unlink runs to/from an issue.
 
 Examples:
-  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
+  langsmith project issues runs add <issue-id> --run-id <run-id> --min-start-time 2026-04-10T00:00:00Z
   langsmith project issues runs update <issue-id> <run-id> --comment "new comment"
   langsmith project issues runs remove <issue-id> <run-id>`,
 	}
@@ -383,9 +383,9 @@ Examples:
 
 func newProjectIssuesRunsAddCmd() *cobra.Command {
 	var (
-		runID     string
-		startTime string
-		comment   string
+		runID        string
+		minStartTime string
+		comment      string
 	)
 
 	cmd := &cobra.Command{
@@ -394,16 +394,16 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if runID == "" || startTime == "" {
-				exitError("--run-id and --start-time are required")
+			if runID == "" || minStartTime == "" {
+				ExitError("--run-id and --min-start-time are required")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{
-				"run_id":     runID,
-				"start_time": startTime,
+				"run_id":         runID,
+				"min_start_time": minStartTime,
 			}
 			if comment != "" {
 				body["comment"] = comment
@@ -411,14 +411,14 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs", issueID)
 			if err := c.RawPost(ctx, path, body, nil); err != nil {
-				exitErrorf("linking run: %v", err)
+				ExitErrorf("linking run: %v", err)
 			}
 			fmt.Printf("Run %s linked to issue %s\n", runID, issueID)
 		},
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to link (required)")
-	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
+	cmd.Flags().StringVar(&minStartTime, "min-start-time", "", "Lower bound for the run's start time (use the parent trace's start_time)")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional comment explaining why this run is evidence")
 	return cmd
 }
@@ -434,13 +434,13 @@ func newProjectIssuesRunsUpdateCmd() *cobra.Command {
 			issueID := args[0]
 			runID := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{"comment": comment}
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawPatch(ctx, path, body, nil); err != nil {
-				exitErrorf("updating linked run: %v", err)
+				ExitErrorf("updating linked run: %v", err)
 			}
 			fmt.Printf("Updated comment on run %s for issue %s\n", runID, issueID)
 		},
@@ -459,12 +459,12 @@ func newProjectIssuesRunsRemoveCmd() *cobra.Command {
 			issueID := args[0]
 			runID := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawDelete(ctx, path, nil); err != nil {
-				exitErrorf("unlinking run: %v", err)
+				ExitErrorf("unlinking run: %v", err)
 			}
 			fmt.Printf("Run %s unlinked from issue %s\n", runID, issueID)
 		},
