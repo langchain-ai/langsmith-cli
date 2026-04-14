@@ -23,6 +23,8 @@ type forgeIssue struct {
 	FixBranch   *string         `json:"fix_branch"`
 	FixPrompt   *string         `json:"fix_prompt"`
 	FixPRNumber *int            `json:"fix_pr_number"`
+	ProposedFix *string         `json:"proposed_fix"`
+	Actions     json.RawMessage `json:"actions"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	Traces      json.RawMessage `json:"traces"`
@@ -255,25 +257,33 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 	var (
 		title       string
 		description string
+		proposedFix string
+		actions     string
 		outputFile  string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "update <issue-id>",
-		Short: "[Private Beta] Correct an existing issue's title or description",
-		Long: `[Private Beta] Correct an existing issue when evidence disproves the original finding.
+		Short: "[Private Beta] Update an existing issue's title, description, proposed fix, or evaluator",
+		Long: `[Private Beta] Update an existing issue.
 
 To link runs as evidence, use 'langsmith project issues runs add' instead.
 
 The issue ID is the UUID returned by 'langsmith project issues list'.
 
+--title and --description are for factual corrections only (when new evidence disproves the original finding).
+--proposed-fix updates the suggested code fix shown to users.
+--actions updates the suggested evaluator(s) as a JSON array.
+
 Examples:
-  langsmith project issues update <id> --title "Corrected title" --description "New finding..."`,
+  langsmith project issues update <id> --title "Corrected title" --description "New finding..."
+  langsmith project issues update <id> --proposed-fix "The fix is to add input validation..."
+  langsmith project issues update <id> --actions '[{"reason":"...","method":"POST","url":"...","body":{...}}]'`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if title == "" && description == "" {
-				ExitError("at least one of --title or --description is required")
+			if title == "" && description == "" && proposedFix == "" && actions == "" {
+				ExitError("at least one of --title, --description, --proposed-fix, or --actions is required")
 			}
 
 			c := MustGetClient()
@@ -285,6 +295,16 @@ Examples:
 			}
 			if description != "" {
 				body["description"] = description
+			}
+			if proposedFix != "" {
+				body["proposed_fix"] = proposedFix
+			}
+			if actions != "" {
+				var actionsJSON json.RawMessage
+				if err := json.Unmarshal([]byte(actions), &actionsJSON); err != nil {
+					ExitErrorf("--actions must be valid JSON: %v", err)
+				}
+				body["actions"] = actionsJSON
 			}
 
 			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
@@ -300,6 +320,8 @@ Examples:
 
 	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
+	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
+	cmd.Flags().StringVar(&actions, "actions", "", "Updated suggested evaluator(s) as a JSON array")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
