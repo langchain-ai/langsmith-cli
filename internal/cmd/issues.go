@@ -182,17 +182,17 @@ Examples:
   langsmith project issues events --project my-app --look-back-minutes 1440
   langsmith project issues events --project my-app --limit 50 --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("resolving project %q: %v", projectName, err)
+				ExitErrorf("resolving project %q: %v", projectName, err)
 			}
 
 			path := fmt.Sprintf("/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
@@ -200,21 +200,24 @@ Examples:
 
 			var events []issueEvent
 			if err := c.RawGet(ctx, path, &events); err != nil {
-				exitErrorf("listing issue events: %v", err)
+				ExitErrorf("listing issue events: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"EVENT TYPE", "ACTOR", "ISSUE ID", "CREATED"}
+				columns := []string{"EVENT TYPE", "TO", "REASON", "ACTOR", "ISSUE ID", "CREATED"}
 				var rows [][]string
 				for _, e := range events {
 					issueRef := ""
 					if e.IssueID != nil {
 						issueRef = (*e.IssueID)[:8]
 					}
+					p := parseEventPayload(e.Payload)
 					rows = append(rows, []string{
 						e.EventType,
+						p.to,
+						truncate(p.reason, 60),
 						e.Actor,
 						issueRef,
 						formatIssueTime(e.CreatedAt),
@@ -228,15 +231,22 @@ Examples:
 					if e.IssueID != nil {
 						issueID = *e.IssueID
 					}
-					data = append(data, map[string]any{
+					p := parseEventPayload(e.Payload)
+					m := map[string]any{
 						"id":         e.ID,
 						"session_id": e.SessionID,
 						"issue_id":   issueID,
 						"event_type": e.EventType,
-						"payload":    e.Payload,
 						"actor":      e.Actor,
 						"created_at": formatTimeISO(e.CreatedAt),
-					})
+					}
+					if p.to != "" {
+						m["to"] = p.to
+					}
+					if p.reason != "" {
+						m["reason"] = p.reason
+					}
+					data = append(data, m)
 				}
 				output.OutputJSON(data, outputFile)
 			}
@@ -273,10 +283,10 @@ Examples:
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
 			if title == "" && description == "" {
-				exitError("at least one of --title or --description is required")
+				ExitError("at least one of --title or --description is required")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{}
@@ -291,7 +301,7 @@ Examples:
 
 			var issue forgeIssue
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
-				exitErrorf("updating issue: %v", err)
+				ExitErrorf("updating issue: %v", err)
 			}
 
 			output.OutputJSON(issueToMap(issue), outputFile)
@@ -335,6 +345,34 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
+}
+
+// eventPayloadFields holds the fields we extract from an event payload.
+type eventPayloadFields struct {
+	to     string // new status or severity value
+	reason string // user-provided reason for the change
+}
+
+// parseEventPayload decodes the raw event payload and extracts "to" and "reason"
+// so callers don't have to parse raw JSON.
+func parseEventPayload(raw json.RawMessage) eventPayloadFields {
+	if len(raw) == 0 {
+		return eventPayloadFields{}
+	}
+	var p map[string]any
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return eventPayloadFields{}
+	}
+	var result eventPayloadFields
+	if v, ok := p["to"]; ok {
+		result.to = fmt.Sprintf("%v", v)
+	}
+	if v, ok := p["reason"]; ok {
+		if s, ok := v.(string); ok {
+			result.reason = s
+		}
+	}
+	return result
 }
 
 func formatIssueTime(t time.Time) string {
@@ -395,10 +433,10 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
 			if runID == "" || startTime == "" {
-				exitError("--run-id and --start-time are required")
+				ExitError("--run-id and --start-time are required")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{
@@ -411,7 +449,7 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs", issueID)
 			if err := c.RawPost(ctx, path, body, nil); err != nil {
-				exitErrorf("linking run: %v", err)
+				ExitErrorf("linking run: %v", err)
 			}
 			fmt.Printf("Run %s linked to issue %s\n", runID, issueID)
 		},
@@ -434,13 +472,13 @@ func newProjectIssuesRunsUpdateCmd() *cobra.Command {
 			issueID := args[0]
 			runID := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			body := map[string]any{"comment": comment}
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawPatch(ctx, path, body, nil); err != nil {
-				exitErrorf("updating linked run: %v", err)
+				ExitErrorf("updating linked run: %v", err)
 			}
 			fmt.Printf("Updated comment on run %s for issue %s\n", runID, issueID)
 		},
@@ -459,12 +497,12 @@ func newProjectIssuesRunsRemoveCmd() *cobra.Command {
 			issueID := args[0]
 			runID := args[1]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawDelete(ctx, path, nil); err != nil {
-				exitErrorf("unlinking run: %v", err)
+				ExitErrorf("unlinking run: %v", err)
 			}
 			fmt.Printf("Run %s unlinked from issue %s\n", runID, issueID)
 		},
