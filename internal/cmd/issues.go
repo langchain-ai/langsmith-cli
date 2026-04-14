@@ -258,7 +258,7 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 		title       string
 		description string
 		proposedFix string
-		actions     string
+		evaluator   string
 		outputFile  string
 	)
 
@@ -273,17 +273,18 @@ The issue ID is the UUID returned by 'langsmith project issues list'.
 
 --title and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
---actions updates the suggested evaluator(s) as a JSON array.
+--evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
 
 Examples:
   langsmith project issues update <id> --title "Corrected title" --description "New finding..."
-  langsmith project issues update <id> --proposed-fix "The fix is to add input validation..."
-  langsmith project issues update <id> --actions '[{"reason":"...","method":"POST","url":"...","body":{...}}]'`,
+  langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
+  langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
+  langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if title == "" && description == "" && proposedFix == "" && actions == "" {
-				ExitError("at least one of --title, --description, --proposed-fix, or --actions is required")
+			if title == "" && description == "" && proposedFix == "" && evaluator == "" {
+				ExitError("at least one of --title, --description, --proposed-fix, or --evaluator is required")
 			}
 
 			c := MustGetClient()
@@ -299,12 +300,32 @@ Examples:
 			if proposedFix != "" {
 				body["proposed_fix"] = proposedFix
 			}
-			if actions != "" {
-				var actionsJSON json.RawMessage
-				if err := json.Unmarshal([]byte(actions), &actionsJSON); err != nil {
-					ExitErrorf("--actions must be valid JSON: %v", err)
+			if evaluator != "" {
+				var evalConfig map[string]any
+				if err := json.Unmarshal([]byte(evaluator), &evalConfig); err != nil {
+					ExitErrorf("--evaluator must be valid JSON: %v", err)
 				}
-				body["actions"] = actionsJSON
+				evalType, _ := evalConfig["type"].(string)
+				if evalType != "llm" && evalType != "code" {
+					ExitError(`--evaluator must have "type": "llm" or "type": "code"`)
+				}
+				if _, ok := evalConfig["display_name"]; !ok {
+					ExitError(`--evaluator must have a "display_name" field`)
+				}
+				// Inject standard fields if not provided.
+				if _, ok := evalConfig["session_id"]; !ok {
+					evalConfig["session_id"] = "{{session_id}}"
+				}
+				if _, ok := evalConfig["sampling_rate"]; !ok {
+					evalConfig["sampling_rate"] = 1.0
+				}
+				displayName, _ := evalConfig["display_name"].(string)
+				body["actions"] = []map[string]any{{
+					"reason": fmt.Sprintf("Add %s evaluator", displayName),
+					"method": "POST",
+					"url":    "/api/v1/runs/rules",
+					"body":   evalConfig,
+				}}
 			}
 
 			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
@@ -321,7 +342,7 @@ Examples:
 	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
-	cmd.Flags().StringVar(&actions, "actions", "", "Updated suggested evaluator(s) as a JSON array")
+	cmd.Flags().StringVar(&evaluator, "evaluator", "", `Replace the suggested evaluator. JSON with "type" ("llm" or "code"), "display_name", and type-specific fields`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
