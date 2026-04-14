@@ -48,7 +48,7 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout
 		switch resp.Status {
 		case "ready":
 			return resp, nil
-		case "failed", "stopped":
+		case "failed":
 			return resp, fmt.Errorf("sandbox entered %s state", resp.Status)
 		}
 		time.Sleep(defaultBoxPollInterval)

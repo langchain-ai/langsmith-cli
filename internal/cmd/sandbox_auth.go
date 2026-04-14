@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 )
 
 // sandboxEndpoint holds the resolved dataplane URL for a sandbox.
@@ -15,10 +14,6 @@ type sandboxEndpoint struct {
 // Requires the sandbox to be in "ready" state. Use resolveSandboxURL
 // for operations that only need the dataplane URL regardless of status.
 func resolveSandbox(ctx context.Context, name string) (sandboxEndpoint, error) {
-	if dpURL := os.Getenv("SANDBOX_DIRECT_URL"); dpURL != "" {
-		return sandboxEndpoint{DataplaneURL: dpURL}, nil
-	}
-
 	c := MustGetClient()
 	var box boxResponse
 	if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name, &box); err != nil {
@@ -37,10 +32,6 @@ func resolveSandbox(ctx context.Context, name string) (sandboxEndpoint, error) {
 // requiring "ready" status. Used by tunnel which may connect while the
 // sandbox is still starting.
 func resolveSandboxURL(ctx context.Context, name string) (string, error) {
-	if dpURL := os.Getenv("SANDBOX_DIRECT_URL"); dpURL != "" {
-		return dpURL, nil
-	}
-
 	c := MustGetClient()
 	var box boxResponse
 	if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name, &box); err != nil {
