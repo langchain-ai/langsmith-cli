@@ -86,17 +86,17 @@ func runSSHSetup(name, identity string) error {
 		}
 	}
 
-	proxyCmd := fmt.Sprintf("langsmith sandbox tunnel %s --remote-port 22 --stdio", name)
+	proxyCmd := fmt.Sprintf("langsmith sandbox tunnel %s --remote-port 22 --stdio", shellQuote(name))
 	if apiKey := GetAPIKey(); apiKey != "" {
-		proxyCmd += " --api-key " + apiKey
+		proxyCmd += " --api-key " + shellQuote(apiKey)
 	}
 	if apiURL := GetAPIURL(); apiURL != "https://api.smith.langchain.com" {
-		proxyCmd += " --api-url " + apiURL
+		proxyCmd += " --api-url " + shellQuote(apiURL)
 	}
 
 	configBlock := fmt.Sprintf(
 		"# Added by: langsmith sandbox ssh-setup %s\nHost %s\n    User root\n    ProxyCommand %s\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
-		name, hostAlias, proxyCmd, knownHostsPath,
+		name, hostAlias, proxyCmd, shellQuote(knownHostsPath),
 	)
 
 	if err := ensureSSHConfig(hostAlias, configBlock); err != nil {
@@ -290,4 +290,10 @@ func sandboxExec(dpURL string, command []string) (*execResult, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+// shellQuote wraps s in single quotes, escaping any embedded single quotes.
+// Safe for interpolation into shell command strings (e.g. SSH ProxyCommand).
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
