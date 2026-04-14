@@ -60,7 +60,7 @@ func TestDataplanePost_Success(t *testing.T) {
 			t.Errorf("expected /execute, got %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"stdout":    "hello\n",
 			"stderr":    "",
 			"exit_code": 0,
@@ -83,7 +83,7 @@ func TestDataplanePost_Success(t *testing.T) {
 func TestDataplanePost_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal server error"}`))
+		_, _ = w.Write([]byte(`{"error": "internal server error"}`))
 	}))
 	defer srv.Close()
 
@@ -103,7 +103,7 @@ func TestDataplanePost_TrailingSlashURL(t *testing.T) {
 			t.Errorf("expected /execute, got %s (double slash?)", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
@@ -132,7 +132,7 @@ func TestDataplanePostRaw_Success(t *testing.T) {
 func TestDataplanePostRaw_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("forbidden"))
+		_, _ = w.Write([]byte("forbidden"))
 	}))
 	defer srv.Close()
 
@@ -145,7 +145,7 @@ func TestDataplanePostRaw_HTTPError(t *testing.T) {
 func TestDataplanePost_NilResult(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok": true}`))
+		_, _ = w.Write([]byte(`{"ok": true}`))
 	}))
 	defer srv.Close()
 
