@@ -28,7 +28,7 @@ with an executive summary of key findings and highlighted traces.
 Examples:
   langsmith insights list --project my-app
   langsmith insights get INSIGHT_ID --project my-app
-  langsmith insights get INSIGHT_ID --project my-app --format pretty`,
+  langsmith insights get INSIGHT_ID --project my-app --json`,
 	}
 
 	cmd.AddCommand(newInsightsListCmd())
@@ -53,7 +53,7 @@ and category distribution. Use 'insights get' with the report ID
 for full details including the executive summary and category breakdown.`,
 		Example: `  langsmith insights list --project my-app
   langsmith insights list --project my-app --limit 5
-  langsmith insights list --project my-app --format pretty`,
+  langsmith insights list --project my-app --json`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
@@ -127,7 +127,7 @@ Returns the executive summary (key findings and highlighted traces),
 plus a breakdown of all categories and subcategories with their
 statistics (error rates, latency, costs, token usage, feedback scores).`,
 		Example: `  langsmith insights get e4040294-44af-4866-b1dd-3c566a8d42f0 --project my-app
-  langsmith insights get e4040294-44af-4866-b1dd-3c566a8d42f0 --project my-app --format pretty`,
+  langsmith insights get e4040294-44af-4866-b1dd-3c566a8d42f0 --project my-app --json`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			insightID := args[0]

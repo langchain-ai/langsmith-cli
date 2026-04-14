@@ -44,7 +44,7 @@ func TestLsCmd_JSON(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--refresh"})
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--format", "json", "--refresh"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -67,7 +67,7 @@ func TestLsCmd_FilterByTag(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--tag", "datasets", "--refresh"})
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--tag", "datasets", "--format", "json", "--refresh"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -95,7 +95,7 @@ func TestLsCmd_Search(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--search", "query", "--refresh"})
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--search", "query", "--format", "json", "--refresh"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)

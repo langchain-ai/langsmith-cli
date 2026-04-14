@@ -8,13 +8,23 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/itchyny/gojq"
 	"github.com/olekukonko/tablewriter"
 	"github.com/xlab/treeprint"
 )
 
+// JQExpr is the global --jq expression. Set by the root command before
+// subcommands run. When non-empty, OutputJSON applies it automatically.
+var JQExpr string
+
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
+// If JQExpr is set, the jq expression is applied before output.
 func OutputJSON(data any, filePath string) {
+	if JQExpr != "" {
+		data = applyJQ(data, JQExpr)
+	}
+
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		PrintError(fmt.Sprintf("JSON encoding error: %v", err))
@@ -30,6 +40,40 @@ func OutputJSON(data any, filePath string) {
 	} else {
 		fmt.Println(string(jsonBytes))
 	}
+}
+
+// applyJQ parses and runs a jq expression against data.
+// On error it prints to stderr and returns the original data.
+func applyJQ(data any, expr string) any {
+	query, err := gojq.Parse(expr)
+	if err != nil {
+		PrintError(fmt.Sprintf("jq parse error: %v", err))
+		return data
+	}
+
+	// gojq needs plain Go types; round-trip through JSON to normalise.
+	raw, _ := json.Marshal(data)
+	var input any
+	_ = json.Unmarshal(raw, &input)
+
+	var results []any
+	iter := query.Run(input)
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if err, isErr := v.(error); isErr {
+			PrintError(fmt.Sprintf("jq error: %v", err))
+			return data
+		}
+		results = append(results, v)
+	}
+
+	if len(results) == 1 {
+		return results[0]
+	}
+	return results
 }
 
 // OutputJSONL writes items as JSONL (one JSON object per line).
