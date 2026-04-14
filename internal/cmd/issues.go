@@ -23,6 +23,8 @@ type forgeIssue struct {
 	FixBranch   *string         `json:"fix_branch"`
 	FixPrompt   *string         `json:"fix_prompt"`
 	FixPRNumber *int            `json:"fix_pr_number"`
+	ProposedFix *string         `json:"proposed_fix"`
+	Actions     json.RawMessage `json:"actions"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	Traces      json.RawMessage `json:"traces"`
@@ -255,25 +257,34 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 	var (
 		title       string
 		description string
+		proposedFix string
+		evaluator   string
 		outputFile  string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "update <issue-id>",
-		Short: "[Private Beta] Correct an existing issue's title or description",
-		Long: `[Private Beta] Correct an existing issue when evidence disproves the original finding.
+		Short: "[Private Beta] Update an existing issue's title, description, proposed fix, or evaluator",
+		Long: `[Private Beta] Update an existing issue.
 
 To link runs as evidence, use 'langsmith project issues runs add' instead.
 
 The issue ID is the UUID returned by 'langsmith project issues list'.
 
+--title and --description are for factual corrections only (when new evidence disproves the original finding).
+--proposed-fix updates the suggested code fix shown to users.
+--evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
+
 Examples:
-  langsmith project issues update <id> --title "Corrected title" --description "New finding..."`,
+  langsmith project issues update <id> --title "Corrected title" --description "New finding..."
+  langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
+  langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
+  langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if title == "" && description == "" {
-				ExitError("at least one of --title or --description is required")
+			if title == "" && description == "" && proposedFix == "" && evaluator == "" {
+				ExitError("at least one of --title, --description, --proposed-fix, or --evaluator is required")
 			}
 
 			c := MustGetClient()
@@ -285,6 +296,36 @@ Examples:
 			}
 			if description != "" {
 				body["description"] = description
+			}
+			if proposedFix != "" {
+				body["proposed_fix"] = proposedFix
+			}
+			if evaluator != "" {
+				var evalConfig map[string]any
+				if err := json.Unmarshal([]byte(evaluator), &evalConfig); err != nil {
+					ExitErrorf("--evaluator must be valid JSON: %v", err)
+				}
+				evalType, _ := evalConfig["type"].(string)
+				if evalType != "llm" && evalType != "code" {
+					ExitError(`--evaluator must have "type": "llm" or "type": "code"`)
+				}
+				if _, ok := evalConfig["display_name"]; !ok {
+					ExitError(`--evaluator must have a "display_name" field`)
+				}
+				// Inject standard fields if not provided.
+				if _, ok := evalConfig["session_id"]; !ok {
+					evalConfig["session_id"] = "{{session_id}}"
+				}
+				if _, ok := evalConfig["sampling_rate"]; !ok {
+					evalConfig["sampling_rate"] = 1.0
+				}
+				displayName, _ := evalConfig["display_name"].(string)
+				body["actions"] = []map[string]any{{
+					"reason": fmt.Sprintf("Add %s evaluator", displayName),
+					"method": "POST",
+					"url":    "/api/v1/runs/rules",
+					"body":   evalConfig,
+				}}
 			}
 
 			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
@@ -300,6 +341,8 @@ Examples:
 
 	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
+	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
+	cmd.Flags().StringVar(&evaluator, "evaluator", "", `Replace the suggested evaluator. JSON with "type" ("llm" or "code"), "display_name", and type-specific fields`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
