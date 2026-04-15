@@ -59,6 +59,9 @@ Examples:
 			if name == "" && sandboxURL == "" {
 				return fmt.Errorf("provide a sandbox name or --url")
 			}
+			if GetAPIKey() == "" {
+				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
+			}
 			if sandboxURL == "" {
 				resolved, err := resolveSandboxURL(context.Background(), name)
 				if err != nil {
@@ -68,10 +71,6 @@ Examples:
 			}
 			if remotePort < 1 || remotePort > 65535 {
 				return fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", remotePort)
-			}
-
-			if GetAPIKey() == "" {
-				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
 			}
 
 			if stdio {
