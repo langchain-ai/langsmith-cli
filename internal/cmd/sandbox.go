@@ -8,13 +8,33 @@ func newSandboxCmd() *cobra.Command {
 		Short: "Manage and interact with sandboxes (experimental)",
 		Long: `Manage and interact with sandboxes (currently in experimental preview).
 
-Sandboxes are isolated execution environments. Use subcommands to
-create tunnels and interact with services running inside them.
-
 Examples:
-  langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432`,
+  langsmith sandbox create my-vm --snapshot-id <id>
+  langsmith sandbox list
+  langsmith sandbox console my-vm
+  langsmith sandbox exec my-vm -- uname -a
+  langsmith sandbox tunnel my-vm --remote-port 5432
+  langsmith sandbox ssh-setup my-vm`,
 	}
 
+	// Lifecycle
+	cmd.AddCommand(newSandboxCreateCmd())
+	cmd.AddCommand(newSandboxListCmd())
+	cmd.AddCommand(newSandboxGetCmd())
+	cmd.AddCommand(newSandboxUpdateCmd())
+	cmd.AddCommand(newSandboxDeleteCmd())
+	cmd.AddCommand(newSandboxStartCmd())
+	cmd.AddCommand(newSandboxStopCmd())
+	cmd.AddCommand(newSandboxWaitCmd())
+
+	// Connectivity
+	cmd.AddCommand(newSandboxExecCmd())
+	cmd.AddCommand(newSandboxConsoleCmd())
 	cmd.AddCommand(newSandboxTunnelCmd())
+	cmd.AddCommand(newSandboxSSHSetupCmd())
+
+	// Sub-resources
+	cmd.AddCommand(newSandboxSnapshotCmd())
+
 	return cmd
 }
