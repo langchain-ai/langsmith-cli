@@ -44,14 +44,13 @@ Each trace in the response contains a list of conversation groups:
 
 Modes:
   1. stdout (default): paginate up to --limit (max 100), emit a single JSON blob.
-  2. --out-dir <dir>: write one plain-text conversation file per trace to the
-     directory. Use with --from-list to consume a file of IDs produced by
-     `+"`langsmith trace list --out-dir`"+`. When --from-list is omitted, the
-     command scans the lookback window exhaustively (no --limit cap).
+  2. --from-list + --out-dir: read trace IDs from a file produced by
+     `+"`langsmith trace list --out-dir`"+`, fetch conversations for those
+     IDs in batches, and write one plain-text file per trace to the
+     directory.
 
 Examples:
   langsmith trace messages --project my-chatbot --limit 5
-  langsmith trace messages --project my-chatbot --out-dir /tmp/convos --last-n-minutes 360
   langsmith trace list --project my-chatbot --last-n-minutes 360 --out-dir /tmp/ids --include-flagged
   langsmith trace messages --project my-chatbot --from-list /tmp/ids/trace_ids.txt --flagged-list /tmp/ids/flagged.tsv --out-dir /tmp/convos --include-root-io`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -70,11 +69,10 @@ Examples:
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
 
 			if outDir != "" {
-				if fromList != "" {
-					runMessagesFromList(ctx, c, sessionID, startTime, &ff, outDir, fromList, flaggedList, includeRootIO)
-				} else {
-					runMessagesScanWindow(ctx, c, sessionID, startTime, &ff, outDir, includeRootIO)
+				if fromList == "" {
+					ExitError("--out-dir requires --from-list (pass a trace ID file produced by `langsmith trace list --out-dir`)")
 				}
+				runMessagesFromList(ctx, c, sessionID, startTime, &ff, outDir, fromList, flaggedList, includeRootIO)
 				return
 			}
 
@@ -161,40 +159,6 @@ func runMessagesStdout(
 	} else {
 		output.OutputJSON(combined, outputFile)
 	}
-}
-
-// runMessagesScanWindow paginates the full lookback window (no ID filter) and
-// writes one conversation file per trace. Used when the caller wants
-// `trace messages --out-dir` as a standalone one-shot. Prefer
-// `trace list --out-dir` → `trace messages --from-list` for the agent flow.
-func runMessagesScanWindow(
-	ctx context.Context,
-	c *client.Client,
-	sessionID string,
-	startTime time.Time,
-	ff *FilterFlags,
-	outDir string,
-	includeRootIO bool,
-) {
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		ExitErrorf("creating --out-dir: %v", err)
-	}
-
-	body := buildMessagesBody(sessionID, startTime, ff)
-	allTraces := paginateAllMessages(ctx, c, body, 10)
-
-	rootIO := map[string]rootPreview{}
-	if includeRootIO {
-		rootIO = fetchRootPreviews(ctx, c, sessionID, startTime)
-	}
-
-	written := writeTraceFiles(allTraces, outDir, nil, rootIO)
-	output.OutputJSON(map[string]any{
-		"status":          "written",
-		"traces_written":  written,
-		"out_dir":         outDir,
-		"include_root_io": includeRootIO,
-	}, "")
 }
 
 // runMessagesFromList reads trace IDs from a file, fetches conversations in
