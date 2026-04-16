@@ -3,11 +3,13 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,8 @@ func newTraceListCmd() *cobra.Command {
 		full            bool
 		showHierarchy   bool
 		outputFile      string
+		outDir          string
+		includeFlagged  bool
 	)
 
 	cmd := &cobra.Command{
@@ -58,16 +62,21 @@ func newTraceListCmd() *cobra.Command {
 				includeFeedback = true
 			}
 
-			defaultLimit := 20
-			if ff.Limit == 0 {
-				ff.Limit = defaultLimit
-			}
-
 			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
 				ExitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
+			}
+
+			if outDir != "" {
+				runTraceListOutDir(ctx, c, projectName, &ff, outDir, includeFlagged)
+				return
+			}
+
+			defaultLimit := 20
+			if ff.Limit == 0 {
+				ff.Limit = defaultLimit
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -134,8 +143,105 @@ func newTraceListCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().BoolVar(&showHierarchy, "show-hierarchy", false, "Fetch the full run tree for each trace")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "Write trace IDs to plain-text files in this directory. Paginates exhaustively over the time window (--limit is ignored). Writes trace_ids.txt (one ID per line).")
+	cmd.Flags().BoolVar(&includeFlagged, "include-flagged", false, "Also fetch user-flagged traces from /api/v1/feedback, union them into trace_ids.txt, and write flagged.tsv (<trace_id>\\t<comment> per line). Requires --out-dir.")
 
 	return cmd
+}
+
+// runTraceListOutDir exhaustively paginates root runs in the window, unions
+// in any user-flagged traces if requested, and writes plain-text ID lists
+// suitable for feeding into `trace messages --from-list`.
+func runTraceListOutDir(
+	ctx context.Context,
+	c *client.Client,
+	projectName string,
+	ff *FilterFlags,
+	outDir string,
+	includeFlagged bool,
+) {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		ExitErrorf("creating --out-dir: %v", err)
+	}
+
+	// 1. Exhaustive scan of root runs matching the filters.
+	params := BuildRunQueryParams(ff, true, 0)
+	// Only select trace_id — we don't need anything else for the ID list.
+	params.Select = langsmith.F([]langsmith.RunQueryParamsSelect{
+		langsmith.RunQueryParamsSelectID,
+		langsmith.RunQueryParamsSelectTraceID,
+	})
+
+	// queryRuns uses the `limit` arg as an upper bound on total results;
+	// pass math.MaxInt32 to paginate through everything that matches.
+	const unbounded = 1 << 30
+	runs, err := queryRuns(ctx, c, params, projectName, unbounded, ff.MinTokens)
+	if err != nil {
+		ExitErrorf("%v", err)
+	}
+
+	ids := make([]string, 0, len(runs))
+	seen := make(map[string]bool, len(runs))
+	for _, run := range runs {
+		tid := run.TraceID
+		if tid == "" {
+			tid = run.ID
+		}
+		if tid == "" || seen[tid] {
+			continue
+		}
+		seen[tid] = true
+		ids = append(ids, tid)
+	}
+
+	// 2. Pull flagged traces and union any missing IDs.
+	var flagged []FlaggedTrace
+	if includeFlagged {
+		sessionID, err := c.ResolveSessionID(ctx, projectName)
+		if err != nil {
+			ExitErrorf("resolving project: %v", err)
+		}
+		flagged = FetchFlaggedTraces(ctx, c, sessionID, ff.LastNMinutes)
+		for _, ft := range flagged {
+			if !seen[ft.TraceID] {
+				seen[ft.TraceID] = true
+				ids = append(ids, ft.TraceID)
+			}
+		}
+	}
+
+	// 3. Write trace_ids.txt (one ID per line).
+	idsPath := filepath.Join(outDir, "trace_ids.txt")
+	if err := os.WriteFile(idsPath, []byte(strings.Join(ids, "\n")+"\n"), 0o644); err != nil {
+		ExitErrorf("writing %s: %v", idsPath, err)
+	}
+
+	// 4. Write flagged.tsv if we fetched flagged traces.
+	flaggedPath := ""
+	if includeFlagged {
+		flaggedPath = filepath.Join(outDir, "flagged.tsv")
+		var b strings.Builder
+		for _, ft := range flagged {
+			// Replace tabs/newlines in comments so the TSV stays parseable.
+			comment := strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(ft.Comment)
+			fmt.Fprintf(&b, "%s\t%s\n", ft.TraceID, comment)
+		}
+		if err := os.WriteFile(flaggedPath, []byte(b.String()), 0o644); err != nil {
+			ExitErrorf("writing %s: %v", flaggedPath, err)
+		}
+	}
+
+	summary := map[string]any{
+		"status":         "written",
+		"traces_written": len(ids),
+		"flagged_count":  len(flagged),
+		"out_dir":        outDir,
+		"trace_ids_path": idsPath,
+	}
+	if flaggedPath != "" {
+		summary["flagged_path"] = flaggedPath
+	}
+	output.OutputJSON(summary, "")
 }
 
 func newTraceGetCmd() *cobra.Command {
