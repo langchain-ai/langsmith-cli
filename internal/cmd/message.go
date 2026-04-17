@@ -15,7 +15,6 @@ type trajectoryStep struct {
 	ToolName  string `json:"tool_name,omitempty"`
 	Tokens    *int64 `json:"tokens,omitempty"`
 	LatencyMS *int64 `json:"latency_ms,omitempty"`
-	Model     string `json:"model,omitempty"`
 }
 
 // traceTrajectory is the compact trajectory for a single trace.
@@ -234,7 +233,6 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 
 		tokens := trajTokens(meta)
 		latency := trajLatency(meta)
-		model := trajModel(meta)
 
 		switch gType {
 		case "message":
@@ -244,7 +242,6 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 			if role == "ai" {
 				step.Tokens = tokens
 				step.LatencyMS = latency
-				step.Model = model
 			}
 			steps = append(steps, step)
 		case "tool_interaction":
@@ -254,7 +251,6 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 				Role:      role,
 				Tokens:    tokens,
 				LatencyMS: latency,
-				Model:     model,
 			})
 			toolCalls, _ := group["toolCalls"].([]any)
 			for _, tc := range toolCalls {
@@ -297,14 +293,6 @@ func trajLatency(meta map[string]any) *int64 {
 	return nil
 }
 
-func trajModel(meta map[string]any) string {
-	if meta == nil {
-		return ""
-	}
-	s, _ := meta["model_name"].(string)
-	return s
-}
-
 // printTrajectories prints a compact human-readable trajectory view.
 func printTrajectories(trajs []traceTrajectory) {
 	if len(trajs) == 0 {
@@ -328,9 +316,6 @@ func printTrajectories(trajs []traceTrajectory) {
 			}
 			if step.LatencyMS != nil {
 				parts = append(parts, fmt.Sprintf("%dms", *step.LatencyMS))
-			}
-			if step.Model != "" {
-				parts = append(parts, step.Model)
 			}
 			fmt.Println(strings.Join(parts, " | "))
 		}
