@@ -3,15 +3,32 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
+// trajectoryStep is a compact single-step view of one message/tool-call in a trace.
+type trajectoryStep struct {
+	Role      string `json:"role"`
+	ToolName  string `json:"tool_name,omitempty"`
+	Tokens    *int64 `json:"tokens,omitempty"`
+	LatencyMS *int64 `json:"latency_ms,omitempty"`
+	Model     string `json:"model,omitempty"`
+}
+
+// traceTrajectory is the compact trajectory for a single trace.
+type traceTrajectory struct {
+	TraceID string           `json:"trace_id"`
+	Steps   []trajectoryStep `json:"steps"`
+}
+
 func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff         FilterFlags
 		outputFile string
+		trajectory bool
 	)
 
 	cmd := &cobra.Command{
@@ -122,23 +139,36 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
-			combined := map[string]any{
-				"traces":  allTraces,
-				"cursors": map[string]any{},
-			}
-
 			fmt_ := GetFormat()
 
-			if fmt_ == "pretty" {
-				printTraceMessages(combined)
+			if trajectory {
+				var trajs []traceTrajectory
+				for _, t := range allTraces {
+					trace, _ := t.(map[string]any)
+					trajs = append(trajs, buildTraceTrajectory(trace))
+				}
+				if fmt_ == "pretty" {
+					printTrajectories(trajs)
+				} else {
+					output.OutputJSON(map[string]any{"traces": trajs}, outputFile)
+				}
 			} else {
-				output.OutputJSON(combined, outputFile)
+				combined := map[string]any{
+					"traces":  allTraces,
+					"cursors": map[string]any{},
+				}
+				if fmt_ == "pretty" {
+					printTraceMessages(combined)
+				} else {
+					output.OutputJSON(combined, outputFile)
+				}
 			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.Flags().BoolVar(&trajectory, "trajectory", false, "Output compact trajectory (role, tool_name, tokens, latency_ms) instead of full messages")
 
 	return cmd
 }
@@ -188,6 +218,122 @@ func printTraceMessages(result map[string]any) {
 	cursors, _ := result["cursors"].(map[string]any)
 	if next, ok := cursors["next"].(string); ok && next != "" {
 		fmt.Printf("\nNext cursor: %s\n", next)
+	}
+}
+
+// buildTraceTrajectory converts a raw trace map into a compact trajectory.
+func buildTraceTrajectory(trace map[string]any) traceTrajectory {
+	traceID, _ := trace["trace_id"].(string)
+	groups, _ := trace["groups"].([]any)
+
+	var steps []trajectoryStep
+	for _, g := range groups {
+		group, _ := g.(map[string]any)
+		gType, _ := group["type"].(string)
+		meta, _ := group["metadata"].(map[string]any)
+
+		tokens := trajTokens(meta)
+		latency := trajLatency(meta)
+		model := trajModel(meta)
+
+		switch gType {
+		case "message":
+			msg, _ := group["message"].(map[string]any)
+			role, _ := msg["role"].(string)
+			step := trajectoryStep{Role: role}
+			if role == "ai" {
+				step.Tokens = tokens
+				step.LatencyMS = latency
+				step.Model = model
+			}
+			steps = append(steps, step)
+		case "tool_interaction":
+			aiMsg, _ := group["aiMessage"].(map[string]any)
+			role, _ := aiMsg["role"].(string)
+			steps = append(steps, trajectoryStep{
+				Role:      role,
+				Tokens:    tokens,
+				LatencyMS: latency,
+				Model:     model,
+			})
+			toolCalls, _ := group["toolCalls"].([]any)
+			for _, tc := range toolCalls {
+				call, _ := tc.(map[string]any)
+				name, _ := call["name"].(string)
+				steps = append(steps, trajectoryStep{
+					Role:     "tool",
+					ToolName: name,
+				})
+			}
+		}
+	}
+
+	return traceTrajectory{TraceID: traceID, Steps: steps}
+}
+
+func trajTokens(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	tu, ok := meta["token_usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if v, ok := tu["total_tokens"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+func trajLatency(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	if v, ok := meta["latency_ms"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+func trajModel(meta map[string]any) string {
+	if meta == nil {
+		return ""
+	}
+	s, _ := meta["model_name"].(string)
+	return s
+}
+
+// printTrajectories prints a compact human-readable trajectory view.
+func printTrajectories(trajs []traceTrajectory) {
+	if len(trajs) == 0 {
+		fmt.Println("No traces found.")
+		return
+	}
+	for i, traj := range trajs {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("--- Trace %s (%d steps) ---\n", traj.TraceID, len(traj.Steps))
+		for _, step := range traj.Steps {
+			var parts []string
+			if step.ToolName != "" {
+				parts = append(parts, fmt.Sprintf("  [%-6s] %s", step.Role, step.ToolName))
+			} else {
+				parts = append(parts, fmt.Sprintf("  [%-6s]", step.Role))
+			}
+			if step.Tokens != nil {
+				parts = append(parts, fmt.Sprintf("%d tok", *step.Tokens))
+			}
+			if step.LatencyMS != nil {
+				parts = append(parts, fmt.Sprintf("%dms", *step.LatencyMS))
+			}
+			if step.Model != "" {
+				parts = append(parts, step.Model)
+			}
+			fmt.Println(strings.Join(parts, " | "))
+		}
 	}
 }
 
