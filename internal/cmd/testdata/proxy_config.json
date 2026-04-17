@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "name": "openai",
+      "match_hosts": ["api.openai.com"],
+      "match_paths": [],
+      "headers": [
+        {"name": "Authorization", "type": "opaque", "value": "Bearer sk-test"}
+      ],
+      "enabled": true
+    }
+  ],
+  "no_proxy": ["internal.example.com"],
+  "access_control": {
+    "allow_list": ["*.openai.com"]
+  }
+}
