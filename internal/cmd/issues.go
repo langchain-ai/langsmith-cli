@@ -208,15 +208,18 @@ Examples:
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"EVENT TYPE", "ACTOR", "ISSUE ID", "CREATED"}
+				columns := []string{"EVENT TYPE", "TO", "REASON", "ACTOR", "ISSUE ID", "CREATED"}
 				var rows [][]string
 				for _, e := range events {
 					issueRef := ""
 					if e.IssueID != nil {
 						issueRef = (*e.IssueID)[:8]
 					}
+					p := parseEventPayload(e.Payload)
 					rows = append(rows, []string{
 						e.EventType,
+						p.to,
+						truncate(p.reason, 60),
 						e.Actor,
 						issueRef,
 						formatIssueTime(e.CreatedAt),
@@ -230,15 +233,22 @@ Examples:
 					if e.IssueID != nil {
 						issueID = *e.IssueID
 					}
-					data = append(data, map[string]any{
+					p := parseEventPayload(e.Payload)
+					m := map[string]any{
 						"id":         e.ID,
 						"session_id": e.SessionID,
 						"issue_id":   issueID,
 						"event_type": e.EventType,
-						"payload":    e.Payload,
 						"actor":      e.Actor,
 						"created_at": formatTimeISO(e.CreatedAt),
-					})
+					}
+					if p.to != "" {
+						m["to"] = p.to
+					}
+					if p.reason != "" {
+						m["reason"] = p.reason
+					}
+					data = append(data, m)
 				}
 				output.OutputJSON(data, outputFile)
 			}
@@ -378,6 +388,34 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
+}
+
+// eventPayloadFields holds the fields we extract from an event payload.
+type eventPayloadFields struct {
+	to     string // new status or severity value
+	reason string // user-provided reason for the change
+}
+
+// parseEventPayload decodes the raw event payload and extracts "to" and "reason"
+// so callers don't have to parse raw JSON.
+func parseEventPayload(raw json.RawMessage) eventPayloadFields {
+	if len(raw) == 0 {
+		return eventPayloadFields{}
+	}
+	var p map[string]any
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return eventPayloadFields{}
+	}
+	var result eventPayloadFields
+	if v, ok := p["to"]; ok {
+		result.to = fmt.Sprintf("%v", v)
+	}
+	if v, ok := p["reason"]; ok {
+		if s, ok := v.(string); ok {
+			result.reason = s
+		}
+	}
+	return result
 }
 
 func formatIssueTime(t time.Time) string {
