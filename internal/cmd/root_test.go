@@ -77,8 +77,19 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	if f == nil {
 		t.Fatal("--format flag not found")
 	}
-	if f.DefValue != "json" {
-		t.Errorf("expected default json, got %q", f.DefValue)
+	if f.DefValue != "pretty" {
+		t.Errorf("expected default pretty, got %q", f.DefValue)
+	}
+}
+
+func TestRootCmd_PersistentFlags_JSON(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("json")
+	if f == nil {
+		t.Fatal("--json flag not found")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("expected default false, got %q", f.DefValue)
 	}
 }
 
@@ -172,6 +183,57 @@ func TestGetFormat_ReturnsValue(t *testing.T) {
 	flagOutputFormat = "json"
 	if got := GetFormat(); got != "json" {
 		t.Errorf("expected json, got %q", got)
+	}
+}
+
+func TestGetFormat_JSONFlagOverrides(t *testing.T) {
+	oldFmt := flagOutputFormat
+	oldJSON := flagJSON
+	defer func() { flagOutputFormat = oldFmt; flagJSON = oldJSON }()
+
+	flagOutputFormat = "pretty"
+	flagJSON = true
+	if got := GetFormat(); got != "json" {
+		t.Errorf("expected json when --json is set, got %q", got)
+	}
+}
+
+func TestGetFormat_JQImpliesJSON(t *testing.T) {
+	oldFmt := flagOutputFormat
+	oldJSON := flagJSON
+	oldJQ := flagJQ
+	defer func() { flagOutputFormat = oldFmt; flagJSON = oldJSON; flagJQ = oldJQ }()
+
+	flagOutputFormat = "pretty"
+	flagJSON = false
+	flagJQ = ".name"
+	if got := GetFormat(); got != "json" {
+		t.Errorf("expected json when --jq is set, got %q", got)
+	}
+}
+
+func TestGetFormat_EmptyJQDoesNotImplyJSON(t *testing.T) {
+	oldFmt := flagOutputFormat
+	oldJSON := flagJSON
+	oldJQ := flagJQ
+	defer func() { flagOutputFormat = oldFmt; flagJSON = oldJSON; flagJQ = oldJQ }()
+
+	flagOutputFormat = "pretty"
+	flagJSON = false
+	flagJQ = ""
+	if got := GetFormat(); got != "pretty" {
+		t.Errorf("expected pretty when --jq is empty, got %q", got)
+	}
+}
+
+func TestRootCmd_PersistentFlags_JQ(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("jq")
+	if f == nil {
+		t.Fatal("--jq flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
 	}
 }
 

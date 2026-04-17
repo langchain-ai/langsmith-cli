@@ -6,6 +6,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,8 @@ var (
 	flagAPIKey       string
 	flagAPIURL       string
 	flagOutputFormat string
+	flagJSON         bool
+	flagJQ           string
 )
 
 // NewRootCmd creates the top-level `langsmith` command.
@@ -25,7 +28,6 @@ func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
 
 Designed for AI coding agents and developers who need fast, scriptable
 access to traces, runs, datasets, evaluators, experiments, and threads.
-All commands output JSON by default for easy parsing.
 
 Authentication:
   Set LANGSMITH_API_KEY as an environment variable, or pass --api-key.
@@ -41,16 +43,23 @@ Quick start:
   langsmith experiment list --dataset my-eval-dataset
 
 Output:
-  --format json    Machine-readable JSON (default). Best for agents and scripts.
-  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON.`,
+  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).
+  --format json    Machine-readable JSON. Best for agents and scripts.
+  --json           Shorthand for --format json.
+  --jq EXPR        Apply a jq expression to JSON output (implies --json).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       displayVersion,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			output.JQExpr = flagJQ
+		},
 	}
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
-	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "json", "Output format: json or pretty")
+	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
+	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Shorthand for --format json")
+	rootCmd.PersistentFlags().StringVar(&flagJQ, "jq", "", "Apply a jq expression to JSON output (implies --json)")
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
@@ -94,8 +103,17 @@ func GetAPIURL() string {
 }
 
 // GetFormat returns the output format.
+// --json and --jq flags take precedence as shorthands for --format json.
 func GetFormat() string {
+	if flagJSON || flagJQ != "" {
+		return "json"
+	}
 	return flagOutputFormat
+}
+
+// GetJQ returns the --jq expression, or empty string if not set.
+func GetJQ() string {
+	return flagJQ
 }
 
 // MustGetClient creates a LangSmith client or exits with an error.

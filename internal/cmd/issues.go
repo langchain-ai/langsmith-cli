@@ -74,13 +74,13 @@ func newProjectIssuesListCmd() *cobra.Command {
 
 Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
-Output is JSON by default; pass --format pretty for a human-readable table.
+Output is a human-readable table by default; pass --json for machine-readable JSON.
 
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
-  langsmith project issues list --project my-app --format pretty`,
+  langsmith project issues list --project my-app --json`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
@@ -177,12 +177,12 @@ Issue events record user and agent actions on issues: status changes, severity
 edits, evaluator deployments, and issue creation. The ABM agent reads these on
 cron runs to update the User Preferences section of the Agent Overview.
 
-Output is JSON by default; pass --format pretty for a human-readable table.
+Output is a human-readable table by default; pass --json for machine-readable JSON.
 
 Examples:
   langsmith project issues events --project my-app
   langsmith project issues events --project my-app --look-back-minutes 1440
-  langsmith project issues events --project my-app --limit 50 --format pretty`,
+  langsmith project issues events --project my-app --limit 50 --json`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()

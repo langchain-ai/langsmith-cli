@@ -84,7 +84,7 @@ func TestInfoCmd_JSON(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "GET", "/api/v1/sessions"})
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "--format", "json", "GET", "/api/v1/sessions"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -116,7 +116,7 @@ func TestInfoCmd_Shorthand(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "GET", "sessions"})
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "--format", "json", "GET", "sessions"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -139,7 +139,7 @@ func TestInfoCmd_WithRequestBody(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "POST", "runs/query"})
+	root.SetArgs([]string{"api", "info", "--api-url", ts.URL, "--format", "json", "POST", "runs/query"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
