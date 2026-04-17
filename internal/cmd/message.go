@@ -13,6 +13,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// trajectoryStep is a compact single-step view of one message/tool-call in a trace.
+type trajectoryStep struct {
+	Role      string `json:"role"`
+	ToolName  string `json:"tool_name,omitempty"`
+	Tokens    *int64 `json:"tokens,omitempty"`
+	LatencyMS *int64 `json:"latency_ms,omitempty"`
+	Chars     int    `json:"chars,omitempty"`
+}
+
+// traceTrajectory is the compact trajectory for a single trace.
+type traceTrajectory struct {
+	TraceID string           `json:"trace_id"`
+	Steps   []trajectoryStep `json:"steps"`
+}
+
 func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff            FilterFlags
@@ -133,13 +148,18 @@ Examples:
 				attachRootIO(ctx, c, sessionID, startTime, allTraces)
 			}
 
+			for _, t := range allTraces {
+				trace, _ := t.(map[string]any)
+				traj := buildTraceTrajectory(trace)
+				trace["trajectory"] = traj.Steps
+			}
+
 			combined := map[string]any{
 				"traces":  allTraces,
 				"cursors": map[string]any{},
 			}
 
 			fmt_ := GetFormat()
-
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
@@ -289,6 +309,102 @@ func printTraceMessages(result map[string]any) {
 	if next, ok := cursors["next"].(string); ok && next != "" {
 		fmt.Printf("\nNext cursor: %s\n", next)
 	}
+}
+
+// buildTraceTrajectory converts a raw trace map into a compact trajectory.
+func buildTraceTrajectory(trace map[string]any) traceTrajectory {
+	traceID, _ := trace["trace_id"].(string)
+	groups, _ := trace["groups"].([]any)
+
+	var steps []trajectoryStep
+	for _, g := range groups {
+		group, _ := g.(map[string]any)
+		gType, _ := group["type"].(string)
+		meta, _ := group["metadata"].(map[string]any)
+
+		tokens := trajTokens(meta)
+		latency := trajLatency(meta)
+
+		switch gType {
+		case "message":
+			msg, _ := group["message"].(map[string]any)
+			role, _ := msg["role"].(string)
+			step := trajectoryStep{Role: role, Chars: msgChars(msg)}
+			if role == "ai" {
+				step.Tokens = tokens
+				step.LatencyMS = latency
+			}
+			steps = append(steps, step)
+		case "tool_interaction":
+			aiMsg, _ := group["aiMessage"].(map[string]any)
+			role, _ := aiMsg["role"].(string)
+			steps = append(steps, trajectoryStep{
+				Role:      role,
+				Tokens:    tokens,
+				LatencyMS: latency,
+				Chars:     msgChars(aiMsg),
+			})
+			toolCalls, _ := group["toolCalls"].([]any)
+			for _, tc := range toolCalls {
+				call, _ := tc.(map[string]any)
+				name, _ := call["name"].(string)
+				result, _ := call["result"].(map[string]any)
+				steps = append(steps, trajectoryStep{
+					Role:     "tool",
+					ToolName: name,
+					Chars:    msgChars(result),
+				})
+			}
+		}
+	}
+
+	return traceTrajectory{TraceID: traceID, Steps: steps}
+}
+
+func trajTokens(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	tu, ok := meta["token_usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if v, ok := tu["total_tokens"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+func trajLatency(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	if v, ok := meta["latency_ms"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+// msgChars returns the total character count of a message's content.
+func msgChars(msg map[string]any) int {
+	if msg == nil {
+		return 0
+	}
+	total := 0
+	switch c := msg["content"].(type) {
+	case string:
+		total = len(c)
+	case []any:
+		for _, block := range c {
+			b, _ := block.(map[string]any)
+			if text, ok := b["text"].(string); ok {
+				total += len(text)
+			}
+		}
+	}
+	return total
 }
 
 // printMessage prints a single message in a compact format.
