@@ -3,7 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -25,12 +30,13 @@ type traceTrajectory struct {
 
 func newTraceMessagesCmd() *cobra.Command {
 	var (
-		ff         FilterFlags
-		outputFile string
+		ff            FilterFlags
+		outputFile    string
+		includeRootIO bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "messages",
+		Use:    "messages",
 		Short:  "[Private Beta] Get conversation messages for multiple traces (batch)",
 		Hidden: true,
 		Long: `[Private Beta] Get conversation messages for multiple traces in a single request.
@@ -48,7 +54,8 @@ Requires --project. Results are paginated internally (default limit: 10, max: 10
 Examples:
   langsmith trace messages --project my-chatbot --limit 5
   langsmith trace messages --project my-chatbot --filter "eq(status, \"error\")"
-  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z`,
+  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z
+  langsmith trace messages --project my-chatbot --trace-ids <id1,id2> --include-root-io`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
@@ -137,6 +144,10 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
+			if includeRootIO {
+				attachRootIO(ctx, c, sessionID, startTime, allTraces)
+			}
+
 			for _, t := range allTraces {
 				trace, _ := t.(map[string]any)
 				traj := buildTraceTrajectory(trace)
@@ -159,8 +170,97 @@ Examples:
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.Flags().BoolVar(&includeRootIO, "include-root-io", false, "Add root_inputs_preview and root_outputs_preview fields per trace")
 
 	return cmd
+}
+
+type rootPreview struct {
+	inputs  string
+	outputs string
+}
+
+// attachRootIO looks up inputs_preview/outputs_preview for the root runs of
+// every trace in `traces` and attaches them as root_inputs_preview /
+// root_outputs_preview fields. Failures are logged to stderr — the traces
+// are returned without enrichment rather than erroring out, so callers never
+// lose the main payload to a preview-lookup hiccup.
+func attachRootIO(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, traces []any) {
+	if len(traces) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(traces))
+	for _, t := range traces {
+		trace, _ := t.(map[string]any)
+		if tid, _ := trace["trace_id"].(string); tid != "" {
+			ids = append(ids, tid)
+		}
+	}
+	previews := fetchRootPreviews(ctx, c, sessionID, startTime, ids)
+	for _, t := range traces {
+		trace, _ := t.(map[string]any)
+		if trace == nil {
+			continue
+		}
+		tid, _ := trace["trace_id"].(string)
+		if p, ok := previews[tid]; ok {
+			trace["root_inputs_preview"] = p.inputs
+			trace["root_outputs_preview"] = p.outputs
+		} else {
+			trace["root_inputs_preview"] = nil
+			trace["root_outputs_preview"] = nil
+		}
+	}
+}
+
+// fetchRootPreviews queries root runs for the given trace IDs and returns a
+// map trace_id → (inputs_preview, outputs_preview). For root runs, id ==
+// trace_id, so we filter by ID (the SDK's RunQueryParams has no list field
+// for trace IDs — Trace is singular).
+func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string) map[string]rootPreview {
+	out := map[string]rootPreview{}
+	if len(ids) == 0 {
+		return out
+	}
+	params := langsmith.RunQueryParams{
+		Session:   langsmith.F([]string{sessionID}),
+		IsRoot:    langsmith.F(true),
+		ID:        langsmith.F(ids),
+		StartTime: langsmith.F(startTime),
+		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc),
+		Limit:     langsmith.F(int64(len(ids))),
+		Select: langsmith.F([]langsmith.RunQueryParamsSelect{
+			langsmith.RunQueryParamsSelectTraceID,
+			langsmith.RunQueryParamsSelectInputsPreview,
+			langsmith.RunQueryParamsSelectOutputsPreview,
+		}),
+	}
+	resp, err := c.SDK.Runs.Query(ctx, params)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
+		return out
+	}
+	for _, run := range resp.Runs {
+		tid := run.TraceID
+		if tid == "" {
+			tid = run.ID
+		}
+		if tid == "" {
+			continue
+		}
+		out[tid] = rootPreview{
+			inputs:  truncateHard(run.InputsPreview, 2000),
+			outputs: truncateHard(run.OutputsPreview, 2000),
+		}
+	}
+	return out
+}
+
+func truncateHard(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // printTraceMessages prints a human-readable summary of batch trace messages.

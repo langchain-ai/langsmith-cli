@@ -37,6 +37,8 @@ Thumbs.db
 
 # Environment
 .env
+/.env.*
+
 .envrc
 
 # Claude Code

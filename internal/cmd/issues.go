@@ -414,12 +414,11 @@ func newProjectIssuesRunsCmd() *cobra.Command {
 
 Examples:
   langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
-  langsmith project issues runs update <issue-id> <run-id> --comment "new comment"
+  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "updated"
   langsmith project issues runs remove <issue-id> <run-id>`,
 	}
 
 	cmd.AddCommand(newProjectIssuesRunsAddCmd())
-	cmd.AddCommand(newProjectIssuesRunsUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsRemoveCmd())
 	return cmd
 }
@@ -433,8 +432,17 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "add <issue-id>",
-		Short: "Link a run to an issue",
-		Args:  cobra.ExactArgs(1),
+		Short: "Link a run to an issue (or update its comment if already linked)",
+		Long: `Link a run to an issue as evidence. If the run is already linked, its comment
+is updated instead.
+
+The server validates the run_id and start_time against the runs database and
+resolves the trace_id automatically.
+
+Examples:
+  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
+  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "evidence"`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
 			if runID == "" || startTime == "" {
@@ -463,33 +471,6 @@ func newProjectIssuesRunsAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to link (required)")
 	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional comment explaining why this run is evidence")
-	return cmd
-}
-
-func newProjectIssuesRunsUpdateCmd() *cobra.Command {
-	var comment string
-
-	cmd := &cobra.Command{
-		Use:   "update <issue-id> <run-id>",
-		Short: "Update the comment on a linked run",
-		Args:  cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			issueID := args[0]
-			runID := args[1]
-
-			c := MustGetClient()
-			ctx := context.Background()
-
-			body := map[string]any{"comment": comment}
-			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
-			if err := c.RawPatch(ctx, path, body, nil); err != nil {
-				ExitErrorf("updating linked run: %v", err)
-			}
-			fmt.Printf("Updated comment on run %s for issue %s\n", runID, issueID)
-		},
-	}
-
-	cmd.Flags().StringVar(&comment, "comment", "", "Updated comment (pass empty string to clear)")
 	return cmd
 }
 
