@@ -343,7 +343,7 @@ func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
 
 func TestEvaluatorCmd_Subcommands(t *testing.T) {
 	cmd := newEvaluatorCmd()
-	expected := map[string]bool{"create": false, "get": false, "list": false, "upload": false, "delete": false}
+	expected := map[string]bool{"get": false, "list": false, "upload": false, "delete": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
@@ -352,6 +352,11 @@ func TestEvaluatorCmd_Subcommands(t *testing.T) {
 	for name, found := range expected {
 		if !found {
 			t.Errorf("evaluator missing subcommand %q", name)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "create" {
+			t.Error("evaluator should not have 'create' subcommand")
 		}
 	}
 }
@@ -633,230 +638,39 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 	}
 }
 
-// ==================== evaluator create ====================
-
-func TestEvaluatorCreateCmd_UseField(t *testing.T) {
-	cmd := newEvaluatorCreateCmd()
-	if cmd.Use != "create" {
-		t.Errorf("expected Use=create, got %q", cmd.Use)
-	}
-}
-
-func TestEvaluatorCreateCmd_Flags(t *testing.T) {
-	cmd := newEvaluatorCreateCmd()
-	flags := map[string]string{
-		"name":             "",
-		"hub-ref":          "",
-		"dataset":          "",
-		"project":          "",
-		"sampling-rate":    "1",
-		"variable-mapping": "[]",
-		"replace":          "false",
-		"yes":              "false",
-	}
-	for name, defVal := range flags {
-		f := cmd.Flags().Lookup(name)
-		if f == nil {
-			t.Errorf("flag --%s not found", name)
-			continue
-		}
-		if f.DefValue != defVal {
-			t.Errorf("flag --%s: expected default %q, got %q", name, defVal, f.DefValue)
-		}
-	}
-}
-
-func TestEvaluatorCreateCmd_RequiredFlags(t *testing.T) {
-	cmd := newEvaluatorCreateCmd()
-	for _, name := range []string{"name", "hub-ref"} {
-		f := cmd.Flags().Lookup(name)
-		if f == nil {
-			t.Fatalf("flag --%s not found", name)
-		}
-		ann := f.Annotations
-		if ann == nil {
-			t.Errorf("flag --%s has no annotations (not marked required)", name)
-			continue
-		}
-		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
-			t.Errorf("flag --%s not marked as required", name)
-		}
-	}
-}
-
-func TestEvaluatorCreateCmd_Execute(t *testing.T) {
-	var capturedBody map[string]any
-
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/runs/rules" && r.Method == "GET":
-			_, _ = w.Write([]byte("[]"))
-		case r.URL.Path == "/runs/rules" && r.Method == "POST":
-			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":           "new-rule-id",
-				"display_name": "accuracy",
-			})
-		case r.URL.Path == "/api/v1/datasets" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "ds-123", "name": "my-eval-set"},
-			})
-		default:
-			http.Error(w, "not found", 404)
-		}
-	})
-
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorCreateCmd()
-		cmd.Flags().Set("name", "accuracy")
-		cmd.Flags().Set("hub-ref", "langchain-ai/correctness:latest")
-		cmd.Flags().Set("dataset", "my-eval-set")
-		cmd.Run(cmd, nil)
-	})
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["status"] != "created" {
-		t.Errorf("expected status=created, got %v", result["status"])
-	}
-	if result["id"] != "new-rule-id" {
-		t.Errorf("expected id=new-rule-id, got %v", result["id"])
-	}
-	if result["hub_ref"] != "langchain-ai/correctness:latest" {
-		t.Errorf("expected hub_ref set, got %v", result["hub_ref"])
-	}
-
-	if capturedBody == nil {
-		t.Fatal("no POST body captured")
-	}
-	if capturedBody["display_name"] != "accuracy" {
-		t.Errorf("expected display_name=accuracy in payload, got %v", capturedBody["display_name"])
-	}
-	evals, _ := capturedBody["evaluators"].([]any)
-	if len(evals) != 1 {
-		t.Fatalf("expected 1 evaluator in payload, got %d", len(evals))
-	}
-	evalDef, _ := evals[0].(map[string]any)
-	if evalDef["hub_ref"] != "langchain-ai/correctness:latest" {
-		t.Errorf("expected hub_ref in evaluator payload, got %v", evalDef["hub_ref"])
-	}
-}
-
-func TestEvaluatorCreateCmd_Execute_WithVariableMapping(t *testing.T) {
-	var capturedBody map[string]any
-
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/runs/rules" && r.Method == "GET":
-			_, _ = w.Write([]byte("[]"))
-		case r.URL.Path == "/runs/rules" && r.Method == "POST":
-			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": "rule-id"})
-		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "proj-456", "name": "prod"},
-			})
-		default:
-			http.Error(w, "not found", 404)
-		}
-	})
-
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-
-	captureStdout(t, func() {
-		cmd := newEvaluatorCreateCmd()
-		cmd.Flags().Set("name", "relevance")
-		cmd.Flags().Set("hub-ref", "myorg/relevance:latest")
-		cmd.Flags().Set("project", "prod")
-		cmd.Flags().Set("variable-mapping", "input=question")
-		cmd.Flags().Set("variable-mapping", "output=answer")
-		cmd.Run(cmd, nil)
-	})
-
-	if capturedBody == nil {
-		t.Fatal("no POST body captured")
-	}
-	evals, _ := capturedBody["evaluators"].([]any)
-	if len(evals) != 1 {
-		t.Fatalf("expected 1 evaluator in payload")
-	}
-	evalDef, _ := evals[0].(map[string]any)
-	varMap, _ := evalDef["variable_mapping"].(map[string]any)
-	if varMap["input"] != "question" {
-		t.Errorf("expected variable_mapping.input=question, got %v", varMap["input"])
-	}
-	if varMap["output"] != "answer" {
-		t.Errorf("expected variable_mapping.output=answer, got %v", varMap["output"])
-	}
-}
-
-func TestEvaluatorCreateCmd_Execute_AlreadyExists(t *testing.T) {
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/runs/rules" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]evaluatorRule{
-				{ID: "existing-id", DisplayName: "accuracy", DatasetID: "ds-123"},
-			})
-		case r.URL.Path == "/api/v1/datasets" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "ds-123", "name": "my-eval-set"},
-			})
-		default:
-			http.Error(w, "not found", 404)
-		}
-	})
-
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorCreateCmd()
-		cmd.Flags().Set("name", "accuracy")
-		cmd.Flags().Set("hub-ref", "langchain-ai/correctness:latest")
-		cmd.Flags().Set("dataset", "my-eval-set")
-		cmd.Run(cmd, nil)
-	})
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["error"] == nil {
-		t.Error("expected error for duplicate evaluator name")
-	}
-	if result["id"] != "existing-id" {
-		t.Errorf("expected id=existing-id, got %v", result["id"])
-	}
-}
-
 // ==================== evaluator get ====================
 
 func TestEvaluatorGetCmd_UseField(t *testing.T) {
 	cmd := newEvaluatorGetCmd()
-	if cmd.Use != "get NAME" {
-		t.Errorf("expected Use='get NAME', got %q", cmd.Use)
+	if cmd.Use != "get [NAME]" {
+		t.Errorf("expected Use='get [NAME]', got %q", cmd.Use)
 	}
 }
 
-func TestEvaluatorGetCmd_ExactArgs(t *testing.T) {
+func TestEvaluatorGetCmd_Args(t *testing.T) {
 	cmd := newEvaluatorGetCmd()
-	if err := cmd.Args(cmd, []string{}); err == nil {
-		t.Error("expected error for 0 args")
+	// 0 args allowed (session-id flag covers the filter)
+	if err := cmd.Args(cmd, []string{}); err != nil {
+		t.Errorf("expected no error for 0 args, got %v", err)
 	}
+	// 1 arg allowed
 	if err := cmd.Args(cmd, []string{"accuracy"}); err != nil {
 		t.Errorf("expected no error for 1 arg, got %v", err)
 	}
+	// 2 args rejected
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
 		t.Error("expected error for 2 args")
+	}
+}
+
+func TestEvaluatorGetCmd_SessionIDFlag(t *testing.T) {
+	cmd := newEvaluatorGetCmd()
+	f := cmd.Flags().Lookup("session-id")
+	if f == nil {
+		t.Fatal("--session-id flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
 	}
 }
 
@@ -977,6 +791,74 @@ func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
 	}
 	if result["error"] == nil {
 		t.Error("expected error for not found evaluator")
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_FilterBySessionID(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]evaluatorRule{
+				{ID: "eval-1", DisplayName: "accuracy", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+				{ID: "eval-2", DisplayName: "toxicity", SessionID: "session-xyz", SamplingRate: 0.5, IsEnabled: true},
+				{ID: "eval-3", DisplayName: "relevance", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Flags().Set("session-id", "session-abc")
+		cmd.Run(cmd, nil)
+	})
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 evaluators for session-abc, got %d", len(result))
+	}
+	for _, r := range result {
+		if r["session_id"] != "session-abc" {
+			t.Errorf("expected session_id=session-abc, got %v", r["session_id"])
+		}
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_FilterByNameAndSessionID(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]evaluatorRule{
+				{ID: "eval-1", DisplayName: "accuracy", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+				{ID: "eval-2", DisplayName: "accuracy", SessionID: "session-xyz", SamplingRate: 0.5, IsEnabled: true},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Flags().Set("session-id", "session-abc")
+		cmd.Run(cmd, []string{"accuracy"})
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("expected single object: %v\noutput: %s", err, out)
+	}
+	if result["id"] != "eval-1" {
+		t.Errorf("expected eval-1, got %v", result["id"])
 	}
 }
 
