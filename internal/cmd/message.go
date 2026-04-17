@@ -24,15 +24,16 @@ type trajectoryStep struct {
 
 // traceTrajectory is the compact trajectory for a single trace.
 type traceTrajectory struct {
-	TraceID string           `json:"trace_id"`
-	Steps   []trajectoryStep `json:"steps"`
+	TraceID        string           `json:"trace_id"`
+	InputsPreview  string           `json:"inputs_preview,omitempty"`
+	OutputsPreview string           `json:"outputs_preview,omitempty"`
+	Steps          []trajectoryStep `json:"steps"`
 }
 
 func newTraceMessagesCmd() *cobra.Command {
 	var (
-		ff            FilterFlags
-		outputFile    string
-		includeRootIO bool
+		ff         FilterFlags
+		outputFile string
 	)
 
 	cmd := &cobra.Command{
@@ -55,7 +56,7 @@ Examples:
   langsmith trace messages --project my-chatbot --limit 5
   langsmith trace messages --project my-chatbot --filter "eq(status, \"error\")"
   langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z
-  langsmith trace messages --project my-chatbot --trace-ids <id1,id2> --include-root-io`,
+  langsmith trace messages --project my-chatbot --trace-ids <id1,id2>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
@@ -144,9 +145,7 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
-			if includeRootIO {
-				attachRootIO(ctx, c, sessionID, startTime, allTraces)
-			}
+			attachRootIO(ctx, c, sessionID, startTime, allTraces)
 
 			for _, t := range allTraces {
 				trace, _ := t.(map[string]any)
@@ -170,7 +169,6 @@ Examples:
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.Flags().BoolVar(&includeRootIO, "include-root-io", false, "Add root_inputs_preview and root_outputs_preview fields per trace")
 
 	return cmd
 }
@@ -314,6 +312,8 @@ func printTraceMessages(result map[string]any) {
 // buildTraceTrajectory converts a raw trace map into a compact trajectory.
 func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 	traceID, _ := trace["trace_id"].(string)
+	inputsPreview, _ := trace["root_inputs_preview"].(string)
+	outputsPreview, _ := trace["root_outputs_preview"].(string)
 	groups, _ := trace["groups"].([]any)
 
 	var steps []trajectoryStep
@@ -358,7 +358,12 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 		}
 	}
 
-	return traceTrajectory{TraceID: traceID, Steps: steps}
+	return traceTrajectory{
+		TraceID:        traceID,
+		InputsPreview:  inputsPreview,
+		OutputsPreview: outputsPreview,
+		Steps:          steps,
+	}
 }
 
 func trajTokens(meta map[string]any) *int64 {
