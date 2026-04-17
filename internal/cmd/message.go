@@ -24,10 +24,10 @@ type trajectoryStep struct {
 
 // traceTrajectory is the compact trajectory for a single trace.
 type traceTrajectory struct {
-	TraceID        string           `json:"trace_id"`
-	InputsPreview  string           `json:"inputs_preview,omitempty"`
-	OutputsPreview string           `json:"outputs_preview,omitempty"`
-	Steps          []trajectoryStep `json:"steps"`
+	TraceID       string           `json:"trace_id"`
+	InputMessage  string           `json:"input_message,omitempty"`
+	OutputMessage string           `json:"output_message,omitempty"`
+	Steps         []trajectoryStep `json:"steps"`
 }
 
 func newTraceMessagesCmd() *cobra.Command {
@@ -359,10 +359,10 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 	}
 
 	return traceTrajectory{
-		TraceID:        traceID,
-		InputsPreview:  inputsPreview,
-		OutputsPreview: outputsPreview,
-		Steps:          steps,
+		TraceID:       traceID,
+		InputMessage:  inputsPreview,
+		OutputMessage: outputsPreview,
+		Steps:         steps,
 	}
 }
 
