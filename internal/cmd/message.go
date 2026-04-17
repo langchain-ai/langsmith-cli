@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -27,7 +26,6 @@ func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff         FilterFlags
 		outputFile string
-		trajectory bool
 	)
 
 	cmd := &cobra.Command{
@@ -138,36 +136,28 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
-			fmt_ := GetFormat()
+			for _, t := range allTraces {
+				trace, _ := t.(map[string]any)
+				traj := buildTraceTrajectory(trace)
+				trace["trajectory"] = traj.Steps
+			}
 
-			if trajectory {
-				var trajs []traceTrajectory
-				for _, t := range allTraces {
-					trace, _ := t.(map[string]any)
-					trajs = append(trajs, buildTraceTrajectory(trace))
-				}
-				if fmt_ == "pretty" {
-					printTrajectories(trajs)
-				} else {
-					output.OutputJSON(map[string]any{"traces": trajs}, outputFile)
-				}
+			combined := map[string]any{
+				"traces":  allTraces,
+				"cursors": map[string]any{},
+			}
+
+			fmt_ := GetFormat()
+			if fmt_ == "pretty" {
+				printTraceMessages(combined)
 			} else {
-				combined := map[string]any{
-					"traces":  allTraces,
-					"cursors": map[string]any{},
-				}
-				if fmt_ == "pretty" {
-					printTraceMessages(combined)
-				} else {
-					output.OutputJSON(combined, outputFile)
-				}
+				output.OutputJSON(combined, outputFile)
 			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.Flags().BoolVar(&trajectory, "trajectory", false, "Output compact trajectory (role, tool_name, tokens, latency_ms) instead of full messages")
 
 	return cmd
 }
@@ -291,35 +281,6 @@ func trajLatency(meta map[string]any) *int64 {
 		return &n
 	}
 	return nil
-}
-
-// printTrajectories prints a compact human-readable trajectory view.
-func printTrajectories(trajs []traceTrajectory) {
-	if len(trajs) == 0 {
-		fmt.Println("No traces found.")
-		return
-	}
-	for i, traj := range trajs {
-		if i > 0 {
-			fmt.Println()
-		}
-		fmt.Printf("--- Trace %s (%d steps) ---\n", traj.TraceID, len(traj.Steps))
-		for _, step := range traj.Steps {
-			var parts []string
-			if step.ToolName != "" {
-				parts = append(parts, fmt.Sprintf("  [%-6s] %s", step.Role, step.ToolName))
-			} else {
-				parts = append(parts, fmt.Sprintf("  [%-6s]", step.Role))
-			}
-			if step.Tokens != nil {
-				parts = append(parts, fmt.Sprintf("%d tok", *step.Tokens))
-			}
-			if step.LatencyMS != nil {
-				parts = append(parts, fmt.Sprintf("%dms", *step.LatencyMS))
-			}
-			fmt.Println(strings.Join(parts, " | "))
-		}
-	}
 }
 
 // printMessage prints a single message in a compact format.
