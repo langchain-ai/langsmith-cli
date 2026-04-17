@@ -101,6 +101,10 @@ func TestTraceMessages_Success(t *testing.T) {
 				},
 				"cursors": map[string]string{},
 			})
+		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
+			// attachRootIO always fetches root run previews
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			http.Error(w, "not found", 404)
