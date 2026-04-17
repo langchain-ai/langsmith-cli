@@ -14,6 +14,7 @@ type trajectoryStep struct {
 	ToolName  string `json:"tool_name,omitempty"`
 	Tokens    *int64 `json:"tokens,omitempty"`
 	LatencyMS *int64 `json:"latency_ms,omitempty"`
+	Chars     int    `json:"chars,omitempty"`
 }
 
 // traceTrajectory is the compact trajectory for a single trace.
@@ -228,7 +229,7 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 		case "message":
 			msg, _ := group["message"].(map[string]any)
 			role, _ := msg["role"].(string)
-			step := trajectoryStep{Role: role}
+			step := trajectoryStep{Role: role, Chars: msgChars(msg)}
 			if role == "ai" {
 				step.Tokens = tokens
 				step.LatencyMS = latency
@@ -241,14 +242,17 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 				Role:      role,
 				Tokens:    tokens,
 				LatencyMS: latency,
+				Chars:     msgChars(aiMsg),
 			})
 			toolCalls, _ := group["toolCalls"].([]any)
 			for _, tc := range toolCalls {
 				call, _ := tc.(map[string]any)
 				name, _ := call["name"].(string)
+				result, _ := call["result"].(map[string]any)
 				steps = append(steps, trajectoryStep{
 					Role:     "tool",
 					ToolName: name,
+					Chars:    msgChars(result),
 				})
 			}
 		}
@@ -281,6 +285,26 @@ func trajLatency(meta map[string]any) *int64 {
 		return &n
 	}
 	return nil
+}
+
+// msgChars returns the total character count of a message's content.
+func msgChars(msg map[string]any) int {
+	if msg == nil {
+		return 0
+	}
+	total := 0
+	switch c := msg["content"].(type) {
+	case string:
+		total = len(c)
+	case []any:
+		for _, block := range c {
+			b, _ := block.(map[string]any)
+			if text, ok := b["text"].(string); ok {
+				total += len(text)
+			}
+		}
+	}
+	return total
 }
 
 // printMessage prints a single message in a compact format.
