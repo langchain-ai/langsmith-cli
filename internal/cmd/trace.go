@@ -43,6 +43,7 @@ func newTraceListCmd() *cobra.Command {
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
+		includeFlagged  bool
 		full            bool
 		showHierarchy   bool
 		outputFile      string
@@ -63,11 +64,11 @@ func newTraceListCmd() *cobra.Command {
 				ff.Limit = defaultLimit
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace list (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -76,10 +77,23 @@ func newTraceListCmd() *cobra.Command {
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			var flaggedByTrace map[string]string
+			if includeFlagged {
+				sessionID, err := c.ResolveSessionID(ctx, projectName)
+				if err != nil {
+					ExitErrorf("%v", err)
+				}
+				flagged := FetchFlaggedTraces(ctx, c, sessionID, ff.LastNMinutes)
+				flaggedByTrace = make(map[string]string, len(flagged))
+				for _, ft := range flagged {
+					flaggedByTrace[ft.TraceID] = ft.Comment
+				}
+			}
+
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				if showHierarchy {
@@ -89,7 +103,7 @@ func newTraceListCmd() *cobra.Command {
 							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
 						}, projectName, 1000, 0)
 						if err != nil {
-							exitErrorf("%v", err)
+							ExitErrorf("%v", err)
 						}
 						output.OutputTree(runsToTreeData(allRuns), "")
 					}
@@ -110,7 +124,7 @@ func newTraceListCmd() *cobra.Command {
 						childParams.Trace = langsmith.F(run.TraceID)
 						allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 						if err != nil {
-							exitErrorf("%v", err)
+							ExitErrorf("%v", err)
 						}
 						result = append(result, map[string]any{
 							"trace_id":  run.TraceID,
@@ -121,6 +135,9 @@ func newTraceListCmd() *cobra.Command {
 					output.OutputJSON(result, outputFile)
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
+					if flaggedByTrace != nil {
+						annotateFlagged(data, flaggedByTrace)
+					}
 					output.OutputJSON(data, outputFile)
 				}
 			}
@@ -131,6 +148,7 @@ func newTraceListCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
+	cmd.Flags().BoolVar(&includeFlagged, "include-flagged", false, "Add flagged_comment field populated from user-flagged trace feedback")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().BoolVar(&showHierarchy, "show-hierarchy", false, "Fetch the full run tree for each trace")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
@@ -163,11 +181,11 @@ func newTraceGetCmd() *cobra.Command {
 				includeFeedback = true
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace get (or set LANGSMITH_PROJECT)")
 			}
 
 			params := langsmith.RunQueryParams{
@@ -181,10 +199,10 @@ func newTraceGetCmd() *cobra.Command {
 
 			runs, err := queryRuns(ctx, c, params, projectName, 1000, 0)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				output.OutputTree(runsToTreeData(runs), "")
@@ -239,14 +257,14 @@ func newTraceExportCmd() *cobra.Command {
 			}
 
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				exitErrorf("creating output directory: %v", err)
+				ExitErrorf("creating output directory: %v", err)
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace export (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -256,7 +274,7 @@ func newTraceExportCmd() *cobra.Command {
 			}
 			rootRuns, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			exported := 0
@@ -272,7 +290,7 @@ func newTraceExportCmd() *cobra.Command {
 				}
 				allRuns, err := queryRuns(ctx, c, childParams, projectName, 1000, 0)
 				if err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 
 				name := root.Name
@@ -288,7 +306,7 @@ func newTraceExportCmd() *cobra.Command {
 
 				f, err := os.Create(fpath)
 				if err != nil {
-					exitErrorf("creating file %s: %v", fpath, err)
+					ExitErrorf("creating file %s: %v", fpath, err)
 				}
 
 				for _, run := range allRuns {
@@ -318,4 +336,22 @@ func newTraceExportCmd() *cobra.Command {
 		"Filename pattern. Supports {trace_id} and {name} placeholders.")
 
 	return cmd
+}
+
+// annotateFlagged mutates each run map to add a "flagged_comment" field
+// (string or null) based on whether the trace_id has a user-flagged feedback
+// entry. Runs without a match get "flagged_comment": null so downstream jq
+// filters can distinguish "missing" from "not flagged".
+func annotateFlagged(data []map[string]any, flaggedByTrace map[string]string) {
+	for _, row := range data {
+		tid, _ := row["trace_id"].(string)
+		if comment, ok := flaggedByTrace[tid]; ok {
+			if comment == "" {
+				comment = "User flagged for review"
+			}
+			row["flagged_comment"] = comment
+		} else {
+			row["flagged_comment"] = nil
+		}
+	}
 }

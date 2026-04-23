@@ -9,7 +9,7 @@ import (
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -91,7 +91,7 @@ func TestGetAPIKey_FlagPrecedence(t *testing.T) {
 	flagAPIKey = "from-flag"
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
 
-	if got := getAPIKey(); got != "from-flag" {
+	if got := GetAPIKey(); got != "from-flag" {
 		t.Errorf("expected from-flag, got %q", got)
 	}
 }
@@ -103,7 +103,7 @@ func TestGetAPIKey_EnvFallback(t *testing.T) {
 	flagAPIKey = ""
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
 
-	if got := getAPIKey(); got != "from-env" {
+	if got := GetAPIKey(); got != "from-env" {
 		t.Errorf("expected from-env, got %q", got)
 	}
 }
@@ -115,7 +115,7 @@ func TestGetAPIKey_Empty(t *testing.T) {
 	flagAPIKey = ""
 	os.Unsetenv("LANGSMITH_API_KEY")
 
-	if got := getAPIKey(); got != "" {
+	if got := GetAPIKey(); got != "" {
 		t.Errorf("expected empty, got %q", got)
 	}
 }
@@ -129,7 +129,7 @@ func TestGetAPIURL_FlagPrecedence(t *testing.T) {
 	flagAPIURL = "http://custom.example.com"
 	t.Setenv("LANGSMITH_ENDPOINT", "http://env.example.com")
 
-	if got := getAPIURL(); got != "http://custom.example.com" {
+	if got := GetAPIURL(); got != "http://custom.example.com" {
 		t.Errorf("expected http://custom.example.com, got %q", got)
 	}
 }
@@ -141,7 +141,7 @@ func TestGetAPIURL_EnvFallback(t *testing.T) {
 	flagAPIURL = ""
 	t.Setenv("LANGSMITH_ENDPOINT", "http://env.example.com")
 
-	if got := getAPIURL(); got != "http://env.example.com" {
+	if got := GetAPIURL(); got != "http://env.example.com" {
 		t.Errorf("expected http://env.example.com, got %q", got)
 	}
 }
@@ -153,7 +153,7 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 	flagAPIURL = ""
 	os.Unsetenv("LANGSMITH_ENDPOINT")
 
-	if got := getAPIURL(); got != "https://api.smith.langchain.com" {
+	if got := GetAPIURL(); got != "https://api.smith.langchain.com" {
 		t.Errorf("expected default URL, got %q", got)
 	}
 }
@@ -165,12 +165,12 @@ func TestGetFormat_ReturnsValue(t *testing.T) {
 	defer func() { flagOutputFormat = old }()
 
 	flagOutputFormat = "pretty"
-	if got := getFormat(); got != "pretty" {
+	if got := GetFormat(); got != "pretty" {
 		t.Errorf("expected pretty, got %q", got)
 	}
 
 	flagOutputFormat = "json"
-	if got := getFormat(); got != "json" {
+	if got := GetFormat(); got != "json" {
 		t.Errorf("expected json, got %q", got)
 	}
 }

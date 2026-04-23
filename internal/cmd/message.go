@@ -3,10 +3,32 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// trajectoryStep is a compact single-step view of one message/tool-call in a trace.
+type trajectoryStep struct {
+	Role      string `json:"role"`
+	ToolName  string `json:"tool_name,omitempty"`
+	Tokens    *int64 `json:"tokens,omitempty"`
+	LatencyMS *int64 `json:"latency_ms,omitempty"`
+	Chars     int    `json:"chars,omitempty"`
+}
+
+// traceTrajectory is the compact trajectory for a single trace.
+type traceTrajectory struct {
+	TraceID       string           `json:"trace_id"`
+	InputMessage  string           `json:"input_message,omitempty"`
+	OutputMessage string           `json:"output_message,omitempty"`
+	Steps         []trajectoryStep `json:"steps"`
+}
 
 func newTraceMessagesCmd() *cobra.Command {
 	var (
@@ -15,7 +37,7 @@ func newTraceMessagesCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "messages",
+		Use:    "messages",
 		Short:  "[Private Beta] Get conversation messages for multiple traces (batch)",
 		Hidden: true,
 		Long: `[Private Beta] Get conversation messages for multiple traces in a single request.
@@ -33,26 +55,27 @@ Requires --project. Results are paginated internally (default limit: 10, max: 10
 Examples:
   langsmith trace messages --project my-chatbot --limit 5
   langsmith trace messages --project my-chatbot --filter "eq(status, \"error\")"
-  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z`,
+  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z
+  langsmith trace messages --project my-chatbot --trace-ids <id1,id2>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
 				ff.Limit = defaultLimit
 			}
 			if ff.Limit > 100 {
-				exitError("--limit cannot exceed 100 for trace messages")
+				ExitError("--limit cannot exceed 100 for trace messages")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
 			}
 
 			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			// Build base request body for POST /v2/traces/messages
@@ -101,7 +124,7 @@ Examples:
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 
 				traces, _ := result["traces"].([]any)
@@ -122,13 +145,20 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
+			attachRootIO(ctx, c, sessionID, startTime, allTraces)
+
+			for _, t := range allTraces {
+				trace, _ := t.(map[string]any)
+				traj := buildTraceTrajectory(trace)
+				trace["trajectory"] = traj.Steps
+			}
+
 			combined := map[string]any{
 				"traces":  allTraces,
 				"cursors": map[string]any{},
 			}
 
-			fmt_ := getFormat()
-
+			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
@@ -141,6 +171,94 @@ Examples:
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
+}
+
+type rootPreview struct {
+	inputs  string
+	outputs string
+}
+
+// attachRootIO looks up inputs_preview/outputs_preview for the root runs of
+// every trace in `traces` and attaches them as root_inputs_preview /
+// root_outputs_preview fields. Failures are logged to stderr — the traces
+// are returned without enrichment rather than erroring out, so callers never
+// lose the main payload to a preview-lookup hiccup.
+func attachRootIO(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, traces []any) {
+	if len(traces) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(traces))
+	for _, t := range traces {
+		trace, _ := t.(map[string]any)
+		if tid, _ := trace["trace_id"].(string); tid != "" {
+			ids = append(ids, tid)
+		}
+	}
+	previews := fetchRootPreviews(ctx, c, sessionID, startTime, ids)
+	for _, t := range traces {
+		trace, _ := t.(map[string]any)
+		if trace == nil {
+			continue
+		}
+		tid, _ := trace["trace_id"].(string)
+		if p, ok := previews[tid]; ok {
+			trace["root_inputs_preview"] = p.inputs
+			trace["root_outputs_preview"] = p.outputs
+		} else {
+			trace["root_inputs_preview"] = nil
+			trace["root_outputs_preview"] = nil
+		}
+	}
+}
+
+// fetchRootPreviews queries root runs for the given trace IDs and returns a
+// map trace_id → (inputs_preview, outputs_preview). For root runs, id ==
+// trace_id, so we filter by ID (the SDK's RunQueryParams has no list field
+// for trace IDs — Trace is singular).
+func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string) map[string]rootPreview {
+	out := map[string]rootPreview{}
+	if len(ids) == 0 {
+		return out
+	}
+	params := langsmith.RunQueryParams{
+		Session:   langsmith.F([]string{sessionID}),
+		IsRoot:    langsmith.F(true),
+		ID:        langsmith.F(ids),
+		StartTime: langsmith.F(startTime),
+		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc),
+		Limit:     langsmith.F(int64(len(ids))),
+		Select: langsmith.F([]langsmith.RunQueryParamsSelect{
+			langsmith.RunQueryParamsSelectTraceID,
+			langsmith.RunQueryParamsSelectInputsPreview,
+			langsmith.RunQueryParamsSelectOutputsPreview,
+		}),
+	}
+	resp, err := c.SDK.Runs.Query(ctx, params)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
+		return out
+	}
+	for _, run := range resp.Runs {
+		tid := run.TraceID
+		if tid == "" {
+			tid = run.ID
+		}
+		if tid == "" {
+			continue
+		}
+		out[tid] = rootPreview{
+			inputs:  truncateHard(run.InputsPreview, 2000),
+			outputs: truncateHard(run.OutputsPreview, 2000),
+		}
+	}
+	return out
+}
+
+func truncateHard(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // printTraceMessages prints a human-readable summary of batch trace messages.
@@ -189,6 +307,109 @@ func printTraceMessages(result map[string]any) {
 	if next, ok := cursors["next"].(string); ok && next != "" {
 		fmt.Printf("\nNext cursor: %s\n", next)
 	}
+}
+
+// buildTraceTrajectory converts a raw trace map into a compact trajectory.
+func buildTraceTrajectory(trace map[string]any) traceTrajectory {
+	traceID, _ := trace["trace_id"].(string)
+	inputsPreview, _ := trace["root_inputs_preview"].(string)
+	outputsPreview, _ := trace["root_outputs_preview"].(string)
+	groups, _ := trace["groups"].([]any)
+
+	var steps []trajectoryStep
+	for _, g := range groups {
+		group, _ := g.(map[string]any)
+		gType, _ := group["type"].(string)
+		meta, _ := group["metadata"].(map[string]any)
+
+		tokens := trajTokens(meta)
+		latency := trajLatency(meta)
+
+		switch gType {
+		case "message":
+			msg, _ := group["message"].(map[string]any)
+			role, _ := msg["role"].(string)
+			step := trajectoryStep{Role: role, Chars: msgChars(msg)}
+			if role == "ai" {
+				step.Tokens = tokens
+				step.LatencyMS = latency
+			}
+			steps = append(steps, step)
+		case "tool_interaction":
+			aiMsg, _ := group["aiMessage"].(map[string]any)
+			role, _ := aiMsg["role"].(string)
+			steps = append(steps, trajectoryStep{
+				Role:      role,
+				Tokens:    tokens,
+				LatencyMS: latency,
+				Chars:     msgChars(aiMsg),
+			})
+			toolCalls, _ := group["toolCalls"].([]any)
+			for _, tc := range toolCalls {
+				call, _ := tc.(map[string]any)
+				name, _ := call["name"].(string)
+				result, _ := call["result"].(map[string]any)
+				steps = append(steps, trajectoryStep{
+					Role:     "tool",
+					ToolName: name,
+					Chars:    msgChars(result),
+				})
+			}
+		}
+	}
+
+	return traceTrajectory{
+		TraceID:       traceID,
+		InputMessage:  inputsPreview,
+		OutputMessage: outputsPreview,
+		Steps:         steps,
+	}
+}
+
+func trajTokens(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	tu, ok := meta["token_usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if v, ok := tu["total_tokens"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+func trajLatency(meta map[string]any) *int64 {
+	if meta == nil {
+		return nil
+	}
+	if v, ok := meta["latency_ms"].(float64); ok {
+		n := int64(v)
+		return &n
+	}
+	return nil
+}
+
+// msgChars returns the total character count of a message's content.
+func msgChars(msg map[string]any) int {
+	if msg == nil {
+		return 0
+	}
+	total := 0
+	switch c := msg["content"].(type) {
+	case string:
+		total = len(c)
+	case []any:
+		for _, block := range c {
+			b, _ := block.(map[string]any)
+			if text, ok := b["text"].(string); ok {
+				total += len(text)
+			}
+		}
+	}
+	return total
 }
 
 // printMessage prints a single message in a compact format.

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	"github.com/spf13/cobra"
 )
 
@@ -65,12 +66,13 @@ Output:
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
+	rootCmd.AddCommand(api.NewCmd())
 
 	return rootCmd
 }
 
-// getAPIKey resolves the API key from flag → env → error.
-func getAPIKey() string {
+// GetAPIKey resolves the API key from flag → env → error.
+func GetAPIKey() string {
 	if flagAPIKey != "" {
 		return flagAPIKey
 	}
@@ -80,8 +82,8 @@ func getAPIKey() string {
 	return ""
 }
 
-// getAPIURL resolves the API URL from flag → env → default.
-func getAPIURL() string {
+// GetAPIURL resolves the API URL from flag → env → default.
+func GetAPIURL() string {
 	if flagAPIURL != "" {
 		return flagAPIURL
 	}
@@ -91,27 +93,27 @@ func getAPIURL() string {
 	return "https://api.smith.langchain.com"
 }
 
-// getFormat returns the output format.
-func getFormat() string {
+// GetFormat returns the output format.
+func GetFormat() string {
 	return flagOutputFormat
 }
 
-// mustGetClient creates a LangSmith client or exits with an error.
-func mustGetClient() *client.Client {
-	apiKey := getAPIKey()
+// MustGetClient creates a LangSmith client or exits with an error.
+func MustGetClient() *client.Client {
+	apiKey := GetAPIKey()
 	if apiKey == "" {
-		exitError("LANGSMITH_API_KEY not set")
+		ExitError("LANGSMITH_API_KEY not set")
 	}
-	return client.New(apiKey, getAPIURL())
+	return client.New(apiKey, GetAPIURL())
 }
 
-// exitError prints a JSON error to stderr and exits.
-func exitError(msg string) {
+// ExitError prints a JSON error to stderr and exits.
+func ExitError(msg string) {
 	fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", msg)
 	os.Exit(1)
 }
 
-// exitErrorf prints a formatted JSON error to stderr and exits.
-func exitErrorf(format string, args ...any) {
-	exitError(fmt.Sprintf(format, args...))
+// ExitErrorf prints a formatted JSON error to stderr and exits.
+func ExitErrorf(format string, args ...any) {
+	ExitError(fmt.Sprintf(format, args...))
 }

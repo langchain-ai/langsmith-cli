@@ -49,12 +49,12 @@ func newExampleListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List examples in a dataset (default: 20)",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			pageSize := int64(20)
@@ -77,9 +77,9 @@ func newExampleListCmd() *cobra.Command {
 				}
 			}
 			if err := pager.Err(); err != nil {
-				exitErrorf("listing examples: %v", err)
+				ExitErrorf("listing examples: %v", err)
 			}
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			// Filter by split if specified
 			if split != "" {
@@ -161,7 +161,7 @@ func newExampleCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new example in a dataset",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			// Parse JSON inputs
@@ -190,7 +190,7 @@ func newExampleCreateCmd() *cobra.Command {
 			// Resolve dataset
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			params := langsmith.ExampleNewParams{
@@ -211,7 +211,7 @@ func newExampleCreateCmd() *cobra.Command {
 
 			ex, err := c.SDK.Examples.New(ctx, params)
 			if err != nil {
-				exitErrorf("creating example: %v", err)
+				ExitErrorf("creating example: %v", err)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -250,16 +250,16 @@ func newExampleDeleteCmd() *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					exitError("aborted")
+					ExitError("aborted")
 				}
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			_, err := c.SDK.Examples.Delete(ctx, exampleID)
 			if err != nil {
-				exitErrorf("deleting example: %v", err)
+				ExitErrorf("deleting example: %v", err)
 			}
 
 			output.OutputJSON(map[string]any{

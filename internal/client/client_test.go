@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -313,5 +314,118 @@ func TestRawRequest_500Error(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("expected 500 in error, got %q", err.Error())
+	}
+}
+
+// ---------- RawDo ----------
+
+func TestRawDo_ReturnsStatusAndBody(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PATCH" {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/sessions" {
+			t.Errorf("expected /api/v1/sessions, got %s", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "my-key" {
+			t.Errorf("expected x-api-key=my-key, got %q", r.Header.Get("x-api-key"))
+		}
+		w.Header().Set("X-Request-Id", "req-abc")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"id":"123"}`))
+	}))
+	defer ts.Close()
+
+	c := New("my-key", ts.URL)
+	status, _, hdr, body, err := c.RawDo(context.Background(), "PATCH", "/api/v1/sessions", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 200 {
+		t.Errorf("expected status 200, got %d", status)
+	}
+	if hdr.Get("X-Request-Id") != "req-abc" {
+		t.Errorf("expected X-Request-Id=req-abc, got %q", hdr.Get("X-Request-Id"))
+	}
+	if string(body) != `{"id":"123"}` {
+		t.Errorf("expected body {\"id\":\"123\"}, got %q", string(body))
+	}
+}
+
+func TestRawDo_WithBodyReader(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		w.WriteHeader(201)
+		_, _ = w.Write(data)
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	status, _, _, body, err := c.RawDo(context.Background(), "POST", "/create", strings.NewReader(`{"name":"test"}`), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 201 {
+		t.Errorf("expected 201, got %d", status)
+	}
+	if string(body) != `{"name":"test"}` {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestRawDo_ExtraHeaders(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Custom") != "hello" {
+			t.Errorf("expected X-Custom=hello, got %q", r.Header.Get("X-Custom"))
+		}
+		if r.Header.Get("x-api-key") != "key" {
+			t.Errorf("expected x-api-key=key, got %q", r.Header.Get("x-api-key"))
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	extra := http.Header{"X-Custom": []string{"hello"}}
+	_, _, _, _, err := c.RawDo(context.Background(), "GET", "/test", nil, extra)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRawDo_Returns4xxWithoutError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"detail":"invalid"}`))
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	status, _, _, body, err := c.RawDo(context.Background(), "GET", "/test", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 422 {
+		t.Errorf("expected 422, got %d", status)
+	}
+	if string(body) != `{"detail":"invalid"}` {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+// ---------- Accessors ----------
+
+func TestAPIKey(t *testing.T) {
+	c := New("secret", "http://localhost")
+	if c.APIKey() != "secret" {
+		t.Errorf("expected secret, got %q", c.APIKey())
+	}
+}
+
+func TestAPIURL(t *testing.T) {
+	c := New("key", "http://localhost:1234")
+	if c.APIURL() != "http://localhost:1234" {
+		t.Errorf("expected http://localhost:1234, got %q", c.APIURL())
 	}
 }

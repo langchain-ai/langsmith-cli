@@ -64,7 +64,7 @@ func resolveStartTime(since string, lastNMinutes int) time.Time {
 		if err != nil {
 			t, err = time.Parse("2006-01-02T15:04:05", since)
 			if err != nil {
-				exitErrorf("invalid --since timestamp: %s", since)
+				ExitErrorf("invalid --since timestamp: %s", since)
 			}
 		}
 		return t
@@ -101,7 +101,7 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 		if err != nil {
 			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
 			if err != nil {
-				exitErrorf("invalid --before timestamp: %s", f.Before)
+				ExitErrorf("invalid --before timestamp: %s", f.Before)
 			}
 		}
 		params.EndTime = langsmith.F(t)

@@ -58,11 +58,11 @@ func newRunListCmd() *cobra.Command {
 				ff.Limit = 50
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for run list (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for run list (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
@@ -71,10 +71,10 @@ func newRunListCmd() *cobra.Command {
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
@@ -121,11 +121,11 @@ func newRunGetCmd() *cobra.Command {
 				includeFeedback = true
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(project)
 			if projectName == "" {
-				exitError("--project is required for run get (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for run get (or set LANGSMITH_PROJECT)")
 			}
 
 			params := langsmith.RunQueryParams{
@@ -139,14 +139,14 @@ func newRunGetCmd() *cobra.Command {
 
 			runs, err := queryRuns(ctx, c, params, projectName, 1, 0)
 			if err != nil {
-				exitErrorf("fetching run: %v", err)
+				ExitErrorf("fetching run: %v", err)
 			}
 			if len(runs) == 0 {
-				exitErrorf("run not found: %s", runID)
+				ExitErrorf("run not found: %s", runID)
 			}
 
 			data := extract.ExtractRun(runs[0], includeMetadata, includeIO, includeFeedback)
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				output.PrintOutput(data, "pretty", outputFile)
@@ -194,11 +194,11 @@ func newRunExportCmd() *cobra.Command {
 				ff.Limit = 100
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
 			if projectName == "" {
-				exitError("--project is required for run export (or set LANGSMITH_PROJECT)")
+				ExitError("--project is required for run export (or set LANGSMITH_PROJECT)")
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
@@ -207,7 +207,7 @@ func newRunExportCmd() *cobra.Command {
 			}
 			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
-				exitErrorf("%v", err)
+				ExitErrorf("%v", err)
 			}
 
 			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)

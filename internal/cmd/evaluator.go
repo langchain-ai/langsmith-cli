@@ -162,15 +162,15 @@ func newEvaluatorListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all evaluator rules in the workspace",
 		Run: func(cmd *cobra.Command, args []string) {
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			var rules []evaluatorRule
 			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
-				exitErrorf("listing evaluators: %v", err)
+				ExitErrorf("listing evaluators: %v", err)
 			}
 
-			fmt_ := getFormat()
+			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "Sampling Rate", "Target", "Enabled"}
@@ -236,7 +236,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				return
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			// Resolve targets
@@ -245,7 +245,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			if targetDataset != "" {
 				ds, err := resolveDataset(ctx, c, targetDataset)
 				if err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 				datasetID = ds.ID
 			}
@@ -253,7 +253,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			if targetProject != "" {
 				sid, err := c.ResolveSessionID(ctx, targetProject)
 				if err != nil {
-					exitErrorf("%v", err)
+					ExitErrorf("%v", err)
 				}
 				projectID = sid
 			}
@@ -261,7 +261,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			// Check for existing evaluator
 			var rules []evaluatorRule
 			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
-				exitErrorf("checking existing evaluators: %v", err)
+				ExitErrorf("checking existing evaluators: %v", err)
 			}
 
 			existing := findEvaluator(rules, name, datasetID, projectID)
@@ -278,23 +278,23 @@ func newEvaluatorUploadCmd() *cobra.Command {
 					var confirm string
 					_, _ = fmt.Scanln(&confirm)
 					if strings.ToLower(confirm) != "y" {
-						exitError("aborted")
+						ExitError("aborted")
 					}
 				}
 				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), nil); err != nil {
-					exitErrorf("deleting existing evaluator: %v", err)
+					ExitErrorf("deleting existing evaluator: %v", err)
 				}
 			}
 
 			// Read and prepare function source
 			source, err := os.ReadFile(evaluatorFile)
 			if err != nil {
-				exitErrorf("reading evaluator file: %v", err)
+				ExitErrorf("reading evaluator file: %v", err)
 			}
 
 			language, evalFuncName := detectLanguage(evaluatorFile)
 			if language == "" {
-				exitErrorf("unsupported file extension: %s (use .py, .js, .ts, .tsx, or .mjs)", evaluatorFile)
+				ExitErrorf("unsupported file extension: %s (use .py, .js, .ts, .tsx, or .mjs)", evaluatorFile)
 			}
 
 			var sourceStr string
@@ -302,14 +302,14 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			case "python":
 				sourceStr = extractPythonFunction(string(source), funcName)
 				if sourceStr == "" {
-					exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+					ExitErrorf("function %q not found in %s", funcName, evaluatorFile)
 				}
 				re := regexp.MustCompile(`\bdef\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
 				sourceStr = re.ReplaceAllString(sourceStr, "def "+evalFuncName+"(")
 			case "javascript":
 				sourceStr = extractJSFunction(string(source), funcName)
 				if sourceStr == "" {
-					exitErrorf("function %q not found in %s", funcName, evaluatorFile)
+					ExitErrorf("function %q not found in %s", funcName, evaluatorFile)
 				}
 				sourceStr = renameJSFunction(sourceStr, funcName)
 			}
@@ -334,7 +334,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 
 			var result map[string]any
 			if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
-				exitErrorf("uploading evaluator: %v", err)
+				ExitErrorf("uploading evaluator: %v", err)
 			}
 
 			target := "project"
@@ -374,12 +374,12 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			name := args[0]
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
 			var rules []evaluatorRule
 			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
-				exitErrorf("listing evaluators: %v", err)
+				ExitErrorf("listing evaluators: %v", err)
 			}
 
 			var matching []evaluatorRule
@@ -399,14 +399,14 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					exitError("aborted")
+					ExitError("aborted")
 				}
 			}
 
 			deleted := 0
 			for _, rule := range matching {
 				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", rule.ID), nil); err != nil {
-					exitErrorf("deleting evaluator %s: %v", rule.ID, err)
+					ExitErrorf("deleting evaluator %s: %v", rule.ID, err)
 				}
 				deleted++
 			}
