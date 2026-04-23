@@ -65,6 +65,7 @@ Output:
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newPromptCmd())
+	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
 

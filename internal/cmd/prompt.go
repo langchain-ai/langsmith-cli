@@ -8,20 +8,28 @@ import (
 	"os"
 	"strings"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
+// parseOwnerRepo accepts "[owner/]repo[:commit]". When owner is omitted,
+// owner defaults to "-" (the current-tenant placeholder the backend resolves).
 func parseOwnerRepo(arg string) (owner, repo, commit string, err error) {
 	repoCommit := arg
 	if idx := strings.Index(arg, ":"); idx != -1 {
 		repoCommit = arg[:idx]
 		commit = arg[idx+1:]
 	}
+	if !strings.Contains(repoCommit, "/") {
+		if repoCommit == "" {
+			return "", "", "", fmt.Errorf("invalid format %q — expected [owner/]repo[:commit]", arg)
+		}
+		return "-", repoCommit, commit, nil
+	}
 	parts := strings.SplitN(repoCommit, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", "", fmt.Errorf("invalid format %q — expected owner/repo or owner/repo:commit", arg)
+	if parts[0] == "" || parts[1] == "" {
+		return "", "", "", fmt.Errorf("invalid format %q — expected [owner/]repo[:commit]", arg)
 	}
 	return parts[0], parts[1], commit, nil
 }
