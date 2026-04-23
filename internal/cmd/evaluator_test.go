@@ -5,7 +5,36 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+// testRule is a minimal JSON-serializable struct used by mock server handlers
+// to produce responses that the SDK can decode into langsmith.Evaluator.
+type testRule struct {
+	ID             string         `json:"id"`
+	DisplayName    string         `json:"display_name"`
+	SamplingRate   float64        `json:"sampling_rate"`
+	IsEnabled      bool           `json:"is_enabled"`
+	DatasetID      string         `json:"dataset_id,omitempty"`
+	SessionID      string         `json:"session_id,omitempty"`
+	CodeEvaluators []testCodeEval `json:"code_evaluators,omitempty"`
+	Evaluators     []testLLMEval  `json:"evaluators,omitempty"`
+}
+
+type testCodeEval struct {
+	Code     string `json:"code"`
+	Language string `json:"language"`
+}
+
+type testLLMEval struct {
+	Structured testLLMStructured `json:"structured"`
+}
+
+type testLLMStructured struct {
+	HubRef          string            `json:"hub_ref,omitempty"`
+	VariableMapping map[string]string `json:"variable_mapping,omitempty"`
+}
 
 // ==================== Pure function tests ====================
 
@@ -174,7 +203,6 @@ func TestExtractJSFunction_NestedBraces(t *testing.T) {
 	if result == "" {
 		t.Fatal("expected non-empty result")
 	}
-	// Should contain the closing brace of the function
 	if !contains(result, "return { score: 1 };") {
 		t.Error("should contain the full function body")
 	}
@@ -284,7 +312,7 @@ func TestRenameJSFunction_AsyncArrowFunction(t *testing.T) {
 // ---------- findEvaluator ----------
 
 func TestFindEvaluator_MatchByDataset(t *testing.T) {
-	rules := []evaluatorRule{
+	rules := []langsmith.Evaluator{
 		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
 		{ID: "2", DisplayName: "accuracy", DatasetID: "ds-2"},
 	}
@@ -298,7 +326,7 @@ func TestFindEvaluator_MatchByDataset(t *testing.T) {
 }
 
 func TestFindEvaluator_MatchByProject(t *testing.T) {
-	rules := []evaluatorRule{
+	rules := []langsmith.Evaluator{
 		{ID: "1", DisplayName: "accuracy", SessionID: "proj-1"},
 		{ID: "2", DisplayName: "accuracy", SessionID: "proj-2"},
 	}
@@ -312,7 +340,7 @@ func TestFindEvaluator_MatchByProject(t *testing.T) {
 }
 
 func TestFindEvaluator_NoMatch(t *testing.T) {
-	rules := []evaluatorRule{
+	rules := []langsmith.Evaluator{
 		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
 	}
 	result := findEvaluator(rules, "different-name", "ds-1", "")
@@ -329,10 +357,9 @@ func TestFindEvaluator_EmptyRules(t *testing.T) {
 }
 
 func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
-	rules := []evaluatorRule{
+	rules := []langsmith.Evaluator{
 		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
 	}
-	// Name matches but target dataset doesn't
 	result := findEvaluator(rules, "accuracy", "ds-other", "")
 	if result != nil {
 		t.Error("expected nil when target doesn't match")
@@ -343,7 +370,7 @@ func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
 
 func TestEvaluatorCmd_Subcommands(t *testing.T) {
 	cmd := newEvaluatorCmd()
-	expected := map[string]bool{"list": false, "upload": false, "delete": false}
+	expected := map[string]bool{"get": false, "list": false, "upload": false, "delete": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
@@ -352,6 +379,11 @@ func TestEvaluatorCmd_Subcommands(t *testing.T) {
 	for name, found := range expected {
 		if !found {
 			t.Errorf("evaluator missing subcommand %q", name)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "create" {
+			t.Error("evaluator should not have 'create' subcommand")
 		}
 	}
 }
@@ -429,7 +461,6 @@ func TestEvaluatorUploadCmd_Flags(t *testing.T) {
 
 func TestEvaluatorUploadCmd_RequiredFlags(t *testing.T) {
 	cmd := newEvaluatorUploadCmd()
-	// name and function are required
 	for _, name := range []string{"name", "function"} {
 		f := cmd.Flags().Lookup(name)
 		if f == nil {
@@ -451,15 +482,12 @@ func TestEvaluatorUploadCmd_ExactArgs(t *testing.T) {
 	if cmd.Args == nil {
 		t.Fatal("expected Args validator")
 	}
-	// Should reject 0 args
 	if err := cmd.Args(cmd, []string{}); err == nil {
 		t.Error("expected error for 0 args")
 	}
-	// Should accept 1 arg
 	if err := cmd.Args(cmd, []string{"eval.py"}); err != nil {
 		t.Errorf("expected no error for 1 arg, got %v", err)
 	}
-	// Should reject 2 args
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
 		t.Error("expected error for 2 args")
 	}
@@ -488,27 +516,15 @@ func TestEvaluatorDeleteCmd_ExactArgs(t *testing.T) {
 	}
 }
 
-// ==================== Execution tests (evaluator list uses RawGet) ====================
+// ==================== Execution tests ====================
 
 func TestEvaluatorListCmd_Execute(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]evaluatorRule{
-				{
-					ID:           "eval-1",
-					DisplayName:  "accuracy",
-					SamplingRate: 1.0,
-					IsEnabled:    true,
-					DatasetID:    "ds-1",
-				},
-				{
-					ID:           "eval-2",
-					DisplayName:  "toxicity",
-					SamplingRate: 0.5,
-					IsEnabled:    false,
-					SessionID:    "proj-1",
-				},
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{ID: "eval-1", DisplayName: "accuracy", SamplingRate: 1.0, IsEnabled: true, DatasetID: "ds-1"},
+				{ID: "eval-2", DisplayName: "toxicity", SamplingRate: 0.5, IsEnabled: false, SessionID: "proj-1"},
 			})
 			return
 		}
@@ -527,7 +543,6 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
 	}
-
 	if len(result) != 2 {
 		t.Fatalf("expected 2 evaluators, got %d", len(result))
 	}
@@ -540,7 +555,6 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 	if result[1]["name"] != "toxicity" {
 		t.Errorf("expected name=toxicity, got %v", result[1]["name"])
 	}
-	// Check sampling_rate
 	if result[0]["sampling_rate"] != 1.0 {
 		t.Errorf("expected sampling_rate=1.0, got %v", result[0]["sampling_rate"])
 	}
@@ -551,16 +565,10 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 
 func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/runs/rules" && r.Method == "GET" {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]evaluatorRule{
-				{
-					ID:           "eval-1",
-					DisplayName:  "accuracy",
-					SamplingRate: 1.0,
-					IsEnabled:    true,
-					DatasetID:    "ds-1",
-				},
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{ID: "eval-1", DisplayName: "accuracy", SamplingRate: 1.0, IsEnabled: true, DatasetID: "ds-1"},
 			})
 			return
 		}
@@ -576,11 +584,9 @@ func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 		cmd.Run(cmd, nil)
 	})
 
-	// Pretty format should produce a table, not JSON
 	if len(out) > 0 && out[0] == '[' {
 		t.Error("pretty format should not produce JSON array")
 	}
-	// Should contain the evaluator name somewhere
 	if !contains(out, "accuracy") {
 		t.Error("pretty output should contain evaluator name")
 	}
@@ -588,7 +594,7 @@ func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 
 func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/runs/rules" {
+		if r.URL.Path == "/api/v1/runs/rules" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte("[]"))
 			return
@@ -608,8 +614,6 @@ func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
 	}
-	// Should produce empty JSON array (or null)
-	// Either is acceptable since the handler returns empty slice
 }
 
 func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
@@ -630,6 +634,278 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 
 	if receivedKey != "test-api-key" {
 		t.Errorf("expected x-api-key=test-api-key, got %q", receivedKey)
+	}
+}
+
+// ==================== evaluator get ====================
+
+func TestEvaluatorGetCmd_UseField(t *testing.T) {
+	cmd := newEvaluatorGetCmd()
+	if cmd.Use != "get [NAME]" {
+		t.Errorf("expected Use='get [NAME]', got %q", cmd.Use)
+	}
+}
+
+func TestEvaluatorGetCmd_Args(t *testing.T) {
+	cmd := newEvaluatorGetCmd()
+	if err := cmd.Args(cmd, []string{}); err != nil {
+		t.Errorf("expected no error for 0 args, got %v", err)
+	}
+	if err := cmd.Args(cmd, []string{"accuracy"}); err != nil {
+		t.Errorf("expected no error for 1 arg, got %v", err)
+	}
+	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
+		t.Error("expected error for 2 args")
+	}
+}
+
+func TestEvaluatorGetCmd_SessionIDFlag(t *testing.T) {
+	cmd := newEvaluatorGetCmd()
+	f := cmd.Flags().Lookup("session-id")
+	if f == nil {
+		t.Fatal("--session-id flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_CodeEvaluator(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{
+					ID:           "eval-1",
+					DisplayName:  "accuracy",
+					SamplingRate: 1.0,
+					IsEnabled:    true,
+					DatasetID:    "ds-1",
+					CodeEvaluators: []testCodeEval{
+						{Code: "def perform_eval(run, example):\n  return {}", Language: "python"},
+					},
+				},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Run(cmd, []string{"accuracy"})
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if result["id"] != "eval-1" {
+		t.Errorf("expected id=eval-1, got %v", result["id"])
+	}
+	if result["type"] != "code" {
+		t.Errorf("expected type=code, got %v", result["type"])
+	}
+	if result["language"] != "python" {
+		t.Errorf("expected language=python, got %v", result["language"])
+	}
+	if result["code"] == nil || result["code"] == "" {
+		t.Error("expected code to be populated")
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_LLMEvaluator(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{
+					ID:           "eval-2",
+					DisplayName:  "relevance",
+					SamplingRate: 0.5,
+					IsEnabled:    true,
+					SessionID:    "proj-1",
+					Evaluators: []testLLMEval{
+						{Structured: testLLMStructured{
+							HubRef:          "myorg/relevance:latest",
+							VariableMapping: map[string]string{"input": "question"},
+						}},
+					},
+				},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Run(cmd, []string{"relevance"})
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if result["type"] != "llm" {
+		t.Errorf("expected type=llm, got %v", result["type"])
+	}
+	if result["hub_ref"] != "myorg/relevance:latest" {
+		t.Errorf("expected hub_ref set, got %v", result["hub_ref"])
+	}
+	varMap, _ := result["variable_mapping"].(map[string]any)
+	if varMap["input"] != "question" {
+		t.Errorf("expected variable_mapping.input=question, got %v", varMap["input"])
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Run(cmd, []string{"nonexistent"})
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if result["error"] == nil {
+		t.Error("expected error for not found evaluator")
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_FilterBySessionID(t *testing.T) {
+	allRules := []testRule{
+		{ID: "eval-1", DisplayName: "accuracy", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+		{ID: "eval-2", DisplayName: "toxicity", SessionID: "session-xyz", SamplingRate: 0.5, IsEnabled: true},
+		{ID: "eval-3", DisplayName: "relevance", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+	}
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			// Simulate server-side filtering by session_id query param.
+			sid := r.URL.Query().Get("session_id")
+			var filtered []testRule
+			for _, rule := range allRules {
+				if sid == "" || rule.SessionID == sid {
+					filtered = append(filtered, rule)
+				}
+			}
+			_ = json.NewEncoder(w).Encode(filtered)
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		_ = cmd.Flags().Set("session-id", "session-abc")
+		cmd.Run(cmd, nil)
+	})
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 evaluators for session-abc, got %d", len(result))
+	}
+	for _, r := range result {
+		if r["session_id"] != "session-abc" {
+			t.Errorf("expected session_id=session-abc, got %v", r["session_id"])
+		}
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_FilterByNameAndSessionID(t *testing.T) {
+	allRules := []testRule{
+		{ID: "eval-1", DisplayName: "accuracy", SessionID: "session-abc", SamplingRate: 1.0, IsEnabled: true},
+		{ID: "eval-2", DisplayName: "accuracy", SessionID: "session-xyz", SamplingRate: 0.5, IsEnabled: true},
+	}
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			sid := r.URL.Query().Get("session_id")
+			var filtered []testRule
+			for _, rule := range allRules {
+				if sid == "" || rule.SessionID == sid {
+					filtered = append(filtered, rule)
+				}
+			}
+			_ = json.NewEncoder(w).Encode(filtered)
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		_ = cmd.Flags().Set("session-id", "session-abc")
+		cmd.Run(cmd, []string{"accuracy"})
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("expected single object: %v\noutput: %s", err, out)
+	}
+	if result["id"] != "eval-1" {
+		t.Errorf("expected eval-1, got %v", result["id"])
+	}
+}
+
+func TestEvaluatorGetCmd_Execute_MultipleMatches(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{ID: "eval-1", DisplayName: "accuracy", DatasetID: "ds-1"},
+				{ID: "eval-2", DisplayName: "accuracy", SessionID: "proj-1"},
+			})
+			return
+		}
+		http.Error(w, "not found", 404)
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorGetCmd()
+		cmd.Run(cmd, []string{"accuracy"})
+	})
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("expected JSON array for multiple matches: %v\noutput: %s", err, out)
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 results, got %d", len(result))
 	}
 }
 
