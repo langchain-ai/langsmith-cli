@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -40,29 +41,6 @@ Examples:
 	return cmd
 }
 
-// evaluatorRule matches the JSON from GET /runs/rules.
-type evaluatorRule struct {
-	ID               string          `json:"id"`
-	DisplayName      string          `json:"display_name"`
-	SamplingRate     float64         `json:"sampling_rate"`
-	IsEnabled        bool            `json:"is_enabled"`
-	DatasetID        string          `json:"dataset_id"`
-	SessionID        string          `json:"session_id"`
-	TargetDatasetIDs []string        `json:"target_dataset_ids"`
-	TargetProjectIDs []string        `json:"target_project_ids"`
-	CodeEvaluators   []codeEvaluator `json:"code_evaluators"`
-	Evaluators       []llmEvaluator  `json:"evaluators"`
-}
-
-type codeEvaluator struct {
-	Code     string `json:"code"`
-	Language string `json:"language"`
-}
-
-type llmEvaluator struct {
-	HubRef          string            `json:"hub_ref"`
-	VariableMapping map[string]string `json:"variable_mapping"`
-}
 
 func newEvaluatorGetCmd() *cobra.Command {
 	var (
@@ -89,23 +67,24 @@ Examples:
 			}
 
 			if name == "" && sessionID == "" {
-				exitError("provide a NAME argument or --session-id (or both)")
+				ExitError("provide a NAME argument or --session-id (or both)")
 			}
 
-			c := mustGetClient()
+			c := MustGetClient()
 			ctx := context.Background()
 
-			var rules []evaluatorRule
-			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
-				exitErrorf("fetching evaluators: %v", err)
+			params := langsmith.EvaluatorListParams{}
+			if sessionID != "" {
+				params.SessionID = langsmith.F(sessionID)
+			}
+			rules, err := c.SDK.Evaluators.List(ctx, params)
+			if err != nil {
+				ExitErrorf("fetching evaluators: %v", err)
 			}
 
-			var matching []evaluatorRule
-			for _, r := range rules {
+			var matching []langsmith.Evaluator
+			for _, r := range *rules {
 				if name != "" && r.DisplayName != name {
-					continue
-				}
-				if sessionID != "" && r.SessionID != sessionID {
 					continue
 				}
 				matching = append(matching, r)
@@ -130,13 +109,13 @@ Examples:
 				}
 				if len(r.CodeEvaluators) > 0 {
 					entry["type"] = "code"
-					entry["language"] = r.CodeEvaluators[0].Language
+					entry["language"] = string(r.CodeEvaluators[0].Language)
 					entry["code"] = r.CodeEvaluators[0].Code
 				} else if len(r.Evaluators) > 0 {
 					entry["type"] = "llm"
-					entry["hub_ref"] = r.Evaluators[0].HubRef
-					if len(r.Evaluators[0].VariableMapping) > 0 {
-						entry["variable_mapping"] = r.Evaluators[0].VariableMapping
+					entry["hub_ref"] = r.Evaluators[0].Structured.HubRef
+					if len(r.Evaluators[0].Structured.VariableMapping) > 0 {
+						entry["variable_mapping"] = r.Evaluators[0].Structured.VariableMapping
 					}
 				}
 				data = append(data, entry)
@@ -165,8 +144,8 @@ func newEvaluatorListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var rules []evaluatorRule
-			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
+			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			if err != nil {
 				ExitErrorf("listing evaluators: %v", err)
 			}
 
@@ -175,12 +154,12 @@ func newEvaluatorListCmd() *cobra.Command {
 			if fmt_ == "pretty" {
 				columns := []string{"Name", "Sampling Rate", "Target", "Enabled"}
 				var rows [][]string
-				for _, rule := range rules {
+				for _, rule := range *rules {
 					rate := fmt.Sprintf("%.0f%%", rule.SamplingRate*100)
 					target := "All runs"
-					if rule.DatasetID != "" || len(rule.TargetDatasetIDs) > 0 {
+					if rule.DatasetID != "" {
 						target = "dataset"
-					} else if rule.SessionID != "" || len(rule.TargetProjectIDs) > 0 {
+					} else if rule.SessionID != "" {
 						target = "project"
 					}
 					enabled := "No"
@@ -192,7 +171,7 @@ func newEvaluatorListCmd() *cobra.Command {
 				output.OutputTable(columns, rows, "Evaluator Rules")
 			} else {
 				var data []map[string]any
-				for _, rule := range rules {
+				for _, rule := range *rules {
 					data = append(data, map[string]any{
 						"id":            rule.ID,
 						"name":          rule.DisplayName,
@@ -259,12 +238,12 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			}
 
 			// Check for existing evaluator
-			var rules []evaluatorRule
-			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
+			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			if err != nil {
 				ExitErrorf("checking existing evaluators: %v", err)
 			}
 
-			existing := findEvaluator(rules, name, datasetID, projectID)
+			existing := findEvaluator(*rules, name, datasetID, projectID)
 			if existing != nil {
 				if !replace {
 					output.OutputJSON(map[string]any{
@@ -377,13 +356,13 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var rules []evaluatorRule
-			if err := c.RawGet(ctx, "/runs/rules", &rules); err != nil {
+			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			if err != nil {
 				ExitErrorf("listing evaluators: %v", err)
 			}
 
-			var matching []evaluatorRule
-			for _, r := range rules {
+			var matching []langsmith.Evaluator
+			for _, r := range *rules {
 				if r.DisplayName == name {
 					matching = append(matching, r)
 				}
@@ -558,16 +537,16 @@ func renameJSFunction(source string, funcName string) string {
 	return strings.Join(lines, "\n")
 }
 
-func findEvaluator(rules []evaluatorRule, name, datasetID, projectID string) *evaluatorRule {
-	for _, rule := range rules {
+func findEvaluator(rules []langsmith.Evaluator, name, datasetID, projectID string) *langsmith.Evaluator {
+	for i, rule := range rules {
 		if rule.DisplayName != name {
 			continue
 		}
 		if datasetID != "" && rule.DatasetID == datasetID {
-			return &rule
+			return &rules[i]
 		}
 		if projectID != "" && rule.SessionID == projectID {
-			return &rule
+			return &rules[i]
 		}
 	}
 	return nil
