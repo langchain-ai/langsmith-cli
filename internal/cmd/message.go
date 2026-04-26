@@ -86,6 +86,10 @@ Examples:
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
 			body["min_start_time"] = startTime.Format("2006-01-02T15:04:05Z07:00")
 
+			if ff.Before != "" {
+				body["max_start_time"] = ff.Before
+			}
+
 			if ff.TraceIDs != "" {
 				ids := splitTrim(ff.TraceIDs)
 				if len(ids) == 1 {
@@ -108,6 +112,53 @@ Examples:
 			filterStr := buildFilterDSL(&ff)
 			if filterStr != "" {
 				body["filter"] = filterStr
+			}
+
+			// Single-page mode: when --cursor is explicitly set, make one API call
+			// and expose the real cursors.next so callers can paginate externally.
+			if cmd.Flags().Changed("cursor") {
+				pageSize := ff.Limit
+				if pageSize == 0 {
+					pageSize = defaultLimit
+				}
+				if ff.Cursor != "" {
+					body["cursor"] = ff.Cursor
+				}
+				body["limit"] = pageSize
+
+				var result map[string]any
+				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
+					ExitErrorf("%v", err)
+				}
+
+				traces, _ := result["traces"].([]any)
+				if traces == nil {
+					traces = []any{}
+				}
+
+				attachRootIO(ctx, c, sessionID, startTime, traces)
+				for _, t := range traces {
+					trace, _ := t.(map[string]any)
+					traj := buildTraceTrajectory(trace)
+					trace["trajectory"] = traj.Steps
+				}
+
+				cursors, _ := result["cursors"].(map[string]any)
+				if cursors == nil {
+					cursors = map[string]any{}
+				}
+
+				combined := map[string]any{
+					"traces":  traces,
+					"cursors": cursors,
+				}
+				fmt_ := GetFormat()
+				if fmt_ == "pretty" {
+					printTraceMessages(combined)
+				} else {
+					output.OutputJSON(combined, outputFile)
+				}
+				return
 			}
 
 			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
