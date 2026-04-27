@@ -423,6 +423,147 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 	}
 }
 
+func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
+	callCount := 0
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-cur", "name": "cur-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages":
+			callCount++
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"traces": []map[string]any{
+					{"trace_id": "trace-A", "groups": []any{}},
+					{"trace_id": "trace-B", "groups": []any{}},
+				},
+				"cursors": map[string]any{"next": "cursor-next-page"},
+			})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "cur-proj", "--limit", "20", "--cursor", "cursor-abc"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	// Only one API call despite there being more pages (single-page mode)
+	if callCount != 1 {
+		t.Errorf("expected exactly 1 API call in cursor mode, got %d", callCount)
+	}
+	// Cursor was forwarded to the API
+	if receivedBody["cursor"] != "cursor-abc" {
+		t.Errorf("expected cursor=cursor-abc in request, got %v", receivedBody["cursor"])
+	}
+	// cursors.next is present in output so caller can continue paginating
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	cursors, _ := result["cursors"].(map[string]any)
+	if cursors["next"] != "cursor-next-page" {
+		t.Errorf("expected cursors.next=cursor-next-page in output, got %v", cursors["next"])
+	}
+	traces, _ := result["traces"].([]any)
+	if len(traces) != 2 {
+		t.Errorf("expected 2 traces, got %d", len(traces))
+	}
+}
+
+func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
+	callCount := 0
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-first", "name": "first-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages":
+			callCount++
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"traces":  []map[string]any{{"trace_id": "trace-1", "groups": []any{}}},
+				"cursors": map[string]any{"next": "cursor-page2"},
+			})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		// --cursor "" means first page in single-page mode
+		cmd.SetArgs([]string{"--project", "first-proj", "--limit", "20", "--cursor", ""})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if callCount != 1 {
+		t.Errorf("expected 1 API call, got %d", callCount)
+	}
+	// Empty cursor should NOT be forwarded to the API
+	if _, ok := receivedBody["cursor"]; ok {
+		t.Errorf("empty --cursor should not send cursor field to API, got %v", receivedBody["cursor"])
+	}
+	// cursors.next is still exposed
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	cursors, _ := result["cursors"].(map[string]any)
+	if cursors["next"] != "cursor-page2" {
+		t.Errorf("expected cursors.next=cursor-page2, got %v", cursors["next"])
+	}
+}
+
+func TestTraceMessages_BeforeFlag(t *testing.T) {
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-bef", "name": "bef-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages":
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"traces":  []any{},
+				"cursors": map[string]any{},
+			})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "bef-proj", "--before", "2024-01-15T00:00:00Z"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if receivedBody["max_start_time"] != "2024-01-15T00:00:00Z" {
+		t.Errorf("expected max_start_time=2024-01-15T00:00:00Z, got %v", receivedBody["max_start_time"])
+	}
+}
+
 func TestTraceMessages_EmptyResult(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
