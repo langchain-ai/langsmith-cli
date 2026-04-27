@@ -9,10 +9,22 @@ import (
 	"strings"
 	"time"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// runStats mirrors the flat JSON object returned by POST /api/v1/runs/stats.
+type runStats struct {
+	RunCount         int64          `json:"run_count"`
+	LatencyP50       float64        `json:"latency_p50"`
+	LatencyP99       float64        `json:"latency_p99"`
+	TotalTokens      int64          `json:"total_tokens"`
+	PromptTokens     int64          `json:"prompt_tokens"`
+	CompletionTokens int64          `json:"completion_tokens"`
+	TotalCost        any            `json:"total_cost"`
+	ErrorRate        float64        `json:"error_rate"`
+	FeedbackStats    map[string]any `json:"feedback_stats"`
+}
 
 func newTraceStatsCmd() *cobra.Command {
 	var (
@@ -59,27 +71,23 @@ Examples:
 				return fmt.Errorf("resolving project %q: %w", projectName, err)
 			}
 
-			// Primary window
-			params := buildRunStatsParams(sessionID, since, before, lastNMin, filter)
-			primary, err := c.SDK.Runs.Stats(ctx, params)
-			if err != nil {
+			var primary runStats
+			if err := c.RawPost(ctx, "/api/v1/runs/stats", buildRunStatsBody(sessionID, since, before, lastNMin, filter), &primary); err != nil {
 				return fmt.Errorf("fetching stats: %w", err)
 			}
 
-			// Optional comparison window
-			var compare *langsmith.RunStatsResponseUnion
 			hasCompare := cmpSince != "" || cmpBefore != "" || cmpLastNMin > 0
+			var compare *runStats
 			if hasCompare {
-				cmpParams := buildRunStatsParams(sessionID, cmpSince, cmpBefore, cmpLastNMin, filter)
-				compare, err = c.SDK.Runs.Stats(ctx, cmpParams)
-				if err != nil {
+				compare = new(runStats)
+				if err := c.RawPost(ctx, "/api/v1/runs/stats", buildRunStatsBody(sessionID, cmpSince, cmpBefore, cmpLastNMin, filter), compare); err != nil {
 					return fmt.Errorf("fetching comparison stats: %w", err)
 				}
 			}
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				printStatsPretty(primary, compare, hasCompare)
+				printStatsPretty(&primary, compare, hasCompare)
 			} else {
 				result := map[string]any{"stats": primary}
 				if hasCompare {
@@ -103,40 +111,27 @@ Examples:
 	return cmd
 }
 
-// buildRunStatsParams constructs RunStatsParams for a given session/time/filter.
-func buildRunStatsParams(sessionID, since, before string, lastNMin int, filter string) langsmith.RunStatsParams {
-	startTime := resolveStartTime(since, lastNMin)
-
-	qp := langsmith.RunStatsQueryParams{
-		Session:  langsmith.F([]string{sessionID}),
-		IsRoot:   langsmith.F(true),
-		StartTime: langsmith.F(startTime),
-		Select: langsmith.F([]langsmith.RunStatsQueryParamsSelect{
-			langsmith.RunStatsQueryParamsSelectRunCount,
-			langsmith.RunStatsQueryParamsSelectLatencyP50,
-			langsmith.RunStatsQueryParamsSelectLatencyP99,
-			langsmith.RunStatsQueryParamsSelectLatencyAvg,
-			langsmith.RunStatsQueryParamsSelectTotalTokens,
-			langsmith.RunStatsQueryParamsSelectPromptTokens,
-			langsmith.RunStatsQueryParamsSelectCompletionTokens,
-			langsmith.RunStatsQueryParamsSelectTotalCost,
-			langsmith.RunStatsQueryParamsSelectErrorRate,
-			langsmith.RunStatsQueryParamsSelectFeedbackStats,
-		}),
+// buildRunStatsBody builds the POST body for /api/v1/runs/stats.
+func buildRunStatsBody(sessionID, since, before string, lastNMin int, filter string) map[string]any {
+	body := map[string]any{
+		"session":    []string{sessionID},
+		"is_root":    true,
+		"start_time": resolveStartTime(since, lastNMin).Format(time.RFC3339),
+		"select": []string{
+			"run_count", "latency_p50", "latency_p99", "latency_avg",
+			"total_tokens", "prompt_tokens", "completion_tokens",
+			"total_cost", "error_rate", "feedback_stats",
+		},
 	}
-
 	if before != "" {
-		t, err := parseFlexTime(before)
-		if err == nil {
-			qp.EndTime = langsmith.F(t)
+		if t, err := parseFlexTime(before); err == nil {
+			body["end_time"] = t.Format(time.RFC3339)
 		}
 	}
-
 	if filter != "" {
-		qp.Filter = langsmith.F(filter)
+		body["filter"] = filter
 	}
-
-	return langsmith.RunStatsParams{RunStatsQueryParams: qp}
+	return body
 }
 
 // parseFlexTime parses RFC3339 or YYYY-MM-DD.
@@ -147,28 +142,13 @@ func parseFlexTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", s)
 }
 
-// extractRunStats pulls a RunStatsResponseRunStats out of the union.
-func extractRunStats(u *langsmith.RunStatsResponseUnion) *langsmith.RunStatsResponseRunStats {
-	if u == nil {
-		return nil
-	}
-	switch v := (*u).(type) {
-	case langsmith.RunStatsResponseRunStats:
-		return &v
-	}
-	return nil
-}
-
-func printStatsPretty(primary, compare *langsmith.RunStatsResponseUnion, hasCompare bool) {
-	p := extractRunStats(primary)
-	if p == nil {
+func printStatsPretty(primary, compare *runStats, hasCompare bool) {
+	if primary == nil {
 		fmt.Println("No stats returned.")
 		return
 	}
-	var c *langsmith.RunStatsResponseRunStats
-	if hasCompare {
-		c = extractRunStats(compare)
-	}
+	p := primary
+	c := compare
 
 	// ── Overview ──────────────────────────────────────────────────────────────
 	if hasCompare && c != nil {
@@ -181,7 +161,7 @@ func printStatsPretty(primary, compare *langsmith.RunStatsResponseUnion, hasComp
 			{"Total tokens", fmt.Sprintf("%d", p.TotalTokens), fmt.Sprintf("%d", c.TotalTokens), fmtDeltaInt(p.TotalTokens, c.TotalTokens)},
 			{"Prompt tokens", fmt.Sprintf("%d", p.PromptTokens), fmt.Sprintf("%d", c.PromptTokens), fmtDeltaInt(p.PromptTokens, c.PromptTokens)},
 			{"Completion tokens", fmt.Sprintf("%d", p.CompletionTokens), fmt.Sprintf("%d", c.CompletionTokens), fmtDeltaInt(p.CompletionTokens, c.CompletionTokens)},
-			{"Total cost", p.TotalCost, c.TotalCost, ""},
+			{"Total cost", fmtOptFloat(p.TotalCost), fmtOptFloat(c.TotalCost), ""},
 		}
 		output.OutputTable(cols, rows, "Overview")
 	} else {
@@ -194,7 +174,7 @@ func printStatsPretty(primary, compare *langsmith.RunStatsResponseUnion, hasComp
 			{"Total tokens", fmt.Sprintf("%d", p.TotalTokens)},
 			{"Prompt tokens", fmt.Sprintf("%d", p.PromptTokens)},
 			{"Completion tokens", fmt.Sprintf("%d", p.CompletionTokens)},
-			{"Total cost", p.TotalCost},
+			{"Total cost", fmtOptFloat(p.TotalCost)},
 		}
 		output.OutputTable(cols, rows, "Overview")
 	}
