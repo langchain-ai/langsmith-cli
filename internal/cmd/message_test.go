@@ -564,6 +564,9 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 	}
 }
 
+// TestTraceMessages_FeedbackStats verifies that feedback_stats returned by the
+// /v2/traces/messages API is preserved in the CLI output without being
+// overwritten or dropped by attachRootIO.
 func TestTraceMessages_FeedbackStats(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -573,32 +576,28 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 				{"id": "sess-fb", "name": "fb-proj"},
 			})
 		case r.URL.Path == "/v2/traces/messages":
+			// API returns feedback_stats directly on each trace
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"traces": []map[string]any{
-					{"trace_id": "trace-with-feedback", "groups": []any{}},
-					{"trace_id": "trace-no-feedback", "groups": []any{}},
-				},
-				"cursors": map[string]any{},
-			})
-		case r.URL.Path == "/api/v1/runs/query":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"runs": []map[string]any{
 					{
-						"id":       "trace-with-feedback",
 						"trace_id": "trace-with-feedback",
+						"groups":   []any{},
 						"feedback_stats": map[string]any{
 							"thumbs_up": map[string]any{"n": 1, "avg": 0},
 						},
 					},
 					{
-						"id":             "trace-no-feedback",
 						"trace_id":       "trace-no-feedback",
-						"feedback_stats": nil,
+						"groups":         []any{},
+						"feedback_stats": map[string]any{},
 					},
 				},
+				"cursors": map[string]any{},
 			})
+		case r.URL.Path == "/api/v1/runs/query":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
 		}
 	})
 	cleanup := setupTestEnv(t, ts.URL)
@@ -621,13 +620,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 		t.Fatalf("expected 2 traces, got %d", len(traces))
 	}
 
-	for _, t_ := range traces {
-		trace, _ := t_.(map[string]any)
-		if _, ok := trace["feedback_stats"]; !ok {
-			t.Errorf("trace %v missing feedback_stats field", trace["trace_id"])
-		}
-	}
-
+	// feedback_stats from the API must be preserved as-is
 	traceWith, _ := traces[0].(map[string]any)
 	fs, _ := traceWith["feedback_stats"].(map[string]any)
 	if len(fs) == 0 {
