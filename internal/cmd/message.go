@@ -225,8 +225,9 @@ Examples:
 }
 
 type rootPreview struct {
-	inputs  string
-	outputs string
+	inputs        string
+	outputs       string
+	feedbackStats map[string]map[string]interface{}
 }
 
 // attachRootIO looks up inputs_preview/outputs_preview for the root runs of
@@ -255,9 +256,15 @@ func attachRootIO(ctx context.Context, c *client.Client, sessionID string, start
 		if p, ok := previews[tid]; ok {
 			trace["root_inputs_preview"] = p.inputs
 			trace["root_outputs_preview"] = p.outputs
+			if len(p.feedbackStats) > 0 {
+				trace["feedback_stats"] = p.feedbackStats
+			} else {
+				trace["feedback_stats"] = map[string]map[string]interface{}{}
+			}
 		} else {
 			trace["root_inputs_preview"] = nil
 			trace["root_outputs_preview"] = nil
+			trace["feedback_stats"] = map[string]map[string]interface{}{}
 		}
 	}
 }
@@ -282,6 +289,7 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			langsmith.RunQueryParamsSelectTraceID,
 			langsmith.RunQueryParamsSelectInputsPreview,
 			langsmith.RunQueryParamsSelectOutputsPreview,
+			langsmith.RunQueryParamsSelectFeedbackStats,
 		}),
 	}
 	resp, err := c.SDK.Runs.Query(ctx, params)
@@ -298,8 +306,9 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			continue
 		}
 		out[tid] = rootPreview{
-			inputs:  truncateHard(run.InputsPreview, 2000),
-			outputs: truncateHard(run.OutputsPreview, 2000),
+			inputs:        truncateHard(run.InputsPreview, 2000),
+			outputs:       truncateHard(run.OutputsPreview, 2000),
+			feedbackStats: run.FeedbackStats,
 		}
 	}
 	return out
