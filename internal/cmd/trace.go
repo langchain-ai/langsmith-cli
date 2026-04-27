@@ -34,6 +34,7 @@ Examples:
 	cmd.AddCommand(newTraceGetCmd())
 	cmd.AddCommand(newTraceExportCmd())
 	cmd.AddCommand(newTraceMessagesCmd())
+	cmd.AddCommand(newTraceStatsCmd())
 	return cmd
 }
 
