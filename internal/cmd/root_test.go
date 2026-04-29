@@ -8,7 +8,7 @@ import (
 
 func isolateConfig(t *testing.T) {
 	t.Helper()
-	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.toml"))
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.json"))
 }
 
 // ---------- Command tree structure ----------
@@ -194,11 +194,23 @@ func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 	flagAPIURL = ""
 	flagProfile = ""
 
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
-	if err := os.WriteFile(path, []byte("current_profile = \"prod\"\n\n[prod]\napi_url = \"https://profile.example.com\"\nworkspace_id = \"ws-123\"\n\n[prod.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {
+      "api_url": "https://profile.example.com",
+      "workspace_id": "ws-123",
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,10 +235,19 @@ func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 	flagAPIKey = ""
 	flagProfile = ""
 
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
-	if err := os.WriteFile(path, []byte("[default]\n\n[default.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "default": {
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -33,7 +33,7 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	flagOutputFormat = "json"
 	openBrowser = func(string) error { return nil }
 
-	configPath := filepath.Join(t.TempDir(), "config.toml")
+	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_API_KEY", "")
 	t.Setenv("LANGSMITH_PROFILE", "")

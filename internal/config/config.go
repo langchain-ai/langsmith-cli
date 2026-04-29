@@ -1,14 +1,11 @@
 package config
 
 import (
-	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -19,23 +16,23 @@ const (
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
-	APIKey      string
-	APIURL      string
-	WorkspaceID string
-	OAuth       OAuth
+	APIKey      string `json:"api_key,omitempty"`
+	APIURL      string `json:"api_url,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	OAuth       OAuth  `json:"oauth,omitempty"`
 }
 
 // OAuth stores OAuth tokens written by `langsmith login`.
 type OAuth struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    string
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
 }
 
 // Config is the on-disk LangSmith CLI config.
 type Config struct {
-	CurrentProfile string
-	Profiles       map[string]Profile
+	CurrentProfile string             `json:"current_profile,omitempty"`
+	Profiles       map[string]Profile `json:"profiles,omitempty"`
 }
 
 // DefaultConfigPath returns the LangSmith CLI config path.
@@ -47,7 +44,7 @@ func DefaultConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving home directory: %w", err)
 	}
-	return filepath.Join(home, ".langsmith", "config.toml"), nil
+	return filepath.Join(home, ".langsmith", "config.json"), nil
 }
 
 // Load reads the default config path. Missing files return an empty config.
@@ -63,86 +60,21 @@ func Load() (*Config, error) {
 func LoadFrom(path string) (*Config, error) {
 	cfg := &Config{Profiles: make(map[string]Profile)}
 
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return cfg, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("opening config: %w", err)
-	}
-	defer f.Close()
-
-	var section string
-	scanner := bufio.NewScanner(f)
-	lineNo := 0
-	for scanner.Scan() {
-		lineNo++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
-			if section == "" {
-				return nil, fmt.Errorf("parsing config line %d: empty profile section", lineNo)
-			}
-			profileName, _, _ := strings.Cut(section, ".")
-			if _, ok := cfg.Profiles[profileName]; !ok {
-				cfg.Profiles[profileName] = Profile{}
-			}
-			continue
-		}
-
-		key, rawValue, ok := strings.Cut(line, "=")
-		if !ok {
-			return nil, fmt.Errorf("parsing config line %d: expected key = value", lineNo)
-		}
-		key = strings.TrimSpace(key)
-		value, err := parseStringValue(strings.TrimSpace(rawValue))
-		if err != nil {
-			return nil, fmt.Errorf("parsing config line %d: %w", lineNo, err)
-		}
-
-		if section == "" {
-			if key == "current_profile" {
-				cfg.CurrentProfile = value
-			}
-			continue
-		}
-
-		profileName, subsection, hasSubsection := strings.Cut(section, ".")
-		profile := cfg.Profiles[profileName]
-		switch key {
-		case "api_key":
-			if !hasSubsection {
-				profile.APIKey = value
-			}
-		case "api_url":
-			if !hasSubsection {
-				profile.APIURL = value
-			}
-		case "workspace_id":
-			if !hasSubsection {
-				profile.WorkspaceID = value
-			}
-		case "access_token":
-			if subsection == "oauth" {
-				profile.OAuth.AccessToken = value
-			}
-		case "refresh_token":
-			if subsection == "oauth" {
-				profile.OAuth.RefreshToken = value
-			}
-		case "expires_at":
-			if subsection == "oauth" {
-				profile.OAuth.ExpiresAt = value
-			}
-		}
-		cfg.Profiles[profileName] = profile
-	}
-	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return cfg, nil
+	}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config JSON: %w", err)
+	}
+	if cfg.Profiles == nil {
+		cfg.Profiles = make(map[string]Profile)
 	}
 	return cfg, nil
 }
@@ -166,31 +98,10 @@ func (c *Config) SaveTo(path string) error {
 	}
 
 	var buf bytes.Buffer
-	if c.CurrentProfile != "" {
-		fmt.Fprintf(&buf, "current_profile = %s\n", strconv.Quote(c.CurrentProfile))
-	}
-
-	names := make([]string, 0, len(c.Profiles))
-	for name := range c.Profiles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		p := c.Profiles[name]
-		if buf.Len() > 0 {
-			buf.WriteByte('\n')
-		}
-		fmt.Fprintf(&buf, "[%s]\n", name)
-		writeString(&buf, "api_key", p.APIKey)
-		writeString(&buf, "api_url", p.APIURL)
-		writeString(&buf, "workspace_id", p.WorkspaceID)
-		if p.OAuth.AccessToken != "" || p.OAuth.RefreshToken != "" || p.OAuth.ExpiresAt != "" {
-			fmt.Fprintf(&buf, "\n[%s.oauth]\n", name)
-			writeString(&buf, "access_token", p.OAuth.AccessToken)
-			writeString(&buf, "refresh_token", p.OAuth.RefreshToken)
-			writeString(&buf, "expires_at", p.OAuth.ExpiresAt)
-		}
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(c); err != nil {
+		return fmt.Errorf("encoding config JSON: %w", err)
 	}
 
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
@@ -266,25 +177,4 @@ func MaskSecret(value string) string {
 		return "****"
 	}
 	return value[:8] + "..." + value[len(value)-4:]
-}
-
-func parseStringValue(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	if strings.HasPrefix(raw, "\"") || strings.HasPrefix(raw, "`") {
-		v, err := strconv.Unquote(raw)
-		if err != nil {
-			return "", fmt.Errorf("invalid quoted string: %w", err)
-		}
-		return v, nil
-	}
-	return raw, nil
-}
-
-func writeString(buf *bytes.Buffer, key, value string) {
-	if value == "" {
-		return
-	}
-	fmt.Fprintf(buf, "%s = %s\n", key, strconv.Quote(value))
 }

@@ -105,7 +105,7 @@ func TestGetClient_Success(t *testing.T) {
 
 func TestGetClient_MissingKey(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.toml"))
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	cmd := newTestCmd()
 	_, err := GetClient(cmd)
 	if err == nil {
@@ -114,11 +114,23 @@ func TestGetClient_MissingKey(t *testing.T) {
 }
 
 func TestGetClient_ProfileBearer(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
-	if err := os.WriteFile(path, []byte("current_profile = \"local\"\n\n[local]\napi_url = \"http://localhost:1980\"\nworkspace_id = \"ws-123\"\n\n[local.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "local",
+  "profiles": {
+    "local": {
+      "api_url": "http://localhost:1980",
+      "workspace_id": "ws-123",
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,10 +148,19 @@ func TestGetClient_ProfileBearer(t *testing.T) {
 }
 
 func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
+	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
-	if err := os.WriteFile(path, []byte("[default]\n\n[default.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "default": {
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
 		t.Fatal(err)
 	}
 

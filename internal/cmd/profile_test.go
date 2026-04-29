@@ -26,11 +26,21 @@ func TestProfileSetWorkspace(t *testing.T) {
 	flagProfile = ""
 	flagOutputFormat = "json"
 
-	configPath := filepath.Join(t.TempDir(), "config.toml")
+	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", "")
 	accessToken := "test-access-token"
-	if err := os.WriteFile(configPath, []byte("current_profile = \"local\"\n\n[local]\n\n[local.oauth]\naccess_token = \""+accessToken+"\"\n"), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "local",
+  "profiles": {
+    "local": {
+      "oauth": {
+        "access_token": "`+accessToken+`"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,7 +78,7 @@ func TestProfileSetWorkspaceInvalidID(t *testing.T) {
 	oldProfile := flagProfile
 	defer func() { flagProfile = oldProfile }()
 	flagProfile = ""
-	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.toml"))
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
 
 	_, err := executeCommand(t, "profile", "set-workspace", "not-a-uuid")
 	if err == nil {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadFromMissingFile(t *testing.T) {
-	cfg, err := LoadFrom(filepath.Join(t.TempDir(), "config.toml"))
+	cfg, err := LoadFrom(filepath.Join(t.TempDir(), "config.json"))
 	if err != nil {
 		t.Fatalf("LoadFrom returned error: %v", err)
 	}
@@ -22,16 +22,20 @@ func TestLoadFromMissingFile(t *testing.T) {
 }
 
 func TestLoadFromProfileWithOAuthTokens(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	data := `current_profile = "prod"
-
-[prod]
-api_url = "https://example.com"
-
-[prod.oauth]
-access_token = "test-access-token"
-refresh_token = "test-refresh-token"
-expires_at = "2026-04-29T12:00:00Z"
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := `{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {
+      "api_url": "https://example.com",
+      "oauth": {
+        "access_token": "test-access-token",
+        "refresh_token": "test-refresh-token",
+        "expires_at": "2026-04-29T12:00:00Z"
+      }
+    }
+  }
+}
 `
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
@@ -57,7 +61,7 @@ expires_at = "2026-04-29T12:00:00Z"
 }
 
 func TestSaveToRoundTripAndPermissions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "config.toml")
+	path := filepath.Join(t.TempDir(), "nested", "config.json")
 	cfg := &Config{
 		CurrentProfile: "prod",
 		Profiles: map[string]Profile{
