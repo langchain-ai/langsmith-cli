@@ -117,7 +117,6 @@ func TestGetClient_ProfileBearer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	if err := os.WriteFile(path, []byte("current_profile = \"local\"\n\n[local]\napi_url = \"http://localhost:1980\"\nworkspace_id = \"ws-123\"\n\n[local.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -128,8 +127,8 @@ func TestGetClient_ProfileBearer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if c.BearerToken() != "test-access-token" {
-		t.Fatalf("expected bearer token from profile")
+	if c.OAuthAccessToken() != "test-access-token" {
+		t.Fatalf("expected OAuth access token from profile")
 	}
 	if c.APIURL() != "http://localhost:1980" {
 		t.Fatalf("expected profile API URL, got %q", c.APIURL())
@@ -152,7 +151,7 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	if opts.APIKey != "from-env" {
 		t.Fatalf("expected env API key, got %q", opts.APIKey)
 	}
-	if opts.BearerToken != "" {
-		t.Fatalf("expected profile bearer token to be ignored")
+	if opts.OAuthAccessToken != "" {
+		t.Fatalf("expected profile OAuth access token to be ignored")
 	}
 }

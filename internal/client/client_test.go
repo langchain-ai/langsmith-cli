@@ -69,15 +69,15 @@ func TestNew_EmptyURL(t *testing.T) {
 
 func TestNewWithOptions_CreatesOAuthClient(t *testing.T) {
 	c := NewWithOptions(Options{
-		BearerToken: "test-access-token",
-		APIURL:      "http://localhost:1234",
-		WorkspaceID: "ws-123",
+		OAuthAccessToken: "test-access-token",
+		APIURL:           "http://localhost:1234",
+		WorkspaceID:      "ws-123",
 	})
 	if c == nil || c.SDK == nil {
 		t.Fatal("expected non-nil client and SDK")
 	}
-	if c.BearerToken() != "test-access-token" {
-		t.Fatalf("unexpected bearer token: %q", c.BearerToken())
+	if c.OAuthAccessToken() != "test-access-token" {
+		t.Fatalf("unexpected OAuth access token: %q", c.OAuthAccessToken())
 	}
 	if c.APIKey() != "" {
 		t.Fatalf("expected empty API key, got %q", c.APIKey())
@@ -272,7 +272,7 @@ func TestRawRequest_NoWorkspaceHeaderWhenUnset(t *testing.T) {
 	_ = c.RawGet(context.Background(), "/test", nil)
 }
 
-func TestRawRequest_SetsBearerHeader(t *testing.T) {
+func TestRawRequest_SetsOAuthAuthorizationHeader(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
 			t.Errorf("expected bearer auth header, got %q", got)
@@ -285,7 +285,7 @@ func TestRawRequest_SetsBearerHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := NewWithOptions(Options{BearerToken: "test-access-token", APIURL: ts.URL})
+	c := NewWithOptions(Options{OAuthAccessToken: "test-access-token", APIURL: ts.URL})
 	_ = c.RawGet(context.Background(), "/test", nil)
 }
 

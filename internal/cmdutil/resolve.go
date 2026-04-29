@@ -79,13 +79,13 @@ func ResolveFormat(cmd *cobra.Command) string {
 }
 
 // GetClient creates a LangSmith client from cobra flags, returning an error
-// if no API key or bearer token is available.
+// if no API key or OAuth access token is available.
 func GetClient(cmd *cobra.Command) (*client.Client, error) {
 	opts, err := ResolveClientOptions(cmd, true)
 	if err != nil {
 		return nil, err
 	}
-	if opts.APIKey == "" && opts.BearerToken == "" {
+	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
 		return nil, fmt.Errorf("not authenticated; run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts), nil
@@ -134,8 +134,6 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 		opts.APIKey = getFlagString(cmd, "api-key")
 	case os.Getenv("LANGSMITH_API_KEY") != "":
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
-	case os.Getenv("LANGSMITH_BEARER_TOKEN") != "":
-		opts.BearerToken = os.Getenv("LANGSMITH_BEARER_TOKEN")
 	case hasProfile && profile.AccessToken() != "":
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
@@ -153,7 +151,7 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 				return opts, fmt.Errorf("saving refreshed OAuth token: %w", err)
 			}
 		}
-		opts.BearerToken = profile.AccessToken()
+		opts.OAuthAccessToken = profile.AccessToken()
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey
 	}

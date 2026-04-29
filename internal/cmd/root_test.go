@@ -181,7 +181,7 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 	}
 }
 
-func TestGetBearerToken_ProfileFallback(t *testing.T) {
+func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -197,14 +197,13 @@ func TestGetBearerToken_ProfileFallback(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	if err := os.WriteFile(path, []byte("current_profile = \"prod\"\n\n[prod]\napi_url = \"https://profile.example.com\"\nworkspace_id = \"ws-123\"\n\n[prod.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := GetBearerToken(); got != "test-access-token" {
-		t.Fatalf("expected profile bearer token, got %q", got)
+	if got := GetOAuthAccessToken(); got != "test-access-token" {
+		t.Fatalf("expected profile OAuth access token, got %q", got)
 	}
 	if got := GetAPIURL(); got != "https://profile.example.com" {
 		t.Fatalf("expected profile API URL, got %q", got)
@@ -234,8 +233,8 @@ func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 	if got := GetAPIKey(); got != "from-env" {
 		t.Fatalf("expected env API key, got %q", got)
 	}
-	if got := GetBearerToken(); got != "" {
-		t.Fatalf("expected profile bearer token to be ignored, got %q", got)
+	if got := GetOAuthAccessToken(); got != "" {
+		t.Fatalf("expected profile OAuth access token to be ignored, got %q", got)
 	}
 }
 

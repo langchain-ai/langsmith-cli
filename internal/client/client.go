@@ -17,11 +17,11 @@ import (
 
 // Client wraps the LangSmith Go SDK and provides helpers for raw HTTP calls.
 type Client struct {
-	SDK         *langsmith.Client
-	apiKey      string
-	bearerToken string
-	apiURL      string
-	workspaceID string
+	SDK              *langsmith.Client
+	apiKey           string
+	oauthAccessToken string
+	apiURL           string
+	workspaceID      string
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
@@ -29,10 +29,10 @@ type Client struct {
 
 // Options controls LangSmith client authentication and routing.
 type Options struct {
-	APIKey      string
-	BearerToken string
-	APIURL      string
-	WorkspaceID string
+	APIKey           string
+	OAuthAccessToken string
+	APIURL           string
+	WorkspaceID      string
 }
 
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
@@ -60,8 +60,8 @@ func NewWithOptions(options Options) *Client {
 	if options.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(options.APIKey))
 	}
-	if options.BearerToken != "" {
-		opts = append(opts, option.WithBearerToken(options.BearerToken))
+	if options.OAuthAccessToken != "" {
+		opts = append(opts, option.WithHeader("authorization", "Bearer "+options.OAuthAccessToken))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).
 	if normalized != "" {
@@ -72,12 +72,12 @@ func NewWithOptions(options Options) *Client {
 	}
 
 	return &Client{
-		SDK:          langsmith.NewClient(opts...),
-		apiKey:       options.APIKey,
-		bearerToken:  options.BearerToken,
-		apiURL:       normalized,
-		workspaceID:  options.WorkspaceID,
-		sessionCache: make(map[string]string),
+		SDK:              langsmith.NewClient(opts...),
+		apiKey:           options.APIKey,
+		oauthAccessToken: options.OAuthAccessToken,
+		apiURL:           normalized,
+		workspaceID:      options.WorkspaceID,
+		sessionCache:     make(map[string]string),
 	}
 }
 
@@ -143,8 +143,8 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if c.apiKey != "" {
 		req.Header.Set("x-api-key", c.apiKey)
 	}
-	if c.bearerToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+	if c.oauthAccessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.oauthAccessToken)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.workspaceID != "" {
@@ -189,8 +189,8 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 // APIKey returns the client's API key.
 func (c *Client) APIKey() string { return c.apiKey }
 
-// BearerToken returns the client's bearer token.
-func (c *Client) BearerToken() string { return c.bearerToken }
+// OAuthAccessToken returns the client's OAuth access token.
+func (c *Client) OAuthAccessToken() string { return c.oauthAccessToken }
 
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }

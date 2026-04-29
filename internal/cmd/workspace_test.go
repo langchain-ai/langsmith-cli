@@ -12,7 +12,6 @@ func TestWorkspaceList(t *testing.T) {
 	defer cleanup()
 	isolateConfig(t)
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	t.Setenv("LANGSMITH_PROFILE", "")
 
@@ -49,7 +48,6 @@ func TestWorkspaceSetDefault(t *testing.T) {
 	defer cleanup()
 	isolateConfig(t)
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	t.Setenv("LANGSMITH_PROFILE", "")
 

@@ -87,10 +87,10 @@ func GetAPIKey() string {
 	return opts.APIKey
 }
 
-// GetBearerToken resolves the bearer token from env → profile.
-func GetBearerToken() string {
+// GetOAuthAccessToken resolves the access token from the active OAuth profile.
+func GetOAuthAccessToken() string {
 	opts, _ := resolveClientOptions(false)
-	return opts.BearerToken
+	return opts.OAuthAccessToken
 }
 
 // GetAPIURL resolves the API URL from flag → env → profile → default.
@@ -116,7 +116,7 @@ func MustGetClient() *client.Client {
 	if err != nil {
 		ExitError(err.Error())
 	}
-	if opts.APIKey == "" && opts.BearerToken == "" {
+	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
 		ExitError("not authenticated; run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts)
@@ -160,8 +160,6 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		opts.APIKey = flagAPIKey
 	case os.Getenv("LANGSMITH_API_KEY") != "":
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
-	case os.Getenv("LANGSMITH_BEARER_TOKEN") != "":
-		opts.BearerToken = os.Getenv("LANGSMITH_BEARER_TOKEN")
 	case hasProfile && profile.AccessToken() != "":
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
@@ -175,7 +173,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 				return opts, fmt.Errorf("saving refreshed OAuth token: %w", err)
 			}
 		}
-		opts.BearerToken = profile.AccessToken()
+		opts.OAuthAccessToken = profile.AccessToken()
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey
 	}

@@ -35,7 +35,6 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
 	t.Setenv("LANGSMITH_PROFILE", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 
