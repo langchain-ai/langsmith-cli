@@ -80,7 +80,7 @@ Examples:
 
 			// Build base request body for POST /v2/traces/messages
 			body := map[string]any{
-				"session": []string{sessionID},
+				"project_ids": []string{sessionID},
 			}
 
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
@@ -104,9 +104,9 @@ Examples:
 			}
 
 			if ff.ErrorFlag {
-				body["error"] = true
+				body["has_error"] = true
 			} else if ff.NoErrorFlag {
-				body["error"] = false
+				body["has_error"] = false
 			}
 
 			filterStr := buildFilterDSL(&ff)
@@ -124,14 +124,14 @@ Examples:
 				if ff.Cursor != "" {
 					body["cursor"] = ff.Cursor
 				}
-				body["limit"] = pageSize
+				body["page_size"] = pageSize
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
-				traces, _ := result["traces"].([]any)
+				traces, _ := result["items"].([]any)
 				if traces == nil {
 					traces = []any{}
 				}
@@ -143,9 +143,10 @@ Examples:
 					trace["trajectory"] = traj.Steps
 				}
 
-				cursors, _ := result["cursors"].(map[string]any)
-				if cursors == nil {
-					cursors = map[string]any{}
+				nextCursor, _ := result["next_cursor"].(string)
+				cursors := map[string]any{}
+				if nextCursor != "" {
+					cursors["next"] = nextCursor
 				}
 
 				combined := map[string]any{
@@ -171,20 +172,19 @@ Examples:
 				if remaining < pageSize {
 					pageSize = remaining
 				}
-				body["limit"] = pageSize
+				body["page_size"] = pageSize
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
-				traces, _ := result["traces"].([]any)
+				traces, _ := result["items"].([]any)
 				allTraces = append(allTraces, traces...)
 				remaining -= len(traces)
 
 				// Stop if we have enough or no more pages
-				cursors, _ := result["cursors"].(map[string]any)
-				next, _ := cursors["next"].(string)
+				next, _ := result["next_cursor"].(string)
 				if next == "" || remaining <= 0 {
 					break
 				}
@@ -436,7 +436,7 @@ func trajLatency(meta map[string]any) *int64 {
 	if meta == nil {
 		return nil
 	}
-	if v, ok := meta["latency_ms"].(float64); ok {
+	if v, ok := meta["latency_milli_seconds"].(float64); ok {
 		n := int64(v)
 		return &n
 	}
