@@ -28,7 +28,7 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 	if isSameHost(fullURL, apiURL) {
 		relPath = strings.TrimPrefix(fullURL, apiURL)
 	} else if strings.HasPrefix(fullURL, "http://") || strings.HasPrefix(fullURL, "https://") {
-		reqClient = client.New("", "")
+		reqClient = client.NewWithOptions(client.Options{})
 	}
 
 	// Resolve body
@@ -113,4 +113,3 @@ func isSameHost(fullURL, baseURL string) bool {
 	rest := fullURL[len(baseURL):]
 	return rest == "" || rest[0] == '/' || rest[0] == '?'
 }
-

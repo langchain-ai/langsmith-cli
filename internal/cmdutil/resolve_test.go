@@ -1,6 +1,8 @@
 package cmdutil
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -10,6 +12,7 @@ func newTestCmd() *cobra.Command {
 	root := &cobra.Command{Use: "test"}
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
+	root.PersistentFlags().String("profile", "", "")
 	root.PersistentFlags().String("format", "json", "")
 	return root
 }
@@ -102,9 +105,54 @@ func TestGetClient_Success(t *testing.T) {
 
 func TestGetClient_MissingKey(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.toml"))
 	cmd := newTestCmd()
 	_, err := GetClient(cmd)
 	if err == nil {
 		t.Fatal("expected error for missing API key")
+	}
+}
+
+func TestGetClient_ProfileBearer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte("current_profile = \"local\"\n\n[local]\napi_url = \"http://localhost:1980\"\nworkspace_id = \"ws-123\"\n\n[local.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	c, err := GetClient(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.BearerToken() != "test-access-token" {
+		t.Fatalf("expected bearer token from profile")
+	}
+	if c.APIURL() != "http://localhost:1980" {
+		t.Fatalf("expected profile API URL, got %q", c.APIURL())
+	}
+}
+
+func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	if err := os.WriteFile(path, []byte("[default]\n\n[default.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "from-env" {
+		t.Fatalf("expected env API key, got %q", opts.APIKey)
+	}
+	if opts.BearerToken != "" {
+		t.Fatalf("expected profile bearer token to be ignored")
 	}
 }

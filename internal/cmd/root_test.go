@@ -2,14 +2,20 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
+
+func isolateConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.toml"))
+}
 
 // ---------- Command tree structure ----------
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update", "api"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "login", "profile", "workspace", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -82,9 +88,21 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	}
 }
 
+func TestRootCmd_PersistentFlags_Profile(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("profile")
+	if f == nil {
+		t.Fatal("--profile flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
+	}
+}
+
 // ---------- getAPIKey ----------
 
 func TestGetAPIKey_FlagPrecedence(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -97,6 +115,7 @@ func TestGetAPIKey_FlagPrecedence(t *testing.T) {
 }
 
 func TestGetAPIKey_EnvFallback(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -109,6 +128,7 @@ func TestGetAPIKey_EnvFallback(t *testing.T) {
 }
 
 func TestGetAPIKey_Empty(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -123,6 +143,7 @@ func TestGetAPIKey_Empty(t *testing.T) {
 // ---------- getAPIURL ----------
 
 func TestGetAPIURL_FlagPrecedence(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -135,6 +156,7 @@ func TestGetAPIURL_FlagPrecedence(t *testing.T) {
 }
 
 func TestGetAPIURL_EnvFallback(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -147,6 +169,7 @@ func TestGetAPIURL_EnvFallback(t *testing.T) {
 }
 
 func TestGetAPIURL_DefaultValue(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -155,6 +178,64 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 
 	if got := GetAPIURL(); got != "https://api.smith.langchain.com" {
 		t.Errorf("expected default URL, got %q", got)
+	}
+}
+
+func TestGetBearerToken_ProfileFallback(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_BEARER_TOKEN", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte("current_profile = \"prod\"\n\n[prod]\napi_url = \"https://profile.example.com\"\nworkspace_id = \"ws-123\"\n\n[prod.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetBearerToken(); got != "test-access-token" {
+		t.Fatalf("expected profile bearer token, got %q", got)
+	}
+	if got := GetAPIURL(); got != "https://profile.example.com" {
+		t.Fatalf("expected profile API URL, got %q", got)
+	}
+	if got := GetWorkspaceID(); got != "ws-123" {
+		t.Fatalf("expected profile workspace, got %q", got)
+	}
+}
+
+func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
+	oldKey := flagAPIKey
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	if err := os.WriteFile(path, []byte("[default]\n\n[default.oauth]\naccess_token = \"test-access-token\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "from-env" {
+		t.Fatalf("expected env API key, got %q", got)
+	}
+	if got := GetBearerToken(); got != "" {
+		t.Fatalf("expected profile bearer token to be ignored, got %q", got)
 	}
 }
 
