@@ -78,14 +78,14 @@ func TestTraceMessages_Success(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 
 			// Verify required fields
-			session, _ := body["session"].([]any)
-			if len(session) != 1 || session[0] != "sess-123" {
-				t.Errorf("expected session [sess-123], got %v", session)
+			projectIDs, _ := body["project_ids"].([]any)
+			if len(projectIDs) != 1 || projectIDs[0] != "sess-123" {
+				t.Errorf("expected project_ids [sess-123], got %v", projectIDs)
 			}
 
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces": []map[string]any{
+				"items": []map[string]any{
 					{
 						"trace_id": "trace-1",
 						"groups": []map[string]any{
@@ -99,7 +99,6 @@ func TestTraceMessages_Success(t *testing.T) {
 						},
 					},
 				},
-				"cursors": map[string]string{},
 			})
 		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
 			// attachRootIO always fetches root run previews
@@ -149,8 +148,7 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces":  []any{},
-				"cursors": map[string]string{},
+				"items": []any{},
 			})
 		}
 	})
@@ -173,8 +171,8 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 	if receivedBody["run_type"] != "llm" {
 		t.Errorf("expected run_type=llm, got %v", receivedBody["run_type"])
 	}
-	if receivedBody["error"] != true {
-		t.Errorf("expected error=true, got %v", receivedBody["error"])
+	if receivedBody["has_error"] != true {
+		t.Errorf("expected has_error=true, got %v", receivedBody["has_error"])
 	}
 	if receivedBody["filter"] != "gte(latency, 5)" {
 		t.Errorf("expected filter passthrough, got %v", receivedBody["filter"])
@@ -192,7 +190,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 		case r.URL.Path == "/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces": []map[string]any{
+				"items": []map[string]any{
 					{
 						"trace_id": "trace-aaa",
 						"groups": []map[string]any{
@@ -246,7 +244,6 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 						},
 					},
 				},
-				"cursors": map[string]any{},
 			})
 		}
 	})
@@ -296,16 +293,16 @@ func TestTraceMessages_Pagination(t *testing.T) {
 			pageCount++
 
 			// Verify page size is <= 10
-			limit, _ := body["limit"].(float64)
-			if int(limit) > 10 {
-				t.Errorf("page %d: limit sent to API was %d, expected <= 10", pageCount, int(limit))
+			pageSize, _ := body["page_size"].(float64)
+			if int(pageSize) > 10 {
+				t.Errorf("page %d: page_size sent to API was %d, expected <= 10", pageCount, int(pageSize))
 			}
 
 			w.Header().Set("Content-Type", "application/json")
 			switch pageCount {
 			case 1:
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"traces": []map[string]any{
+					"items": []map[string]any{
 						{"trace_id": "trace-1", "groups": []any{}},
 						{"trace_id": "trace-2", "groups": []any{}},
 						{"trace_id": "trace-3", "groups": []any{}},
@@ -317,7 +314,7 @@ func TestTraceMessages_Pagination(t *testing.T) {
 						{"trace_id": "trace-9", "groups": []any{}},
 						{"trace_id": "trace-10", "groups": []any{}},
 					},
-					"cursors": map[string]any{"next": "cursor-page2"},
+					"next_cursor": "cursor-page2",
 				})
 			case 2:
 				// Verify cursor was passed
@@ -325,20 +322,18 @@ func TestTraceMessages_Pagination(t *testing.T) {
 					t.Errorf("page 2: expected cursor=cursor-page2, got %v", body["cursor"])
 				}
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"traces": []map[string]any{
+					"items": []map[string]any{
 						{"trace_id": "trace-11", "groups": []any{}},
 						{"trace_id": "trace-12", "groups": []any{}},
 						{"trace_id": "trace-13", "groups": []any{}},
 						{"trace_id": "trace-14", "groups": []any{}},
 						{"trace_id": "trace-15", "groups": []any{}},
 					},
-					"cursors": map[string]any{},
 				})
 			default:
 				t.Errorf("unexpected page %d", pageCount)
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"traces":  []any{},
-					"cursors": map[string]any{},
+					"items": []any{},
 				})
 			}
 		}
@@ -382,11 +377,11 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 			pageCount++
 
 			w.Header().Set("Content-Type", "application/json")
-			// Page 1: return 10 traces with a next cursor
-			// The user only asked for 5, so the CLI should request limit=5
-			// and not make a second call
-			limit, _ := body["limit"].(float64)
-			traces := make([]map[string]any, int(limit))
+			// Page 1: return traces up to page_size with a next cursor.
+			// The user only asked for 5, so the CLI should request page_size=5
+			// and not make a second call.
+			pageSize, _ := body["page_size"].(float64)
+			traces := make([]map[string]any, int(pageSize))
 			for i := range traces {
 				traces[i] = map[string]any{
 					"trace_id": fmt.Sprintf("trace-%d", i+1),
@@ -394,8 +389,8 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces":  traces,
-				"cursors": map[string]any{"next": "cursor-more"},
+				"items":       traces,
+				"next_cursor": "cursor-more",
 			})
 		}
 	})
@@ -438,11 +433,11 @@ func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces": []map[string]any{
+				"items": []map[string]any{
 					{"trace_id": "trace-A", "groups": []any{}},
 					{"trace_id": "trace-B", "groups": []any{}},
 				},
-				"cursors": map[string]any{"next": "cursor-next-page"},
+				"next_cursor": "cursor-next-page",
 			})
 		}
 	})
@@ -495,8 +490,8 @@ func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces":  []map[string]any{{"trace_id": "trace-1", "groups": []any{}}},
-				"cursors": map[string]any{"next": "cursor-page2"},
+				"items":       []map[string]any{{"trace_id": "trace-1", "groups": []any{}}},
+				"next_cursor": "cursor-page2",
 			})
 		}
 	})
@@ -543,8 +538,7 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces":  []any{},
-				"cursors": map[string]any{},
+				"items": []any{},
 			})
 		}
 	})
@@ -575,8 +569,7 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 		case r.URL.Path == "/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces":  []any{},
-				"cursors": map[string]string{},
+				"items": []any{},
 			})
 		}
 	})
