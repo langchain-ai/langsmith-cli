@@ -130,7 +130,7 @@ Examples:
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
 			} else {
-				var data []map[string]any
+				data := []map[string]any{}
 				for _, issue := range issues {
 					data = append(data, issueToMap(issue))
 				}
@@ -227,7 +227,7 @@ Examples:
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectName))
 			} else {
-				var data []map[string]any
+				data := []map[string]any{}
 				for _, e := range events {
 					issueID := any(nil)
 					if e.IssueID != nil {
