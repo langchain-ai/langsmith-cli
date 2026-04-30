@@ -94,9 +94,6 @@ func workspaceRole(ws langsmith.WorkspaceListResponse) string {
 	if ws.RoleName != "" {
 		return ws.RoleName
 	}
-	if ws.ReadOnly {
-		return "Read only"
-	}
 	if len(ws.Permissions) > 0 {
 		return fmt.Sprintf("%d permissions", len(ws.Permissions))
 	}
