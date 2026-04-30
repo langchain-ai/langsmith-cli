@@ -26,6 +26,13 @@ type Client struct {
 	sessionCache map[string]string
 }
 
+// Options controls LangSmith client authentication and routing.
+type Options struct {
+	APIKey      string
+	APIURL      string
+	WorkspaceID string
+}
+
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
 // slash) so that the SDK — which appends "api/v1" itself — does not double it.
 // Self-hosted users commonly set LANGSMITH_ENDPOINT to "https://host/api/v1".
@@ -36,27 +43,34 @@ func NormalizeURL(apiURL string) string {
 
 // New creates a new Client.
 func New(apiKey, apiURL string) *Client {
-	normalized := NormalizeURL(apiURL)
+	return NewWithOptions(Options{
+		APIKey:      apiKey,
+		APIURL:      apiURL,
+		WorkspaceID: os.Getenv("LANGSMITH_WORKSPACE_ID"),
+	})
+}
 
-	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
+// NewWithOptions creates a new Client from resolved options.
+func NewWithOptions(options Options) *Client {
+	normalized := NormalizeURL(options.APIURL)
+
+	var opts []option.RequestOption
+	if options.APIKey != "" {
+		opts = append(opts, option.WithAPIKey(options.APIKey))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).
 	if normalized != "" {
 		opts = append(opts, option.WithBaseURL(normalized))
 	}
-	// Forward LANGSMITH_WORKSPACE_ID to the SDK as the tenant ID.
-	// The SDK already reads LANGSMITH_TENANT_ID, but LANGSMITH_WORKSPACE_ID
-	// is the documented env var for the CLI and MCP server.
-	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
-		opts = append(opts, option.WithTenantID(wsID))
+	if options.WorkspaceID != "" {
+		opts = append(opts, option.WithTenantID(options.WorkspaceID))
 	}
 
 	return &Client{
 		SDK:          langsmith.NewClient(opts...),
-		apiKey:       apiKey,
+		apiKey:       options.APIKey,
 		apiURL:       normalized,
-		workspaceID:  os.Getenv("LANGSMITH_WORKSPACE_ID"),
+		workspaceID:  options.WorkspaceID,
 		sessionCache: make(map[string]string),
 	}
 }
@@ -120,7 +134,9 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.Header.Set("x-api-key", c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("x-api-key", c.apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.workspaceID != "" {
 		req.Header.Set("x-tenant-id", c.workspaceID)
