@@ -23,11 +23,11 @@ func TestWorkspaceList(t *testing.T) {
 		}
 		receivedKey = r.Header.Get("X-Api-Key")
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]workspaceListItem{{
-			ID:           "00000000-0000-0000-0000-000000000123",
-			DisplayName:  "Default Workspace",
-			TenantHandle: "default",
-			RoleName:     "Admin",
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id":            "00000000-0000-0000-0000-000000000123",
+			"display_name":  "Default Workspace",
+			"tenant_handle": "default",
+			"role_name":     "Admin",
 		}})
 	})
 	stdout, err := executeCommand(t,
