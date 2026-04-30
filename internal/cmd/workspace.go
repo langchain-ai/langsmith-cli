@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -43,14 +44,14 @@ func newWorkspaceListCmd() *cobra.Command {
 		Short: "List workspaces visible to the current profile",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
-			endpoint := "/api/v1/workspaces"
+			endpoint := strings.TrimRight(c.APIURL(), "/") + "/api/v1/workspaces"
 			if includeDeleted {
 				q := url.Values{"include_deleted": {"true"}}
 				endpoint += "?" + q.Encode()
 			}
 
 			var workspaces []workspaceListItem
-			if err := c.RawGet(context.Background(), endpoint, &workspaces); err != nil {
+			if err := c.SDK.Get(context.Background(), endpoint, nil, &workspaces); err != nil {
 				ExitErrorf("listing workspaces: %v", err)
 			}
 
