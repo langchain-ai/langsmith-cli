@@ -4,27 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"strings"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
-
-type workspaceListItem struct {
-	ID             string   `json:"id"`
-	OrganizationID string   `json:"organization_id,omitempty"`
-	DisplayName    string   `json:"display_name"`
-	TenantHandle   string   `json:"tenant_handle,omitempty"`
-	CreatedAt      string   `json:"created_at,omitempty"`
-	IsPersonal     bool     `json:"is_personal"`
-	IsDeleted      bool     `json:"is_deleted"`
-	ReadOnly       bool     `json:"read_only"`
-	RoleID         string   `json:"role_id,omitempty"`
-	RoleName       string   `json:"role_name,omitempty"`
-	Permissions    []string `json:"permissions,omitempty"`
-	DataPlaneURL   string   `json:"data_plane_url,omitempty"`
-}
 
 func newWorkspaceCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -44,19 +28,21 @@ func newWorkspaceListCmd() *cobra.Command {
 		Short: "List workspaces visible to the current profile",
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
-			endpoint := strings.TrimRight(c.APIURL(), "/") + "/api/v1/workspaces"
+			params := langsmith.WorkspaceListParams{}
 			if includeDeleted {
-				q := url.Values{"include_deleted": {"true"}}
-				endpoint += "?" + q.Encode()
+				params.IncludeDeleted = langsmith.F(true)
 			}
 
-			var workspaces []workspaceListItem
-			if err := c.SDK.Get(context.Background(), endpoint, nil, &workspaces); err != nil {
+			workspaces, err := c.SDK.Workspaces.List(context.Background(), params)
+			if err != nil {
 				ExitErrorf("listing workspaces: %v", err)
+			}
+			if workspaces == nil {
+				ExitErrorf("listing workspaces: empty response")
 			}
 
 			if GetFormat() == "pretty" {
-				renderWorkspaceTable(cmd, workspaces)
+				renderWorkspaceTable(cmd, *workspaces)
 				return
 			}
 			enc := json.NewEncoder(cmd.OutOrStdout())
@@ -81,7 +67,7 @@ func newWorkspaceSetDefaultCmd() *cobra.Command {
 	}
 }
 
-func renderWorkspaceTable(cmd *cobra.Command, workspaces []workspaceListItem) {
+func renderWorkspaceTable(cmd *cobra.Command, workspaces []langsmith.WorkspaceListResponse) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
 	table.SetHeader([]string{"Name", "ID", "Handle", "Role", "Deleted"})
 	table.SetBorder(false)
@@ -104,7 +90,7 @@ func renderWorkspaceTable(cmd *cobra.Command, workspaces []workspaceListItem) {
 	table.Render()
 }
 
-func workspaceRole(ws workspaceListItem) string {
+func workspaceRole(ws langsmith.WorkspaceListResponse) string {
 	if ws.RoleName != "" {
 		return ws.RoleName
 	}
