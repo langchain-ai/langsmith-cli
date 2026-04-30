@@ -27,8 +27,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/klauspost/compress v1.18.4 h1:RPhnKRAQ4Fh8zU2FY/6ZFDwTVTxgJ/EMydqSTzE9a2c=
 github.com/klauspost/compress v1.18.4/go.mod h1:R0h/fSBs8DE4ENlcrlib3PsXS61voFxhIs2DeRhCvJ4=
-github.com/langchain-ai/langsmith-go v0.5.0 h1:YiGp/4/ipgnipLUmgo0xa7JwAn5ylKhFbBxWf8F/50o=
-github.com/langchain-ai/langsmith-go v0.5.0/go.mod h1:tUtPtr3nujib98CAfCgEHTL1QMoiNZ5VDx5Qb1pwYZg=
+github.com/langchain-ai/langsmith-go v0.6.0 h1:N8kvxlI6NTpyxTH0w7R5JQXsFp56jjYF92a+zoy+AnM=
+github.com/langchain-ai/langsmith-go v0.6.0/go.mod h1:tUtPtr3nujib98CAfCgEHTL1QMoiNZ5VDx5Qb1pwYZg=
 github.com/mattn/go-runewidth v0.0.9 h1:Lm995f3rfxdpd6TSmuVCHVb/QhupuXlYr8sCI/QdE+0=
 github.com/mattn/go-runewidth v0.0.9/go.mod h1:H031xJmbD/WCDINGzjvQ9THkh0rPKHF+m2gUSrubnMI=
 github.com/olekukonko/tablewriter v0.0.5 h1:P2Ga83D34wi1o9J6Wh1mRuqd4mF/x/lgBS7N7AbDhec=

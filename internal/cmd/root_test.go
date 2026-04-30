@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +18,7 @@ func isolateConfig(t *testing.T) {
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "profile", "workspace", "self-update", "api"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "login", "profile", "workspace", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -198,7 +201,67 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 	}
 }
 
-func TestGetAPIKey_ProfileFallback(t *testing.T) {
+func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+			t.Fatalf("unexpected refresh token %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+ts.URL+`",
+      "oauth": {
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, err := resolveClientOptions(true)
+	if err != nil {
+		t.Fatalf("resolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
+func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -221,7 +284,9 @@ func TestGetAPIKey_ProfileFallback(t *testing.T) {
     "prod": {
       "api_url": "https://profile.example.com",
       "workspace_id": "ws-123",
-      "api_key": "profile-api-key"
+      "oauth": {
+        "access_token": "test-access-token"
+      }
     }
   }
 }
@@ -229,8 +294,8 @@ func TestGetAPIKey_ProfileFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := GetAPIKey(); got != "profile-api-key" {
-		t.Fatalf("expected profile API key, got %q", got)
+	if got := GetOAuthAccessToken(); got != "test-access-token" {
+		t.Fatalf("expected profile OAuth access token, got %q", got)
 	}
 	if got := GetAPIURL(); got != "https://profile.example.com" {
 		t.Fatalf("expected profile API URL, got %q", got)
@@ -240,7 +305,7 @@ func TestGetAPIKey_ProfileFallback(t *testing.T) {
 	}
 }
 
-func TestGetAPIKey_EnvOverridesProfile(t *testing.T) {
+func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 	oldKey := flagAPIKey
 	oldProfile := flagProfile
 	defer func() {
@@ -256,7 +321,9 @@ func TestGetAPIKey_EnvOverridesProfile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
   "profiles": {
     "default": {
-      "api_key": "profile-api-key"
+      "oauth": {
+        "access_token": "test-access-token"
+      }
     }
   }
 }
@@ -266,6 +333,9 @@ func TestGetAPIKey_EnvOverridesProfile(t *testing.T) {
 
 	if got := GetAPIKey(); got != "from-env" {
 		t.Fatalf("expected env API key, got %q", got)
+	}
+	if got := GetOAuthAccessToken(); got != "" {
+		t.Fatalf("expected profile OAuth access token to be ignored, got %q", got)
 	}
 }
 
