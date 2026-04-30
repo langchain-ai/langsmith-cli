@@ -143,10 +143,10 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		opts.APIURL = v
+		opts.APIURL = client.NormalizeURL(v)
 	}
 	if flagAPIURL != "" {
-		opts.APIURL = flagAPIURL
+		opts.APIURL = client.NormalizeURL(flagAPIURL)
 	}
 
 	if v := os.Getenv("LANGSMITH_TENANT_ID"); v != "" {
@@ -160,7 +160,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		opts.APIKey = flagAPIKey
 	case os.Getenv("LANGSMITH_API_KEY") != "":
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
-	case hasProfile && profile.AccessToken() != "":
+	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
 			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.RefreshToken)

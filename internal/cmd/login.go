@@ -22,6 +22,7 @@ import (
 )
 
 const oauthClientID = "langsmith-cli"
+const defaultDeviceCodePollInterval = 5 * time.Second
 
 var openBrowser = openBrowserDefault
 var inputIsTerminal = func(r io.Reader) bool {
@@ -123,7 +124,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	pollCtx, cancel := context.WithTimeout(ctx, waitFor)
 	defer cancel()
 
-	interval := time.Duration(device.Interval) * time.Second
+	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
 	token, err := pollDeviceToken(pollCtx, apiURL, device.DeviceCode, interval)
 	if err != nil {
 		return err
@@ -250,13 +251,14 @@ func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oau
 	if err := postOAuthForm(ctx, apiURL, "/oauth/token", values, &resp); err != nil {
 		return nil, err
 	}
+	if resp.AccessToken == "" {
+		return nil, fmt.Errorf("token response did not include an access token")
+	}
 	return &resp, nil
 }
 
 func pollDeviceToken(ctx context.Context, apiURL, deviceCode string, interval time.Duration) (*oauthTokenResponse, error) {
-	if interval < 0 {
-		interval = 0
-	}
+	interval = normalizeDeviceCodePollInterval(interval)
 
 	for {
 		token, oauthErr, err := requestDeviceToken(ctx, apiURL, deviceCode)
@@ -285,6 +287,13 @@ func pollDeviceToken(ctx context.Context, apiURL, deviceCode string, interval ti
 		case <-timer.C:
 		}
 	}
+}
+
+func normalizeDeviceCodePollInterval(interval time.Duration) time.Duration {
+	if interval < defaultDeviceCodePollInterval {
+		return defaultDeviceCodePollInterval
+	}
+	return interval
 }
 
 func requestDeviceToken(ctx context.Context, apiURL, deviceCode string) (*oauthTokenResponse, *oauthErrorResponse, error) {

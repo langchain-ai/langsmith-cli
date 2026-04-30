@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 )
@@ -158,6 +159,37 @@ func TestRefreshProfileToken(t *testing.T) {
 	}
 	if token.AccessToken != "new-access-token" || token.RefreshToken != "new-refresh-token" {
 		t.Fatalf("unexpected token response: %+v", token)
+	}
+}
+
+func TestRefreshProfileTokenRequiresAccessToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	_, err := refreshProfileToken(t.Context(), ts.URL, "old-refresh-token")
+	if err == nil || !strings.Contains(err.Error(), "access token") {
+		t.Fatalf("expected missing access token error, got %v", err)
+	}
+}
+
+func TestNormalizeDeviceCodePollInterval(t *testing.T) {
+	if got := normalizeDeviceCodePollInterval(0); got != defaultDeviceCodePollInterval {
+		t.Fatalf("expected default interval, got %s", got)
+	}
+	if got := normalizeDeviceCodePollInterval(2 * time.Second); got != defaultDeviceCodePollInterval {
+		t.Fatalf("expected default interval for low value, got %s", got)
+	}
+	if got := normalizeDeviceCodePollInterval(7 * time.Second); got != 7*time.Second {
+		t.Fatalf("expected explicit interval, got %s", got)
 	}
 }
 

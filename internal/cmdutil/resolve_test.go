@@ -1,6 +1,9 @@
 package cmdutil
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -174,5 +177,54 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	}
 	if opts.OAuthAccessToken != "" {
 		t.Fatalf("expected profile OAuth access token to be ignored")
+	}
+}
+
+func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+			t.Fatalf("unexpected refresh token %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+ts.URL+`",
+      "oauth": {
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd, true)
+	if err != nil {
+		t.Fatalf("ResolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
 	}
 }

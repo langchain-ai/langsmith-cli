@@ -134,7 +134,7 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 		opts.APIKey = getFlagString(cmd, "api-key")
 	case os.Getenv("LANGSMITH_API_KEY") != "":
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
-	case hasProfile && profile.AccessToken() != "":
+	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
 			ctx := cmd.Context()

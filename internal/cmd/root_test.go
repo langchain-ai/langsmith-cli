@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -168,6 +171,23 @@ func TestGetAPIURL_EnvFallback(t *testing.T) {
 	}
 }
 
+func TestGetAPIURL_NormalizesOverrides(t *testing.T) {
+	old := flagAPIURL
+	defer func() { flagAPIURL = old }()
+	flagAPIURL = ""
+	isolateConfig(t)
+
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	if got := GetAPIURL(); got != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL, got %q", got)
+	}
+
+	flagAPIURL = "https://flag.example.com/api/v1"
+	if got := GetAPIURL(); got != "https://flag.example.com" {
+		t.Fatalf("expected normalized flag URL, got %q", got)
+	}
+}
+
 func TestGetAPIURL_DefaultValue(t *testing.T) {
 	isolateConfig(t)
 	old := flagAPIURL
@@ -178,6 +198,66 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 
 	if got := GetAPIURL(); got != "https://api.smith.langchain.com" {
 		t.Errorf("expected default URL, got %q", got)
+	}
+}
+
+func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+			t.Fatalf("unexpected refresh token %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+ts.URL+`",
+      "oauth": {
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, err := resolveClientOptions(true)
+	if err != nil {
+		t.Fatalf("resolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
 	}
 }
 
