@@ -15,14 +15,14 @@ func TestWorkspaceList(t *testing.T) {
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	t.Setenv("LANGSMITH_PROFILE", "")
 
+	receivedKey := ""
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/workspaces" {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("X-Api-Key") != "test-api-key" {
-			t.Fatalf("expected API key header")
-		}
+		receivedKey = r.Header.Get("X-Api-Key")
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]workspaceListItem{{
 			ID:           "00000000-0000-0000-0000-000000000123",
 			DisplayName:  "Default Workspace",
@@ -37,6 +37,9 @@ func TestWorkspaceList(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("workspace list returned error: %v\nstdout: %s", err, stdout)
+	}
+	if receivedKey != "test-api-key" {
+		t.Fatalf("expected API key header, got %q", receivedKey)
 	}
 	if !strings.Contains(stdout, "Default Workspace") {
 		t.Fatalf("expected workspace in output, got %s", stdout)
