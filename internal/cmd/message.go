@@ -161,7 +161,7 @@ Examples:
 			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 			const maxPageSize = 10
 			remaining := ff.Limit
-			var allTraces []any
+			allTraces := []any{}
 
 			for {
 				pageSize := maxPageSize

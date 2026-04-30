@@ -183,6 +183,12 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(resp.body, &errBody) == nil && errBody.Error != "" {
+			return fmt.Errorf("HTTP %d: %s", resp.statusCode, errBody.Error)
+		}
 		return fmt.Errorf("HTTP %d: %s", resp.statusCode, string(resp.body))
 	}
 
