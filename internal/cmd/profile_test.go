@@ -282,6 +282,59 @@ func TestProfileShowDoesNotExposeSecrets(t *testing.T) {
 	}
 }
 
+func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", " prod ")
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key": "dev-api-key"
+    },
+    "prod": {
+      "api_key": "prod-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	showStdout, err := executeCommand(t, "profile", "show", "prod")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v\nstdout: %s", err, showStdout)
+	}
+	var showResult profileShowItem
+	if err := json.Unmarshal([]byte(showStdout), &showResult); err != nil {
+		t.Fatalf("profile show stdout was not JSON: %v\n%s", err, showStdout)
+	}
+	if !showResult.Active {
+		t.Fatalf("expected whitespace-padded env profile to mark prod active: %+v", showResult)
+	}
+
+	listStdout, err := executeCommand(t, "profile", "list")
+	if err != nil {
+		t.Fatalf("profile list returned error: %v\nstdout: %s", err, listStdout)
+	}
+	var listResult []profileListItem
+	if err := json.Unmarshal([]byte(listStdout), &listResult); err != nil {
+		t.Fatalf("profile list stdout was not JSON: %v\n%s", err, listStdout)
+	}
+	if len(listResult) != 2 || listResult[0].Name != "prod" || !listResult[0].Active {
+		t.Fatalf("expected whitespace-padded env profile to mark prod active first: %+v", listResult)
+	}
+}
+
 func TestProfileShowNotFound(t *testing.T) {
 	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
 

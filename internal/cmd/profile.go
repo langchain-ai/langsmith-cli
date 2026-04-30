@@ -209,7 +209,7 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		return fmt.Errorf("profile %q not found", profileName)
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, os.Getenv("LANGSMITH_PROFILE"))
+	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
 	item := profileShowItem{
 		Name:           profileName,
 		Active:         profileName == activeName,
@@ -290,7 +290,7 @@ func runProfileList(cmd *cobra.Command) error {
 		return err
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, os.Getenv("LANGSMITH_PROFILE"))
+	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
 	items := make([]profileListItem, 0, len(cfg.Profiles))
 	for name, profile := range cfg.Profiles {
 		items = append(items, profileListItem{
@@ -327,6 +327,10 @@ func profileAuthType(profile lsconfig.Profile) string {
 	default:
 		return "none"
 	}
+}
+
+func profileEnvName() string {
+	return strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
 }
 
 func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
