@@ -92,11 +92,7 @@ Examples:
 
 			if ff.TraceIDs != "" {
 				ids := splitTrim(ff.TraceIDs)
-				if len(ids) == 1 {
-					body["trace"] = ids[0]
-				} else {
-					body["id"] = ids
-				}
+				body["id"] = ids
 			}
 
 			if ff.RunType != "" {
