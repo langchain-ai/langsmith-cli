@@ -85,3 +85,64 @@ func TestProfileSetWorkspaceInvalidID(t *testing.T) {
 		t.Fatal("expected invalid workspace ID error")
 	}
 }
+
+func TestProfileListDoesNotExposeSecrets(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	accessToken := "test-access-token"
+	refreshToken := "test-refresh-token"
+	apiKey := "test-api-key"
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "https://dev.api.smith.langchain.com",
+      "workspace_id": "00000000-0000-0000-0000-000000000123",
+      "oauth": {
+        "access_token": "`+accessToken+`",
+        "refresh_token": "`+refreshToken+`",
+        "expires_at": "2026-04-30T00:00:00Z"
+      }
+    },
+    "local": {
+      "api_key": "`+apiKey+`",
+      "api_url": "http://localhost:1980"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "profile", "list")
+	if err != nil {
+		t.Fatalf("profile list returned error: %v\nstdout: %s", err, stdout)
+	}
+	if strings.Contains(stdout, accessToken) || strings.Contains(stdout, refreshToken) || strings.Contains(stdout, apiKey) {
+		t.Fatalf("profile list output exposed a secret: %s", stdout)
+	}
+
+	var result []profileListItem
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 profiles, got %d", len(result))
+	}
+	if result[0].Name != "dev" || !result[0].Active || result[0].Auth != "oauth" {
+		t.Fatalf("unexpected active profile: %+v", result[0])
+	}
+	if result[1].Name != "local" || result[1].Auth != "api_key" {
+		t.Fatalf("unexpected second profile: %+v", result[1])
+	}
+}
