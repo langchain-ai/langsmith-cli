@@ -80,11 +80,15 @@ Examples:
 
 			// Build base request body for POST /v2/traces/messages
 			body := map[string]any{
-				"session": []string{sessionID},
+				"project_ids": []string{sessionID},
 			}
 
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
 			body["min_start_time"] = startTime.Format("2006-01-02T15:04:05Z07:00")
+
+			if ff.Before != "" {
+				body["max_start_time"] = ff.Before
+			}
 
 			if ff.TraceIDs != "" {
 				ids := splitTrim(ff.TraceIDs)
@@ -100,14 +104,62 @@ Examples:
 			}
 
 			if ff.ErrorFlag {
-				body["error"] = true
+				body["has_error"] = true
 			} else if ff.NoErrorFlag {
-				body["error"] = false
+				body["has_error"] = false
 			}
 
 			filterStr := buildFilterDSL(&ff)
 			if filterStr != "" {
 				body["filter"] = filterStr
+			}
+
+			// Single-page mode: when --cursor is explicitly set, make one API call
+			// and expose the real cursors.next so callers can paginate externally.
+			if cmd.Flags().Changed("cursor") {
+				pageSize := ff.Limit
+				if pageSize == 0 {
+					pageSize = defaultLimit
+				}
+				if ff.Cursor != "" {
+					body["cursor"] = ff.Cursor
+				}
+				body["page_size"] = pageSize
+
+				var result map[string]any
+				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
+					ExitErrorf("%v", err)
+				}
+
+				traces, _ := result["items"].([]any)
+				if traces == nil {
+					traces = []any{}
+				}
+
+				attachRootIO(ctx, c, sessionID, startTime, traces)
+				for _, t := range traces {
+					trace, _ := t.(map[string]any)
+					traj := buildTraceTrajectory(trace)
+					trace["trajectory"] = traj.Steps
+				}
+
+				nextCursor, _ := result["next_cursor"].(string)
+				cursors := map[string]any{}
+				if nextCursor != "" {
+					cursors["next"] = nextCursor
+				}
+
+				combined := map[string]any{
+					"traces":  traces,
+					"cursors": cursors,
+				}
+				fmt_ := GetFormat()
+				if fmt_ == "pretty" {
+					printTraceMessages(combined)
+				} else {
+					output.OutputJSON(combined, outputFile)
+				}
+				return
 			}
 
 			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
@@ -120,20 +172,19 @@ Examples:
 				if remaining < pageSize {
 					pageSize = remaining
 				}
-				body["limit"] = pageSize
+				body["page_size"] = pageSize
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
-				traces, _ := result["traces"].([]any)
+				traces, _ := result["items"].([]any)
 				allTraces = append(allTraces, traces...)
 				remaining -= len(traces)
 
 				// Stop if we have enough or no more pages
-				cursors, _ := result["cursors"].(map[string]any)
-				next, _ := cursors["next"].(string)
+				next, _ := result["next_cursor"].(string)
 				if next == "" || remaining <= 0 {
 					break
 				}
@@ -385,7 +436,7 @@ func trajLatency(meta map[string]any) *int64 {
 	if meta == nil {
 		return nil
 	}
-	if v, ok := meta["latency_ms"].(float64); ok {
+	if v, ok := meta["latency_milli_seconds"].(float64); ok {
 		n := int64(v)
 		return &n
 	}

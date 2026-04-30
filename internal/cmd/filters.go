@@ -18,6 +18,7 @@ type FilterFlags struct {
 	LastNMinutes int
 	Since        string
 	Before       string
+	Cursor       string
 	ErrorFlag    bool
 	NoErrorFlag  bool
 	Name         string
@@ -38,6 +39,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")
+	cmd.Flags().StringVar(&f.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
 	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
