@@ -169,3 +169,53 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfile(t *testing.T) {
 		t.Fatalf("expected env API key, got %q", opts.APIKey)
 	}
 }
+
+func TestResolveClientOptions_EnvAPIKeyWithMalformedConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(path, []byte(`{`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "from-env" {
+		t.Fatalf("expected env API key, got %q", opts.APIKey)
+	}
+	if opts.APIURL != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL, got %q", opts.APIURL)
+	}
+}
+
+func TestResolveClientOptions_ProfileEnvTrimsWhitespace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", " local ")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "local": {
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "profile-api-key" {
+		t.Fatalf("expected profile API key, got %q", opts.APIKey)
+	}
+}

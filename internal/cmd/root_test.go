@@ -127,6 +127,36 @@ func TestGetAPIKey_EnvFallback(t *testing.T) {
 	}
 }
 
+func TestGetAPIKey_EnvFallbackWithMalformedConfig(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(path, []byte(`{`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "from-env" {
+		t.Fatalf("expected env API key despite malformed config, got %q", got)
+	}
+	if got := GetAPIURL(); got != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL despite malformed config, got %q", got)
+	}
+}
+
 func TestGetAPIKey_Empty(t *testing.T) {
 	isolateConfig(t)
 	old := flagAPIKey
@@ -237,6 +267,40 @@ func TestGetAPIKey_ProfileFallback(t *testing.T) {
 	}
 	if got := GetWorkspaceID(); got != "ws-123" {
 		t.Fatalf("expected profile workspace, got %q", got)
+	}
+}
+
+func TestGetAPIKey_ProfileEnvTrimsWhitespace(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", " prod ")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "profile-api-key" {
+		t.Fatalf("expected profile API key from trimmed env profile, got %q", got)
 	}
 }
 

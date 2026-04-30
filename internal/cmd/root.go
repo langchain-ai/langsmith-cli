@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
@@ -117,13 +118,22 @@ func resolveClientOptions() (client.Options, error) {
 	opts := client.Options{APIURL: lsconfig.DefaultAPIURL}
 
 	cfg, err := lsconfig.Load()
+	var cfgErr error
 	if err != nil {
-		return opts, err
+		cfgErr = err
+		cfg = &lsconfig.Config{Profiles: make(map[string]lsconfig.Profile)}
 	}
-	envProfile := os.Getenv("LANGSMITH_PROFILE")
-	profileName, profile, hasProfile := cfg.ResolveProfile(flagProfile, envProfile)
-	if (flagProfile != "" || envProfile != "") && !hasProfile {
-		return opts, fmt.Errorf("profile not found: %s", profileName)
+
+	envProfile := strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
+	profileName, profile, hasProfile := "", lsconfig.Profile{}, false
+	if flagProfile != "" || envProfile != "" || cfgErr == nil {
+		if cfgErr != nil && (flagProfile != "" || envProfile != "") {
+			return opts, cfgErr
+		}
+		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
+		if (flagProfile != "" || envProfile != "") && !hasProfile {
+			return opts, fmt.Errorf("profile not found: %s", profileName)
+		}
 	}
 
 	if hasProfile {
@@ -153,6 +163,9 @@ func resolveClientOptions() (client.Options, error) {
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey
+	}
+	if cfgErr != nil && opts.APIKey == "" {
+		return opts, cfgErr
 	}
 
 	return opts, nil
