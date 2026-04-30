@@ -21,6 +21,16 @@ type profileListItem struct {
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
+type profileShowItem struct {
+	Name           string `json:"name"`
+	Active         bool   `json:"active"`
+	APIURL         string `json:"api_url,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	Auth           string `json:"auth"`
+	APIKey         string `json:"api_key,omitempty"`
+	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
+}
+
 func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
@@ -28,6 +38,9 @@ func newProfileCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newProfileCreateCmd())
 	cmd.AddCommand(newProfileListCmd())
+	cmd.AddCommand(newProfileShowCmd())
+	cmd.AddCommand(newProfileDeleteCmd())
+	cmd.AddCommand(newProfileUseCmd())
 	cmd.AddCommand(newProfileSetWorkspaceCmd())
 	return cmd
 }
@@ -57,6 +70,39 @@ func newProfileListCmd() *cobra.Command {
 		Short:   "List saved profiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProfileList(cmd)
+		},
+	}
+}
+
+func newProfileShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show NAME",
+		Short: "Show a saved profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProfileShow(cmd, args[0])
+		},
+	}
+}
+
+func newProfileDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete NAME",
+		Short: "Delete a saved profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProfileDelete(cmd, args[0])
+		},
+	}
+}
+
+func newProfileUseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "use NAME",
+		Short: "Set the current profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProfileUse(cmd, args[0])
 		},
 	}
 }
@@ -153,6 +199,91 @@ func profileCreateAPIURL() string {
 	return client.NormalizeURL(apiURL)
 }
 
+func runProfileShow(cmd *cobra.Command, profileName string) error {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return err
+	}
+	profile, ok := cfg.Profiles[profileName]
+	if !ok {
+		return fmt.Errorf("profile %q not found", profileName)
+	}
+
+	activeName := cfg.ResolveProfileName(flagProfile, os.Getenv("LANGSMITH_PROFILE"))
+	item := profileShowItem{
+		Name:           profileName,
+		Active:         profileName == activeName,
+		APIURL:         profile.APIURL,
+		WorkspaceID:    profile.WorkspaceID,
+		Auth:           profileAuthType(profile),
+		OAuthExpiresAt: profile.OAuth.ExpiresAt,
+	}
+	if profile.APIKey != "" {
+		item.APIKey = lsconfig.MaskSecret(profile.APIKey)
+	}
+
+	if GetFormat() == "pretty" {
+		renderProfileShowTable(cmd, item)
+		return nil
+	}
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(item)
+}
+
+func runProfileDelete(cmd *cobra.Command, profileName string) error {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Profiles[profileName]; !ok {
+		return fmt.Errorf("profile %q not found", profileName)
+	}
+	delete(cfg.Profiles, profileName)
+	if cfg.CurrentProfile == profileName {
+		cfg.CurrentProfile = ""
+	}
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+
+	if GetFormat() == "pretty" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Deleted profile %q\n", profileName)
+		return nil
+	}
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(map[string]string{
+		"status":  "deleted",
+		"profile": profileName,
+	})
+}
+
+func runProfileUse(cmd *cobra.Command, profileName string) error {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Profiles[profileName]; !ok {
+		return fmt.Errorf("profile %q not found", profileName)
+	}
+	cfg.CurrentProfile = profileName
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+
+	if GetFormat() == "pretty" {
+		fmt.Fprintf(cmd.OutOrStdout(), "Using profile %q\n", profileName)
+		return nil
+	}
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(map[string]string{
+		"status":  "switched",
+		"profile": profileName,
+	})
+}
+
 func runProfileList(cmd *cobra.Command) error {
 	cfg, err := lsconfig.Load()
 	if err != nil {
@@ -189,7 +320,7 @@ func runProfileList(cmd *cobra.Command) error {
 
 func profileAuthType(profile lsconfig.Profile) string {
 	switch {
-	case profile.AccessToken() != "":
+	case profile.AccessToken() != "" || profile.OAuth.RefreshToken != "":
 		return "oauth"
 	case profile.APIKey != "":
 		return "api_key"
@@ -219,6 +350,29 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 			profile.OAuthExpiresAt,
 		})
 	}
+	table.Render()
+}
+
+func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
+	table := tablewriter.NewWriter(cmd.OutOrStdout())
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
+	table.SetBorder(false)
+	table.SetColumnSeparator("  ")
+	table.SetHeaderLine(true)
+	table.SetAutoWrapText(false)
+	active := ""
+	if profile.Active {
+		active = "*"
+	}
+	table.Append([]string{
+		active,
+		profile.Name,
+		profile.APIURL,
+		profile.WorkspaceID,
+		profile.Auth,
+		profile.APIKey,
+		profile.OAuthExpiresAt,
+	})
 	table.Render()
 }
 

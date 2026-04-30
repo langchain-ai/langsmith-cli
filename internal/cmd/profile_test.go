@@ -224,6 +224,207 @@ func TestProfileCreateInvalidWorkspaceID(t *testing.T) {
 	}
 }
 
+func TestProfileShowDoesNotExposeSecrets(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	apiKey := "test-profile-api-key"
+	accessToken := "test-access-token"
+	refreshToken := "test-refresh-token"
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key": "`+apiKey+`",
+      "api_url": "https://dev.api.smith.langchain.com",
+      "workspace_id": "00000000-0000-0000-0000-000000000123",
+      "oauth": {
+        "access_token": "`+accessToken+`",
+        "refresh_token": "`+refreshToken+`",
+        "expires_at": "2026-04-30T00:00:00Z"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "profile", "show", "dev")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v\nstdout: %s", err, stdout)
+	}
+	if strings.Contains(stdout, apiKey) || strings.Contains(stdout, accessToken) || strings.Contains(stdout, refreshToken) {
+		t.Fatalf("profile show output exposed a secret: %s", stdout)
+	}
+
+	var result profileShowItem
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if result.Name != "dev" || !result.Active || result.Auth != "oauth" {
+		t.Fatalf("unexpected profile show result: %+v", result)
+	}
+	if result.APIKey == "" || result.APIKey == apiKey {
+		t.Fatalf("expected masked api key, got %q", result.APIKey)
+	}
+	if result.OAuthExpiresAt != "2026-04-30T00:00:00Z" {
+		t.Fatalf("unexpected oauth expiry: %q", result.OAuthExpiresAt)
+	}
+}
+
+func TestProfileShowNotFound(t *testing.T) {
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
+
+	_, err := executeCommand(t, "profile", "show", "missing")
+	if err == nil {
+		t.Fatal("expected profile not found error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error, got %v", err)
+	}
+}
+
+func TestProfileUse(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key": "dev-api-key"
+    },
+    "prod": {
+      "api_key": "prod-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "profile", "use", "prod")
+	if err != nil {
+		t.Fatalf("profile use returned error: %v\nstdout: %s", err, stdout)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if result["status"] != "switched" || result["profile"] != "prod" {
+		t.Fatalf("unexpected profile use result: %+v", result)
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CurrentProfile != "prod" {
+		t.Fatalf("expected prod current profile, got %q", cfg.CurrentProfile)
+	}
+}
+
+func TestProfileUseNotFound(t *testing.T) {
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
+
+	_, err := executeCommand(t, "profile", "use", "missing")
+	if err == nil {
+		t.Fatal("expected profile not found error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error, got %v", err)
+	}
+}
+
+func TestProfileDelete(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key": "dev-api-key"
+    },
+    "prod": {
+      "api_key": "prod-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "profile", "delete", "dev")
+	if err != nil {
+		t.Fatalf("profile delete returned error: %v\nstdout: %s", err, stdout)
+	}
+	if strings.Contains(stdout, "dev-api-key") {
+		t.Fatalf("profile delete output exposed api key: %s", stdout)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if result["status"] != "deleted" || result["profile"] != "dev" {
+		t.Fatalf("unexpected profile delete result: %+v", result)
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.Profiles["dev"]; ok {
+		t.Fatal("expected dev profile to be deleted")
+	}
+	if _, ok := cfg.Profiles["prod"]; !ok {
+		t.Fatal("expected unrelated profile to remain")
+	}
+	if cfg.CurrentProfile != "" {
+		t.Fatalf("expected current profile to be cleared, got %q", cfg.CurrentProfile)
+	}
+}
+
+func TestProfileDeleteNotFound(t *testing.T) {
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
+
+	_, err := executeCommand(t, "profile", "delete", "missing")
+	if err == nil {
+		t.Fatal("expected profile not found error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error, got %v", err)
+	}
+}
+
 func TestProfileSetWorkspace(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
