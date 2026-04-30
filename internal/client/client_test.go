@@ -67,6 +67,20 @@ func TestNew_EmptyURL(t *testing.T) {
 	}
 }
 
+func TestNewWithOptions_CreatesClientWithWorkspace(t *testing.T) {
+	c := NewWithOptions(Options{
+		APIKey:      "test-api-key",
+		APIURL:      "http://localhost:1234",
+		WorkspaceID: "ws-123",
+	})
+	if c == nil || c.SDK == nil {
+		t.Fatal("expected non-nil client and SDK")
+	}
+	if c.APIKey() != "test-api-key" {
+		t.Fatalf("unexpected API key: %q", c.APIKey())
+	}
+}
+
 // ---------- RawGet ----------
 
 func TestRawGet_Success(t *testing.T) {

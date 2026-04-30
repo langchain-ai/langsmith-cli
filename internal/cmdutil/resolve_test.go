@@ -1,6 +1,8 @@
 package cmdutil
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -10,6 +12,7 @@ func newTestCmd() *cobra.Command {
 	root := &cobra.Command{Use: "test"}
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
+	root.PersistentFlags().String("profile", "", "")
 	root.PersistentFlags().String("format", "json", "")
 	return root
 }
@@ -102,9 +105,117 @@ func TestGetClient_Success(t *testing.T) {
 
 func TestGetClient_MissingKey(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.json"))
 	cmd := newTestCmd()
 	_, err := GetClient(cmd)
 	if err == nil {
 		t.Fatal("expected error for missing API key")
+	}
+}
+
+func TestGetClient_ProfileAPIKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "local",
+  "profiles": {
+    "local": {
+      "api_url": "http://localhost:1980",
+      "workspace_id": "ws-123",
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	c, err := GetClient(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.APIKey() != "profile-api-key" {
+		t.Fatalf("expected API key from profile")
+	}
+	if c.APIURL() != "http://localhost:1980" {
+		t.Fatalf("expected profile API URL, got %q", c.APIURL())
+	}
+}
+
+func TestResolveClientOptions_EnvAPIKeyOverridesProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "default": {
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "from-env" {
+		t.Fatalf("expected env API key, got %q", opts.APIKey)
+	}
+}
+
+func TestResolveClientOptions_EnvAPIKeyWithMalformedConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(path, []byte(`{`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "from-env" {
+		t.Fatalf("expected env API key, got %q", opts.APIKey)
+	}
+	if opts.APIURL != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL, got %q", opts.APIURL)
+	}
+}
+
+func TestResolveClientOptions_ProfileEnvTrimsWhitespace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", " local ")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "local": {
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "profile-api-key" {
+		t.Fatalf("expected profile API key, got %q", opts.APIKey)
 	}
 }

@@ -3,8 +3,10 @@ package cmdutil
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -51,11 +53,76 @@ func ResolveFormat(cmd *cobra.Command) string {
 }
 
 // GetClient creates a LangSmith client from cobra flags, returning an error
-// if the API key is not set.
+// if no API key is available.
 func GetClient(cmd *cobra.Command) (*client.Client, error) {
-	apiKey := ResolveAPIKey(cmd)
-	if apiKey == "" {
-		return nil, fmt.Errorf("LANGSMITH_API_KEY not set")
+	opts, err := ResolveClientOptions(cmd)
+	if err != nil {
+		return nil, err
 	}
-	return client.New(apiKey, ResolveAPIURL(cmd)), nil
+	if opts.APIKey == "" {
+		return nil, fmt.Errorf("not authenticated; set LANGSMITH_API_KEY, pass --api-key, or select an API-key profile")
+	}
+	return client.NewWithOptions(opts), nil
+}
+
+// ResolveClientOptions resolves auth/routing from cobra flags, env, and saved
+// profiles. This mirrors the top-level CLI auth behavior for standalone
+// helpers such as `langsmith api`.
+func ResolveClientOptions(cmd *cobra.Command) (client.Options, error) {
+	opts := client.Options{APIURL: lsconfig.DefaultAPIURL}
+
+	cfg, err := lsconfig.Load()
+	var cfgErr error
+	if err != nil {
+		cfgErr = err
+		cfg = &lsconfig.Config{Profiles: make(map[string]lsconfig.Profile)}
+	}
+
+	flagProfile := getFlagString(cmd, "profile")
+	envProfile := strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
+	profileName, profile, hasProfile := "", lsconfig.Profile{}, false
+	if flagProfile != "" || envProfile != "" || cfgErr == nil {
+		if cfgErr != nil && (flagProfile != "" || envProfile != "") {
+			return opts, cfgErr
+		}
+		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
+		if (flagProfile != "" || envProfile != "") && !hasProfile {
+			return opts, fmt.Errorf("profile not found: %s", profileName)
+		}
+	}
+
+	if hasProfile {
+		if profile.APIURL != "" {
+			opts.APIURL = profile.APIURL
+		}
+		opts.WorkspaceID = profile.WorkspaceID
+	}
+
+	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
+		opts.APIURL = client.NormalizeURL(v)
+	}
+	if v := getFlagString(cmd, "api-url"); v != "" {
+		opts.APIURL = client.NormalizeURL(v)
+	}
+
+	if v := os.Getenv("LANGSMITH_TENANT_ID"); v != "" {
+		opts.WorkspaceID = v
+	}
+	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
+		opts.WorkspaceID = v
+	}
+
+	switch {
+	case getFlagString(cmd, "api-key") != "":
+		opts.APIKey = getFlagString(cmd, "api-key")
+	case os.Getenv("LANGSMITH_API_KEY") != "":
+		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+	case hasProfile && profile.APIKey != "":
+		opts.APIKey = profile.APIKey
+	}
+	if cfgErr != nil && opts.APIKey == "" {
+		return opts, cfgErr
+	}
+
+	return opts, nil
 }
