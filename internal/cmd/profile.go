@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/olekukonko/tablewriter"
@@ -118,33 +117,6 @@ func newProfileSetWorkspaceCmd() *cobra.Command {
 			return runProfileSetWorkspace(cmd, args[0])
 		},
 	}
-}
-
-func selectedProfileName(cfg *lsconfig.Config) string {
-	if flagProfile != "" {
-		return flagProfile
-	}
-	if envProfile := os.Getenv("LANGSMITH_PROFILE"); envProfile != "" {
-		return envProfile
-	}
-	if cfg.CurrentProfile != "" {
-		return cfg.CurrentProfile
-	}
-	return "default"
-}
-
-func validateProfileName(name string) error {
-	if name == "" || strings.ContainsAny(name, "[]\r\n") {
-		return fmt.Errorf("invalid profile name: %q", name)
-	}
-	return nil
-}
-
-func validateWorkspaceID(workspaceID string) error {
-	if _, err := uuid.Parse(workspaceID); err != nil {
-		return fmt.Errorf("invalid workspace ID %q: expected UUID", workspaceID)
-	}
-	return nil
 }
 
 func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool) error {
@@ -421,7 +393,7 @@ func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {
 		cfg.Profiles = make(map[string]lsconfig.Profile)
 	}
 
-	profileName := selectedProfileName(cfg)
+	profileName := loginProfileName(cfg)
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}

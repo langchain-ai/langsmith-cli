@@ -1,6 +1,9 @@
 package cmdutil
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -113,7 +116,7 @@ func TestGetClient_MissingKey(t *testing.T) {
 	}
 }
 
-func TestGetClient_ProfileAPIKey(t *testing.T) {
+func TestGetClient_ProfileBearer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "")
@@ -124,7 +127,9 @@ func TestGetClient_ProfileAPIKey(t *testing.T) {
     "local": {
       "api_url": "http://localhost:1980",
       "workspace_id": "ws-123",
-      "api_key": "profile-api-key"
+      "oauth": {
+        "access_token": "test-access-token"
+      }
     }
   }
 }
@@ -137,22 +142,24 @@ func TestGetClient_ProfileAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if c.APIKey() != "profile-api-key" {
-		t.Fatalf("expected API key from profile")
+	if c.OAuthAccessToken() != "test-access-token" {
+		t.Fatalf("expected OAuth access token from profile")
 	}
 	if c.APIURL() != "http://localhost:1980" {
 		t.Fatalf("expected profile API URL, got %q", c.APIURL())
 	}
 }
 
-func TestResolveClientOptions_EnvAPIKeyOverridesProfile(t *testing.T) {
+func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
 	if err := os.WriteFile(path, []byte(`{
   "profiles": {
     "default": {
-      "api_key": "profile-api-key"
+      "oauth": {
+        "access_token": "test-access-token"
+      }
     }
   }
 }
@@ -161,12 +168,64 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfile(t *testing.T) {
 	}
 
 	cmd := newTestCmd()
-	opts, err := ResolveClientOptions(cmd)
+	opts, err := ResolveClientOptions(cmd, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if opts.APIKey != "from-env" {
 		t.Fatalf("expected env API key, got %q", opts.APIKey)
+	}
+	if opts.OAuthAccessToken != "" {
+		t.Fatalf("expected profile OAuth access token to be ignored")
+	}
+}
+
+func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+			t.Fatalf("unexpected refresh token %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+ts.URL+`",
+      "oauth": {
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	opts, err := ResolveClientOptions(cmd, true)
+	if err != nil {
+		t.Fatalf("ResolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
 	}
 }
 
@@ -181,7 +240,7 @@ func TestResolveClientOptions_EnvAPIKeyWithMalformedConfig(t *testing.T) {
 	}
 
 	cmd := newTestCmd()
-	opts, err := ResolveClientOptions(cmd)
+	opts, err := ResolveClientOptions(cmd, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -211,7 +270,7 @@ func TestResolveClientOptions_ProfileEnvTrimsWhitespace(t *testing.T) {
 	}
 
 	cmd := newTestCmd()
-	opts, err := ResolveClientOptions(cmd)
+	opts, err := ResolveClientOptions(cmd, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
