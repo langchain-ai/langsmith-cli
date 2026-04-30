@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -25,8 +26,27 @@ func newProfileCmd() *cobra.Command {
 		Use:   "profile",
 		Short: "Manage saved LangSmith profiles",
 	}
+	cmd.AddCommand(newProfileCreateCmd())
 	cmd.AddCommand(newProfileListCmd())
 	cmd.AddCommand(newProfileSetWorkspaceCmd())
+	return cmd
+}
+
+func newProfileCreateCmd() *cobra.Command {
+	var (
+		workspaceID string
+		setCurrent  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "create NAME",
+		Short: "Create an API-key profile",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runProfileCreate(cmd, args[0], workspaceID, setCurrent)
+		},
+	}
+	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Default workspace ID to save in the profile")
+	cmd.Flags().BoolVar(&setCurrent, "set-current", false, "Set the new profile as the current profile")
 	return cmd
 }
 
@@ -50,6 +70,87 @@ func newProfileSetWorkspaceCmd() *cobra.Command {
 			return runProfileSetWorkspace(cmd, args[0])
 		},
 	}
+}
+
+func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool) error {
+	if err := validateProfileName(profileName); err != nil {
+		return err
+	}
+	if workspaceID != "" {
+		if err := validateWorkspaceID(workspaceID); err != nil {
+			return err
+		}
+	}
+
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.Profiles == nil {
+		cfg.Profiles = make(map[string]lsconfig.Profile)
+	}
+	if _, exists := cfg.Profiles[profileName]; exists {
+		return fmt.Errorf("profile %q already exists", profileName)
+	}
+
+	apiKey := profileCreateAPIKey()
+	if apiKey == "" {
+		return fmt.Errorf("api key required; pass --api-key or set LANGSMITH_API_KEY")
+	}
+	apiURL := profileCreateAPIURL()
+
+	cfg.Profiles[profileName] = lsconfig.Profile{
+		APIKey:      apiKey,
+		APIURL:      apiURL,
+		WorkspaceID: workspaceID,
+	}
+	if cfg.CurrentProfile == "" || setCurrent {
+		cfg.CurrentProfile = profileName
+	}
+	if err := cfg.Save(); err != nil {
+		return err
+	}
+
+	if GetFormat() == "pretty" {
+		if cfg.CurrentProfile == profileName {
+			fmt.Fprintf(cmd.OutOrStdout(), "Created and selected profile %q\n", profileName)
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "Created profile %q\n", profileName)
+		}
+		return nil
+	}
+
+	result := map[string]any{
+		"status":  "created",
+		"profile": profileName,
+		"api_url": apiURL,
+		"auth":    "api_key",
+		"active":  cfg.CurrentProfile == profileName,
+	}
+	if workspaceID != "" {
+		result["workspace_id"] = workspaceID
+	}
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(result)
+}
+
+func profileCreateAPIKey() string {
+	if flagAPIKey != "" {
+		return flagAPIKey
+	}
+	return os.Getenv("LANGSMITH_API_KEY")
+}
+
+func profileCreateAPIURL() string {
+	apiURL := lsconfig.DefaultAPIURL
+	if envURL := os.Getenv("LANGSMITH_ENDPOINT"); envURL != "" {
+		apiURL = envURL
+	}
+	if flagAPIURL != "" {
+		apiURL = flagAPIURL
+	}
+	return client.NormalizeURL(apiURL)
 }
 
 func runProfileList(cmd *cobra.Command) error {
