@@ -285,12 +285,11 @@ The issue ID is the UUID returned by 'langsmith project issues list'.
 --title and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
 --evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
---status changes the issue status. Valid values: open, completed, ignored. Use 'open' to reopen a resolved issue.
+--status reopens a resolved issue. The only accepted value is 'open' — closing an issue is a human action done via the UI.
 
 Examples:
   langsmith project issues update <id> --title "Corrected title" --description "New finding..."
   langsmith project issues update <id> --status open
-  langsmith project issues update <id> --status completed
   langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
   langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
   langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
@@ -300,8 +299,8 @@ Examples:
 			if title == "" && description == "" && proposedFix == "" && evaluator == "" && status == "" {
 				ExitError("at least one of --title, --description, --proposed-fix, --evaluator, or --status is required")
 			}
-			if status != "" && status != "open" && status != "completed" && status != "ignored" {
-				ExitError("--status must be one of: open, completed, ignored")
+			if status != "" && status != "open" {
+				ExitError("--status only accepts 'open' — closing an issue is done via the UI")
 			}
 
 			c := MustGetClient()
@@ -362,7 +361,7 @@ Examples:
 	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
-	cmd.Flags().StringVar(&status, "status", "", "Set issue status: open, completed, or ignored (use 'open' to reopen a resolved issue)")
+	cmd.Flags().StringVar(&status, "status", "", "Reopen a resolved issue. Only 'open' is accepted — closing is done via the UI")
 	cmd.Flags().StringVar(&evaluator, "evaluator", "", `Replace the suggested evaluator. JSON with "type" ("llm" or "code"), "display_name", and type-specific fields`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
