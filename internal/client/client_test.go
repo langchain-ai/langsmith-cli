@@ -132,6 +132,30 @@ func TestRawGet_HTTPError(t *testing.T) {
 	}
 }
 
+func TestRawGet_JSONHTTPErrorIncludesMessage(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "org_scoped_key_requires_workspace",
+			"message": "This API key requires a workspace ID.",
+		})
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	err := c.RawGet(context.Background(), "/fail", nil)
+	if err == nil {
+		t.Fatal("expected error for 403")
+	}
+	if !strings.Contains(err.Error(), "org_scoped_key_requires_workspace") {
+		t.Fatalf("expected error code, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "workspace ID") {
+		t.Fatalf("expected workspace guidance, got %q", err.Error())
+	}
+}
+
 func TestRawGet_NilResult(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)

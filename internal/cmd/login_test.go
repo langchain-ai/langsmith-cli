@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,6 +128,192 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("expected config permissions 0600, got %o", info.Mode().Perm())
+	}
+}
+
+func TestLoginPromptsWorkspaceSelection(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	oldOpenBrowser := openBrowser
+	oldInputIsTerminal := inputIsTerminal
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+		openBrowser = oldOpenBrowser
+		inputIsTerminal = oldInputIsTerminal
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+	flagOutputFormat = "json"
+	openBrowser = func(string) error { return nil }
+	inputIsTerminal = func(io.Reader) bool { return true }
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+
+	accessToken := "test-access-token"
+	secondWorkspaceID := "00000000-0000-0000-0000-000000000222"
+	receivedWorkspaceAuth := ""
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/device/code":
+			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
+				DeviceCode:      "device-code",
+				UserCode:        "ABCD-EFGH",
+				VerificationURI: tsActivateURL(r),
+				ExpiresIn:       60,
+				Interval:        0,
+			})
+		case "/oauth/token":
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+				AccessToken:  accessToken,
+				ExpiresIn:    300,
+				RefreshToken: "test-refresh-token",
+			})
+		case "/api/v1/workspaces":
+			receivedWorkspaceAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id":           "00000000-0000-0000-0000-000000000111",
+					"display_name": "First Workspace",
+				},
+				{
+					"id":           secondWorkspaceID,
+					"display_name": "Second Workspace",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	root := NewRootCmd("test", "test")
+	root.SetIn(strings.NewReader("2\n"))
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"login", "--api-url", ts.URL, "--no-browser"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if receivedWorkspaceAuth != "Bearer "+accessToken {
+		t.Fatalf("expected workspace list to use OAuth bearer token, got %q", receivedWorkspaceAuth)
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout.String())
+	}
+	if result["workspace_id"] != secondWorkspaceID {
+		t.Fatalf("expected selected workspace ID %q, got %q", secondWorkspaceID, result["workspace_id"])
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Profiles["default"].WorkspaceID; got != secondWorkspaceID {
+		t.Fatalf("expected saved workspace ID %q, got %q", secondWorkspaceID, got)
+	}
+}
+
+func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	oldOpenBrowser := openBrowser
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+		openBrowser = oldOpenBrowser
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+	flagOutputFormat = "json"
+	openBrowser = func(string) error { return nil }
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+
+	workspaceListCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/device/code":
+			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
+				DeviceCode:      "device-code",
+				UserCode:        "ABCD-EFGH",
+				VerificationURI: tsActivateURL(r),
+				ExpiresIn:       60,
+				Interval:        0,
+			})
+		case "/oauth/token":
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+				AccessToken:  "test-access-token",
+				ExpiresIn:    300,
+				RefreshToken: "test-refresh-token",
+			})
+		case "/api/v1/workspaces":
+			workspaceListCalled = true
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	root := NewRootCmd("test", "test")
+	root.SetIn(strings.NewReader(""))
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"login", "--api-url", ts.URL, "--no-browser"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "No default workspace set") {
+		t.Fatalf("expected workspace warning, got %q", stderr.String())
+	}
+	if workspaceListCalled {
+		t.Fatal("did not expect workspace list request for non-interactive login")
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout.String())
+	}
+	if result["workspace_id"] != "" {
+		t.Fatalf("expected workspace_id to be omitted, got %q", result["workspace_id"])
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := cfg.Profiles["default"]
+	if profile.OAuth.AccessToken != "test-access-token" {
+		t.Fatal("access token was not saved")
+	}
+	if profile.WorkspaceID != "" {
+		t.Fatalf("expected saved profile to omit workspace ID, got %q", profile.WorkspaceID)
 	}
 }
 

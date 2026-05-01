@@ -131,6 +131,13 @@ type httpResponse struct {
 	body       []byte
 }
 
+type httpErrorBody struct {
+	Error            string `json:"error"`
+	Message          string `json:"message"`
+	ErrorDescription string `json:"error_description"`
+	Detail           any    `json:"detail"`
+}
+
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
 func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
 	url := c.apiURL + path
@@ -211,7 +218,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.statusCode, string(resp.body))
+		return fmt.Errorf("HTTP %d: %s", resp.statusCode, formatHTTPErrorBody(resp.body))
 	}
 
 	if result != nil {
@@ -221,4 +228,39 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	return nil
+}
+
+func formatHTTPErrorBody(body []byte) string {
+	raw := strings.TrimSpace(string(body))
+	var parsed httpErrorBody
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return raw
+	}
+
+	code := strings.TrimSpace(parsed.Error)
+	message := strings.TrimSpace(parsed.Message)
+	if message == "" {
+		message = strings.TrimSpace(parsed.ErrorDescription)
+	}
+	if message == "" && parsed.Detail != nil {
+		switch detail := parsed.Detail.(type) {
+		case string:
+			message = strings.TrimSpace(detail)
+		default:
+			if data, err := json.Marshal(detail); err == nil {
+				message = strings.TrimSpace(string(data))
+			}
+		}
+	}
+
+	switch {
+	case code != "" && message != "":
+		return code + ": " + message
+	case code != "":
+		return code
+	case message != "":
+		return message
+	default:
+		return raw
+	}
 }
