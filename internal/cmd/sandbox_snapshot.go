@@ -11,29 +11,9 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
-
-// Snapshot API types (v2/sandboxes/snapshots).
-
-type snapshotResponse struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	DockerImage     *string `json:"docker_image,omitempty"`
-	ImageDigest     *string `json:"image_digest,omitempty"`
-	SourceSandboxID *string `json:"source_sandbox_id,omitempty"`
-	Status          string  `json:"status"`
-	StatusMessage   *string `json:"status_message,omitempty"`
-	FsSizeBytes     int64   `json:"fs_capacity_bytes"`
-	SizeBytes       *int64  `json:"fs_used_bytes,omitempty"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
-}
-
-type snapshotListResponse struct {
-	Snapshots []snapshotResponse `json:"snapshots"`
-	Offset    int                `json:"offset"`
-}
 
 func newSandboxSnapshotCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -69,8 +49,8 @@ func newSnapshotListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var resp snapshotListResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/snapshots", &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Snapshots.List(ctx, langsmith.SandboxSnapshotListParams{})
+			if err != nil {
 				ExitErrorf("listing snapshots: %v", err)
 			}
 
@@ -81,12 +61,12 @@ func newSnapshotListCmd() *cobra.Command {
 				var rows [][]string
 				for _, s := range resp.Snapshots {
 					image := "-"
-					if s.DockerImage != nil {
-						image = *s.DockerImage
+					if s.DockerImage != "" {
+						image = s.DockerImage
 					}
 					size := "-"
-					if s.SizeBytes != nil {
-						size = formatBytes(*s.SizeBytes)
+					if s.FsUsedBytes > 0 {
+						size = formatBytes(s.FsUsedBytes)
 					}
 					rows = append(rows, []string{
 						s.ID, s.Name, image, s.Status, size, formatTime(s.CreatedAt),
@@ -103,13 +83,11 @@ func newSnapshotListCmd() *cobra.Command {
 
 func newSnapshotBuildCmd() *cobra.Command {
 	var (
-		dockerImage      string
-		capacity         string
-		registryURL      string
-		registryUsername string
-		registryPassword string
-		wait             bool
-		timeoutSec       int
+		dockerImage string
+		capacity    string
+		registryID  string
+		wait        bool
+		timeoutSec  int
 	)
 
 	cmd := &cobra.Command{
@@ -135,35 +113,32 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{
-				"name":              name,
-				"docker_image":      dockerImage,
-				"fs_capacity_bytes": capBytes,
+			params := langsmith.SandboxSnapshotNewParams{
+				Name:            langsmith.F(name),
+				DockerImage:     langsmith.F(dockerImage),
+				FsCapacityBytes: langsmith.F(capBytes),
 			}
-			if registryURL != "" {
-				body["registry_url"] = registryURL
-				body["registry_username"] = registryUsername
-				body["registry_password"] = registryPassword
+			if registryID != "" {
+				params.RegistryID = langsmith.F(registryID)
 			}
 
-			var resp snapshotResponse
-			if err := c.RawPost(ctx, "/v2/sandboxes/snapshots", body, &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Snapshots.New(ctx, params)
+			if err != nil {
 				ExitErrorf("building snapshot: %v", err)
 			}
 
+			var result any = resp
 			if wait {
-				resp = waitForSnapshot(ctx, c, resp.ID, time.Duration(timeoutSec)*time.Second)
+				result = waitForSnapshot(ctx, c, resp.ID, time.Duration(timeoutSec)*time.Second)
 			}
 
-			output.OutputJSON(resp, "")
+			output.OutputJSON(result, "")
 		},
 	}
 
 	cmd.Flags().StringVar(&dockerImage, "docker-image", "", "Docker image to build from (required)")
 	cmd.Flags().StringVar(&capacity, "capacity", "4gb", "Filesystem capacity with unit (e.g. 4gb, 8gb)")
-	cmd.Flags().StringVar(&registryURL, "registry-url", "", "Registry URL for private images")
-	cmd.Flags().StringVar(&registryUsername, "registry-username", "", "Registry username")
-	cmd.Flags().StringVar(&registryPassword, "registry-password", "", "Registry password")
+	cmd.Flags().StringVar(&registryID, "registry-id", "", "Registry ID for private images")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the snapshot to become ready")
 	cmd.Flags().IntVar(&timeoutSec, "timeout", 300, "Timeout in seconds when using --wait")
 
@@ -198,23 +173,24 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{
-				"name": name,
+			params := langsmith.SandboxBoxNewSnapshotParams{
+				Name: langsmith.F(name),
 			}
 			if checkpoint != "" {
-				body["checkpoint"] = checkpoint
+				params.Checkpoint = langsmith.F(checkpoint)
 			}
 
-			var resp snapshotResponse
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes/"+boxName+"/snapshot", body, &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Boxes.NewSnapshot(ctx, boxName, params)
+			if err != nil {
 				ExitErrorf("capturing snapshot: %v", err)
 			}
 
+			var result any = resp
 			if wait {
-				resp = waitForSnapshot(ctx, c, resp.ID, time.Duration(timeoutSec)*time.Second)
+				result = waitForSnapshot(ctx, c, resp.ID, time.Duration(timeoutSec)*time.Second)
 			}
 
-			output.OutputJSON(resp, "")
+			output.OutputJSON(result, "")
 		},
 	}
 
@@ -235,8 +211,8 @@ func newSnapshotGetCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var resp snapshotResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/snapshots/"+args[0], &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Snapshots.Get(ctx, args[0])
+			if err != nil {
 				ExitErrorf("getting snapshot: %v", err)
 			}
 
@@ -255,7 +231,7 @@ func newSnapshotDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			if err := c.RawDelete(ctx, "/v2/sandboxes/snapshots/"+args[0], nil); err != nil {
+			if err := c.SDK.Sandboxes.Snapshots.Delete(ctx, args[0]); err != nil {
 				ExitErrorf("deleting snapshot: %v", err)
 			}
 
@@ -287,11 +263,11 @@ func newSnapshotWaitCmd() *cobra.Command {
 }
 
 // waitForSnapshot polls until the snapshot is ready or fails.
-func waitForSnapshot(ctx context.Context, c *client.Client, id string, timeout time.Duration) snapshotResponse {
+func waitForSnapshot(ctx context.Context, c *client.Client, id string, timeout time.Duration) *langsmith.SandboxSnapshotGetResponse {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		var resp snapshotResponse
-		if err := c.RawGet(ctx, "/v2/sandboxes/snapshots/"+id, &resp); err != nil {
+		resp, err := c.SDK.Sandboxes.Snapshots.Get(ctx, id)
+		if err != nil {
 			ExitErrorf("getting snapshot: %v", err)
 		}
 		switch resp.Status {
@@ -299,15 +275,15 @@ func waitForSnapshot(ctx context.Context, c *client.Client, id string, timeout t
 			return resp
 		case "failed":
 			msg := "unknown error"
-			if resp.StatusMessage != nil {
-				msg = *resp.StatusMessage
+			if resp.StatusMessage != "" {
+				msg = resp.StatusMessage
 			}
 			ExitErrorf("snapshot build failed: %s", msg)
 		}
 		time.Sleep(2 * time.Second)
 	}
 	ExitErrorf("timed out after %s waiting for snapshot", timeout)
-	return snapshotResponse{} // unreachable
+	return nil
 }
 
 func formatBytes(b int64) string {
@@ -364,7 +340,7 @@ func parseByteSize(s string) (int64, error) {
 
 	bytes := int64(num * multiplier)
 
-	const minBytes = 1024 * 1024              // 1 MB
+	const minBytes = 1024 * 1024                      // 1 MB
 	const maxBytes = 1024 * 1024 * 1024 * 1024 * 1024 // 1 PB
 	if bytes < minBytes {
 		return 0, fmt.Errorf("invalid size %q: must be at least 1mb", s)
