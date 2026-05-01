@@ -205,6 +205,18 @@ func TestSnapshotBuildCmd_CapacityFlag(t *testing.T) {
 	}
 }
 
+func TestSnapshotBuildCmd_RegistryIDFlag(t *testing.T) {
+	cmd := newSnapshotBuildCmd()
+	if f := cmd.Flags().Lookup("registry-id"); f == nil {
+		t.Fatal("flag --registry-id not found")
+	}
+	for _, name := range []string{"registry-url", "registry-username", "registry-password"} {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			t.Fatalf("obsolete flag --%s should not exist", name)
+		}
+	}
+}
+
 // ==================== loadJSONArg ====================
 
 func TestLoadJSONArg_InlineValid(t *testing.T) {

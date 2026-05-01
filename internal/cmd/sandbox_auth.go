@@ -15,17 +15,17 @@ type sandboxEndpoint struct {
 // for operations that only need the dataplane URL regardless of status.
 func resolveSandbox(ctx context.Context, name string) (sandboxEndpoint, error) {
 	c := MustGetClient()
-	var box boxResponse
-	if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name, &box); err != nil {
+	box, err := c.SDK.Sandboxes.Boxes.Get(ctx, name)
+	if err != nil {
 		return sandboxEndpoint{}, fmt.Errorf("getting sandbox: %w", err)
 	}
 	if box.Status != "ready" {
 		return sandboxEndpoint{}, fmt.Errorf("sandbox %q is not ready (status: %s)", name, box.Status)
 	}
-	if box.DataplaneURL == nil || *box.DataplaneURL == "" {
+	if box.DataplaneURL == "" {
 		return sandboxEndpoint{}, fmt.Errorf("sandbox %q has no dataplane URL", name)
 	}
-	return sandboxEndpoint{DataplaneURL: *box.DataplaneURL}, nil
+	return sandboxEndpoint{DataplaneURL: box.DataplaneURL}, nil
 }
 
 // resolveSandboxURL resolves a sandbox name to its dataplane URL without
@@ -33,14 +33,14 @@ func resolveSandbox(ctx context.Context, name string) (sandboxEndpoint, error) {
 // sandbox is still starting.
 func resolveSandboxURL(ctx context.Context, name string) (string, error) {
 	c := MustGetClient()
-	var box boxResponse
-	if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name, &box); err != nil {
+	box, err := c.SDK.Sandboxes.Boxes.Get(ctx, name)
+	if err != nil {
 		return "", fmt.Errorf("getting sandbox: %w", err)
 	}
-	if box.DataplaneURL == nil || *box.DataplaneURL == "" {
+	if box.DataplaneURL == "" {
 		return "", fmt.Errorf("sandbox %q has no dataplane URL", name)
 	}
-	return *box.DataplaneURL, nil
+	return box.DataplaneURL, nil
 }
 
 // sandboxAuthHeaders returns the auth headers for sandbox dataplane requests.

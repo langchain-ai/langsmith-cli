@@ -8,42 +8,18 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
-// Sandbox API types.
-
-type boxResponse struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	SnapshotID      *string `json:"snapshot_id,omitempty"`
-	VCPUs           int     `json:"vcpus,omitempty"`
-	MemBytes        int64   `json:"mem_bytes,omitempty"`
-	FsCapacityBytes *int64  `json:"fs_capacity_bytes,omitempty"`
-	Status          string  `json:"status"`
-	DataplaneURL    *string `json:"dataplane_url,omitempty"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
-}
-
-type boxListResponse struct {
-	Sandboxes []boxResponse `json:"sandboxes"`
-}
-
-type boxStatusResponse struct {
-	Status        string  `json:"status"`
-	StatusMessage *string `json:"status_message,omitempty"`
-}
-
 const defaultBoxPollInterval = 2 * time.Second
 
-// waitForBoxReady polls until the sandbox reaches "ready" or a terminal state.
-func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout time.Duration) (boxStatusResponse, error) {
+func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout time.Duration) (*langsmith.SandboxBoxGetStatusResponse, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		var resp boxStatusResponse
-		if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name+"/status", &resp); err != nil {
-			return boxStatusResponse{}, err
+		resp, err := c.SDK.Sandboxes.Boxes.GetStatus(ctx, name)
+		if err != nil {
+			return nil, err
 		}
 		switch resp.Status {
 		case "ready":
@@ -53,7 +29,7 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout
 		}
 		time.Sleep(defaultBoxPollInterval)
 	}
-	return boxStatusResponse{}, fmt.Errorf("timed out after %s waiting for sandbox", timeout)
+	return nil, fmt.Errorf("timed out after %s waiting for sandbox", timeout)
 }
 
 func newSandboxCreateCmd() *cobra.Command {
@@ -117,33 +93,33 @@ Examples:
 				ExitErrorf("invalid --memory: %v", err)
 			}
 
-			body := map[string]any{
-				"name":        name,
-				"snapshot_id": snapshotID,
-				"vcpus":       vcpus,
-				"mem_bytes":   memBytes,
+			params := langsmith.SandboxBoxNewParams{
+				Name:       langsmith.F(name),
+				SnapshotID: langsmith.F(snapshotID),
+				Vcpus:      langsmith.F(int64(vcpus)),
+				MemBytes:   langsmith.F(memBytes),
 			}
 			if rootfs != "" {
 				rootfsBytes, err := parseByteSize(rootfs)
 				if err != nil {
 					ExitErrorf("invalid --rootfs-capacity: %v", err)
 				}
-				body["fs_capacity_bytes"] = rootfsBytes
+				params.FsCapacityBytes = langsmith.F(rootfsBytes)
 			}
 			if proxyConfig != "" {
 				pc, err := loadJSONArg(proxyConfig)
 				if err != nil {
 					ExitErrorf("invalid --proxy-config: %v", err)
 				}
-				body["proxy_config"] = pc
+				params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
 			}
 			if wait {
-				body["wait_for_ready"] = true
-				body["timeout"] = timeoutSec
+				params.WaitForReady = langsmith.F(true)
+				params.Timeout = langsmith.F(int64(timeoutSec))
 			}
 
-			var resp boxResponse
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes", body, &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Boxes.New(ctx, params)
+			if err != nil {
 				ExitErrorf("creating sandbox: %v", err)
 			}
 
@@ -170,8 +146,8 @@ func newSandboxListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var resp boxListResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/boxes", &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{})
+			if err != nil {
 				ExitErrorf("listing sandboxes: %v", err)
 			}
 
@@ -182,24 +158,23 @@ func newSandboxListCmd() *cobra.Command {
 				var rows [][]string
 				for _, b := range resp.Sandboxes {
 					snap := "-"
-					if b.SnapshotID != nil {
-						if len(*b.SnapshotID) > 8 {
-							snap = (*b.SnapshotID)[:8] + "..."
-						} else {
-							snap = *b.SnapshotID
+					if b.SnapshotID != "" {
+						snap = b.SnapshotID
+						if len(snap) > 8 {
+							snap = snap[:8] + "..."
 						}
 					}
 					diskStr := "-"
-					if b.FsCapacityBytes != nil {
-						diskStr = formatBytes(*b.FsCapacityBytes)
+					if b.FsCapacityBytes > 0 {
+						diskStr = formatBytes(b.FsCapacityBytes)
 					}
 					mem := "-"
 					if b.MemBytes > 0 {
 						mem = formatBytes(b.MemBytes)
 					}
 					vcpusStr := "-"
-					if b.VCPUs > 0 {
-						vcpusStr = fmt.Sprintf("%d", b.VCPUs)
+					if b.Vcpus > 0 {
+						vcpusStr = fmt.Sprintf("%d", b.Vcpus)
 					}
 					rows = append(rows, []string{
 						b.Name, b.Status, vcpusStr, mem, diskStr, snap, formatTime(b.CreatedAt),
@@ -223,8 +198,8 @@ func newSandboxGetCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var resp boxResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+args[0], &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Boxes.Get(ctx, args[0])
+			if err != nil {
 				ExitErrorf("getting sandbox: %v", err)
 			}
 
@@ -257,38 +232,38 @@ for the proxy config JSON format.`,
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{}
+			params := langsmith.SandboxBoxUpdateParams{}
 			if cmd.Flags().Changed("vcpus") {
-				body["vcpus"] = vcpus
+				params.Vcpus = langsmith.F(int64(vcpus))
 			}
 			if cmd.Flags().Changed("memory") {
 				memBytes, err := parseByteSize(memory)
 				if err != nil {
 					ExitErrorf("invalid --memory: %v", err)
 				}
-				body["mem_bytes"] = memBytes
+				params.MemBytes = langsmith.F(memBytes)
 			}
 			if cmd.Flags().Changed("rootfs-capacity") {
 				rootfsBytes, err := parseByteSize(rootfs)
 				if err != nil {
 					ExitErrorf("invalid --rootfs-capacity: %v", err)
 				}
-				body["fs_capacity_bytes"] = rootfsBytes
+				params.FsCapacityBytes = langsmith.F(rootfsBytes)
 			}
 			if cmd.Flags().Changed("proxy-config") {
 				pc, err := loadJSONArg(proxyConfig)
 				if err != nil {
 					ExitErrorf("invalid --proxy-config: %v", err)
 				}
-				body["proxy_config"] = pc
+				params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxUpdateParamsProxyConfig](pc)
 			}
 
-			if len(body) == 0 {
+			if !cmd.Flags().Changed("vcpus") && !cmd.Flags().Changed("memory") && !cmd.Flags().Changed("rootfs-capacity") && !cmd.Flags().Changed("proxy-config") {
 				ExitError("nothing to update (use --vcpus, --memory, --rootfs-capacity, or --proxy-config)")
 			}
 
-			var resp boxResponse
-			if err := c.RawPatch(ctx, "/v2/sandboxes/boxes/"+args[0], body, &resp); err != nil {
+			resp, err := c.SDK.Sandboxes.Boxes.Update(ctx, args[0], params)
+			if err != nil {
 				ExitErrorf("updating sandbox: %v", err)
 			}
 
@@ -313,7 +288,7 @@ func newSandboxDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			if err := c.RawDelete(ctx, "/v2/sandboxes/boxes/"+args[0], nil); err != nil {
+			if err := c.SDK.Sandboxes.Boxes.Delete(ctx, args[0]); err != nil {
 				ExitErrorf("deleting sandbox: %v", err)
 			}
 
@@ -412,7 +387,7 @@ func newSandboxStartCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes/"+args[0]+"/start", nil, nil); err != nil {
+			if _, err := c.SDK.Sandboxes.Boxes.Start(ctx, args[0]); err != nil {
 				ExitErrorf("starting sandbox: %v", err)
 			}
 
@@ -440,7 +415,7 @@ func newSandboxStopCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes/"+args[0]+"/stop", nil, nil); err != nil {
+			if err := c.SDK.Sandboxes.Boxes.Stop(ctx, args[0]); err != nil {
 				ExitErrorf("stopping sandbox: %v", err)
 			}
 
