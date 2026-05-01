@@ -570,12 +570,12 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 func TestTraceMessages_FeedbackStats(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/v1/sessions":
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-fb", "name": "fb-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
 			// API returns feedback_stats directly on each trace
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -595,11 +595,16 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 				},
 				"cursors": map[string]any{},
 			})
-		case r.URL.Path == "/api/v1/runs/query":
+		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", 404)
 		}
 	})
+	t.Setenv("LANGSMITH_ENDPOINT", ts.URL)
+	t.Setenv("LANGSMITH_API_KEY", "test-api-key")
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
