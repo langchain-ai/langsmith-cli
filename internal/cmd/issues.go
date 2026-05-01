@@ -265,7 +265,7 @@ Examples:
 
 func newProjectIssuesUpdateCmd() *cobra.Command {
 	var (
-		title       string
+		name        string
 		description string
 		proposedFix string
 		evaluator   string
@@ -275,20 +275,20 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update <issue-id>",
-		Short: "[Private Beta] Update an existing issue's title, description, proposed fix, evaluator, or status",
+		Short: "[Private Beta] Update an existing issue's name, description, proposed fix, evaluator, or status",
 		Long: `[Private Beta] Update an existing issue.
 
 To link runs as evidence, use 'langsmith project issues runs add' instead.
 
 The issue ID is the UUID returned by 'langsmith project issues list'.
 
---title and --description are for factual corrections only (when new evidence disproves the original finding).
+--name and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
 --evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
 --status reopens a resolved issue. The only accepted value is 'open' — closing an issue is a human action done via the UI.
 
 Examples:
-  langsmith project issues update <id> --title "Corrected title" --description "New finding..."
+  langsmith project issues update <id> --name "Corrected name" --description "New finding..."
   langsmith project issues update <id> --status open
   langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
   langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
@@ -296,8 +296,8 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if title == "" && description == "" && proposedFix == "" && evaluator == "" && status == "" {
-				ExitError("at least one of --title, --description, --proposed-fix, --evaluator, or --status is required")
+			if name == "" && description == "" && proposedFix == "" && evaluator == "" && status == "" {
+				ExitError("at least one of --name, --description, --proposed-fix, --evaluator, or --status is required")
 			}
 			if status != "" && status != "open" {
 				ExitError("--status only accepts 'open' — closing an issue is done via the UI")
@@ -307,8 +307,8 @@ Examples:
 			ctx := context.Background()
 
 			body := map[string]any{}
-			if title != "" {
-				body["name"] = title
+			if name != "" {
+				body["name"] = name
 			}
 			if description != "" {
 				body["description"] = description
@@ -358,7 +358,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&title, "title", "", "Corrected title (use only when original is factually wrong)")
+	cmd.Flags().StringVar(&name, "name", "", "Corrected name (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
 	cmd.Flags().StringVar(&status, "status", "", "Reopen a resolved issue. Only 'open' is accepted — closing is done via the UI")
