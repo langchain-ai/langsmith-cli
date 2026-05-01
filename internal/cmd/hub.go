@@ -10,6 +10,23 @@ import (
 
 var hubRepoHandlePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
+type hubRepo struct {
+	ID             string   `json:"id"`
+	FullName       string   `json:"full_name"`
+	Owner          *string  `json:"owner"`
+	RepoHandle     string   `json:"repo_handle"`
+	RepoType       string   `json:"repo_type"`
+	Description    *string  `json:"description"`
+	Readme         *string  `json:"readme"`
+	IsPublic       bool     `json:"is_public"`
+	IsArchived     bool     `json:"is_archived"`
+	Tags           []string `json:"tags"`
+	NumCommits     int      `json:"num_commits"`
+	LastCommitHash *string  `json:"last_commit_hash"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
+}
+
 // parseHubOwnerRepo splits "[owner/]repo[:ref]"; missing owner becomes "-" (API "current tenant").
 func parseHubOwnerRepo(arg string) (string, string, string, error) {
 	if arg == "" {
@@ -72,5 +89,6 @@ Examples:
   langsmith hub delete my-agent --yes`,
 	}
 	cmd.AddCommand(newHubInitCmd())
+	cmd.AddCommand(newHubGetCmd())
 	return cmd
 }
