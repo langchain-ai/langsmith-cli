@@ -113,7 +113,7 @@ Examples:
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
+				columns := []string{"TITLE", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
 					sevLabel := severityLabels[issue.Severity]
@@ -387,7 +387,7 @@ func issueToMap(issue forgeIssue) map[string]any {
 	return map[string]any{
 		"id":            issue.ID,
 		"session_id":    issue.SessionID,
-		"name":          issue.Name,
+		"title":         issue.Name,
 		"description":   issue.Description,
 		"severity":      issue.Severity,
 		"status":        issue.Status,
