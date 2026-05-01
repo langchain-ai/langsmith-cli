@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -135,7 +137,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		profile.APIURL = apiURL
 	}
 	if workspaceID == "" && profile.WorkspaceID == "" {
-		workspaceID, err = promptWorkspaceID(cmd)
+		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
 		if err != nil {
 			return err
 		}
@@ -209,24 +211,100 @@ func validateWorkspaceID(workspaceID string) error {
 	return nil
 }
 
-func promptWorkspaceID(cmd *cobra.Command) (string, error) {
+func promptWorkspaceSelection(cmd *cobra.Command, apiURL, accessToken string) (string, error) {
 	in := cmd.InOrStdin()
 	if !inputIsTerminal(in) {
+		fmt.Fprintln(cmd.ErrOrStderr(), "No default workspace set because stdin is not interactive. Some commands require a workspace; pass --workspace-id to login or run 'langsmith workspace set-default <workspace-id>'.")
 		return "", nil
 	}
-	fmt.Fprint(cmd.ErrOrStderr(), "Default workspace ID (optional, press Enter to skip): ")
-	line, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("reading workspace ID: %w", err)
+	workspaces, err := listLoginWorkspaces(cmd.Context(), apiURL, accessToken)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Could not list workspaces: %v\n", err)
+		return promptWorkspaceID(cmd)
+	}
+	if len(workspaces) == 1 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Using default workspace %q (%s)\n", workspaceDisplayName(workspaces[0]), workspaces[0].ID)
+		return workspaces[0].ID, nil
+	}
+	if len(workspaces) > 1 {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Select a default workspace:")
+		for i, workspace := range workspaces {
+			fmt.Fprintf(cmd.ErrOrStderr(), "  %d. %s (%s)\n", i+1, workspaceDisplayName(workspace), workspace.ID)
+		}
+		return promptWorkspaceChoice(cmd, workspaces)
+	}
+	return promptWorkspaceID(cmd)
+}
+
+func workspaceDisplayName(workspace langsmith.WorkspaceListResponse) string {
+	if workspace.DisplayName != "" {
+		return workspace.DisplayName
+	}
+	return workspace.ID
+}
+
+func listLoginWorkspaces(ctx context.Context, apiURL, accessToken string) ([]langsmith.WorkspaceListResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c := client.NewWithOptions(client.Options{
+		APIURL:           apiURL,
+		OAuthAccessToken: accessToken,
+	})
+	workspaces, err := c.SDK.Workspaces.List(ctx, langsmith.WorkspaceListParams{})
+	if err != nil {
+		return nil, err
+	}
+	if workspaces == nil {
+		return nil, nil
+	}
+	return *workspaces, nil
+}
+
+func promptWorkspaceChoice(cmd *cobra.Command, workspaces []langsmith.WorkspaceListResponse) (string, error) {
+	line, err := promptLine(cmd, "Enter number or workspace ID: ")
+	if err != nil {
+		return "", err
+	}
+	choice := strings.TrimSpace(line)
+	if choice == "" {
+		return "", fmt.Errorf("default workspace required for OAuth login")
+	}
+	if n, err := strconv.Atoi(choice); err == nil {
+		if n < 1 || n > len(workspaces) {
+			return "", fmt.Errorf("invalid workspace selection %d", n)
+		}
+		return workspaces[n-1].ID, nil
+	}
+	if err := validateWorkspaceID(choice); err != nil {
+		return "", err
+	}
+	return choice, nil
+}
+
+func promptWorkspaceID(cmd *cobra.Command) (string, error) {
+	line, err := promptLine(cmd, "Default workspace ID: ")
+	if err != nil {
+		return "", err
 	}
 	workspaceID := strings.TrimSpace(line)
 	if workspaceID == "" {
-		return "", nil
+		return "", fmt.Errorf("default workspace required for OAuth login")
 	}
 	if err := validateWorkspaceID(workspaceID); err != nil {
 		return "", err
 	}
 	return workspaceID, nil
+}
+
+func promptLine(cmd *cobra.Command, prompt string) (string, error) {
+	in := cmd.InOrStdin()
+	fmt.Fprint(cmd.ErrOrStderr(), prompt)
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("reading input: %w", err)
+	}
+	return line, nil
 }
 
 func requestDeviceCode(ctx context.Context, apiURL string) (*deviceCodeResponse, error) {
