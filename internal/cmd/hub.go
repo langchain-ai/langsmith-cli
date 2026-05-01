@@ -10,6 +10,11 @@ import (
 
 var hubRepoHandlePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
+type hubListResponse struct {
+	Repos []hubRepo `json:"repos"`
+	Total int       `json:"total"`
+}
+
 type hubRepo struct {
 	ID             string   `json:"id"`
 	FullName       string   `json:"full_name"`
@@ -90,5 +95,6 @@ Examples:
 	}
 	cmd.AddCommand(newHubInitCmd())
 	cmd.AddCommand(newHubGetCmd())
+	cmd.AddCommand(newHubListCmd())
 	return cmd
 }
