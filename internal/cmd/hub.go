@@ -96,5 +96,6 @@ Examples:
 	cmd.AddCommand(newHubInitCmd())
 	cmd.AddCommand(newHubGetCmd())
 	cmd.AddCommand(newHubListCmd())
+	cmd.AddCommand(newHubDeleteCmd())
 	return cmd
 }
