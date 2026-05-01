@@ -71,5 +71,6 @@ Examples:
   langsmith hub get my-agent
   langsmith hub delete my-agent --yes`,
 	}
+	cmd.AddCommand(newHubInitCmd())
 	return cmd
 }
