@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -165,8 +165,8 @@ func newExperimentGetCmd() *cobra.Command {
 
 			// Build output
 			data := map[string]any{
-				"id":            p.ID,
-				"name":          p.Name,
+				"id":             p.ID,
+				"name":           p.Name,
 				"feedback_stats": p.FeedbackStats,
 				"run_stats": map[string]any{
 					"latency":     p.LatencyP50,
@@ -195,4 +195,3 @@ func newExperimentGetCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
-

@@ -21,7 +21,7 @@ func newDetailedSpecServer(t *testing.T) *httptest.Server {
 					"parameters": []any{
 						map[string]any{
 							"name": "limit", "in": "query", "required": false,
-							"schema": map[string]any{"type": "integer"},
+							"schema":      map[string]any{"type": "integer"},
 							"description": "Max results",
 						},
 					},
