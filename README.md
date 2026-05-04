@@ -281,6 +281,31 @@ langsmith experiment list --dataset my-eval-set
 langsmith experiment get my-experiment-2024-01-15
 ```
 
+### `hub` — Manage agent and skill repos on the LangSmith Hub
+
+The hub stores versioned directories of files grouped into repos of type `agent` or `skill`. Each push creates a new commit; pull downloads a commit's files into a local directory. This is the CLI surface for the `langsmith` Python/JS SDK's hub methods (`pull_skill`, `push_skill`, `pull_agent`, `push_agent`, etc.).
+
+```bash
+# Scaffold a starter skill (or agent)
+langsmith hub init --type skill --dir ./my-skill --name my-skill
+
+# Push a local directory as a new commit (creates the repo if missing)
+langsmith hub push my-skill --type skill --dir ./my-skill
+
+# Pull a commit (latest by default; pin a tag with :ref)
+langsmith hub pull my-skill --dir ./out
+langsmith hub pull acme/my-skill:production --dir ./out
+
+# Discover, inspect, delete
+langsmith hub list --type skill --query foo
+langsmith hub get acme/my-skill
+langsmith hub delete acme/my-skill --yes
+```
+
+Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's "current tenant" wildcard).
+
+Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
+
 ### `self-update` — Update langsmith to the latest version
 
 ```bash

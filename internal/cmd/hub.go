@@ -65,12 +65,12 @@ var hubExcludedDirs = map[string]bool{
 }
 
 var hubExcludedFiles = map[string]bool{
-	".DS_Store":       true,
-	".env":            true,
-	".env.local":      true,
-	".env.production": true,
+	".DS_Store":        true,
+	".env":             true,
+	".env.local":       true,
+	".env.production":  true,
 	".env.development": true,
-	"Thumbs.db":       true,
+	"Thumbs.db":        true,
 }
 
 var hubExcludedSuffixes = []string{".pyc", ".pem", ".key", ".pfx", ".p12", ".crt"}
