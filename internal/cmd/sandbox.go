@@ -2,6 +2,11 @@ package cmd
 
 import "github.com/spf13/cobra"
 
+type sandboxMessage struct {
+	Name    string `json:"name,omitempty"`
+	Message string `json:"message"`
+}
+
 func newSandboxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
@@ -10,11 +15,11 @@ func newSandboxCmd() *cobra.Command {
 
 Common workflows:
 
-  # Build a snapshot from a Docker image and wait for it to be ready
-  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --wait
+  # Build a snapshot from a Docker image
+  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
 
-  # Create a sandbox from the snapshot and wait for it to boot
-  langsmith sandbox create my-vm --snapshot-id <id> --wait
+  # Create a sandbox from the snapshot
+  langsmith sandbox create my-vm --snapshot-id <id>
 
   # Run a command inside the sandbox
   langsmith sandbox exec my-vm -- uname -a
@@ -31,14 +36,13 @@ Common workflows:
 	}
 
 	// Lifecycle
-	cmd.AddCommand(newSandboxCreateCmd())
-	cmd.AddCommand(newSandboxListCmd())
-	cmd.AddCommand(newSandboxGetCmd())
-	cmd.AddCommand(newSandboxUpdateCmd())
-	cmd.AddCommand(newSandboxDeleteCmd())
-	cmd.AddCommand(newSandboxStartCmd())
-	cmd.AddCommand(newSandboxStopCmd())
-	cmd.AddCommand(newSandboxWaitCmd())
+	cmd.AddCommand(sandboxCreateCommand.Cobra())
+	cmd.AddCommand(sandboxListCommand.Cobra())
+	cmd.AddCommand(sandboxGetCommand.Cobra())
+	cmd.AddCommand(sandboxUpdateCommand.Cobra())
+	cmd.AddCommand(sandboxDeleteCommand.Cobra())
+	cmd.AddCommand(sandboxStartCommand.Cobra())
+	cmd.AddCommand(sandboxStopCommand.Cobra())
 
 	// Connectivity
 	cmd.AddCommand(newSandboxExecCmd())
@@ -47,7 +51,7 @@ Common workflows:
 	cmd.AddCommand(newSandboxSSHSetupCmd())
 
 	// Sub-resources
-	cmd.AddCommand(newSandboxSnapshotCmd())
+	cmd.AddCommand(sandboxSnapshotCommand.Cobra())
 
 	return cmd
 }
