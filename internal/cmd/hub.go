@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +30,50 @@ type hubDirResponse struct {
 	CommitHash string                  `json:"commit_hash"`
 	Files      map[string]hubFileEntry `json:"files"`
 }
+
+type hubCommitResponse struct {
+	Commit struct {
+		ID         string `json:"id"`
+		CommitHash string `json:"commit_hash"`
+		CreatedAt  string `json:"created_at"`
+	} `json:"commit"`
+}
+
+type hubRepoMeta struct {
+	Description *string
+	Readme      *string
+	Tags        []string
+	IsPublic    *bool
+}
+
+const (
+	hubMaxFileEntries   = 500
+	hubMaxFileSizeBytes = 1 << 20
+)
+
+var hubExcludedDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"__pycache__":  true,
+	".venv":        true,
+	"venv":         true,
+	"dist":         true,
+	"build":        true,
+	"target":       true,
+	".next":        true,
+	".cache":       true,
+}
+
+var hubExcludedFiles = map[string]bool{
+	".DS_Store":       true,
+	".env":            true,
+	".env.local":      true,
+	".env.production": true,
+	".env.development": true,
+	"Thumbs.db":       true,
+}
+
+var hubExcludedSuffixes = []string{".pyc", ".pem", ".key", ".pfx", ".p12", ".crt"}
 
 type hubRepo struct {
 	ID             string   `json:"id"`
@@ -87,6 +133,63 @@ func isHTTP409(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "HTTP 409")
 }
 
+func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType string, meta hubRepoMeta) error {
+	getPath := fmt.Sprintf("/repos/%s/%s", owner, name)
+	var existing map[string]any
+	err := c.RawGet(ctx, getPath, &existing)
+	if err == nil {
+		if meta.Description != nil || meta.Readme != nil || meta.Tags != nil || meta.IsPublic != nil {
+			body := map[string]any{}
+			if meta.Description != nil {
+				body["description"] = *meta.Description
+			}
+			if meta.Readme != nil {
+				body["readme"] = *meta.Readme
+			}
+			if meta.Tags != nil {
+				body["tags"] = meta.Tags
+			}
+			if meta.IsPublic != nil {
+				body["is_public"] = *meta.IsPublic
+			}
+			if err := c.RawPatch(ctx, getPath, body, nil); err != nil {
+				return fmt.Errorf("updating metadata for %s/%s: %w", owner, name, err)
+			}
+		}
+		return nil
+	}
+	if !isHTTP404(err) {
+		return fmt.Errorf("checking %s/%s: %w", owner, name, err)
+	}
+	if !hubRepoHandlePattern.MatchString(name) {
+		return fmt.Errorf("repo handle %q must match %s", name, hubRepoHandlePattern.String())
+	}
+	create := map[string]any{
+		"repo_handle": name,
+		"repo_type":   repoType,
+		"is_public":   false,
+	}
+	if meta.IsPublic != nil {
+		create["is_public"] = *meta.IsPublic
+	}
+	if meta.Description != nil {
+		create["description"] = *meta.Description
+	}
+	if meta.Readme != nil {
+		create["readme"] = *meta.Readme
+	}
+	if meta.Tags != nil {
+		create["tags"] = meta.Tags
+	}
+	if err := c.RawPost(ctx, "/repos/", create, nil); err != nil {
+		if isHTTP409(err) {
+			return nil
+		}
+		return fmt.Errorf("creating %s/%s: %w", owner, name, err)
+	}
+	return nil
+}
+
 func newHubCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hub",
@@ -112,5 +215,6 @@ Examples:
 	cmd.AddCommand(newHubListCmd())
 	cmd.AddCommand(newHubDeleteCmd())
 	cmd.AddCommand(newHubPullCmd())
+	cmd.AddCommand(newHubPushCmd())
 	return cmd
 }
