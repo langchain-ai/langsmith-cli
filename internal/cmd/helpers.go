@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/extract"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 
 	"github.com/google/uuid"
 )
@@ -144,8 +144,8 @@ func resolveDataset(ctx context.Context, c *client.Client, nameOrID string) (*la
 	}
 	// Fall back to name lookup
 	resp, err := c.SDK.Datasets.List(ctx, langsmith.DatasetListParams{
-		Name: langsmith.F(nameOrID),
-		Limit:       langsmith.F(int64(1)),
+		Name:  langsmith.F(nameOrID),
+		Limit: langsmith.F(int64(1)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("searching dataset by name: %w", err)
