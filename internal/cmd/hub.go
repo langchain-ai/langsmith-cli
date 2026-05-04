@@ -15,6 +15,20 @@ type hubListResponse struct {
 	Total int       `json:"total"`
 }
 
+type hubFileEntry struct {
+	Type       string `json:"type"`
+	Content    string `json:"content,omitempty"`
+	RepoHandle string `json:"repo_handle,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	CommitHash string `json:"commit_hash,omitempty"`
+}
+
+type hubDirResponse struct {
+	CommitID   string                  `json:"commit_id"`
+	CommitHash string                  `json:"commit_hash"`
+	Files      map[string]hubFileEntry `json:"files"`
+}
+
 type hubRepo struct {
 	ID             string   `json:"id"`
 	FullName       string   `json:"full_name"`
@@ -97,5 +111,6 @@ Examples:
 	cmd.AddCommand(newHubGetCmd())
 	cmd.AddCommand(newHubListCmd())
 	cmd.AddCommand(newHubDeleteCmd())
+	cmd.AddCommand(newHubPullCmd())
 	return cmd
 }
