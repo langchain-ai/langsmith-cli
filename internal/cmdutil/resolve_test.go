@@ -17,7 +17,6 @@ func newTestCmd() *cobra.Command {
 	root.PersistentFlags().String("api-url", "", "")
 	root.PersistentFlags().String("profile", "", "")
 	root.PersistentFlags().String("format", "pretty", "")
-	root.PersistentFlags().Bool("json", false, "")
 	return root
 }
 
@@ -79,14 +78,6 @@ func TestResolveAPIURL_NormalizesTrailingAPIV1(t *testing.T) {
 func TestResolveFormat_Flag(t *testing.T) {
 	cmd := newTestCmd()
 	_ = cmd.PersistentFlags().Set("format", "json")
-	if got := ResolveFormat(cmd); got != "json" {
-		t.Errorf("expected json, got %q", got)
-	}
-}
-
-func TestResolveFormat_JSONFlag(t *testing.T) {
-	cmd := newTestCmd()
-	_ = cmd.PersistentFlags().Set("json", "true")
 	if got := ResolveFormat(cmd); got != "json" {
 		t.Errorf("expected json, got %q", got)
 	}
