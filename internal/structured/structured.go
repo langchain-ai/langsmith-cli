@@ -96,7 +96,12 @@ func Render(cmd *cobra.Command, model any, spec Spec) error {
 
 	w := cmd.OutOrStdout()
 	var err error
-	if expr := cmdutil.ResolveJQ(cmd); expr != "" {
+	if expr := resolveJQ(cmd); expr != "" {
+		if typed, ok := textModel.(interface{ CanRenderJQ() error }); ok {
+			if err := typed.CanRenderJQ(); err != nil {
+				return err
+			}
+		}
 		err = renderJQ(w, model, expr)
 	} else if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
 		enc := json.NewEncoder(w)
@@ -109,6 +114,16 @@ func Render(cmd *cobra.Command, model any, spec Spec) error {
 		return err
 	}
 	return errAfterRender
+}
+
+func resolveJQ(cmd *cobra.Command) string {
+	if f := cmd.Flags().Lookup("jq"); f != nil {
+		return f.Value.String()
+	}
+	if f := cmd.PersistentFlags().Lookup("jq"); f != nil {
+		return f.Value.String()
+	}
+	return ""
 }
 
 func renderJQ(w io.Writer, model any, expr string) error {

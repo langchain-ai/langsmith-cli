@@ -32,6 +32,13 @@ type apiResponse struct {
 	Include    bool
 }
 
+func (r apiResponse) CanRenderJQ() error {
+	if !r.IsJSON {
+		return fmt.Errorf("response body is not JSON")
+	}
+	return nil
+}
+
 func requestCommand(method string) structured.Command[*requestInput] {
 	return structured.Command[*requestInput]{
 		Use:   method + " PATH",
@@ -52,9 +59,6 @@ func requestCommand(method string) structured.Command[*requestInput] {
 			resp, err := runRequest(c, method, args[0], in.Body, in.Headers, in.Include)
 			if err != nil {
 				return nil, err
-			}
-			if cmdutil.ResolveJQ(cmd) != "" && !resp.IsJSON {
-				return nil, fmt.Errorf("response body is not JSON")
 			}
 			var afterRender error
 			if resp.StatusCode >= 400 {
