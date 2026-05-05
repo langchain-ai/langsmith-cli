@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 func TestNewHubCmd_HasUseAndShort(t *testing.T) {
@@ -31,11 +34,14 @@ func TestNewHubCmd_RegisteredOnRoot(t *testing.T) {
 }
 
 func TestIsHTTP404(t *testing.T) {
-	if !isHTTP404(errors.New("HTTP 404: not found")) {
-		t.Error("expected true for HTTP 404 error")
+	if !isHTTP404(&langsmith.Error{StatusCode: http.StatusNotFound}) {
+		t.Error("expected true for typed 404 API error")
 	}
-	if isHTTP404(errors.New("HTTP 500: boom")) {
-		t.Error("expected false for HTTP 500 error")
+	if isHTTP404(&langsmith.Error{StatusCode: http.StatusInternalServerError}) {
+		t.Error("expected false for typed 500 API error")
+	}
+	if isHTTP404(errors.New("HTTP 404: not found")) {
+		t.Error("expected false for plain string error")
 	}
 	if isHTTP404(nil) {
 		t.Error("expected false for nil")
@@ -43,11 +49,14 @@ func TestIsHTTP404(t *testing.T) {
 }
 
 func TestIsHTTP409(t *testing.T) {
-	if !isHTTP409(errors.New("HTTP 409: conflict")) {
-		t.Error("expected true for HTTP 409 error")
+	if !isHTTP409(&langsmith.Error{StatusCode: http.StatusConflict}) {
+		t.Error("expected true for typed 409 API error")
 	}
-	if isHTTP409(errors.New("HTTP 404: not found")) {
-		t.Error("expected false for HTTP 404 error")
+	if isHTTP409(&langsmith.Error{StatusCode: http.StatusNotFound}) {
+		t.Error("expected false for typed 404 API error")
+	}
+	if isHTTP409(errors.New("HTTP 409: conflict")) {
+		t.Error("expected false for plain string error")
 	}
 	if isHTTP409(nil) {
 		t.Error("expected false for nil")

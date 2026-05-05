@@ -9,9 +9,10 @@ import (
 
 func TestHubGet_Success(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/acme/my-skill" {
+		if r.URL.Path != "/api/v1/repos/acme/my-skill" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"repo": map[string]any{
 				"id":          "abc",
@@ -46,9 +47,10 @@ func TestHubGet_Success(t *testing.T) {
 
 func TestHubGet_DefaultsOwnerToDash(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/-/my-skill" {
-			t.Errorf("path = %q (want /repos/-/my-skill)", r.URL.Path)
+		if r.URL.Path != "/api/v1/repos/-/my-skill" {
+			t.Errorf("path = %q (want /api/v1/repos/-/my-skill)", r.URL.Path)
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"repo": map[string]any{"full_name": "-/my-skill"}})
 	})
 	defer setupTestEnv(t, srv.URL)()

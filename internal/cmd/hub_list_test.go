@@ -12,6 +12,7 @@ func TestHubList_QueryParams(t *testing.T) {
 	var got url.Values
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"repos": []any{}, "total": 0})
 	})
 	defer setupTestEnv(t, srv.URL)()
@@ -54,6 +55,7 @@ func TestHubList_RejectsBadType(t *testing.T) {
 
 func TestHubList_RendersJSON(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"repos": []map[string]any{{"full_name": "acme/foo", "repo_type": "skill"}},
 			"total": 1,

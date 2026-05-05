@@ -1,21 +1,8 @@
 package cmd
 
 import (
-	"context"
-	"fmt"
-	"regexp"
-	"strings"
-
-	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/spf13/cobra"
 )
-
-var hubRepoHandlePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
-
-type hubListResponse struct {
-	Repos []hubRepo `json:"repos"`
-	Total int       `json:"total"`
-}
 
 type hubFileEntry struct {
 	Type       string `json:"type"`
@@ -90,104 +77,6 @@ type hubRepo struct {
 	LastCommitHash *string  `json:"last_commit_hash"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
-}
-
-// parseHubOwnerRepo splits "[owner/]repo[:ref]"; missing owner becomes "-" (API "current tenant").
-func parseHubOwnerRepo(arg string) (string, string, string, error) {
-	if arg == "" {
-		return "", "", "", fmt.Errorf("empty repo identifier")
-	}
-
-	rest := arg
-	ref := ""
-	if i := strings.Index(rest, ":"); i >= 0 {
-		ref = rest[i+1:]
-		rest = rest[:i]
-	}
-
-	owner := "-"
-	name := rest
-	if i := strings.Index(rest, "/"); i >= 0 {
-		owner = rest[:i]
-		name = rest[i+1:]
-	}
-
-	if owner == "" || name == "" {
-		return "", "", "", fmt.Errorf("invalid repo identifier %q (expected [OWNER/]REPO[:REF])", arg)
-	}
-	if strings.Contains(name, "/") {
-		return "", "", "", fmt.Errorf("invalid repo identifier %q (too many '/' separators)", arg)
-	}
-	if owner == "-" && !hubRepoHandlePattern.MatchString(name) {
-		return "", "", "", fmt.Errorf("invalid repo handle %q (must match %s)", name, hubRepoHandlePattern.String())
-	}
-
-	return owner, name, ref, nil
-}
-
-func isHTTP404(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "HTTP 404")
-}
-
-func isHTTP409(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "HTTP 409")
-}
-
-func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType string, meta hubRepoMeta) error {
-	getPath := fmt.Sprintf("/repos/%s/%s", owner, name)
-	var existing map[string]any
-	err := c.RawGet(ctx, getPath, &existing)
-	if err == nil {
-		if meta.Description != nil || meta.Readme != nil || meta.Tags != nil || meta.IsPublic != nil {
-			body := map[string]any{}
-			if meta.Description != nil {
-				body["description"] = *meta.Description
-			}
-			if meta.Readme != nil {
-				body["readme"] = *meta.Readme
-			}
-			if meta.Tags != nil {
-				body["tags"] = meta.Tags
-			}
-			if meta.IsPublic != nil {
-				body["is_public"] = *meta.IsPublic
-			}
-			if err := c.RawPatch(ctx, getPath, body, nil); err != nil {
-				return fmt.Errorf("updating metadata for %s/%s: %w", owner, name, err)
-			}
-		}
-		return nil
-	}
-	if !isHTTP404(err) {
-		return fmt.Errorf("checking %s/%s: %w", owner, name, err)
-	}
-	if !hubRepoHandlePattern.MatchString(name) {
-		return fmt.Errorf("repo handle %q must match %s", name, hubRepoHandlePattern.String())
-	}
-	create := map[string]any{
-		"repo_handle": name,
-		"repo_type":   repoType,
-		"is_public":   false,
-	}
-	if meta.IsPublic != nil {
-		create["is_public"] = *meta.IsPublic
-	}
-	if meta.Description != nil {
-		create["description"] = *meta.Description
-	}
-	if meta.Readme != nil {
-		create["readme"] = *meta.Readme
-	}
-	if meta.Tags != nil {
-		create["tags"] = meta.Tags
-	}
-	if err := c.RawPost(ctx, "/repos/", create, nil); err != nil {
-		if isHTTP409(err) {
-			return nil
-		}
-		return fmt.Errorf("creating %s/%s: %w", owner, name, err)
-	}
-	return nil
 }
 
 func newHubCmd() *cobra.Command {

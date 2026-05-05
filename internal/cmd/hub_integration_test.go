@@ -63,6 +63,14 @@ func runHubExpectError(t *testing.T, args ...string) error {
 	return execErr
 }
 
+func isNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "404") && strings.Contains(msg, "not found")
+}
+
 // scheduleDelete registers a t.Cleanup that deletes the hub repo, swallowing
 // errors. Runs even on test failure so test repos do not pile up.
 func scheduleDelete(t *testing.T, handle string) {
@@ -295,7 +303,7 @@ func TestHubIntegration_UserJourney(t *testing.T) {
 
 	// Step 10: get after delete should 404.
 	err = runHubExpectError(t, "get", handle)
-	if !strings.Contains(err.Error(), "HTTP 404") {
+	if !isNotFoundErr(err) {
 		t.Errorf("expected HTTP 404 after delete; got %v", err)
 	}
 	t.Logf("step 10: get after delete returned 404 as expected")
@@ -305,7 +313,7 @@ func TestHubIntegration_GetMissingRepo(t *testing.T) {
 	requireIntegrationEnv(t)
 	handle := randomHandle("cli-int-missing")
 	err := runHubExpectError(t, "get", handle)
-	if !strings.Contains(err.Error(), "HTTP 404") {
+	if !isNotFoundErr(err) {
 		t.Errorf("expected HTTP 404 for missing repo; got %v", err)
 	}
 }

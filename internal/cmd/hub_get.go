@@ -21,14 +21,11 @@ func newHubGetCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			path := fmt.Sprintf("/repos/%s/%s", owner, name)
-			var envelope struct {
-				Repo hubRepo `json:"repo"`
-			}
-			if err := c.RawGet(ctx, path, &envelope); err != nil {
+			resp, err := c.SDK.Repos.Get(ctx, owner, name)
+			if err != nil {
 				return fmt.Errorf("getting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(envelope.Repo, "")
+			output.OutputJSON(sdkRepoToHubRepo(resp.Repo), "")
 			return nil
 		},
 	}
