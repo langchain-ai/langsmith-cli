@@ -19,6 +19,7 @@ var (
 	flagAPIURL       string
 	flagProfile      string
 	flagOutputFormat string
+	flagOutputJSON   bool
 )
 
 // NewRootCmd creates the top-level `langsmith` command.
@@ -48,7 +49,8 @@ Quick start:
 
 	Output:
 	  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).
-	  --format json    Machine-readable JSON for agents and scripts.`,
+	  --json           Machine-readable JSON for agents and scripts.
+	  --format json    Equivalent to --json.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       displayVersion,
@@ -58,6 +60,7 @@ Quick start:
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
+	rootCmd.PersistentFlags().BoolVar(&flagOutputJSON, "json", false, "Output machine-readable JSON")
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
@@ -107,6 +110,9 @@ func GetWorkspaceID() string {
 
 // GetFormat returns the output format.
 func GetFormat() string {
+	if flagOutputJSON {
+		return "json"
+	}
 	return flagOutputFormat
 }
 

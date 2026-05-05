@@ -10,6 +10,7 @@ func newTestRoot() *cobra.Command {
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
 	root.PersistentFlags().String("format", "pretty", "")
+	root.PersistentFlags().Bool("json", false, "")
 	root.AddCommand(NewCmd())
 	return root
 }

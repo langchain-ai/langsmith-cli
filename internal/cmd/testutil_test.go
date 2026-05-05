@@ -47,17 +47,20 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
 	oldFmt := flagOutputFormat
+	oldJSON := flagOutputJSON
 
 	flagAPIKey = "test-api-key"
 	flagAPIURL = serverURL
 	flagProfile = ""
 	flagOutputFormat = "json"
+	flagOutputJSON = false
 
 	return func() {
 		flagAPIKey = oldKey
 		flagAPIURL = oldURL
 		flagProfile = oldProfile
 		flagOutputFormat = oldFmt
+		flagOutputJSON = oldJSON
 	}
 }
 
@@ -66,6 +69,11 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 func executeCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	format := flagOutputFormat
+	jsonOutput := flagOutputJSON
+	defer func() {
+		flagOutputFormat = format
+		flagOutputJSON = jsonOutput
+	}()
 	cmd := NewRootCmd("test", "test")
 	var outBuf bytes.Buffer
 	cmd.SetOut(&outBuf)
@@ -73,13 +81,17 @@ func executeCommand(t *testing.T, args ...string) (string, error) {
 	if format != "" {
 		hasFormat := false
 		for _, arg := range args {
-			if arg == "--format" || strings.HasPrefix(arg, "--format=") {
+			if arg == "--json" || arg == "--format" || strings.HasPrefix(arg, "--format=") {
 				hasFormat = true
 				break
 			}
 		}
 		if !hasFormat {
-			args = append([]string{"--format", format}, args...)
+			if format == "json" {
+				args = append([]string{"--json"}, args...)
+			} else {
+				args = append([]string{"--format", format}, args...)
+			}
 		}
 	}
 	cmd.SetArgs(args)
