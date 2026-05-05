@@ -35,6 +35,15 @@ Download the latest binary for your platform from [GitHub Releases](https://gith
 
 ## Authentication
 
+For hosted LangSmith (SaaS), you can authenticate with OAuth:
+
+```bash
+langsmith login
+```
+
+OAuth login currently supports hosted LangSmith only. For self-hosted LangSmith,
+use an API key with `LANGSMITH_API_KEY` or `--api-key`.
+
 Set your API key as an environment variable:
 
 ```bash

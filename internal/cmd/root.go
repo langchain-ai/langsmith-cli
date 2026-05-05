@@ -33,7 +33,8 @@ access to traces, runs, datasets, evaluators, experiments, and threads.
 All commands output JSON by default for easy parsing.
 
 Authentication:
-  Run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key.
+  Run 'langsmith login' for hosted LangSmith (SaaS) OAuth.
+  For self-hosted instances, set LANGSMITH_API_KEY or pass --api-key.
   Optionally set LANGSMITH_ENDPOINT for self-hosted instances.
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
   Set a default workspace with 'langsmith profile set-workspace <workspace-id>'.

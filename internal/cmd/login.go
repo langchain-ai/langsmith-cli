@@ -70,6 +70,9 @@ func newLoginCmd() *cobra.Command {
 		Short: "Authenticate with LangSmith using OAuth",
 		Long: `Authenticate with LangSmith using OAuth.
 
+OAuth login currently supports hosted LangSmith (SaaS) only. For self-hosted
+LangSmith, use LANGSMITH_API_KEY or --api-key instead.
+
 The command stores OAuth tokens in ~/.langsmith/config.json under the selected
 profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
