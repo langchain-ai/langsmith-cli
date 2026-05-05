@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestCmd() *cobra.Command {
@@ -88,6 +89,13 @@ func TestResolveFormat_Default(t *testing.T) {
 	if got := ResolveFormat(cmd); got != "pretty" {
 		t.Errorf("expected pretty, got %q", got)
 	}
+}
+
+func TestResolveJQ_Flag(t *testing.T) {
+	cmd := newTestCmd()
+	cmd.PersistentFlags().String("jq", "", "")
+	_ = cmd.PersistentFlags().Set("jq", ".name")
+	require.Equal(t, ".name", ResolveJQ(cmd))
 }
 
 func TestGetClient_Success(t *testing.T) {

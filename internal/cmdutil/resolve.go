@@ -78,6 +78,11 @@ func ResolveFormat(cmd *cobra.Command) string {
 	return v
 }
 
+// ResolveJQ reads the jq filter from cobra's flag tree.
+func ResolveJQ(cmd *cobra.Command) string {
+	return getFlagString(cmd, "jq")
+}
+
 // GetClient creates a LangSmith client from cobra flags, returning an error
 // if no API key or OAuth access token is available.
 func GetClient(cmd *cobra.Command) (*client.Client, error) {
