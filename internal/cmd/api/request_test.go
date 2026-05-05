@@ -26,7 +26,7 @@ func renderTestResponse(t *testing.T, resp apiResponse, args ...string) (string,
 	require.NoError(t, cmd.ParseFlags(args))
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	err := structured.Render(cmd, structured.Result{Model: resp.Body, TextModel: resp}, apiResponseRenderer{})
+	err := structured.Render(cmd, structured.Result{Model: resp.Body, TextModel: resp}, nil)
 	return out.String(), err
 }
 
@@ -47,7 +47,7 @@ func TestRunRequest_GET(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("test-key", ts.URL)
-	resp, err := runRequest(c, "GET", "sessions", "", nil, false)
+	resp, err := runRequest(c, "GET", "sessions", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("key", ts.URL)
-	resp, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil, false)
+	resp, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,72 +98,40 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"}, false)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestRunRequest_Include(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Request-Id", "abc")
-		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer ts.Close()
-
-	c := client.New("key", ts.URL)
-	resp, err := runRequest(c, "GET", "sessions", "", nil, true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out, err := renderTestResponse(t, resp)
-	require.NoError(t, err)
-	if !strings.Contains(out, "200") {
-		t.Errorf("expected status line, got %q", out)
-	}
-	if !strings.Contains(out, "X-Request-Id") {
-		t.Errorf("expected header in output, got %q", out)
-	}
-}
-
-func TestAPIResponseRenderer_FormatJSONBodyOnly(t *testing.T) {
+func TestRunRequest_FormatJSONBodyOnly(t *testing.T) {
 	resp := apiResponse{
 		StatusCode: 200,
-		Proto:      "HTTP/1.1",
-		Headers:    http.Header{"X-Request-Id": []string{"abc"}},
 		Body:       map[string]any{"ok": true},
-		RawBody:    []byte(`{"ok":true}`),
 		IsJSON:     true,
-		Include:    true,
 	}
 
 	out, err := renderTestResponse(t, resp, "--format", "json")
 
 	require.NoError(t, err)
 	require.JSONEq(t, `{"ok":true}`, out)
-	require.NotContains(t, out, "X-Request-Id")
 }
 
-func TestAPIResponseRenderer_NonJSONRawOutput(t *testing.T) {
+func TestRunRequest_NilRenderOutputsJSON(t *testing.T) {
 	resp := apiResponse{
 		StatusCode: 200,
-		Proto:      "HTTP/1.1",
-		RawBody:    []byte("plain text"),
 		Body:       "plain text",
 	}
 
 	out, err := renderTestResponse(t, resp)
 
 	require.NoError(t, err)
-	require.Equal(t, "plain text\n", out)
+	require.JSONEq(t, `"plain text"`, out)
 }
 
-func TestAPIResponseRenderer_JQScalar(t *testing.T) {
+func TestRunRequest_JQScalar(t *testing.T) {
 	resp := apiResponse{
 		StatusCode: 200,
-		Proto:      "HTTP/1.1",
-		RawBody:    []byte(`{"name":"alpha"}`),
 		Body:       map[string]any{"name": "alpha"},
 		IsJSON:     true,
 	}
@@ -174,11 +142,9 @@ func TestAPIResponseRenderer_JQScalar(t *testing.T) {
 	require.Equal(t, "alpha\n", out)
 }
 
-func TestAPIResponseRenderer_ReturnsErrorAfterRender(t *testing.T) {
+func TestRunRequest_ReturnsErrorAfterRender(t *testing.T) {
 	resp := apiResponse{
 		StatusCode: 404,
-		Proto:      "HTTP/1.1",
-		RawBody:    []byte(`{"detail":"not found"}`),
 		Body:       map[string]any{"detail": "not found"},
 		IsJSON:     true,
 	}
@@ -192,7 +158,7 @@ func TestAPIResponseRenderer_ReturnsErrorAfterRender(t *testing.T) {
 		Model:          resp.Body,
 		TextModel:      resp,
 		ErrAfterRender: fmt.Errorf("HTTP 404"),
-	}, apiResponseRenderer{})
+	}, nil)
 
 	require.EqualError(t, err, "HTTP 404")
 	require.Contains(t, out.String(), "not found")
@@ -206,7 +172,7 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("key", ts.URL)
-	resp, err := runRequest(c, "GET", "sessions", "", nil, false)
+	resp, err := runRequest(c, "GET", "sessions", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -233,7 +199,7 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 	f.Close()
 
 	c := client.New("key", ts.URL)
-	resp, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil, false)
+	resp, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +227,7 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("key", "https://different.host")
-	resp, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil, false)
+	resp, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +248,7 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 	defer ts.Close()
 
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"}, false)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -309,7 +275,7 @@ func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
 	apiURL := ts.URL[:len(ts.URL)-1] // e.g. "http://127.0.0.1:5432" → "http://127.0.0.1:543"
 	c := client.New("secret-key", apiURL)
 
-	resp, err := runRequest(c, "GET", ts.URL+"/steal", "", nil, false)
+	resp, err := runRequest(c, "GET", ts.URL+"/steal", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

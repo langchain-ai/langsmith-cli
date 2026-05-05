@@ -38,6 +38,16 @@ func TestTemplateRenderText(t *testing.T) {
 	require.Equal(t, "Name: sandbox", out.String())
 }
 
+func TestRenderNilSpecUsesJSON(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, map[string]any{"name": "sandbox"}, nil)
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"name":"sandbox"}`, out.String())
+}
+
 func TestRenderJQFiltersModel(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)

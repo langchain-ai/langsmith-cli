@@ -44,7 +44,7 @@ func TestNewCmd_RequestFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finding GET command: %v", err)
 	}
-	for _, name := range []string{"body", "header", "include"} {
+	for _, name := range []string{"body", "header"} {
 		f := getCmd.Flags().Lookup(name)
 		if f == nil {
 			t.Errorf("flag --%s not found on GET command", name)

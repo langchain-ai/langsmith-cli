@@ -19,17 +19,12 @@ import (
 type requestInput struct {
 	Body    string
 	Headers []string
-	Include bool
 }
 
 type apiResponse struct {
 	StatusCode int
-	Proto      string
-	Headers    http.Header
 	Body       any
-	RawBody    []byte
 	IsJSON     bool
-	Include    bool
 }
 
 func (r apiResponse) CanRenderJQ() error {
@@ -48,7 +43,6 @@ func requestCommand(method string) structured.Command[*requestInput] {
 			in := &requestInput{}
 			cmd.Flags().StringVar(&in.Body, "body", "", `Request body (JSON string, @file, or @- for stdin)`)
 			cmd.Flags().StringArrayVarP(&in.Headers, "header", "H", nil, "Additional headers (Key:Value, repeatable)")
-			cmd.Flags().BoolVarP(&in.Include, "include", "i", false, "Include HTTP response headers in output")
 			return in
 		},
 		Action: func(_ context.Context, cmd *cobra.Command, in *requestInput, args []string) (any, error) {
@@ -56,7 +50,7 @@ func requestCommand(method string) structured.Command[*requestInput] {
 			if err != nil {
 				return nil, err
 			}
-			resp, err := runRequest(c, method, args[0], in.Body, in.Headers, in.Include)
+			resp, err := runRequest(c, method, args[0], in.Body, in.Headers)
 			if err != nil {
 				return nil, err
 			}
@@ -70,12 +64,11 @@ func requestCommand(method string) structured.Command[*requestInput] {
 				ErrAfterRender: afterRender,
 			}, nil
 		},
-		Render: apiResponseRenderer{},
 	}
 }
 
 // runRequest executes an HTTP request and returns the response model.
-func runRequest(c *client.Client, method, path, body string, headers []string, include bool) (apiResponse, error) {
+func runRequest(c *client.Client, method, path, body string, headers []string) (apiResponse, error) {
 	apiURL := c.APIURL()
 	fullURL := resolveEndpoint(apiURL, path)
 
@@ -107,18 +100,14 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 		extraHeaders.Add(strings.TrimSpace(k), strings.TrimSpace(v))
 	}
 
-	statusCode, proto, respHeaders, respBody, err := reqClient.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
+	statusCode, _, _, respBody, err := reqClient.RawDo(context.Background(), method, relPath, bodyReader, extraHeaders)
 	if err != nil {
 		return apiResponse{}, err
 	}
 
 	resp := apiResponse{
 		StatusCode: statusCode,
-		Proto:      proto,
-		Headers:    respHeaders,
-		RawBody:    respBody,
 		Body:       string(respBody),
-		Include:    include,
 	}
 	var decodedBody any
 	if err := json.Unmarshal(respBody, &decodedBody); err == nil {
@@ -126,37 +115,6 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 		resp.IsJSON = true
 	}
 	return resp, nil
-}
-
-type apiResponseRenderer struct{}
-
-func (apiResponseRenderer) RenderText(w io.Writer, model any) error {
-	resp, ok := model.(apiResponse)
-	if !ok {
-		return fmt.Errorf("expected apiResponse, got %T", model)
-	}
-	if resp.Include {
-		fmt.Fprintf(w, "%s %d %s\n", resp.Proto, resp.StatusCode, http.StatusText(resp.StatusCode))
-		for k, vals := range resp.Headers {
-			for _, v := range vals {
-				fmt.Fprintf(w, "%s: %s\n", k, v)
-			}
-		}
-		fmt.Fprintln(w)
-	}
-	if resp.IsJSON {
-		var prettyBuf bytes.Buffer
-		if err := json.Indent(&prettyBuf, resp.RawBody, "", "  "); err != nil {
-			return err
-		}
-		fmt.Fprintln(w, prettyBuf.String())
-		return nil
-	}
-	if _, err := w.Write(resp.RawBody); err != nil {
-		return fmt.Errorf("writing response: %w", err)
-	}
-	fmt.Fprintln(w)
-	return nil
 }
 
 // resolveBody resolves a --body value to an io.Reader.

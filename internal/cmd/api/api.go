@@ -24,8 +24,7 @@ Make requests:
   langsmith api POST runs/query --body '{"session_id":"abc"}'
   langsmith api DELETE sessions/abc-123
   langsmith api POST datasets --body @body.json
-  echo '{"name":"x"}' | langsmith api POST sessions --body @-
-  langsmith api GET sessions --include`,
+  echo '{"name":"x"}' | langsmith api POST sessions --body @-`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
