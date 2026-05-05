@@ -27,13 +27,6 @@ type apiResponse struct {
 	IsJSON     bool
 }
 
-func (r apiResponse) CanRenderJQ() error {
-	if !r.IsJSON {
-		return fmt.Errorf("response body is not JSON")
-	}
-	return nil
-}
-
 func requestCommand(method string) structured.Command[*requestInput] {
 	return structured.Command[*requestInput]{
 		Use:   method + " PATH",
@@ -58,10 +51,14 @@ func requestCommand(method string) structured.Command[*requestInput] {
 			if resp.StatusCode >= 400 {
 				afterRender = fmt.Errorf("HTTP %d", resp.StatusCode)
 			}
+			model := any(nil)
+			if resp.IsJSON {
+				model = resp.Body
+			}
 			return structured.Result{
-				Model:          resp.Body,
-				TextModel:      resp,
-				ErrAfterRender: afterRender,
+				Model:             model,
+				UnstructuredModel: resp,
+				ErrAfterRender:    afterRender,
 			}, nil
 		},
 	}

@@ -31,12 +31,12 @@ func TestResolveEndpoint(t *testing.T) {
 }
 
 func TestIsHTTPMethod(t *testing.T) {
-	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} {
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 		if !isHTTPMethod(m) {
 			t.Errorf("expected %q to be recognized as HTTP method", m)
 		}
 	}
-	for _, m := range []string{"get", "ls", "info", "FOO", ""} {
+	for _, m := range []string{"get", "ls", "info", "FOO", "HEAD", "OPTIONS", ""} {
 		if isHTTPMethod(m) {
 			t.Errorf("expected %q to NOT be recognized as HTTP method", m)
 		}

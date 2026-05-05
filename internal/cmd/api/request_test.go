@@ -26,7 +26,11 @@ func renderTestResponse(t *testing.T, resp apiResponse, args ...string) (string,
 	require.NoError(t, cmd.ParseFlags(args))
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	err := structured.Render(cmd, structured.Result{Model: resp.Body, TextModel: resp}, nil)
+	var model any
+	if resp.IsJSON {
+		model = resp.Body
+	}
+	err := structured.Render(cmd, structured.Result{Model: model, UnstructuredModel: resp}, nil)
 	return out.String(), err
 }
 
@@ -117,7 +121,7 @@ func TestRunRequest_FormatJSONBodyOnly(t *testing.T) {
 	require.JSONEq(t, `{"ok":true}`, out)
 }
 
-func TestRunRequest_NilRenderOutputsJSON(t *testing.T) {
+func TestRunRequest_NonJSONHasNoJSONModel(t *testing.T) {
 	resp := apiResponse{
 		StatusCode: 200,
 		Body:       "plain text",
@@ -125,8 +129,8 @@ func TestRunRequest_NilRenderOutputsJSON(t *testing.T) {
 
 	out, err := renderTestResponse(t, resp)
 
-	require.NoError(t, err)
-	require.JSONEq(t, `"plain text"`, out)
+	require.EqualError(t, err, "JSON model is not available")
+	require.Empty(t, out)
 }
 
 func TestRunRequest_JQScalar(t *testing.T) {
@@ -155,9 +159,9 @@ func TestRunRequest_ReturnsErrorAfterRender(t *testing.T) {
 	cmd.SetOut(&out)
 
 	err := structured.Render(cmd, structured.Result{
-		Model:          resp.Body,
-		TextModel:      resp,
-		ErrAfterRender: fmt.Errorf("HTTP 404"),
+		Model:             resp.Body,
+		UnstructuredModel: resp,
+		ErrAfterRender:    fmt.Errorf("HTTP 404"),
 	}, nil)
 
 	require.EqualError(t, err, "HTTP 404")

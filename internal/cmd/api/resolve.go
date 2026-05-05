@@ -22,7 +22,7 @@ func resolveEndpoint(baseURL, path string) string {
 // isHTTPMethod returns true if s is an uppercase HTTP method name.
 func isHTTPMethod(s string) bool {
 	switch s {
-	case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
+	case "GET", "POST", "PUT", "PATCH", "DELETE":
 		return true
 	}
 	return false

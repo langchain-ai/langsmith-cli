@@ -36,9 +36,9 @@ type Command[I any] struct {
 }
 
 type Result struct {
-	Model          any
-	TextModel      any
-	ErrAfterRender error
+	Model             any
+	UnstructuredModel any
+	ErrAfterRender    error
 }
 
 func (c Command[I]) Cobra() *cobra.Command {
@@ -84,31 +84,34 @@ func (p Parent) Cobra() *cobra.Command {
 
 func Render(cmd *cobra.Command, model any, spec Spec) error {
 	errAfterRender := error(nil)
-	textModel := model
+	unstructuredModel := model
+	jsonUnavailable := false
 	if result, ok := model.(Result); ok {
 		model = result.Model
-		textModel = result.TextModel
-		if textModel == nil {
-			textModel = model
+		unstructuredModel = result.UnstructuredModel
+		if unstructuredModel == nil {
+			unstructuredModel = model
 		}
+		jsonUnavailable = model == nil && unstructuredModel != nil
 		errAfterRender = result.ErrAfterRender
 	}
 
 	w := cmd.OutOrStdout()
 	var err error
 	if expr := resolveJQ(cmd); expr != "" {
-		if typed, ok := textModel.(interface{ CanRenderJQ() error }); ok {
-			if err := typed.CanRenderJQ(); err != nil {
-				return err
-			}
+		if jsonUnavailable {
+			return fmt.Errorf("JSON model is not available")
 		}
 		err = renderJQ(w, model, expr)
 	} else if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
+		if jsonUnavailable {
+			return fmt.Errorf("JSON model is not available")
+		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		err = enc.Encode(model)
 	} else {
-		err = spec.RenderText(w, textModel)
+		err = spec.RenderText(w, unstructuredModel)
 	}
 	if err != nil {
 		return err
@@ -118,9 +121,6 @@ func Render(cmd *cobra.Command, model any, spec Spec) error {
 
 func resolveJQ(cmd *cobra.Command) string {
 	if f := cmd.Flags().Lookup("jq"); f != nil {
-		return f.Value.String()
-	}
-	if f := cmd.PersistentFlags().Lookup("jq"); f != nil {
 		return f.Value.String()
 	}
 	return ""

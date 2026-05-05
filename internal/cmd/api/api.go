@@ -36,7 +36,7 @@ Make requests:
 
 	cmd.AddCommand(newLsCmd())
 	cmd.AddCommand(newInfoCmd())
-	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} {
+	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
 		cmd.AddCommand(requestCommand(method).Cobra())
 	}
 

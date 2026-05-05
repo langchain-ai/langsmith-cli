@@ -118,7 +118,7 @@ func TestNewCmd_GETRequestJQNonJSON(t *testing.T) {
 
 	err := root.Execute()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "response body is not JSON")
+	require.Contains(t, err.Error(), "JSON model is not available")
 }
 
 func TestNewCmd_POSTWithBody(t *testing.T) {
