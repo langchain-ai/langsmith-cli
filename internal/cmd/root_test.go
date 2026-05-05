@@ -86,8 +86,8 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	if f == nil {
 		t.Fatal("--format flag not found")
 	}
-	if f.DefValue != "json" {
-		t.Errorf("expected default json, got %q", f.DefValue)
+	if f.DefValue != "pretty" {
+		t.Errorf("expected default pretty, got %q", f.DefValue)
 	}
 }
 

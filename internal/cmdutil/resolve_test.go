@@ -16,7 +16,7 @@ func newTestCmd() *cobra.Command {
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
 	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().String("format", "json", "")
+	root.PersistentFlags().String("format", "pretty", "")
 	return root
 }
 
@@ -85,8 +85,8 @@ func TestResolveFormat_Flag(t *testing.T) {
 
 func TestResolveFormat_Default(t *testing.T) {
 	cmd := newTestCmd()
-	if got := ResolveFormat(cmd); got != "json" {
-		t.Errorf("expected json, got %q", got)
+	if got := ResolveFormat(cmd); got != "pretty" {
+		t.Errorf("expected pretty, got %q", got)
 	}
 }
 

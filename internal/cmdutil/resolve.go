@@ -73,7 +73,7 @@ func ResolveAPIURL(cmd *cobra.Command) string {
 func ResolveFormat(cmd *cobra.Command) string {
 	v := getFlagString(cmd, "format")
 	if v == "" {
-		return "json"
+		return "pretty"
 	}
 	return v
 }

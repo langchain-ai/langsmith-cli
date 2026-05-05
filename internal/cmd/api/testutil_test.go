@@ -9,7 +9,7 @@ func newTestRoot() *cobra.Command {
 	root := &cobra.Command{Use: "langsmith"}
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
-	root.PersistentFlags().String("format", "json", "")
+	root.PersistentFlags().String("format", "pretty", "")
 	root.AddCommand(NewCmd())
 	return root
 }
