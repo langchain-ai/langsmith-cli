@@ -101,13 +101,18 @@ func TestHubPush_RejectsBinary(t *testing.T) {
 func TestHubPush_ExcludesSecretsAndJunk(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string][]byte{
-		"SKILL.md":     []byte("# hi"),
-		".env":         []byte("API_KEY=lsv2_pt_secret"),
-		".env.local":   []byte("DB=postgres://user:pw@host"),
-		"id_rsa.pem":   []byte("-----BEGIN RSA PRIVATE KEY-----"),
-		"server.crt":   []byte("-----BEGIN CERTIFICATE-----"),
-		"keystore.p12": []byte("binary-ish"),
-		"Thumbs.db":    []byte("windows junk"),
+		"SKILL.md":      []byte("# hi"),
+		".env":          []byte("API_KEY=lsv2_pt_secret"),
+		".env.local":    []byte("DB=postgres://user:pw@host"),
+		".env.staging":  []byte("STAGING_TOKEN=secret"),
+		".env.test":     []byte("TEST_TOKEN=secret"),
+		".env.ci":       []byte("CI_TOKEN=secret"),
+		".envrc":        []byte("export API_KEY=secret"),
+		"id_rsa.pem":    []byte("-----BEGIN RSA PRIVATE KEY-----"),
+		"server.crt":    []byte("-----BEGIN CERTIFICATE-----"),
+		"keystore.p12":  []byte("binary-ish"),
+		"Thumbs.db":     []byte("windows junk"),
+		"safe.env.json": []byte("{\"ok\": true}"),
 	}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -122,7 +127,10 @@ func TestHubPush_ExcludesSecretsAndJunk(t *testing.T) {
 	if _, ok := got["SKILL.md"]; !ok {
 		t.Error("SKILL.md should be included")
 	}
-	for _, leaked := range []string{".env", ".env.local", "id_rsa.pem", "server.crt", "keystore.p12", "Thumbs.db"} {
+	if _, ok := got["safe.env.json"]; !ok {
+		t.Error("safe.env.json should be included")
+	}
+	for _, leaked := range []string{".env", ".env.local", ".env.staging", ".env.test", ".env.ci", ".envrc", "id_rsa.pem", "server.crt", "keystore.p12", "Thumbs.db"} {
 		if _, ok := got[leaked]; ok {
 			t.Errorf("%q should be excluded but was included", leaked)
 		}

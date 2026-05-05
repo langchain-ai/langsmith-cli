@@ -147,7 +147,7 @@ func readDirectoryAsFiles(root string) (map[string]hubFileEntry, error) {
 		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
-		if hubExcludedFiles[base] {
+		if isHubExcludedFile(base) {
 			return nil
 		}
 		for _, suf := range hubExcludedSuffixes {
@@ -179,6 +179,15 @@ func readDirectoryAsFiles(root string) (map[string]hubFileEntry, error) {
 		return nil, err
 	}
 	return files, nil
+}
+
+func isHubExcludedFile(base string) bool {
+	if hubExcludedFiles[base] {
+		return true
+	}
+	// Match README-documented ".env*" exclusion to avoid leaking custom
+	// environment files like .env.staging, .env.test, etc.
+	return strings.HasPrefix(base, ".env")
 }
 
 func isBinary(data []byte) bool {
