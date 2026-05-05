@@ -35,6 +35,12 @@ type Command[I any] struct {
 	Render Spec
 }
 
+type Result struct {
+	Model          any
+	TextModel      any
+	ErrAfterRender error
+}
+
 func (c Command[I]) Cobra() *cobra.Command {
 	var input I
 	cmd := &cobra.Command{
@@ -77,16 +83,32 @@ func (p Parent) Cobra() *cobra.Command {
 }
 
 func Render(cmd *cobra.Command, model any, spec Spec) error {
-	w := cmd.OutOrStdout()
-	if expr := cmdutil.ResolveJQ(cmd); expr != "" {
-		return renderJQ(w, model, expr)
+	errAfterRender := error(nil)
+	textModel := model
+	if result, ok := model.(Result); ok {
+		model = result.Model
+		textModel = result.TextModel
+		if textModel == nil {
+			textModel = model
+		}
+		errAfterRender = result.ErrAfterRender
 	}
-	if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
+
+	w := cmd.OutOrStdout()
+	var err error
+	if expr := cmdutil.ResolveJQ(cmd); expr != "" {
+		err = renderJQ(w, model, expr)
+	} else if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return enc.Encode(model)
+		err = enc.Encode(model)
+	} else {
+		err = spec.RenderText(w, textModel)
 	}
-	return spec.RenderText(w, model)
+	if err != nil {
+		return err
+	}
+	return errAfterRender
 }
 
 func renderJQ(w io.Writer, model any, expr string) error {

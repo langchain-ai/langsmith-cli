@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,23 @@ import (
 	"testing"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
+
+func renderTestResponse(t *testing.T, resp apiResponse, args ...string) (string, error) {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.PersistentFlags().String("format", "pretty", "")
+	cmd.Flags().String("jq", "", "")
+	cmd.SetArgs(args)
+	require.NoError(t, cmd.ParseFlags(args))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	err := structured.Render(cmd, structured.Result{Model: resp.Body, TextModel: resp}, apiResponseRenderer{})
+	return out.String(), err
+}
 
 func TestRunRequest_GET(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,17 +46,18 @@ func TestRunRequest_GET(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("test-key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
+	resp, err := runRequest(c, "GET", "sessions", "", nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 200 {
-		t.Errorf("expected status 200, got %d", code)
+	if resp.StatusCode != 200 {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(out.String(), `"id"`) {
-		t.Errorf("expected JSON output, got %q", out.String())
+	out, err := renderTestResponse(t, resp)
+	require.NoError(t, err)
+	if !strings.Contains(out, `"id"`) {
+		t.Errorf("expected JSON output, got %q", out)
 	}
 }
 
@@ -59,14 +77,13 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil, false, &out)
+	resp, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 201 {
-		t.Errorf("expected 201, got %d", code)
+	if resp.StatusCode != 201 {
+		t.Errorf("expected 201, got %d", resp.StatusCode)
 	}
 }
 
@@ -80,9 +97,8 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,18 +112,90 @@ func TestRunRequest_Include(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", nil, true, &out)
+	resp, err := runRequest(c, "GET", "sessions", "", nil, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out.String(), "200") {
-		t.Errorf("expected status line, got %q", out.String())
+	out, err := renderTestResponse(t, resp)
+	require.NoError(t, err)
+	if !strings.Contains(out, "200") {
+		t.Errorf("expected status line, got %q", out)
 	}
-	if !strings.Contains(out.String(), "X-Request-Id") {
-		t.Errorf("expected header in output, got %q", out.String())
+	if !strings.Contains(out, "X-Request-Id") {
+		t.Errorf("expected header in output, got %q", out)
 	}
+}
+
+func TestAPIResponseRenderer_FormatJSONBodyOnly(t *testing.T) {
+	resp := apiResponse{
+		StatusCode: 200,
+		Proto:      "HTTP/1.1",
+		Headers:    http.Header{"X-Request-Id": []string{"abc"}},
+		Body:       map[string]any{"ok": true},
+		RawBody:    []byte(`{"ok":true}`),
+		IsJSON:     true,
+		Include:    true,
+	}
+
+	out, err := renderTestResponse(t, resp, "--format", "json")
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"ok":true}`, out)
+	require.NotContains(t, out, "X-Request-Id")
+}
+
+func TestAPIResponseRenderer_NonJSONRawOutput(t *testing.T) {
+	resp := apiResponse{
+		StatusCode: 200,
+		Proto:      "HTTP/1.1",
+		RawBody:    []byte("plain text"),
+		Body:       "plain text",
+	}
+
+	out, err := renderTestResponse(t, resp)
+
+	require.NoError(t, err)
+	require.Equal(t, "plain text\n", out)
+}
+
+func TestAPIResponseRenderer_JQScalar(t *testing.T) {
+	resp := apiResponse{
+		StatusCode: 200,
+		Proto:      "HTTP/1.1",
+		RawBody:    []byte(`{"name":"alpha"}`),
+		Body:       map[string]any{"name": "alpha"},
+		IsJSON:     true,
+	}
+
+	out, err := renderTestResponse(t, resp, "--jq", ".name")
+
+	require.NoError(t, err)
+	require.Equal(t, "alpha\n", out)
+}
+
+func TestAPIResponseRenderer_ReturnsErrorAfterRender(t *testing.T) {
+	resp := apiResponse{
+		StatusCode: 404,
+		Proto:      "HTTP/1.1",
+		RawBody:    []byte(`{"detail":"not found"}`),
+		Body:       map[string]any{"detail": "not found"},
+		IsJSON:     true,
+	}
+	cmd := &cobra.Command{Use: "test"}
+	cmd.PersistentFlags().String("format", "pretty", "")
+	cmd.Flags().String("jq", "", "")
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	err := structured.Render(cmd, structured.Result{
+		Model:          resp.Body,
+		TextModel:      resp,
+		ErrAfterRender: fmt.Errorf("HTTP 404"),
+	}, apiResponseRenderer{})
+
+	require.EqualError(t, err, "HTTP 404")
+	require.Contains(t, out.String(), "not found")
 }
 
 func TestRunRequest_4xxPrintsBody(t *testing.T) {
@@ -117,17 +205,18 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
+	resp, err := runRequest(c, "GET", "sessions", "", nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 404 {
-		t.Errorf("expected 404, got %d", code)
+	if resp.StatusCode != 404 {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(out.String(), "not found") {
-		t.Errorf("expected error body in output, got %q", out.String())
+	out, err := renderTestResponse(t, resp)
+	require.NoError(t, err)
+	if !strings.Contains(out, "not found") {
+		t.Errorf("expected error body in output, got %q", out)
 	}
 }
 
@@ -143,17 +232,18 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 	_, _ = f.WriteString(`{"from":"file"}`)
 	f.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil, false, &out)
+	resp, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 200 {
-		t.Errorf("expected 200, got %d", code)
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(out.String(), "from") {
-		t.Errorf("expected file body echoed, got %q", out.String())
+	out, err := renderTestResponse(t, resp)
+	require.NoError(t, err)
+	if !strings.Contains(out, "from") {
+		t.Errorf("expected file body echoed, got %q", out)
 	}
 }
 
@@ -170,14 +260,13 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", "https://different.host")
-	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil, false, &out)
+	resp, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 200 {
-		t.Errorf("expected 200, got %d", code)
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }
 
@@ -192,9 +281,8 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"}, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -221,13 +309,12 @@ func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
 	apiURL := ts.URL[:len(ts.URL)-1] // e.g. "http://127.0.0.1:5432" → "http://127.0.0.1:543"
 	c := client.New("secret-key", apiURL)
 
-	var out bytes.Buffer
-	code, err := runRequest(c, "GET", ts.URL+"/steal", "", nil, false, &out)
+	resp, err := runRequest(c, "GET", ts.URL+"/steal", "", nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if code != 200 {
-		t.Errorf("expected 200, got %d", code)
+	if resp.StatusCode != 200 {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }
 

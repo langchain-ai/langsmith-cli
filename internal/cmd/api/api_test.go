@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewCmd_HasSubcommands(t *testing.T) {
@@ -21,6 +23,12 @@ func TestNewCmd_HasSubcommands(t *testing.T) {
 	if !names["info"] {
 		t.Error("missing subcommand 'info'")
 	}
+	if !names["GET"] {
+		t.Error("missing subcommand 'GET'")
+	}
+	if !names["POST"] {
+		t.Error("missing subcommand 'POST'")
+	}
 }
 
 func TestNewCmd_UseField(t *testing.T) {
@@ -32,10 +40,14 @@ func TestNewCmd_UseField(t *testing.T) {
 
 func TestNewCmd_RequestFlags(t *testing.T) {
 	cmd := NewCmd()
+	getCmd, _, err := cmd.Find([]string{"GET"})
+	if err != nil {
+		t.Fatalf("finding GET command: %v", err)
+	}
 	for _, name := range []string{"body", "header", "include"} {
-		f := cmd.Flags().Lookup(name)
+		f := getCmd.Flags().Lookup(name)
 		if f == nil {
-			t.Errorf("flag --%s not found on api command", name)
+			t.Errorf("flag --%s not found on GET command", name)
 		}
 	}
 }
@@ -69,6 +81,44 @@ func TestNewCmd_GETRequest(t *testing.T) {
 	if !strings.Contains(out.String(), "ok") {
 		t.Errorf("expected JSON response, got %q", out.String())
 	}
+}
+
+func TestNewCmd_GETRequestJQ(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true,"name":"alpha"}`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "GET", "sessions", "--jq", ".name"})
+
+	require.NoError(t, root.Execute())
+	require.Equal(t, "alpha", strings.TrimSpace(out.String()))
+}
+
+func TestNewCmd_GETRequestJQNonJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`plain text`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "GET", "sessions", "--jq", ".name"})
+
+	err := root.Execute()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "response body is not JSON")
 }
 
 func TestNewCmd_POSTWithBody(t *testing.T) {
