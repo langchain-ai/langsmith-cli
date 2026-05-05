@@ -178,6 +178,7 @@ func templateFuncs() template.FuncMap {
 		"formatBytesOrDash": formatBytesOrDash,
 		"formatCount":       formatCount,
 		"formatTime":        formatTime,
+		"jsonIndent":        jsonIndent,
 		"shortID":           shortID,
 	}
 }
@@ -230,6 +231,14 @@ func shortID(id string) string {
 	return id
 }
 
+func jsonIndent(v any, prefix, indent string) (string, error) {
+	b, err := json.MarshalIndent(v, prefix, indent)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 type Template string
 
 func (s Template) RenderText(w io.Writer, model any) error {
@@ -244,6 +253,7 @@ type Table struct {
 	Title   string
 	Rows    string
 	Columns []Column
+	Footer  Template
 }
 
 type Column struct {
@@ -293,6 +303,11 @@ func (t Table) RenderText(w io.Writer, model any) error {
 	}
 
 	table.Render()
+	if t.Footer != "" {
+		if err := t.Footer.RenderText(w, model); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

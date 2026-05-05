@@ -1,27 +1,25 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/olekukonko/tablewriter"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
 
-func newLsCmd() *cobra.Command {
-	var (
-		tag     string
-		search  string
-		refresh bool
-	)
+type lsInput struct {
+	Tag     string
+	Search  string
+	Refresh bool
+}
 
-	cmd := &cobra.Command{
-		Use:   "ls",
-		Short: "List available API endpoints from the OpenAPI spec",
-		Long: `List all available LangSmith API endpoints.
+var lsCommand = structured.Command[*lsInput]{
+	Use:   "ls",
+	Short: "List available API endpoints from the OpenAPI spec",
+	Long: `List all available LangSmith API endpoints.
 
 The endpoint list is fetched from the OpenAPI spec and cached locally for 24 hours.
 
@@ -31,64 +29,52 @@ Examples:
   langsmith api ls --search create
   langsmith api ls --tag run --search query
   langsmith api ls --refresh`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			apiURL := cmdutil.ResolveAPIURL(cmd)
-			cacheDir := cache.DefaultDir()
-			format := cmdutil.ResolveFormat(cmd)
+	Input: func(cmd *cobra.Command) *lsInput {
+		in := &lsInput{}
+		cmd.Flags().StringVarP(&in.Tag, "tag", "t", "", "Filter by tag")
+		cmd.Flags().StringVarP(&in.Search, "search", "s", "", "Search path, summary, or tag (case-insensitive)")
+		cmd.Flags().BoolVar(&in.Refresh, "refresh", false, "Force re-fetch of the OpenAPI spec")
+		return in
+	},
+	Action: func(_ context.Context, cmd *cobra.Command, in *lsInput, _ []string) (any, error) {
+		spec, err := loadSpec(cmdutil.ResolveAPIURL(cmd), cache.DefaultDir(), in.Refresh)
+		if err != nil {
+			return nil, err
+		}
 
-			spec, err := loadSpec(apiURL, cacheDir, refresh)
-			if err != nil {
-				return err
-			}
-
-			endpoints := spec.Endpoints()
-
-			// Apply filters
-			if tag != "" || search != "" {
-				var filtered []Endpoint
-				for _, e := range endpoints {
-					if tag != "" && e.Tag != tag {
+		endpoints := spec.Endpoints()
+		if in.Tag != "" || in.Search != "" {
+			var filtered []Endpoint
+			for _, e := range endpoints {
+				if in.Tag != "" && e.Tag != in.Tag {
+					continue
+				}
+				if in.Search != "" {
+					q := strings.ToLower(in.Search)
+					if !strings.Contains(strings.ToLower(e.Path), q) &&
+						!strings.Contains(strings.ToLower(e.Summary), q) &&
+						!strings.Contains(strings.ToLower(e.Tag), q) {
 						continue
 					}
-					if search != "" {
-						q := strings.ToLower(search)
-						if !strings.Contains(strings.ToLower(e.Path), q) &&
-							!strings.Contains(strings.ToLower(e.Summary), q) &&
-							!strings.Contains(strings.ToLower(e.Tag), q) {
-							continue
-						}
-					}
-					filtered = append(filtered, e)
 				}
-				endpoints = filtered
+				filtered = append(filtered, e)
 			}
+			endpoints = filtered
+		}
 
-			w := cmd.OutOrStdout()
-
-			if format == "pretty" {
-				table := tablewriter.NewWriter(w)
-				table.SetHeader([]string{"Method", "Path", "Tag", "Summary"})
-				table.SetBorder(false)
-				table.SetColumnSeparator("  ")
-				table.SetHeaderLine(true)
-				table.SetAutoWrapText(false)
-				for _, e := range endpoints {
-					table.Append([]string{e.Method, e.Path, e.Tag, e.Summary})
-				}
-				table.Render()
-				fmt.Fprintf(w, "(%d endpoints)\n", len(endpoints))
-			} else {
-				data, _ := json.MarshalIndent(endpoints, "", "  ")
-				fmt.Fprintln(w, string(data))
-			}
-
-			return nil
+		return endpoints, nil
+	},
+	Render: structured.Table{
+		Columns: []structured.Column{
+			{Header: "Method", Template: "{{.Method}}"},
+			{Header: "Path", Template: "{{.Path}}"},
+			{Header: "Tag", Template: "{{.Tag}}"},
+			{Header: "Summary", Template: "{{.Summary}}"},
 		},
-	}
+		Footer: structured.Template("({{len .}} endpoints)\n"),
+	},
+}
 
-	cmd.Flags().StringVarP(&tag, "tag", "t", "", "Filter by tag")
-	cmd.Flags().StringVarP(&search, "search", "s", "", "Search path, summary, or tag (case-insensitive)")
-	cmd.Flags().BoolVar(&refresh, "refresh", false, "Force re-fetch of the OpenAPI spec")
-
-	return cmd
+func newLsCmd() *cobra.Command {
+	return lsCommand.Cobra()
 }

@@ -1,85 +1,57 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
 
-func newInfoCmd() *cobra.Command {
-	var refresh bool
+type infoInput struct {
+	Refresh bool
+}
 
-	cmd := &cobra.Command{
-		Use:   "info METHOD PATH",
-		Short: "Show details for a specific API endpoint",
-		Long: `Show full details for a specific API endpoint including parameters,
+var infoCommand = structured.Command[*infoInput]{
+	Use:   "info METHOD PATH",
+	Short: "Show details for a specific API endpoint",
+	Long: `Show full details for a specific API endpoint including parameters,
 request body schema, and response schema.
 
 Examples:
   langsmith api info GET /api/v1/sessions
   langsmith api info GET sessions
   langsmith api info POST runs/query`,
-		Args: cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			method := args[0]
-			path := args[1]
+	Args: cobra.ExactArgs(2),
+	Input: func(cmd *cobra.Command) *infoInput {
+		in := &infoInput{}
+		cmd.Flags().BoolVar(&in.Refresh, "refresh", false, "Force re-fetch of the OpenAPI spec")
+		return in
+	},
+	Action: func(_ context.Context, cmd *cobra.Command, in *infoInput, args []string) (any, error) {
+		spec, err := loadSpec(cmdutil.ResolveAPIURL(cmd), cache.DefaultDir(), in.Refresh)
+		if err != nil {
+			return nil, err
+		}
+		return spec.LookupEndpoint(args[0], args[1])
+	},
+	Render: structured.Template(`{{.Method}} {{.Path}}
+Tag: {{.Tag}}
+Summary: {{.Summary}}{{if .Description}}
+Description: {{.Description}}{{end}}{{if .Parameters}}
 
-			apiURL := cmdutil.ResolveAPIURL(cmd)
-			cacheDir := cache.DefaultDir()
-			format := cmdutil.ResolveFormat(cmd)
+Parameters:
+{{range .Parameters}}  {{printf "%-20s %-10s %s" .Name .Type .Description}}{{if .Required}} (required){{end}}
+{{end}}{{end}}{{if .RequestBody}}
+Request Body:
+  {{jsonIndent .RequestBody "  " "  "}}
+{{end}}{{if .Response}}
+Response Schema:
+  {{jsonIndent .Response "  " "  "}}
+{{end}}`),
+}
 
-			spec, err := loadSpec(apiURL, cacheDir, refresh)
-			if err != nil {
-				return err
-			}
-
-			detail, err := spec.LookupEndpoint(method, path)
-			if err != nil {
-				return err
-			}
-
-			w := cmd.OutOrStdout()
-
-			if format == "pretty" {
-				fmt.Fprintf(w, "%s %s\n", detail.Method, detail.Path)
-				fmt.Fprintf(w, "Tag: %s\n", detail.Tag)
-				fmt.Fprintf(w, "Summary: %s\n", detail.Summary)
-				if detail.Description != "" {
-					fmt.Fprintf(w, "Description: %s\n", detail.Description)
-				}
-				if len(detail.Parameters) > 0 {
-					fmt.Fprintf(w, "\nParameters:\n")
-					for _, p := range detail.Parameters {
-						req := ""
-						if p.Required {
-							req = " (required)"
-						}
-						fmt.Fprintf(w, "  %-20s %-10s %s%s\n", p.Name, p.Type, p.Description, req)
-					}
-				}
-				if detail.RequestBody != nil {
-					fmt.Fprintf(w, "\nRequest Body:\n")
-					b, _ := json.MarshalIndent(detail.RequestBody, "  ", "  ")
-					fmt.Fprintf(w, "  %s\n", b)
-				}
-				if detail.Response != nil {
-					fmt.Fprintf(w, "\nResponse Schema:\n")
-					b, _ := json.MarshalIndent(detail.Response, "  ", "  ")
-					fmt.Fprintf(w, "  %s\n", b)
-				}
-			} else {
-				data, _ := json.MarshalIndent(detail, "", "  ")
-				fmt.Fprintln(w, string(data))
-			}
-
-			return nil
-		},
-	}
-
-	cmd.Flags().BoolVar(&refresh, "refresh", false, "Force re-fetch of the OpenAPI spec")
-
-	return cmd
+func newInfoCmd() *cobra.Command {
+	return infoCommand.Cobra()
 }
