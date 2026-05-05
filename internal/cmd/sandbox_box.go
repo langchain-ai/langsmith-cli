@@ -8,7 +8,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/langchain-ai/langsmith-cli/internal/command"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
@@ -45,7 +45,7 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
-var sandboxCreateCommand = command.Command[*sandboxCreateInput]{
+var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create <name>",
 	Short: "Create a sandbox VM from a snapshot",
 	Long: `Create a sandbox VM from a snapshot.
@@ -136,7 +136,7 @@ Examples:
 
 		return resp, nil
 	},
-	Render: command.Template(`Name:     {{.Name}}
+	Render: structured.Template(`Name:     {{.Name}}
 Status:   {{.Status}}
 VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
@@ -146,7 +146,7 @@ Created:  {{formatTime .CreatedAt}}
 `),
 }
 
-var sandboxListCommand = command.Command[struct{}]{
+var sandboxListCommand = structured.Command[struct{}]{
 	Use:   "list",
 	Short: "List all sandboxes",
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
@@ -161,10 +161,10 @@ var sandboxListCommand = command.Command[struct{}]{
 		}
 		return resp.Sandboxes, nil
 	},
-	Render: command.Table{
+	Render: structured.Table{
 		Title: "Sandboxes",
 		Rows:  ".",
-		Columns: []command.Column{
+		Columns: []structured.Column{
 			{Header: "Name", Template: "{{.Name}}"},
 			{Header: "Status", Template: "{{.Status}}"},
 			{Header: "VCPUs", Template: "{{formatCount .Vcpus}}"},
@@ -176,7 +176,7 @@ var sandboxListCommand = command.Command[struct{}]{
 	},
 }
 
-var sandboxGetCommand = command.Command[struct{}]{
+var sandboxGetCommand = structured.Command[struct{}]{
 	Use:   "get <name>",
 	Short: "Get a sandbox by name",
 	Args:  cobra.ExactArgs(1),
@@ -193,7 +193,7 @@ var sandboxGetCommand = command.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: command.Template(`Name:     {{.Name}}
+	Render: structured.Template(`Name:     {{.Name}}
 Status:   {{.Status}}
 VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
@@ -210,7 +210,7 @@ type sandboxUpdateInput struct {
 	ProxyConfig string
 }
 
-var sandboxUpdateCommand = command.Command[*sandboxUpdateInput]{
+var sandboxUpdateCommand = structured.Command[*sandboxUpdateInput]{
 	Use:   "update <name>",
 	Short: "Update sandbox resources (takes effect on next start)",
 	Long: `Update sandbox resources or proxy configuration.
@@ -272,7 +272,7 @@ for the proxy config JSON format.`,
 
 		return resp, nil
 	},
-	Render: command.Template(`Name:     {{.Name}}
+	Render: structured.Template(`Name:     {{.Name}}
 Status:   {{.Status}}
 VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
@@ -282,7 +282,7 @@ Created:  {{formatTime .CreatedAt}}
 `),
 }
 
-var sandboxDeleteCommand = command.Command[struct{}]{
+var sandboxDeleteCommand = structured.Command[struct{}]{
 	Use:   "delete <name>",
 	Short: "Delete a sandbox",
 	Args:  cobra.ExactArgs(1),
@@ -298,11 +298,11 @@ var sandboxDeleteCommand = command.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Sandbox deleted."}, nil
 	},
-	Render: command.Template(`{{.Message}}
+	Render: structured.Template(`{{.Message}}
 `),
 }
 
-var sandboxStartCommand = command.Command[struct{}]{
+var sandboxStartCommand = structured.Command[struct{}]{
 	Use:   "start <name>",
 	Short: "Start a stopped sandbox",
 	Args:  cobra.ExactArgs(1),
@@ -321,11 +321,11 @@ var sandboxStartCommand = command.Command[struct{}]{
 		}
 		return sandboxMessage{Name: args[0], Message: fmt.Sprintf("Sandbox %s started", args[0])}, nil
 	},
-	Render: command.Template(`{{.Message}}
+	Render: structured.Template(`{{.Message}}
 `),
 }
 
-var sandboxStopCommand = command.Command[struct{}]{
+var sandboxStopCommand = structured.Command[struct{}]{
 	Use:   "stop <name>",
 	Short: "Stop a running sandbox (preserves data)",
 	Args:  cobra.ExactArgs(1),
@@ -341,7 +341,7 @@ var sandboxStopCommand = command.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Sandbox stopped."}, nil
 	},
-	Render: command.Template(`{{.Message}}
+	Render: structured.Template(`{{.Message}}
 `),
 }
 

@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/langchain-ai/langsmith-cli/internal/command"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
-var sandboxSnapshotCommand = command.Parent{
+var sandboxSnapshotCommand = structured.Parent{
 	Use:   "snapshot",
 	Short: "Manage sandbox snapshots (ext4 rootfs images)",
 	Long: `Manage sandbox snapshots — ext4 rootfs images built from Docker images
@@ -35,7 +35,7 @@ Examples:
 	},
 }
 
-var snapshotListCommand = command.Command[struct{}]{
+var snapshotListCommand = structured.Command[struct{}]{
 	Use:   "list",
 	Short: "List all snapshots",
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
@@ -50,10 +50,10 @@ var snapshotListCommand = command.Command[struct{}]{
 		}
 		return resp.Snapshots, nil
 	},
-	Render: command.Table{
+	Render: structured.Table{
 		Title: "Snapshots",
 		Rows:  ".",
-		Columns: []command.Column{
+		Columns: []structured.Column{
 			{Header: "ID", Template: "{{.ID}}"},
 			{Header: "Name", Template: "{{.Name}}"},
 			{Header: "Image", Template: "{{dash .DockerImage}}"},
@@ -70,7 +70,7 @@ type snapshotBuildInput struct {
 	RegistryID  string
 }
 
-var snapshotBuildCommand = command.Command[*snapshotBuildInput]{
+var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
 	Use:   "build <name>",
 	Short: "Build a snapshot from a Docker image",
 	Long: `Build a snapshot from a Docker image.
@@ -120,7 +120,7 @@ var snapshotBuildCommand = command.Command[*snapshotBuildInput]{
 
 		return resp, nil
 	},
-	Render: command.Template(`ID:      {{.ID}}
+	Render: structured.Template(`ID:      {{.ID}}
 Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
@@ -134,7 +134,7 @@ type snapshotCaptureInput struct {
 	Checkpoint string
 }
 
-var snapshotCaptureCommand = command.Command[*snapshotCaptureInput]{
+var snapshotCaptureCommand = structured.Command[*snapshotCaptureInput]{
 	Use:   "capture <name>",
 	Short: "Capture a snapshot from a running sandbox",
 	Long: `Capture a snapshot from a sandbox VM. If --checkpoint is specified, uses
@@ -176,7 +176,7 @@ fresh checkpoint from the running VM's current state.
 
 		return resp, nil
 	},
-	Render: command.Template(`ID:      {{.ID}}
+	Render: structured.Template(`ID:      {{.ID}}
 Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
@@ -185,7 +185,7 @@ Created: {{formatTime .CreatedAt}}
 `),
 }
 
-var snapshotGetCommand = command.Command[struct{}]{
+var snapshotGetCommand = structured.Command[struct{}]{
 	Use:   "get <snapshot-id>",
 	Short: "Get a snapshot by ID",
 	Args:  cobra.ExactArgs(1),
@@ -202,7 +202,7 @@ var snapshotGetCommand = command.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: command.Template(`ID:      {{.ID}}
+	Render: structured.Template(`ID:      {{.ID}}
 Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
@@ -211,7 +211,7 @@ Created: {{formatTime .CreatedAt}}
 `),
 }
 
-var snapshotDeleteCommand = command.Command[struct{}]{
+var snapshotDeleteCommand = structured.Command[struct{}]{
 	Use:   "delete <snapshot-id>",
 	Short: "Delete a snapshot",
 	Args:  cobra.ExactArgs(1),
@@ -227,7 +227,7 @@ var snapshotDeleteCommand = command.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Snapshot deleted."}, nil
 	},
-	Render: command.Template(`{{.Message}}
+	Render: structured.Template(`{{.Message}}
 `),
 }
 

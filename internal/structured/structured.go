@@ -1,4 +1,4 @@
-package command
+package structured
 
 import (
 	"bytes"
