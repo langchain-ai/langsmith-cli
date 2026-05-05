@@ -78,19 +78,13 @@ langsmith experiment list --dataset my-eval-set
 
 ## Output Formats
 
-All commands default to human-readable output:
-
 ```bash
 langsmith trace list --project my-app
 ```
 
-Use `--format=json` for machine-readable output:
-
 ```bash
 langsmith --format=json trace list --project my-app
 ```
-
-Write to a file with `-o`:
 
 ```bash
 langsmith trace list --project my-app -o traces.json
