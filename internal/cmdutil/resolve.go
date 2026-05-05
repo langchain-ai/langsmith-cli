@@ -50,6 +50,16 @@ func getFlagString(cmd *cobra.Command, name string) string {
 	return ""
 }
 
+func getFlagBool(cmd *cobra.Command, name string) bool {
+	if f := cmd.Flags().Lookup(name); f != nil {
+		return f.Value.String() == "true"
+	}
+	if f := cmd.PersistentFlags().Lookup(name); f != nil {
+		return f.Value.String() == "true"
+	}
+	return false
+}
+
 // ResolveAPIKey reads the API key from cobra's flag tree → env.
 func ResolveAPIKey(cmd *cobra.Command) string {
 	if v := getFlagString(cmd, "api-key"); v != "" {
@@ -71,9 +81,12 @@ func ResolveAPIURL(cmd *cobra.Command) string {
 
 // ResolveFormat reads the output format from cobra's flag tree.
 func ResolveFormat(cmd *cobra.Command) string {
+	if getFlagBool(cmd, "json") {
+		return "json"
+	}
 	v := getFlagString(cmd, "format")
 	if v == "" {
-		return "json"
+		return "pretty"
 	}
 	return v
 }

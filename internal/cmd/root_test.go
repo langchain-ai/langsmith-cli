@@ -86,8 +86,8 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	if f == nil {
 		t.Fatal("--format flag not found")
 	}
-	if f.DefValue != "json" {
-		t.Errorf("expected default json, got %q", f.DefValue)
+	if f.DefValue != "pretty" {
+		t.Errorf("expected default pretty, got %q", f.DefValue)
 	}
 }
 
@@ -406,8 +406,10 @@ func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 // ---------- getFormat ----------
 
 func TestGetFormat_ReturnsValue(t *testing.T) {
-	old := flagOutputFormat
-	defer func() { flagOutputFormat = old }()
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagOutputFormat = oldFormat
+	}()
 
 	flagOutputFormat = "pretty"
 	if got := GetFormat(); got != "pretty" {
