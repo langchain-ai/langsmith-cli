@@ -16,10 +16,11 @@ func TestHubPush_CreatesRepoAndPostsCommit(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/repos/-/my-skill":
+		case r.Method == "GET" && r.URL.Path == "/api/v1/repos/-/my-skill":
 			http.Error(w, "HTTP 404: not found", http.StatusNotFound)
-		case r.Method == "POST" && r.URL.Path == "/repos/":
+		case r.Method == "POST" && r.URL.Path == "/api/v1/repos":
 			sawCreate = true
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("{}"))
 		case r.Method == "POST" && r.URL.Path == "/v1/platform/hub/repos/-/my-skill/directories/commits":
