@@ -111,6 +111,7 @@ func TestTraceMessages_Success(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
@@ -340,6 +341,7 @@ func TestTraceMessages_Pagination(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
@@ -396,6 +398,7 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
@@ -443,6 +446,7 @@ func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
@@ -497,6 +501,7 @@ func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
@@ -575,6 +580,7 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 	})
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()

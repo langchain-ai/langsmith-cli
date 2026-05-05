@@ -55,7 +55,7 @@ func TestWorkspaceSetDefault(t *testing.T) {
 	t.Setenv("LANGSMITH_PROFILE", "")
 
 	workspaceID := "00000000-0000-0000-0000-000000000789"
-	stdout, err := executeCommand(t, "workspace", "set-default", workspaceID)
+	stdout, err := executeCommand(t, "--json", "workspace", "set-default", workspaceID)
 	if err != nil {
 		t.Fatalf("workspace set-default returned error: %v\nstdout: %s", err, stdout)
 	}

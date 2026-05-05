@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -52,7 +51,7 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 	flagAPIKey = "test-api-key"
 	flagAPIURL = serverURL
 	flagProfile = ""
-	flagOutputFormat = "json"
+	flagOutputFormat = "pretty"
 	flagOutputJSON = false
 
 	return func() {
@@ -68,32 +67,10 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 // and returns captured stdout and any error.
 func executeCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	format := flagOutputFormat
-	jsonOutput := flagOutputJSON
-	defer func() {
-		flagOutputFormat = format
-		flagOutputJSON = jsonOutput
-	}()
 	cmd := NewRootCmd("test", "test")
 	var outBuf bytes.Buffer
 	cmd.SetOut(&outBuf)
 	cmd.SetErr(&outBuf)
-	if format != "" {
-		hasFormat := false
-		for _, arg := range args {
-			if arg == "--json" || arg == "--format" || strings.HasPrefix(arg, "--format=") {
-				hasFormat = true
-				break
-			}
-		}
-		if !hasFormat {
-			if format == "json" {
-				args = append([]string{"--json"}, args...)
-			} else {
-				args = append([]string{"--format", format}, args...)
-			}
-		}
-	}
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return outBuf.String(), err
