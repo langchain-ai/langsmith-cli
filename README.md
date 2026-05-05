@@ -84,10 +84,10 @@ All commands default to human-readable output:
 langsmith trace list --project my-app
 ```
 
-Use `--json` for machine-readable output:
+Use `--format=json` for machine-readable output:
 
 ```bash
-langsmith --json trace list --project my-app
+langsmith --format=json trace list --project my-app
 ```
 
 Write to a file with `-o`:
@@ -113,7 +113,7 @@ langsmith project list --limit 50
 langsmith project list --name-contains chatbot
 
 # Machine-readable JSON
-langsmith --json project list
+langsmith --format=json project list
 ```
 
 ### `trace` — Query and export traces

@@ -91,17 +91,6 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	}
 }
 
-func TestRootCmd_PersistentFlags_JSON(t *testing.T) {
-	root := NewRootCmd("dev", "dev")
-	f := root.PersistentFlags().Lookup("json")
-	if f == nil {
-		t.Fatal("--json flag not found")
-	}
-	if f.DefValue != "false" {
-		t.Errorf("expected default false, got %q", f.DefValue)
-	}
-}
-
 func TestRootCmd_PersistentFlags_Profile(t *testing.T) {
 	root := NewRootCmd("dev", "dev")
 	f := root.PersistentFlags().Lookup("profile")
@@ -418,25 +407,16 @@ func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 
 func TestGetFormat_ReturnsValue(t *testing.T) {
 	oldFormat := flagOutputFormat
-	oldJSON := flagOutputJSON
 	defer func() {
 		flagOutputFormat = oldFormat
-		flagOutputJSON = oldJSON
 	}()
 
-	flagOutputJSON = false
 	flagOutputFormat = "pretty"
 	if got := GetFormat(); got != "pretty" {
 		t.Errorf("expected pretty, got %q", got)
 	}
 
 	flagOutputFormat = "json"
-	if got := GetFormat(); got != "json" {
-		t.Errorf("expected json, got %q", got)
-	}
-
-	flagOutputFormat = "pretty"
-	flagOutputJSON = true
 	if got := GetFormat(); got != "json" {
 		t.Errorf("expected json, got %q", got)
 	}

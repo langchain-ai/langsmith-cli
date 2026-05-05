@@ -35,7 +35,7 @@ func TestProfileCreate(t *testing.T) {
 	apiKey := "test-api-key"
 	workspaceID := "00000000-0000-0000-0000-000000000123"
 	stdout, err := executeCommand(t,
-		"--json",
+		"--format=json",
 		"profile", "create", "dev",
 		"--api-key", apiKey,
 		"--api-url", "https://api.smith.langchain.com/api/v1",
@@ -260,7 +260,7 @@ func TestProfileShowDoesNotExposeSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, err := executeCommand(t, "--json", "profile", "show", "dev")
+	stdout, err := executeCommand(t, "--format=json", "profile", "show", "dev")
 	if err != nil {
 		t.Fatalf("profile show returned error: %v\nstdout: %s", err, stdout)
 	}
@@ -311,7 +311,7 @@ func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	showStdout, err := executeCommand(t, "--json", "profile", "show", "prod")
+	showStdout, err := executeCommand(t, "--format=json", "profile", "show", "prod")
 	if err != nil {
 		t.Fatalf("profile show returned error: %v\nstdout: %s", err, showStdout)
 	}
@@ -323,7 +323,7 @@ func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
 		t.Fatalf("expected whitespace-padded env profile to mark prod active: %+v", showResult)
 	}
 
-	listStdout, err := executeCommand(t, "--json", "profile", "list")
+	listStdout, err := executeCommand(t, "--format=json", "profile", "list")
 	if err != nil {
 		t.Fatalf("profile list returned error: %v\nstdout: %s", err, listStdout)
 	}
@@ -375,7 +375,7 @@ func TestProfileUse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, err := executeCommand(t, "--json", "profile", "use", "prod")
+	stdout, err := executeCommand(t, "--format=json", "profile", "use", "prod")
 	if err != nil {
 		t.Fatalf("profile use returned error: %v\nstdout: %s", err, stdout)
 	}
@@ -436,7 +436,7 @@ func TestProfileDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, err := executeCommand(t, "--json", "profile", "delete", "dev")
+	stdout, err := executeCommand(t, "--format=json", "profile", "delete", "dev")
 	if err != nil {
 		t.Fatalf("profile delete returned error: %v\nstdout: %s", err, stdout)
 	}
@@ -514,7 +514,7 @@ func TestProfileSetWorkspace(t *testing.T) {
 	}
 
 	workspaceID := "00000000-0000-0000-0000-000000000456"
-	stdout, err := executeCommand(t, "--json", "profile", "set-workspace", workspaceID)
+	stdout, err := executeCommand(t, "--format=json", "profile", "set-workspace", workspaceID)
 	if err != nil {
 		t.Fatalf("set-workspace returned error: %v\nstdout: %s", err, stdout)
 	}
@@ -593,7 +593,7 @@ func TestProfileListDoesNotExposeSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, err := executeCommand(t, "--json", "profile", "list")
+	stdout, err := executeCommand(t, "--format=json", "profile", "list")
 	if err != nil {
 		t.Fatalf("profile list returned error: %v\nstdout: %s", err, stdout)
 	}
