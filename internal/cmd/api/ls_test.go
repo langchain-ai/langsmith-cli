@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func newTestSpecServer(t *testing.T) *httptest.Server {
@@ -108,6 +110,20 @@ func TestLsCmd_Search(t *testing.T) {
 	if len(endpoints) != 1 {
 		t.Errorf("expected 1 match for 'query', got %d", len(endpoints))
 	}
+}
+
+func TestLsCmd_JQ(t *testing.T) {
+	ts := newTestSpecServer(t)
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "ls", "--api-url", ts.URL, "--jq", ".[0].method", "--refresh"})
+
+	require.NoError(t, root.Execute())
+	require.Equal(t, "GET", strings.TrimSpace(out.String()))
 }
 
 func TestLsCmd_Pretty(t *testing.T) {

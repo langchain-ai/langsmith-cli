@@ -35,6 +35,12 @@ type Command[I any] struct {
 	Render Spec
 }
 
+type Result struct {
+	Model             any
+	UnstructuredModel any
+	ErrAfterRender    error
+}
+
 func (c Command[I]) Cobra() *cobra.Command {
 	var input I
 	cmd := &cobra.Command{
@@ -77,16 +83,47 @@ func (p Parent) Cobra() *cobra.Command {
 }
 
 func Render(cmd *cobra.Command, model any, spec Spec) error {
-	w := cmd.OutOrStdout()
-	if expr := cmdutil.ResolveJQ(cmd); expr != "" {
-		return renderJQ(w, model, expr)
+	errAfterRender := error(nil)
+	unstructuredModel := model
+	jsonUnavailable := false
+	if result, ok := model.(Result); ok {
+		model = result.Model
+		unstructuredModel = result.UnstructuredModel
+		if unstructuredModel == nil {
+			unstructuredModel = model
+		}
+		jsonUnavailable = model == nil && unstructuredModel != nil
+		errAfterRender = result.ErrAfterRender
 	}
-	if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
+
+	w := cmd.OutOrStdout()
+	var err error
+	if expr := resolveJQ(cmd); expr != "" {
+		if jsonUnavailable {
+			return fmt.Errorf("JSON model is not available")
+		}
+		err = renderJQ(w, model, expr)
+	} else if cmdutil.ResolveFormat(cmd) != "pretty" || spec == nil {
+		if jsonUnavailable {
+			return fmt.Errorf("JSON model is not available")
+		}
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return enc.Encode(model)
+		err = enc.Encode(model)
+	} else {
+		err = spec.RenderText(w, unstructuredModel)
 	}
-	return spec.RenderText(w, model)
+	if err != nil {
+		return err
+	}
+	return errAfterRender
+}
+
+func resolveJQ(cmd *cobra.Command) string {
+	if f := cmd.Flags().Lookup("jq"); f != nil {
+		return f.Value.String()
+	}
+	return ""
 }
 
 func renderJQ(w io.Writer, model any, expr string) error {
@@ -178,6 +215,7 @@ func templateFuncs() template.FuncMap {
 		"formatBytesOrDash": formatBytesOrDash,
 		"formatCount":       formatCount,
 		"formatTime":        formatTime,
+		"jsonIndent":        jsonIndent,
 		"shortID":           shortID,
 	}
 }
@@ -230,6 +268,14 @@ func shortID(id string) string {
 	return id
 }
 
+func jsonIndent(v any, prefix, indent string) (string, error) {
+	b, err := json.MarshalIndent(v, prefix, indent)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 type Template string
 
 func (s Template) RenderText(w io.Writer, model any) error {
@@ -244,6 +290,7 @@ type Table struct {
 	Title   string
 	Rows    string
 	Columns []Column
+	Footer  Template
 }
 
 type Column struct {
@@ -293,6 +340,11 @@ func (t Table) RenderText(w io.Writer, model any) error {
 	}
 
 	table.Render()
+	if t.Footer != "" {
+		if err := t.Footer.RenderText(w, model); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
