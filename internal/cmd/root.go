@@ -73,7 +73,7 @@ Quick start:
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newPromptCmd())
-	rootCmd.AddCommand(newAuthCmd())
+	rootCmd.AddCommand(authCommand.Cobra())
 	rootCmd.AddCommand(newLoginCmd())
 	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newWorkspaceCmd())

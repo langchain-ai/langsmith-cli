@@ -9,31 +9,26 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
 
-func newAuthCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "auth",
-		Short: "Manage authentication",
-	}
-	cmd.AddCommand(newAuthTokenCmd())
-	return cmd
+var authCommand = structured.Parent{
+	Use:   "auth",
+	Short: "Manage authentication",
+	Children: []func() *cobra.Command{
+		authTokenCommand.Cobra,
+	},
 }
 
-func newAuthTokenCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "token",
-		Short: "Print the OAuth access token",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			token, err := resolveOAuthAccessToken(cmd.Context())
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), token)
-			return nil
-		},
-	}
+var authTokenCommand = structured.Command[struct{}]{
+	Use:   "token",
+	Short: "Print the OAuth access token",
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		return resolveOAuthAccessToken(ctx)
+	},
+	Render: structured.Template(`{{.}}
+`),
 }
 
 func resolveOAuthAccessToken(ctx context.Context) (string, error) {
