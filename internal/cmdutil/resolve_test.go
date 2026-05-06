@@ -200,6 +200,7 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
 			t.Fatalf("unexpected refresh token %q", got)
 		}
+		assertOAuthResource(t, r)
 		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 			AccessToken:  "new-access-token",
 			ExpiresIn:    300,
@@ -216,7 +217,7 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
   "current_profile": "dev",
   "profiles": {
     "dev": {
-      "api_url": "`+ts.URL+`",
+      "api_url": "`+ts.URL+`/api/v1",
       "oauth": {
         "refresh_token": "old-refresh-token"
       }
@@ -234,6 +235,17 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	}
 	if opts.OAuthAccessToken != "new-access-token" {
 		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
+func assertOAuthResource(t *testing.T, r *http.Request) {
+	t.Helper()
+	expected := "http://" + r.Host
+	if r.TLS != nil {
+		expected = "https://" + r.Host
+	}
+	if got := r.FormValue("resource"); got != expected {
+		t.Fatalf("expected resource %q, got %q", expected, got)
 	}
 }
 
