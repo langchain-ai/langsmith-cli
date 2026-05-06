@@ -86,7 +86,7 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL + "/api/v1", "--no-browser", "--workspace-id", workspaceID})
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL + "/api/v1", "--no-browser", "--workspace-id", workspaceID})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -215,7 +215,7 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL, "--no-browser"})
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL, "--no-browser"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -305,7 +305,7 @@ func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL, "--no-browser"})
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL, "--no-browser"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())

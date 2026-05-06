@@ -10,6 +10,19 @@ import (
 	"testing"
 )
 
+func TestAuthCmdHasSubcommands(t *testing.T) {
+	cmd := authCommand.Cobra()
+	names := make(map[string]bool, len(cmd.Commands()))
+	for _, child := range cmd.Commands() {
+		names[child.Name()] = true
+	}
+	for _, expected := range []string{"login", "token"} {
+		if !names[expected] {
+			t.Fatalf("auth command missing subcommand %q", expected)
+		}
+	}
+}
+
 func TestAuthTokenPrintsSavedOAuthToken(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL

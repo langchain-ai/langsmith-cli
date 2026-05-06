@@ -17,6 +17,7 @@ var authCommand = structured.Parent{
 	Use:   "auth",
 	Short: "Manage authentication",
 	Children: []func() *cobra.Command{
+		newLoginCmd,
 		authTokenCommand.Cobra,
 	},
 }
@@ -36,7 +37,7 @@ var authTokenCommand = structured.Command[struct{}]{
 			return "", fmt.Errorf("profile not found: %s", profileName)
 		}
 		if !hasProfile || (profile.AccessToken() == "" && profile.OAuth.RefreshToken == "") {
-			return "", fmt.Errorf("no OAuth token found; run 'langsmith login'")
+			return "", fmt.Errorf("no OAuth token found; run 'langsmith auth login'")
 		}
 
 		apiURL := lsconfig.DefaultAPIURL
@@ -58,7 +59,7 @@ var authTokenCommand = structured.Command[struct{}]{
 			}
 			token, err := refreshProfileToken(ctx, apiURL, profile.OAuth.RefreshToken)
 			if err != nil {
-				return "", fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith login --profile %s' to reauthenticate", profileName, err, profileName)
+				return "", fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
 			applyTokenResponse(&profile, token, time.Now())
 			cfg.Profiles[profileName] = profile
