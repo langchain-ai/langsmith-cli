@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,7 +33,7 @@ func TestNewCmd_UseField(t *testing.T) {
 
 func TestNewCmd_RequestFlags(t *testing.T) {
 	cmd := NewCmd()
-	for _, name := range []string{"body", "header", "include"} {
+	for _, name := range []string{"body", "field", "header", "include", "input", "method", "raw-field"} {
 		f := cmd.Flags().Lookup(name)
 		if f == nil {
 			t.Errorf("flag --%s not found on api command", name)
@@ -40,7 +41,63 @@ func TestNewCmd_RequestFlags(t *testing.T) {
 	}
 }
 
-func TestNewCmd_GETRequest(t *testing.T) {
+func TestNewCmd_AutoPOSTWithFields(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var data map[string]any
+		if err := json.Unmarshal(body, &data); err != nil {
+			t.Fatalf("invalid json body: %v", err)
+		}
+		if data["name"] != "x" {
+			t.Errorf("expected name=x, got %v", data["name"])
+		}
+		if data["limit"] != float64(10) {
+			t.Errorf("expected limit=10, got %v", data["limit"])
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"created":true}`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions", "-f", "name=x", "-F", "limit=10"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewCmd_GETWithFieldsUsesQuery(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("name") != "x" {
+			t.Errorf("expected query name=x, got %q", r.URL.RawQuery)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions", "-X", "GET", "-f", "name=x"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewCmd_DefaultGETRequest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/openapi.json" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"openapi": "3.1.0", "paths": map[string]any{}})
@@ -61,7 +118,7 @@ func TestNewCmd_GETRequest(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "GET", "sessions"})
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -89,7 +146,7 @@ func TestNewCmd_POSTWithBody(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "POST", "sessions", "--body", `{"name":"x"}`})
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions", "-X", "POST", "--body", `{"name":"x"}`})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -118,13 +175,13 @@ func TestNewCmd_InvalidMethod(t *testing.T) {
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"api", "--api-key", "key", "BOGUS", "sessions"})
+	root.SetArgs([]string{"api", "--api-key", "key", "sessions", "-X", "BOGUS"})
 
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("expected error for invalid method")
 	}
-	if !strings.Contains(err.Error(), "unknown subcommand or HTTP method") {
+	if !strings.Contains(err.Error(), "invalid HTTP method") {
 		t.Errorf("expected helpful error, got %q", err.Error())
 	}
 }

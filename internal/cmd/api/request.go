@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -15,9 +16,12 @@ import (
 
 // runRequest executes an HTTP request and writes the response to w.
 // Returns the HTTP status code and any transport-level error.
-func runRequest(c *client.Client, method, path, body string, headers []string, include bool, w io.Writer) (int, error) {
+func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, w io.Writer) (int, error) {
 	apiURL := c.APIURL()
 	fullURL := resolveEndpoint(apiURL, path)
+	if len(params) > 0 && strings.EqualFold(method, "GET") {
+		fullURL = addQueryParams(fullURL, params)
+	}
 
 	// RawDo prepends apiURL, so compute the relative path.
 	// For full URLs with a different host, pass the full URL as the path
@@ -31,8 +35,7 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 		reqClient = client.NewWithOptions(client.Options{})
 	}
 
-	// Resolve body
-	bodyReader, err := resolveBody(body)
+	bodyReader, err := resolveRequestBody(method, body, input, params)
 	if err != nil {
 		return 0, err
 	}
@@ -75,6 +78,82 @@ func runRequest(c *client.Client, method, path, body string, headers []string, i
 	}
 
 	return statusCode, nil
+}
+
+func resolveRequestBody(method, body, input string, params map[string]any) (io.Reader, error) {
+	if input != "" && body != "" {
+		return nil, fmt.Errorf("only one of --input or --body may be used")
+	}
+	if input != "" && len(params) > 0 && !strings.EqualFold(method, "GET") {
+		return nil, fmt.Errorf("--input cannot be combined with field parameters unless using GET")
+	}
+	if strings.EqualFold(method, "GET") {
+		if input != "" {
+			return resolveInput(input)
+		}
+		if body != "" {
+			return resolveBody(body)
+		}
+		return nil, nil
+	}
+	if input != "" {
+		return resolveInput(input)
+	}
+	if body != "" {
+		return resolveBody(body)
+	}
+	if len(params) == 0 {
+		return nil, nil
+	}
+	data, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling fields: %w", err)
+	}
+	return bytes.NewReader(data), nil
+}
+
+func resolveInput(input string) (io.Reader, error) {
+	if input == "-" {
+		return os.Stdin, nil
+	}
+	data, err := os.ReadFile(input)
+	if err != nil {
+		return nil, fmt.Errorf("reading input file %q: %w", input, err)
+	}
+	return bytes.NewReader(data), nil
+}
+
+func addQueryParams(rawURL string, params map[string]any) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := u.Query()
+	for key, value := range params {
+		addQueryValue(q, key, value)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func addQueryValue(q url.Values, key string, value any) {
+	switch v := value.(type) {
+	case map[string]any:
+		data, err := json.Marshal(v)
+		if err != nil {
+			q.Add(key, fmt.Sprint(v))
+			return
+		}
+		q.Add(key, string(data))
+	case []any:
+		for _, item := range v {
+			addQueryValue(q, key, item)
+		}
+	case nil:
+		q.Add(key, "")
+	default:
+		q.Add(key, fmt.Sprint(v))
+	}
 }
 
 // resolveBody resolves a --body value to an io.Reader.
