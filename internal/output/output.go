@@ -153,9 +153,9 @@ func PrintOutput(data any, format string, filePath string) {
 	}
 }
 
-// PrintError prints a JSON error to stderr.
+// PrintError prints an error to stderr.
 func PrintError(msg string) {
-	fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", msg)
+	fmt.Fprintln(os.Stderr, msg)
 }
 
 // PrintRunsTable prints a table of runs in pretty format.
