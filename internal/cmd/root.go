@@ -71,6 +71,7 @@ Quick start:
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newFleetCmd())
+	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(newLoginCmd())
 	rootCmd.AddCommand(newProfileCmd())
