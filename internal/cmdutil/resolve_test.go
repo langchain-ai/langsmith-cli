@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestCmd() *cobra.Command {
@@ -16,7 +17,7 @@ func newTestCmd() *cobra.Command {
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
 	root.PersistentFlags().String("profile", "", "")
-	root.PersistentFlags().String("format", "json", "")
+	root.PersistentFlags().String("format", "pretty", "")
 	return root
 }
 
@@ -77,17 +78,24 @@ func TestResolveAPIURL_NormalizesTrailingAPIV1(t *testing.T) {
 
 func TestResolveFormat_Flag(t *testing.T) {
 	cmd := newTestCmd()
-	_ = cmd.PersistentFlags().Set("format", "pretty")
-	if got := ResolveFormat(cmd); got != "pretty" {
-		t.Errorf("expected pretty, got %q", got)
+	_ = cmd.PersistentFlags().Set("format", "json")
+	if got := ResolveFormat(cmd); got != "json" {
+		t.Errorf("expected json, got %q", got)
 	}
 }
 
 func TestResolveFormat_Default(t *testing.T) {
 	cmd := newTestCmd()
-	if got := ResolveFormat(cmd); got != "json" {
-		t.Errorf("expected json, got %q", got)
+	if got := ResolveFormat(cmd); got != "pretty" {
+		t.Errorf("expected pretty, got %q", got)
 	}
+}
+
+func TestResolveJQ_Flag(t *testing.T) {
+	cmd := newTestCmd()
+	cmd.PersistentFlags().String("jq", "", "")
+	_ = cmd.PersistentFlags().Set("jq", ".name")
+	require.Equal(t, ".name", ResolveJQ(cmd))
 }
 
 func TestGetClient_Success(t *testing.T) {
@@ -192,6 +200,7 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
 			t.Fatalf("unexpected refresh token %q", got)
 		}
+		assertOAuthResource(t, r)
 		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 			AccessToken:  "new-access-token",
 			ExpiresIn:    300,
@@ -208,7 +217,7 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
   "current_profile": "dev",
   "profiles": {
     "dev": {
-      "api_url": "`+ts.URL+`",
+      "api_url": "`+ts.URL+`/api/v1",
       "oauth": {
         "refresh_token": "old-refresh-token"
       }
@@ -226,6 +235,17 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	}
 	if opts.OAuthAccessToken != "new-access-token" {
 		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
+func assertOAuthResource(t *testing.T, r *http.Request) {
+	t.Helper()
+	expected := "http://" + r.Host
+	if r.TLS != nil {
+		expected = "https://" + r.Host
+	}
+	if got := r.FormValue("resource"); got != expected {
+		t.Fatalf("expected resource %q, got %q", expected, got)
 	}
 }
 

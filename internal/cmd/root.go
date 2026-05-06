@@ -28,9 +28,8 @@ func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
 		Short: "LangSmith CLI — query and manage LangSmith resources",
 		Long: `LangSmith CLI — query and manage LangSmith resources from the command line.
 
-Designed for AI coding agents and developers who need fast, scriptable
-access to traces, runs, datasets, evaluators, experiments, and threads.
-All commands output JSON by default for easy parsing.
+	Designed for developers and AI coding agents who need fast access to traces,
+	runs, datasets, evaluators, experiments, and threads.
 
 Authentication:
   Run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key.
@@ -47,9 +46,9 @@ Quick start:
   langsmith evaluator list
   langsmith experiment list --dataset my-eval-dataset
 
-Output:
-  --format json    Machine-readable JSON (default). Best for agents and scripts.
-  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON.`,
+	Output:
+	  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).
+	  --format json    Machine-readable JSON for agents and scripts.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       displayVersion,
@@ -58,7 +57,7 @@ Output:
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
-	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "json", "Output format: json or pretty")
+	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())

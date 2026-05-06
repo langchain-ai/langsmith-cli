@@ -533,6 +533,7 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
@@ -604,6 +605,7 @@ func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
