@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.15
-	github.com/langchain-ai/langsmith-go v0.9.3-0.20260506124526-2a8512fecfc3
+	github.com/langchain-ai/langsmith-go v0.9.3
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.11.1
