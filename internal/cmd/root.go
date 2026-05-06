@@ -195,13 +195,13 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	return opts, nil
 }
 
-// ExitError prints a JSON error to stderr and exits.
+// ExitError prints an error to stderr and exits.
 func ExitError(msg string) {
-	fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", msg)
+	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
 }
 
-// ExitErrorf prints a formatted JSON error to stderr and exits.
+// ExitErrorf prints a formatted error to stderr and exits.
 func ExitErrorf(format string, args ...any) {
 	ExitError(fmt.Sprintf(format, args...))
 }

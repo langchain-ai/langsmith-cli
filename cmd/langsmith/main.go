@@ -16,7 +16,7 @@ var (
 func main() {
 	rootCmd := cmd.NewRootCmd(version, fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
