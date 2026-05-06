@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/itchyny/gojq v0.12.15
-	github.com/langchain-ai/langsmith-go v0.9.1-0.20260506021820-07a3218523e5
+	github.com/langchain-ai/langsmith-go v0.9.1-0.20260506034438-f21e48a26ead
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.11.1
