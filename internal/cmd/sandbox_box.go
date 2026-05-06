@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -370,14 +371,19 @@ Examples:
 				return fmt.Errorf("no command specified")
 			}
 
-			ctx := context.Background()
-			ep, err := resolveSandbox(ctx, name)
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			c, err := cmdutil.GetClient(cmd)
 			if err != nil {
 				return err
 			}
 
-			var result execResult
-			if err := dataplanePost(ep.DataplaneURL, "/execute", map[string]interface{}{"command": command}, &result); err != nil {
+			result, err := c.SDK.Sandboxes.Boxes.Run(ctx, name, langsmith.SandboxBoxRunParams{
+				Command: langsmith.F(sandboxShellCommand(command)),
+			})
+			if err != nil {
 				return fmt.Errorf("execute: %w", err)
 			}
 
@@ -388,10 +394,18 @@ Examples:
 				fmt.Fprint(os.Stderr, result.Stderr)
 			}
 			if result.ExitCode != 0 {
-				os.Exit(result.ExitCode)
+				os.Exit(int(result.ExitCode))
 			}
 			return nil
 		},
 	}
 	return cmd
+}
+
+func sandboxShellCommand(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
 }

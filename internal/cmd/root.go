@@ -183,6 +183,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 				return opts, fmt.Errorf("saving refreshed OAuth token: %w", err)
 			}
 		}
+		opts.ProfileName = profileName
 		opts.OAuthAccessToken = profile.AccessToken()
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey

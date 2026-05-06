@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +32,7 @@ Examples:
   langsmith sandbox ssh-setup my-sandbox --identity ~/.ssh/id_ed25519.pub`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSSHSetup(args[0], identity)
+			return runSSHSetup(cmd, args[0], identity)
 		},
 	}
 
@@ -39,14 +41,15 @@ Examples:
 	return cmd
 }
 
-func runSSHSetup(name, identity string) error {
-	ctx := context.Background()
-
-	ep, err := resolveSandbox(ctx, name)
+func runSSHSetup(cmd *cobra.Command, name, identity string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
 	}
-	dpURL := ep.DataplaneURL
 
 	// Find the public key.
 	pubkeyPath, err := resolvePublicKey(identity)
@@ -60,17 +63,17 @@ func runSSHSetup(name, identity string) error {
 	pubkey = bytes.TrimSpace(pubkey)
 
 	// Check if sshd is running inside the sandbox.
-	if !isSSHDRunning(dpURL) {
+	if !isSSHDRunning(ctx, c, name) {
 		fmt.Fprintln(os.Stderr, "Warning: sshd does not appear to be running in the sandbox. SSH connections will likely not work.")
 	}
 
 	// Upload to /root/.ssh/authorized_keys via the sandbox upload endpoint.
-	if err := uploadAuthorizedKeys(dpURL, pubkey); err != nil {
+	if err := uploadAuthorizedKeys(ctx, c, name, pubkey); err != nil {
 		return fmt.Errorf("uploading public key: %w", err)
 	}
 
 	// Fetch the host key from the sandbox.
-	hostKey, err := fetchHostKey(dpURL)
+	hostKey, err := fetchHostKey(ctx, c, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not fetch host key: %v\n", err)
 	}
@@ -182,8 +185,8 @@ func ensureSSHConfig(hostAlias, block string) error {
 }
 
 // fetchHostKey retrieves the SSH host public key from the sandbox.
-func fetchHostKey(dpURL string) (string, error) {
-	result, err := sandboxExec(dpURL, []string{"cat", "/etc/ssh/ssh_host_ed25519_key.pub"})
+func fetchHostKey(ctx context.Context, c *client.Client, name string) (string, error) {
+	result, err := sandboxExec(ctx, c, name, []string{"cat", "/etc/ssh/ssh_host_ed25519_key.pub"})
 	if err != nil {
 		return "", err
 	}
@@ -250,27 +253,14 @@ func resolvePublicKey(explicit string) (string, error) {
 }
 
 // uploadAuthorizedKeys uploads the public key to the sandbox's
-// /root/.ssh/authorized_keys via the daemon's /upload endpoint.
-func uploadAuthorizedKeys(dpURL string, pubkey []byte) error {
-	var body bytes.Buffer
-	w := multipart.NewWriter(&body)
-	part, err := w.CreateFormFile("file", "authorized_keys")
-	if err != nil {
-		return err
-	}
-	if _, err := part.Write(pubkey); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-
-	return dataplanePostRaw(dpURL, "/upload?path=/root/.ssh/authorized_keys", w.FormDataContentType(), &body)
+// /root/.ssh/authorized_keys via the SDK runtime file helper.
+func uploadAuthorizedKeys(ctx context.Context, c *client.Client, name string, pubkey []byte) error {
+	return c.SDK.Sandboxes.Boxes.WriteFile(ctx, name, "/root/.ssh/authorized_keys", pubkey)
 }
 
 // isSSHDRunning checks whether sshd is listening on port 22 inside the sandbox.
-func isSSHDRunning(dpURL string) bool {
-	result, err := sandboxExec(dpURL, []string{"sh", "-c", "ss -tlnp 2>/dev/null | grep -q ':22 ' || netstat -tlnp 2>/dev/null | grep -q ':22 '"})
+func isSSHDRunning(ctx context.Context, c *client.Client, name string) bool {
+	result, err := sandboxExec(ctx, c, name, []string{"sh", "-c", "ss -tlnp 2>/dev/null | grep -q ':22 ' || netstat -tlnp 2>/dev/null | grep -q ':22 '"})
 	if err != nil {
 		return false
 	}
@@ -284,12 +274,18 @@ type execResult struct {
 }
 
 // sandboxExec runs a command inside the sandbox via the /execute endpoint.
-func sandboxExec(dpURL string, command []string) (*execResult, error) {
-	var result execResult
-	if err := dataplanePost(dpURL, "/execute", map[string]interface{}{"command": command}, &result); err != nil {
+func sandboxExec(ctx context.Context, c *client.Client, name string, command []string) (*execResult, error) {
+	result, err := c.SDK.Sandboxes.Boxes.Run(ctx, name, langsmith.SandboxBoxRunParams{
+		Command: langsmith.F(sandboxShellCommand(command)),
+	})
+	if err != nil {
 		return nil, err
 	}
-	return &result, nil
+	return &execResult{
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+		ExitCode: int(result.ExitCode),
+	}, nil
 }
 
 // shellQuote wraps s in single quotes, escaping any embedded single quotes.

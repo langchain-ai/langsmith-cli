@@ -4,14 +4,13 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
-	github.com/hashicorp/yamux v0.1.2
 	github.com/itchyny/gojq v0.12.15
-	github.com/langchain-ai/langsmith-go v0.9.0
+	github.com/langchain-ai/langsmith-go v0.9.3
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/xlab/treeprint v1.2.0
+	golang.org/x/net v0.52.0
 	golang.org/x/term v0.41.0
 )
 
@@ -41,7 +40,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect

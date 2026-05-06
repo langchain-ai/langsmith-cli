@@ -158,6 +158,50 @@ func TestGetClient_ProfileBearer(t *testing.T) {
 	}
 }
 
+func TestResolveClientOptions_ProfileFlagSetsProfileName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "api_key": "default-key"
+    },
+    "prod": {
+      "api_url": "http://localhost:1980/api/v1",
+      "workspace_id": "ws-prod",
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("profile", "prod")
+	opts, err := ResolveClientOptions(cmd, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.ProfileName != "prod" {
+		t.Fatalf("expected profile name prod, got %q", opts.ProfileName)
+	}
+	if opts.OAuthAccessToken != "prod-access-token" {
+		t.Fatalf("expected profile OAuth token, got %q", opts.OAuthAccessToken)
+	}
+	if opts.APIURL != "http://localhost:1980/api/v1" {
+		t.Fatalf("expected profile API URL, got %q", opts.APIURL)
+	}
+	if opts.WorkspaceID != "ws-prod" {
+		t.Fatalf("expected profile workspace ID, got %q", opts.WorkspaceID)
+	}
+}
+
 func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
@@ -185,6 +229,9 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	}
 	if opts.OAuthAccessToken != "" {
 		t.Fatalf("expected profile OAuth access token to be ignored")
+	}
+	if opts.ProfileName != "" {
+		t.Fatalf("expected profile name to be ignored when API key auth wins, got %q", opts.ProfileName)
 	}
 }
 
