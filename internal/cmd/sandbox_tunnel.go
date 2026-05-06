@@ -5,20 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/hashicorp/yamux"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
-
-	"github.com/langchain-ai/langsmith-cli/internal/tunnel"
 )
 
 func newSandboxTunnelCmd() *cobra.Command {
@@ -59,15 +52,18 @@ Examples:
 			if name == "" && sandboxURL == "" {
 				return fmt.Errorf("provide a sandbox name or --url")
 			}
-			if GetAPIKey() == "" {
-				return fmt.Errorf("LANGSMITH_API_KEY not set (use --api-key or $LANGSMITH_API_KEY)")
-			}
+			client := MustGetClient()
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+			defer cancel()
 			if sandboxURL == "" {
-				resolved, err := resolveSandboxURL(context.Background(), name)
+				box, err := client.SDK.Sandboxes.Boxes.Get(ctx, name)
 				if err != nil {
-					return err
+					return fmt.Errorf("getting sandbox: %w", err)
 				}
-				sandboxURL = resolved
+				if box.DataplaneURL == "" {
+					return fmt.Errorf("sandbox %q has no dataplane URL", name)
+				}
+				sandboxURL = box.DataplaneURL
 			}
 			if remotePort < 1 || remotePort > 65535 {
 				return fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", remotePort)
@@ -75,9 +71,7 @@ Examples:
 
 			if stdio {
 				logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-				ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-				defer cancel()
-				return runTunnelStdio(ctx, logger, sandboxURL, uint16(remotePort))
+				return runTunnelStdio(ctx, logger, client.SDK, sandboxURL, remotePort)
 			}
 
 			if localPort == 0 {
@@ -89,10 +83,7 @@ Examples:
 
 			logger := newTunnelLogger(logLevel)
 
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-			defer cancel()
-
-			return runTunnel(ctx, logger, sandboxURL, remotePort, localPort)
+			return runTunnel(ctx, logger, client.SDK, sandboxURL, remotePort, localPort)
 		},
 	}
 
@@ -124,185 +115,34 @@ func newTunnelLogger(level string) *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l}))
 }
 
-func runTunnel(ctx context.Context, logger *slog.Logger, sandboxURL string, remotePort, localPort int) error {
-	session, err := connectTunnel(ctx, logger, sandboxURL)
+func runTunnel(ctx context.Context, logger *slog.Logger, client *langsmith.Client, sandboxURL string, remotePort, localPort int) error {
+	tunnel, err := client.Sandboxes.Boxes.TunnelWithDataplaneURL(ctx, sandboxURL, remotePort, langsmith.SandboxTunnelParams{
+		LocalPort: localPort,
+	})
 	if err != nil {
-		return fmt.Errorf("connect: %w", err)
+		return fmt.Errorf("tunnel: %w", err)
 	}
-	defer func() { _ = session.Close() }()
-
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", localPort))
-	if err != nil {
-		return fmt.Errorf("listen: %w", err)
-	}
-	defer func() { _ = ln.Close() }()
+	defer func() { _ = tunnel.Close() }()
 
 	logger.Info("tunnel ready",
-		"local", fmt.Sprintf("127.0.0.1:%d", localPort),
+		"local", fmt.Sprintf("127.0.0.1:%d", tunnel.LocalPort),
 		"remote_port", remotePort,
 		"sandbox_url", sandboxURL,
 	)
 
-	go func() {
-		<-ctx.Done()
-		_ = ln.Close()
-	}()
-
-	for {
-		tcpConn, err := ln.Accept()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("accept: %w", err)
-		}
-		go handleLocalConn(ctx, logger, session, tcpConn, uint16(remotePort))
-	}
+	<-ctx.Done()
+	return nil
 }
 
-// connectTunnel dials a WebSocket to the sandbox and establishes a yamux
-// session for multiplexing TCP streams.
-func connectTunnel(ctx context.Context, logger *slog.Logger, sandboxURL string) (*yamux.Session, error) {
-	parsed, err := url.Parse(strings.TrimRight(sandboxURL, "/"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid sandbox URL: %w", err)
-	}
-
-	wsScheme := "wss"
-	if parsed.Scheme == "http" {
-		wsScheme = "ws"
-	}
-
-	wsURL := fmt.Sprintf("%s://%s%s/tunnel", wsScheme, parsed.Host, parsed.Path)
-	logger.Debug("dialing tunnel", "url", wsURL)
-
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 15 * time.Second,
-	}
-	header := http.Header{}
-	for k, v := range sandboxAuthHeaders() {
-		header.Set(k, v)
-	}
-
-	wsConn, resp, err := dialer.DialContext(ctx, wsURL, header)
-	if err != nil {
-		if resp != nil {
-			return nil, fmt.Errorf("websocket dial (%d): %w", resp.StatusCode, err)
-		}
-		return nil, fmt.Errorf("websocket dial: %w", err)
-	}
-
-	adapter := tunnel.NewWSAdapter(wsConn)
-
-	cfg := yamux.DefaultConfig()
-	cfg.KeepAliveInterval = 30 * time.Second
-	cfg.ConnectionWriteTimeout = 30 * time.Second
-	cfg.MaxStreamWindowSize = 256 * 1024
-	cfg.LogOutput = io.Discard
-
-	session, err := yamux.Client(adapter, cfg)
-	if err != nil {
-		_ = wsConn.Close()
-		return nil, fmt.Errorf("yamux client: %w", err)
-	}
-
-	logger.Info("tunnel session established", "url", wsURL)
-	return session, nil
-}
-
-// runTunnelStdio connects a single yamux stream and bridges it to
-// stdin/stdout. Intended for use as an SSH ProxyCommand.
-func runTunnelStdio(ctx context.Context, logger *slog.Logger, sandboxURL string, remotePort uint16) error {
-	session, err := connectTunnel(ctx, logger, sandboxURL)
+// runTunnelStdio connects a single tunnel stream and bridges it to stdin/stdout.
+// Intended for use as an SSH ProxyCommand.
+func runTunnelStdio(ctx context.Context, logger *slog.Logger, client *langsmith.Client, sandboxURL string, remotePort int) error {
+	stream, err := client.Sandboxes.Boxes.OpenTunnelStreamWithDataplaneURL(ctx, sandboxURL, remotePort)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
-	defer func() { _ = session.Close() }()
-
-	stream, err := session.OpenStream()
-	if err != nil {
-		return fmt.Errorf("open stream: %w", err)
-	}
 	defer func() { _ = stream.Close() }()
 
-	if err := tunnel.WriteConnectHeader(stream, remotePort); err != nil {
-		return fmt.Errorf("write connect header: %w", err)
-	}
-
-	status, err := tunnel.ReadStatus(stream)
-	if err != nil {
-		return fmt.Errorf("read status: %w", err)
-	}
-	if status != tunnel.StatusOK {
-		reason := "unknown"
-		switch status {
-		case tunnel.StatusPortNotAllowed:
-			reason = "port not allowed"
-		case tunnel.StatusDialFailed:
-			reason = "dial failed (is the service running?)"
-		case tunnel.StatusUnsupportedVersion:
-			reason = "unsupported protocol version"
-		}
-		return fmt.Errorf("tunnel rejected: %s", reason)
-	}
-
-	done := make(chan error, 2)
-	go func() {
-		_, err := io.Copy(stream, os.Stdin)
-		done <- err
-	}()
-	go func() {
-		_, err := io.Copy(os.Stdout, stream)
-		done <- err
-	}()
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-done:
-		return err
-	}
-}
-
-func handleLocalConn(ctx context.Context, logger *slog.Logger, session *yamux.Session, tcpConn net.Conn, remotePort uint16) {
-	stream, err := session.OpenStream()
-	if err != nil {
-		logger.Error("failed to open stream", "error", err)
-		_ = tcpConn.Close()
-		return
-	}
-
-	if err := tunnel.WriteConnectHeader(stream, remotePort); err != nil {
-		logger.Error("failed to write connect header", "error", err)
-		_ = stream.Close()
-		_ = tcpConn.Close()
-		return
-	}
-
-	status, err := tunnel.ReadStatus(stream)
-	if err != nil {
-		logger.Error("failed to read status", "error", err)
-		_ = stream.Close()
-		_ = tcpConn.Close()
-		return
-	}
-
-	if status != tunnel.StatusOK {
-		reason := "unknown"
-		switch status {
-		case tunnel.StatusPortNotAllowed:
-			reason = "port not allowed"
-		case tunnel.StatusDialFailed:
-			reason = "dial failed (is the service running?)"
-		case tunnel.StatusUnsupportedVersion:
-			reason = "unsupported protocol version (client/server mismatch)"
-		}
-		logger.Error("tunnel rejected", "status", status, "reason", reason, "port", remotePort)
-		_ = stream.Close()
-		_ = tcpConn.Close()
-		return
-	}
-
-	logger.Debug("stream connected", "remote_port", remotePort, "local_addr", tcpConn.RemoteAddr())
-	tunnel.Bridge(ctx, stream, tcpConn)
+	logger.Debug("tunnel stream established", "remote_port", remotePort, "sandbox_url", sandboxURL)
+	return langsmith.BridgeSandboxTunnelIO(ctx, stream, os.Stdin, os.Stdout)
 }
