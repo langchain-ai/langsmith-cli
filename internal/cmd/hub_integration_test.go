@@ -32,7 +32,7 @@ func randomHandle(prefix string) string {
 // output. Fails the test on a non-nil execute error or non-JSON stdout.
 func runHub(t *testing.T, args ...string) map[string]any {
 	t.Helper()
-	full := append([]string{"hub"}, args...)
+	full := append([]string{"--format", "json", "hub"}, args...)
 	out := captureStdout(t, func() {
 		cmd := NewRootCmd("dev", "dev")
 		cmd.SetArgs(full)
@@ -50,7 +50,7 @@ func runHub(t *testing.T, args ...string) map[string]any {
 // runHubExpectError invokes the command and asserts it returned a non-nil error.
 func runHubExpectError(t *testing.T, args ...string) error {
 	t.Helper()
-	full := append([]string{"hub"}, args...)
+	full := append([]string{"--format", "json", "hub"}, args...)
 	var execErr error
 	captureStdout(t, func() {
 		cmd := NewRootCmd("dev", "dev")
@@ -75,7 +75,7 @@ func isNotFoundErr(err error) bool {
 // errors. Runs even on test failure so test repos do not pile up.
 func scheduleDelete(t *testing.T, handle string) {
 	t.Cleanup(func() {
-		full := []string{"hub", "delete", handle, "--yes"}
+		full := []string{"--format", "json", "hub", "delete", handle, "--yes"}
 		captureStdout(t, func() {
 			cmd := NewRootCmd("dev", "dev")
 			cmd.SetArgs(full)
