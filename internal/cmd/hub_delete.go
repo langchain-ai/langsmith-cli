@@ -34,8 +34,7 @@ func newHubDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			path := fmt.Sprintf("/v1/platform/hub/repos/%s/%s/directories", owner, name)
-			if err := c.RawDelete(ctx, path, nil); err != nil {
+			if err := c.SDK.Repos.Directories.Delete(ctx, owner, name); err != nil {
 				return fmt.Errorf("deleting %s/%s: %w", owner, name, err)
 			}
 			output.OutputJSON(map[string]any{

@@ -3,13 +3,13 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -34,20 +34,23 @@ func newHubPullCmd() *cobra.Command {
 				ref = commitRef
 			}
 
-			path := fmt.Sprintf("/v1/platform/hub/repos/%s/%s/directories", owner, name)
-			if ref != "" {
-				path += "?commit=" + url.QueryEscape(ref)
-			}
-
 			c := MustGetClient()
 			ctx := context.Background()
+			params := langsmith.RepoDirectoryListParams{}
+			if ref != "" {
+				params.Commit = langsmith.F(ref)
+			}
 
-			var resp hubDirResponse
-			if err := c.RawGet(ctx, path, &resp); err != nil {
+			resp, err := c.SDK.Repos.Directories.List(ctx, owner, name, params)
+			if err != nil {
 				return fmt.Errorf("pulling %s/%s: %w", owner, name, err)
 			}
 
-			written, linked, err := writeFilesToDirectory(dir, resp.Files, yes)
+			files, err := sdkFilesToHubFiles(resp.Files)
+			if err != nil {
+				return fmt.Errorf("decoding files for %s/%s: %w", owner, name, err)
+			}
+			written, linked, err := writeFilesToDirectory(dir, files, yes)
 			if err != nil {
 				return err
 			}

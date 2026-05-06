@@ -27,6 +27,7 @@ func TestHubPush_CreatesRepoAndPostsCommit(t *testing.T) {
 			sawCommit = true
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &commitBody)
+			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"commit": map[string]any{
 					"id":          "c1",

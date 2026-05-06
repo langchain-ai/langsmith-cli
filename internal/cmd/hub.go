@@ -12,20 +12,6 @@ type hubFileEntry struct {
 	CommitHash string `json:"commit_hash,omitempty"`
 }
 
-type hubDirResponse struct {
-	CommitID   string                  `json:"commit_id"`
-	CommitHash string                  `json:"commit_hash"`
-	Files      map[string]hubFileEntry `json:"files"`
-}
-
-type hubCommitResponse struct {
-	Commit struct {
-		ID         string `json:"id"`
-		CommitHash string `json:"commit_hash"`
-		CreatedAt  string `json:"created_at"`
-	} `json:"commit"`
-}
-
 type hubRepoMeta struct {
 	Description *string
 	Readme      *string

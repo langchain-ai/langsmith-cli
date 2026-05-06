@@ -123,7 +123,7 @@ func escapeYAMLScalar(s string) string {
 	if s == "" {
 		return "\"\""
 	}
-	if strings.ContainsAny(s, ":#\n\"'") || strings.HasPrefix(s, "-") || strings.HasPrefix(s, " ") {
+	if strings.ContainsAny(s, ":#\n\"'{}[],*&!|>%@`?") || strings.HasPrefix(s, "-") || strings.HasPrefix(s, " ") {
 		b, _ := json.Marshal(s)
 		return string(b)
 	}

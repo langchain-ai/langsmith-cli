@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,5 +86,32 @@ func TestHubInit_RejectsBadType(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := scaffoldHubDirectory(dir, "prompt", "x", "", false); err == nil {
 		t.Fatal("expected error for invalid type")
+	}
+}
+
+func TestEscapeYAMLScalar_QuotesFlowIndicators(t *testing.T) {
+	tests := []string{
+		"{tools: gpt4}",
+		"[step1, step2]",
+		"*alias",
+		"!tag value",
+		">block",
+		"|block",
+		"contains,comma",
+		"contains?question",
+		"contains&and",
+		"contains@at",
+		"contains`backtick",
+	}
+	for _, input := range tests {
+		got := escapeYAMLScalar(input)
+		wantBytes, err := json.Marshal(input)
+		if err != nil {
+			t.Fatalf("marshal %q: %v", input, err)
+		}
+		want := string(wantBytes)
+		if got != want {
+			t.Errorf("escapeYAMLScalar(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
