@@ -78,19 +78,13 @@ langsmith experiment list --dataset my-eval-set
 
 ## Output Formats
 
-All commands default to **JSON** output for agent consumption:
-
 ```bash
-langsmith trace list --project my-app  # JSON array to stdout
+langsmith trace list --project my-app
 ```
 
-Use `--format pretty` for human-readable tables and trees:
-
 ```bash
-langsmith --format pretty trace list --project my-app
+langsmith --format=json trace list --project my-app
 ```
-
-Write to a file with `-o`:
 
 ```bash
 langsmith trace list --project my-app -o traces.json
@@ -112,8 +106,8 @@ langsmith project list --limit 50
 # Filter by name
 langsmith project list --name-contains chatbot
 
-# Human-readable table
-langsmith --format pretty project list
+# Machine-readable JSON
+langsmith --format=json project list
 ```
 
 ### `trace` — Query and export traces

@@ -55,6 +55,7 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 			if got := r.FormValue("client_id"); got != oauthClientID {
 				t.Fatalf("expected client_id %q, got %q", oauthClientID, got)
 			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "ABCD-EFGH",
@@ -69,6 +70,7 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 			if got := r.FormValue("grant_type"); got != "urn:ietf:params:oauth:grant-type:device_code" {
 				t.Fatalf("unexpected grant_type %q", got)
 			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 				AccessToken:  accessToken,
 				ExpiresIn:    300,
@@ -84,7 +86,7 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"login", "--api-url", ts.URL, "--no-browser", "--workspace-id", workspaceID})
+	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL + "/api/v1", "--no-browser", "--workspace-id", workspaceID})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -106,6 +108,9 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	}
 	if result["workspace_id"] != workspaceID {
 		t.Fatalf("expected workspace_id %q in result, got %q", workspaceID, result["workspace_id"])
+	}
+	if result["api_url"] != ts.URL {
+		t.Fatalf("expected normalized api_url %q, got %q", ts.URL, result["api_url"])
 	}
 
 	cfg, err := lsconfig.LoadFrom(configPath)
@@ -165,6 +170,10 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/device/code":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "ABCD-EFGH",
@@ -173,6 +182,10 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 				Interval:        0,
 			})
 		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 				AccessToken:  accessToken,
 				ExpiresIn:    300,
@@ -202,7 +215,7 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"login", "--api-url", ts.URL, "--no-browser"})
+	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL, "--no-browser"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -257,6 +270,10 @@ func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/device/code":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
 				DeviceCode:      "device-code",
 				UserCode:        "ABCD-EFGH",
@@ -265,6 +282,10 @@ func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
 				Interval:        0,
 			})
 		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
 			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 				AccessToken:  "test-access-token",
 				ExpiresIn:    300,
@@ -284,7 +305,7 @@ func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"login", "--api-url", ts.URL, "--no-browser"})
+	root.SetArgs([]string{"--format=json", "login", "--api-url", ts.URL, "--no-browser"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -332,6 +353,7 @@ func TestRefreshProfileToken(t *testing.T) {
 		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
 			t.Fatalf("unexpected refresh token %q", got)
 		}
+		assertOAuthResource(t, r)
 		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
 			AccessToken:  "new-access-token",
 			ExpiresIn:    300,
@@ -340,7 +362,7 @@ func TestRefreshProfileToken(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	token, err := refreshProfileToken(t.Context(), ts.URL, "old-refresh-token")
+	token, err := refreshProfileToken(t.Context(), ts.URL+"/api/v1", "old-refresh-token")
 	if err != nil {
 		t.Fatalf("refreshProfileToken returned error: %v", err)
 	}
@@ -386,4 +408,15 @@ func tsActivateURL(r *http.Request) string {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host + "/activate"
+}
+
+func assertOAuthResource(t *testing.T, r *http.Request) {
+	t.Helper()
+	expected := "http://" + r.Host
+	if r.TLS != nil {
+		expected = "https://" + r.Host
+	}
+	if got := r.FormValue("resource"); got != expected {
+		t.Fatalf("expected resource %q, got %q", expected, got)
+	}
 }

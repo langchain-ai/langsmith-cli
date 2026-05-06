@@ -53,7 +53,7 @@ func TestHubList_RejectsBadType(t *testing.T) {
 	}
 }
 
-func TestHubList_RendersJSON(t *testing.T) {
+func TestHubList_RendersTable(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -68,7 +68,7 @@ func TestHubList_RendersJSON(t *testing.T) {
 		cmd.SetArgs([]string{"list"})
 		_ = cmd.Execute()
 	})
-	if !strings.Contains(out, `"total": 1`) || !strings.Contains(out, `"acme/foo"`) {
+	if !strings.Contains(out, "Hub repos") || !strings.Contains(out, "acme/foo") || !strings.Contains(out, "skill") {
 		t.Errorf("missing fields in output:\n%s", out)
 	}
 }
