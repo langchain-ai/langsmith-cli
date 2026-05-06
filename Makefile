@@ -4,7 +4,7 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build clean test lint vet fmt install
+.PHONY: build clean test test-integration lint vet fmt install
 
 build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/langsmith
@@ -17,6 +17,9 @@ clean:
 
 test:
 	go test -v ./...
+
+test-integration:
+	go test -tags=integration -v -run Integration ./internal/cmd/
 
 lint:
 	golangci-lint run
