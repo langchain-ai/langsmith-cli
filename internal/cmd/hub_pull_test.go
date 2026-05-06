@@ -11,6 +11,7 @@ import (
 
 func TestHubPull_WritesFilesAndReportsLinks(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path != "/v1/platform/hub/repos/acme/my-skill/directories" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -56,6 +57,7 @@ func TestHubPull_WritesFilesAndReportsLinks(t *testing.T) {
 
 func TestHubPull_RejectsPathTraversal(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commit_hash": "h1",
 			"files": map[string]any{
@@ -80,6 +82,7 @@ func TestHubPull_RejectsPathTraversal(t *testing.T) {
 
 func TestHubPull_RejectsAbsolutePath(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commit_hash": "h1",
 			"files": map[string]any{
@@ -100,6 +103,7 @@ func TestHubPull_RejectsAbsolutePath(t *testing.T) {
 
 func TestHubPull_WipesDestWithMarker(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commit_hash": "h1",
 			"files": map[string]any{
@@ -135,6 +139,7 @@ func TestHubPull_WipesDestWithMarker(t *testing.T) {
 
 func TestHubPull_RefusesNonHubDirWithoutYes(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commit_hash": "h1",
 			"files":       map[string]any{"SKILL.md": map[string]any{"type": "file", "content": "x"}},
@@ -160,6 +165,7 @@ func TestHubPull_RefusesNonHubDirWithoutYes(t *testing.T) {
 
 func TestHubPull_AcceptsNonHubDirWithYes(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commit_hash": "h1",
 			"files":       map[string]any{"SKILL.md": map[string]any{"type": "file", "content": "x"}},

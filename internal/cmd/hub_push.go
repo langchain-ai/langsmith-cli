@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -75,13 +76,14 @@ func newHubPushCmd() *cobra.Command {
 				return err
 			}
 
-			body := map[string]any{"files": files}
-			if parentCommit != "" {
-				body["parent_commit"] = parentCommit
+			params := langsmith.RepoDirectoryCommitParams{
+				Files: langsmith.F(hubFilesToSDKFiles(files)),
 			}
-			path := fmt.Sprintf("/v1/platform/hub/repos/%s/%s/directories/commits", owner, name)
-			var resp hubCommitResponse
-			if err := c.RawPost(ctx, path, body, &resp); err != nil {
+			if parentCommit != "" {
+				params.ParentCommit = langsmith.F(parentCommit)
+			}
+			resp, err := c.SDK.Repos.Directories.Commit(ctx, owner, name, params)
+			if err != nil {
 				return fmt.Errorf("pushing commit to %s/%s: %w", owner, name, err)
 			}
 

@@ -113,14 +113,17 @@ Examples:
 				}
 				params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
 			}
-			if wait {
-				params.WaitForReady = langsmith.F(true)
-				params.Timeout = langsmith.F(int64(timeoutSec))
-			}
-
 			resp, err := c.SDK.Sandboxes.Boxes.New(ctx, params)
 			if err != nil {
 				ExitErrorf("creating sandbox: %v", err)
+			}
+			if wait {
+				statusResp, err := waitForBoxReady(ctx, c, name, time.Duration(timeoutSec)*time.Second)
+				if err != nil {
+					ExitErrorf("waiting for sandbox: %v", err)
+				}
+				resp.Status = statusResp.Status
+				resp.StatusMessage = statusResp.StatusMessage
 			}
 
 			output.OutputJSON(resp, "")
