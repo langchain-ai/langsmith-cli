@@ -33,6 +33,7 @@ type Options struct {
 	OAuthAccessToken string
 	APIURL           string
 	WorkspaceID      string
+	ProfileName      string
 }
 
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
@@ -57,10 +58,13 @@ func NewWithOptions(options Options) *Client {
 	normalized := NormalizeURL(options.APIURL)
 
 	var opts []option.RequestOption
+	if options.ProfileName != "" && options.APIKey == "" {
+		opts = append(opts, langsmith.WithProfile(options.ProfileName))
+	}
 	if options.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(options.APIKey))
 	}
-	if options.OAuthAccessToken != "" {
+	if options.OAuthAccessToken != "" && options.ProfileName == "" && options.APIKey == "" {
 		opts = append(opts, option.WithHeader("authorization", "Bearer "+options.OAuthAccessToken))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).

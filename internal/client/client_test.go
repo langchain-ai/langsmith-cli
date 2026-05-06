@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,6 +83,100 @@ func TestNewWithOptions_CreatesOAuthClient(t *testing.T) {
 	}
 	if c.APIKey() != "" {
 		t.Fatalf("expected empty API key, got %q", c.APIKey())
+	}
+}
+
+func TestNewWithOptions_ProfileNameDelegatesAuthToSDK(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/info" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "api_key": "default-api-key"
+    },
+    "prod": {
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewWithOptions(Options{
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer prod-access-token" {
+		t.Fatalf("expected explicit profile bearer auth, got %q", gotAuth)
+	}
+	if gotAPIKey != "" {
+		t.Fatalf("expected explicit OAuth profile to override default API key, got %q", gotAPIKey)
+	}
+}
+
+func TestNewWithOptions_APIKeyOverridesProfileName(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewWithOptions(Options{
+		APIKey:      "explicit-key",
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAPIKey != "explicit-key" {
+		t.Fatalf("expected explicit API key, got %q", gotAPIKey)
+	}
+	if gotAuth != "" {
+		t.Fatalf("expected no profile bearer auth when API key wins, got %q", gotAuth)
 	}
 }
 

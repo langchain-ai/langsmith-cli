@@ -61,7 +61,11 @@ func runConsole(name, shell string, forwardSSHAgent bool) error {
 	// Connect.
 	dialer := websocket.Dialer{}
 	header := http.Header{}
-	for k, v := range sandboxAuthHeaders() {
+	headers, err := sandboxAuthHeaders()
+	if err != nil {
+		return fmt.Errorf("resolving sandbox auth: %w", err)
+	}
+	for k, v := range headers {
 		header.Set(k, v)
 	}
 

@@ -44,10 +44,25 @@ func resolveSandboxURL(ctx context.Context, name string) (string, error) {
 }
 
 // sandboxAuthHeaders returns the auth headers for sandbox dataplane requests.
-// Uses the user's API key via X-Api-Key.
-func sandboxAuthHeaders() map[string]string {
-	if apiKey := GetAPIKey(); apiKey != "" {
-		return map[string]string{"X-Api-Key": apiKey}
+// API keys take precedence; OAuth profiles use bearer auth and are refreshed
+// before runtime operations.
+func sandboxAuthHeaders() (map[string]string, error) {
+	opts, err := resolveClientOptions(true)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	headers := map[string]string{}
+	if opts.WorkspaceID != "" {
+		headers["X-Tenant-Id"] = opts.WorkspaceID
+	}
+	if opts.APIKey != "" {
+		headers["X-Api-Key"] = opts.APIKey
+		return headers, nil
+	}
+	if opts.OAuthAccessToken != "" {
+		headers["Authorization"] = "Bearer " + opts.OAuthAccessToken
+		return headers, nil
+	}
+	return nil, nil
 }

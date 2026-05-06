@@ -308,7 +308,10 @@ func promptLine(cmd *cobra.Command, prompt string) (string, error) {
 }
 
 func requestDeviceCode(ctx context.Context, apiURL string) (*deviceCodeResponse, error) {
-	values := url.Values{"client_id": {oauthClientID}}
+	values := url.Values{
+		"client_id": {oauthClientID},
+		"resource":  {oauthResource(apiURL)},
+	}
 	var resp deviceCodeResponse
 	if err := postOAuthForm(ctx, apiURL, "/oauth/device/code", values, &resp); err != nil {
 		return nil, fmt.Errorf("requesting device code: %w", err)
@@ -323,6 +326,7 @@ func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oau
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},
+		"resource":      {oauthResource(apiURL)},
 		"refresh_token": {refreshToken},
 	}
 	var resp oauthTokenResponse
@@ -379,6 +383,7 @@ func requestDeviceToken(ctx context.Context, apiURL, deviceCode string) (*oauthT
 		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 		"client_id":   {oauthClientID},
 		"device_code": {deviceCode},
+		"resource":    {oauthResource(apiURL)},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauthURL(apiURL, "/oauth/token"), strings.NewReader(values.Encode()))
@@ -462,6 +467,12 @@ func applyTokenResponse(profile *lsconfig.Profile, token *oauthTokenResponse, no
 
 func oauthURL(apiURL, path string) string {
 	return strings.TrimRight(client.NormalizeURL(apiURL), "/") + path
+}
+
+// oauthResource is the API origin expected by the OAuth server; it must not
+// include the /api/v1 suffix accepted by LANGSMITH_ENDPOINT.
+func oauthResource(apiURL string) string {
+	return strings.TrimRight(client.NormalizeURL(apiURL), "/")
 }
 
 func openBrowserDefault(rawURL string) error {
