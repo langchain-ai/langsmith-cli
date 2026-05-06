@@ -347,21 +347,6 @@ chmod +x ~/.local/bin/langsmith
 
 Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands like `langsmith sandbox list` and SSH ProxyCommand entries work without manually sourcing `.env` each time.
 
-### Integration tests
-
-Unit tests run with `go test ./...` (or `make test`) and use `httptest` mock servers; they require no API access.
-
-The `hub` command surface also has integration tests that hit the real LangSmith API. They are gated behind a build tag and skipped by default.
-
-```bash
-export LANGSMITH_API_KEY="lsv2_pt_..."
-make test-integration
-```
-
-The tests create temporary repos prefixed with `cli-int-` and clean them up via `t.Cleanup`. Failed runs may leave repos behind; `langsmith hub list --query cli-int` shows any leftovers and `langsmith hub delete <handle> --yes` removes them.
-
-In CI, the integration job runs only when the `LANGSMITH_API_KEY_TEST` secret is configured on the repository. Forks see the job skipped silently.
-
 ### Requirements
 
 - Go 1.23+
