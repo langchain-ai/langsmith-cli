@@ -8,7 +8,7 @@ import (
 
 func TestTraceCmd_Subcommands(t *testing.T) {
 	cmd := newTraceCmd()
-	expected := map[string]bool{"list": false, "get": false, "export": false, "messages": false}
+	expected := map[string]bool{"list": false, "get": false, "export": false, "messages": false, "stats": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
@@ -188,5 +188,20 @@ func TestTraceExportCmd_ExactArgs(t *testing.T) {
 	}
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
 		t.Error("expected error for 2 args")
+	}
+}
+
+// ==================== trace stats flags ====================
+
+func TestTraceStatsCmd_Flags(t *testing.T) {
+	cmd := newTraceStatsCmd()
+	for _, name := range []string{
+		"project", "since", "before", "last-n-minutes",
+		"compare-since", "compare-before", "compare-last-n-minutes",
+		"filter", "output",
+	} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("trace stats missing flag --%s", name)
+		}
 	}
 }

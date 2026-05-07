@@ -144,6 +144,12 @@ langsmith trace export ./traces --project my-app --limit 20 --full
 
 # Custom filename pattern (supports {trace_id} and {name} placeholders)
 langsmith trace export ./traces --project my-app --filename-pattern "{name}_{trace_id}.jsonl"
+
+# Aggregate stats over the window (run_count, error_rate, latency p50/p99, tokens, costs, feedback)
+langsmith trace stats --project my-app --last-n-minutes 60
+
+# Compare two windows side-by-side (delta + % change in pretty output)
+langsmith trace stats --project my-app --since 2026-01-10 --compare-since 2026-01-03 --compare-before 2026-01-10
 ```
 
 ### `run` — Query individual runs
