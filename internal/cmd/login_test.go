@@ -136,7 +136,102 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	}
 }
 
-func TestLoginPromptsWorkspaceSelection(t *testing.T) {
+func TestLoginDoesNotSaveTokenWorkspaceByDefault(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	oldOpenBrowser := openBrowser
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+		openBrowser = oldOpenBrowser
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+	flagOutputFormat = "json"
+	openBrowser = func(string) error { return nil }
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+
+	accessToken := "test-access-token"
+	tokenWorkspaceID := "00000000-0000-0000-0000-000000000456"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/device/code":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
+			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
+				DeviceCode:      "device-code",
+				UserCode:        "ABCD-EFGH",
+				VerificationURI: tsActivateURL(r),
+				ExpiresIn:       60,
+				Interval:        0,
+			})
+		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			assertOAuthResource(t, r)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  accessToken,
+				"expires_in":    300,
+				"refresh_token": "test-refresh-token",
+				"workspace_id":  tokenWorkspaceID,
+			})
+		case "/api/v1/workspaces":
+			t.Fatal("did not expect workspace list request")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	root := NewRootCmd("test", "test")
+	root.SetIn(strings.NewReader(""))
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL, "--no-browser"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.Contains(stdout.String(), accessToken) || strings.Contains(stderr.String(), accessToken) {
+		t.Fatalf("login output exposed access token")
+	}
+
+	var result map[string]string
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout.String())
+	}
+	if result["workspace_id"] != "" {
+		t.Fatalf("expected workspace_id to be omitted, got %q", result["workspace_id"])
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := cfg.Profiles["default"]
+	if profile.OAuth.AccessToken != accessToken {
+		t.Fatalf("access token was not saved")
+	}
+	if profile.WorkspaceID != "" {
+		t.Fatalf("expected token workspace ID not to be saved, got %q", profile.WorkspaceID)
+	}
+}
+
+func TestLoginPromptsWorkspaceSelectionWhenRequested(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -215,7 +310,7 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL, "--no-browser"})
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL, "--no-browser", "--prompt-workspace"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
@@ -241,7 +336,7 @@ func TestLoginPromptsWorkspaceSelection(t *testing.T) {
 	}
 }
 
-func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
+func TestLoginSkipsWorkspaceSelectionByDefault(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -310,8 +405,8 @@ func TestLoginWarnsWhenNonInteractiveWithoutWorkspace(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "No default workspace set") {
-		t.Fatalf("expected workspace warning, got %q", stderr.String())
+	if strings.Contains(stderr.String(), "workspace") {
+		t.Fatalf("did not expect workspace prompt or warning, got %q", stderr.String())
 	}
 	if workspaceListCalled {
 		t.Fatal("did not expect workspace list request for non-interactive login")
