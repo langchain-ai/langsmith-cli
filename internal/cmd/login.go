@@ -60,9 +60,10 @@ func (e *oauthErrorResponse) Error() string {
 
 func newLoginCmd() *cobra.Command {
 	var (
-		noBrowser   bool
-		timeout     time.Duration
-		workspaceID string
+		noBrowser       bool
+		timeout         time.Duration
+		workspaceID     string
+		promptWorkspace bool
 	)
 
 	cmd := &cobra.Command{
@@ -73,16 +74,17 @@ func newLoginCmd() *cobra.Command {
 The command stores OAuth tokens in ~/.langsmith/config.json under the selected
 profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd, noBrowser, timeout, workspaceID)
+			return runLogin(cmd, noBrowser, timeout, workspaceID, promptWorkspace)
 		},
 	}
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Do not open a browser automatically")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait for authorization (default: device-code expiry)")
-	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Default workspace ID to save in the selected profile")
+	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Workspace ID override to save in the selected profile")
+	cmd.Flags().BoolVar(&promptWorkspace, "prompt-workspace", false, "Prompt to select and save a workspace override")
 	return cmd
 }
 
-func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string) error {
+func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string, promptWorkspace bool) error {
 	cfg, err := lsconfig.Load()
 	if err != nil {
 		return err
@@ -136,7 +138,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
 		profile.APIURL = apiURL
 	}
-	if workspaceID == "" && profile.WorkspaceID == "" {
+	if workspaceID == "" && promptWorkspace {
 		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
 		if err != nil {
 			return err
@@ -214,7 +216,7 @@ func validateWorkspaceID(workspaceID string) error {
 func promptWorkspaceSelection(cmd *cobra.Command, apiURL, accessToken string) (string, error) {
 	in := cmd.InOrStdin()
 	if !inputIsTerminal(in) {
-		fmt.Fprintln(cmd.ErrOrStderr(), "No default workspace set because stdin is not interactive. Some commands require a workspace; pass --workspace-id to auth login or run 'langsmith workspace set-default <workspace-id>'.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Skipping workspace prompt because stdin is not interactive.")
 		return "", nil
 	}
 	workspaces, err := listLoginWorkspaces(cmd.Context(), apiURL, accessToken)
