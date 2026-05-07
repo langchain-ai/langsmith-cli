@@ -214,7 +214,7 @@ func validateWorkspaceID(workspaceID string) error {
 func promptWorkspaceSelection(cmd *cobra.Command, apiURL, accessToken string) (string, error) {
 	in := cmd.InOrStdin()
 	if !inputIsTerminal(in) {
-		fmt.Fprintln(cmd.ErrOrStderr(), "No default workspace set because stdin is not interactive. Some commands require a workspace; pass --workspace-id to login or run 'langsmith workspace set-default <workspace-id>'.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "No default workspace set because stdin is not interactive. Some commands require a workspace; pass --workspace-id to auth login or run 'langsmith workspace set-default <workspace-id>'.")
 		return "", nil
 	}
 	workspaces, err := listLoginWorkspaces(cmd.Context(), apiURL, accessToken)
