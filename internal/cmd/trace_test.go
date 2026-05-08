@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 )
 
@@ -203,5 +205,84 @@ func TestTraceStatsCmd_Flags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("trace stats missing flag --%s", name)
 		}
+	}
+}
+
+// ==================== trace stats: end-to-end ====================
+
+// TestTraceStats_TotalCostFetched verifies that total_cost survives the
+// /api/v1/runs/stats round-trip. The SDK's typed wrapper drops it (it models
+// the field as string while the API emits a number, mis-discriminating the
+// response union and zeroing every field), so this command goes through raw
+// HTTP. If the build ever flips back to the SDK without an upstream fix,
+// total_cost will silently disappear from the output and break the issues
+// agent's cost baseline — this test is the canary.
+func TestTraceStats_TotalCostFetched(t *testing.T) {
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-cost", "name": "cost-proj"},
+			})
+		case r.URL.Path == "/api/v1/runs/stats" && r.Method == "POST":
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"run_count":         42,
+				"error_rate":        0.05,
+				"latency_p50":       1.23,
+				"latency_p99":       4.56,
+				"total_tokens":      12345,
+				"prompt_tokens":     10000,
+				"completion_tokens": 2345,
+				"total_cost":        8.2e-6,
+				"feedback_stats":    map[string]any{},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", 404)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newTraceStatsCmd()
+		cmd.SetArgs([]string{"--project", "cost-proj", "--last-n-minutes", "60"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	// Verify total_cost was requested in the select
+	sel, _ := receivedBody["select"].([]any)
+	hasTotalCost := false
+	for _, s := range sel {
+		if s == "total_cost" {
+			hasTotalCost = true
+			break
+		}
+	}
+	if !hasTotalCost {
+		t.Errorf("expected total_cost in select, got %v", receivedBody["select"])
+	}
+	if receivedBody["is_root"] != true {
+		t.Errorf("expected is_root=true, got %v", receivedBody["is_root"])
+	}
+
+	// Verify total_cost made it into the output
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	stats, ok := result["stats"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected stats object in output, got %v", result)
+	}
+	if stats["total_cost"] == nil {
+		t.Errorf("expected total_cost to be set in output, got nil. full output: %s", out)
 	}
 }

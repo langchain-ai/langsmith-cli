@@ -11,7 +11,6 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -114,77 +113,46 @@ Examples:
 	return cmd
 }
 
-// fetchRunStats calls the SDK Runs.Stats endpoint and maps the result to runStats.
+// fetchRunStats POSTs to /api/v1/runs/stats and decodes the flat response.
+//
+// We intentionally use raw HTTP (c.RawPost) instead of c.SDK.Runs.Stats. The
+// Go SDK models RunStatsResponse as a union and types total_cost as a string,
+// but the API returns total_cost as a JSON number (e.g. 8.2e-6). The type
+// mismatch makes apijson mis-discriminate the union as RunStatsResponseMap
+// and zero out every field — including the ones that *would* decode fine.
+// Decoding straight into a local struct sidesteps the union entirely and
+// keeps total_cost intact. Switch to the SDK once langsmith-go fixes the
+// union (typed total_cost as float / decimal, or adds a discriminator).
 func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, before string, lastNMin int, filter string) (runStats, error) {
-	params := langsmith.RunStatsParams{
-		RunStatsQueryParams: langsmith.RunStatsQueryParams{
-			Session:   langsmith.F([]string{sessionID}),
-			IsRoot:    langsmith.F(true),
-			StartTime: langsmith.F(resolveStartTime(since, lastNMin)),
-			Select: langsmith.F([]langsmith.RunStatsQueryParamsSelect{
-				langsmith.RunStatsQueryParamsSelectRunCount,
-				langsmith.RunStatsQueryParamsSelectLatencyP50,
-				langsmith.RunStatsQueryParamsSelectLatencyP99,
-				langsmith.RunStatsQueryParamsSelectTotalTokens,
-				langsmith.RunStatsQueryParamsSelectPromptTokens,
-				langsmith.RunStatsQueryParamsSelectCompletionTokens,
-				// total_cost is intentionally excluded: the API returns it as a JSON number
-				// (e.g. 8.2e-6) but the SDK models it as string. The type mismatch causes the
-				// union discriminator to pick RunStatsResponseMap instead of RunStatsResponseRunStats,
-				// yielding all-zero results. Excluding it keeps the flat-object response decodable.
-				langsmith.RunStatsQueryParamsSelectErrorRate,
-				langsmith.RunStatsQueryParamsSelectFeedbackStats,
-			}),
+	var s runStats
+	if err := c.RawPost(ctx, "/api/v1/runs/stats", buildRunStatsBody(sessionID, since, before, lastNMin, filter), &s); err != nil {
+		return runStats{}, err
+	}
+	return s, nil
+}
+
+// buildRunStatsBody builds the POST body for /api/v1/runs/stats. is_root is
+// pinned so aggregates are per-trace (one entry per top-level run).
+func buildRunStatsBody(sessionID, since, before string, lastNMin int, filter string) map[string]any {
+	body := map[string]any{
+		"session":    []string{sessionID},
+		"is_root":    true,
+		"start_time": resolveStartTime(since, lastNMin).Format(time.RFC3339),
+		"select": []string{
+			"run_count", "latency_p50", "latency_p99",
+			"total_tokens", "prompt_tokens", "completion_tokens",
+			"total_cost", "error_rate", "feedback_stats",
 		},
 	}
 	if before != "" {
 		if t, err := parseFlexTime(before); err == nil {
-			params.RunStatsQueryParams.EndTime = langsmith.F(t)
+			body["end_time"] = t.Format(time.RFC3339)
 		}
 	}
 	if filter != "" {
-		params.RunStatsQueryParams.Filter = langsmith.F(filter)
+		body["filter"] = filter
 	}
-
-	res, err := c.SDK.Runs.Stats(ctx, params)
-	if err != nil {
-		return runStats{}, err
-	}
-
-	switch s := (*res).(type) {
-	case langsmith.RunStatsResponseRunStats:
-		return toRunStats(s.RunCount, s.LatencyP50, s.LatencyP99, s.TotalTokens, s.PromptTokens, s.CompletionTokens, s.TotalCost, s.ErrorRate, s.FeedbackStats), nil
-	case langsmith.RunStatsResponseMap:
-		// group_by response — extract the first (and only) entry when no grouping was requested.
-		for _, item := range s {
-			return toRunStats(item.RunCount, item.LatencyP50, item.LatencyP99, item.TotalTokens, item.PromptTokens, item.CompletionTokens, item.TotalCost, item.ErrorRate, item.FeedbackStats), nil
-		}
-		return runStats{}, nil
-	default:
-		return runStats{}, fmt.Errorf("unhandled stats response type: %T", *res)
-	}
-}
-
-func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost string, errorRate float64, feedbackStats map[string]interface{}) runStats {
-	fs := make(map[string]any, len(feedbackStats))
-	for k, v := range feedbackStats {
-		fs[k] = v
-	}
-	var cost any
-	if totalCost != "" {
-		cost = totalCost
-	}
-	return runStats{
-		RunCount:         runCount,
-		LatencyP50:       latencyP50,
-		LatencyP99:       latencyP99,
-		TotalTokens:      totalTokens,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalCost:        cost,
-		ErrorRate:        errorRate,
-		FeedbackStats:    fs,
-	}
+	return body
 }
 
 // parseFlexTime parses RFC3339 or YYYY-MM-DD.
@@ -292,7 +260,9 @@ func fmtOptFloat(v any) string {
 		if math.IsNaN(x) || math.IsInf(x, 0) {
 			return "-"
 		}
-		return strconv.FormatFloat(x, 'f', 3, 64)
+		// 'g' so tiny costs (8.2e-6) don't round to 0.000 while
+		// regular feedback scores (0.85) still render as "0.85".
+		return strconv.FormatFloat(x, 'g', 4, 64)
 	case int64:
 		return strconv.FormatInt(x, 10)
 	case string:
