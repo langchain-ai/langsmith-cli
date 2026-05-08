@@ -563,6 +563,81 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 	}
 }
 
+// TestTraceMessages_FeedbackStats verifies that feedback_stats returned by the
+// /v2/traces/messages API is preserved in the CLI output without being
+// overwritten or dropped by attachRootIO.
+func TestTraceMessages_FeedbackStats(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-fb", "name": "fb-proj"},
+			})
+		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
+			// API returns feedback_stats directly on each trace
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"traces": []map[string]any{
+					{
+						"trace_id": "trace-with-feedback",
+						"groups":   []any{},
+						"feedback_stats": map[string]any{
+							"thumbs_up": map[string]any{"n": 1, "avg": 0},
+						},
+					},
+					{
+						"trace_id":       "trace-no-feedback",
+						"groups":         []any{},
+						"feedback_stats": map[string]any{},
+					},
+				},
+				"cursors": map[string]any{},
+			})
+		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", 404)
+		}
+	})
+	t.Setenv("LANGSMITH_ENDPOINT", ts.URL)
+	t.Setenv("LANGSMITH_API_KEY", "test-api-key")
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "fb-proj", "--limit", "20"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	traces, _ := result["traces"].([]any)
+	if len(traces) != 2 {
+		t.Fatalf("expected 2 traces, got %d", len(traces))
+	}
+
+	// feedback_stats from the API must be preserved as-is
+	traceWith, _ := traces[0].(map[string]any)
+	fs, _ := traceWith["feedback_stats"].(map[string]any)
+	if len(fs) == 0 {
+		t.Errorf("expected non-empty feedback_stats for trace-with-feedback, got %v", fs)
+	}
+
+	traceWithout, _ := traces[1].(map[string]any)
+	fsEmpty, _ := traceWithout["feedback_stats"].(map[string]any)
+	if len(fsEmpty) != 0 {
+		t.Errorf("expected empty feedback_stats for trace-no-feedback, got %v", fsEmpty)
+	}
+}
+
 func TestTraceMessages_EmptyResult(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
