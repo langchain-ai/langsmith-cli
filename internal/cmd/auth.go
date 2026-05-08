@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	"github.com/langchain-ai/langsmith-cli/internal/config"
+	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
@@ -31,25 +31,23 @@ type authInfoResult struct {
 	ConfigError       string `json:"config_error,omitempty"`
 }
 
-func newAuthCmd() *cobra.Command {
-	return structured.Parent{
-		Use:   "auth",
-		Short: "Manage LangSmith authentication",
-		Children: []func() *cobra.Command{
-			newLoginCmd,
-			newAuthInfoCmd,
-		},
-	}.Cobra()
+var authCommand = structured.Parent{
+	Use:   "auth",
+	Short: "Manage authentication",
+	Children: []func() *cobra.Command{
+		newLoginCmd,
+		authInfoCommand.Cobra,
+		authTokenCommand.Cobra,
+	},
 }
 
-func newAuthInfoCmd() *cobra.Command {
-	return structured.Command[struct{}]{
-		Use:   "info",
-		Short: "Show the current authentication state",
-		Action: func(ctx context.Context, cmd *cobra.Command, input struct{}, args []string) (any, error) {
-			return resolveAuthInfo()
-		},
-		Render: structured.Template(`Authenticated: {{.Authenticated}}
+var authInfoCommand = structured.Command[struct{}]{
+	Use:   "info",
+	Short: "Show the current authentication state",
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		return resolveAuthInfo()
+	},
+	Render: structured.Template(`Authenticated: {{.Authenticated}}
 Auth: {{.Auth}}
 {{- if .AuthSource}}
 Auth source: {{.AuthSource}}
@@ -83,28 +81,79 @@ OAuth expires at: {{.OAuthExpiresAt}}{{if .OAuthExpired}}{{if .OAuthExpired}} (e
 Config error: {{.ConfigError}}
 {{- end}}
 `),
-	}.Cobra()
+}
+
+var authTokenCommand = structured.Command[struct{}]{
+	Use:   "token",
+	Short: "Print the OAuth access token",
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		cfg, err := lsconfig.Load()
+		if err != nil {
+			return "", err
+		}
+
+		envProfile := strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
+		profileName, profile, hasProfile := cfg.ResolveProfile(flagProfile, envProfile)
+		if (flagProfile != "" || envProfile != "") && !hasProfile {
+			return "", fmt.Errorf("profile not found: %s", profileName)
+		}
+		if !hasProfile || (profile.AccessToken() == "" && profile.OAuth.RefreshToken == "") {
+			return "", fmt.Errorf("no OAuth token found; run 'langsmith auth login'")
+		}
+
+		apiURL := lsconfig.DefaultAPIURL
+		if profile.APIURL != "" {
+			apiURL = profile.APIURL
+		}
+		if envURL := strings.TrimSpace(os.Getenv("LANGSMITH_ENDPOINT")); envURL != "" {
+			apiURL = envURL
+		}
+		if flagAPIURL != "" {
+			apiURL = flagAPIURL
+		}
+		apiURL = client.NormalizeURL(apiURL)
+
+		if profile.OAuth.RefreshToken != "" &&
+			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			token, err := refreshProfileToken(ctx, apiURL, profile.OAuth.RefreshToken)
+			if err != nil {
+				return "", fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
+			}
+			applyTokenResponse(&profile, token, time.Now())
+			cfg.Profiles[profileName] = profile
+			if err := cfg.Save(); err != nil {
+				return "", fmt.Errorf("saving refreshed OAuth token: %w", err)
+			}
+		}
+
+		return profile.AccessToken(), nil
+	},
+	Render: structured.Template(`{{.}}
+`),
 }
 
 func resolveAuthInfo() (authInfoResult, error) {
-	apiURL := config.DefaultAPIURL
+	apiURL := lsconfig.DefaultAPIURL
 	result := authInfoResult{
 		Auth:   "none",
 		APIURL: apiURL,
 	}
-	if path, err := config.DefaultConfigPath(); err == nil {
+	if path, err := lsconfig.DefaultConfigPath(); err == nil {
 		result.ConfigFile = path
 	}
 
-	cfg, err := config.Load()
+	cfg, err := lsconfig.Load()
 	if err != nil {
 		result.ConfigError = err.Error()
-		cfg = &config.Config{Profiles: make(map[string]config.Profile)}
+		cfg = &lsconfig.Config{Profiles: make(map[string]lsconfig.Profile)}
 	}
 
 	envProfile := profileEnvName()
 	profileName := cfg.ResolveProfileName(flagProfile, envProfile)
-	var profile config.Profile
+	var profile lsconfig.Profile
 	hasProfile := false
 	if profileName != "" {
 		profile, hasProfile = cfg.Profiles[profileName]
@@ -137,12 +186,12 @@ func resolveAuthInfo() (authInfoResult, error) {
 	case flagAPIKey != "":
 		result.Auth = "api_key"
 		result.AuthSource = "flag"
-		result.APIKey = config.MaskSecret(flagAPIKey)
+		result.APIKey = lsconfig.MaskSecret(flagAPIKey)
 	case os.Getenv("LANGSMITH_API_KEY") != "":
 		result.Auth = "api_key"
 		result.AuthSource = "env"
 		result.AuthNote = "LANGSMITH_API_KEY is set and takes precedence over saved profile auth."
-		result.APIKey = config.MaskSecret(os.Getenv("LANGSMITH_API_KEY"))
+		result.APIKey = lsconfig.MaskSecret(os.Getenv("LANGSMITH_API_KEY"))
 	case hasProfile && (profile.AccessToken() != "" || profile.OAuth.RefreshToken != ""):
 		result.Auth = "oauth"
 		result.AuthSource = "profile"
@@ -156,7 +205,7 @@ func resolveAuthInfo() (authInfoResult, error) {
 	case hasProfile && profile.APIKey != "":
 		result.Auth = "api_key"
 		result.AuthSource = "profile"
-		result.APIKey = config.MaskSecret(profile.APIKey)
+		result.APIKey = lsconfig.MaskSecret(profile.APIKey)
 	}
 	result.Authenticated = result.Auth != "none"
 

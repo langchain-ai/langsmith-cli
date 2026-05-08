@@ -73,8 +73,7 @@ Quick start:
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newPromptCmd())
-	rootCmd.AddCommand(newAuthCmd())
-	rootCmd.AddCommand(newLoginCmd())
+	rootCmd.AddCommand(authCommand.Cobra())
 	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
@@ -119,7 +118,7 @@ func MustGetClient() *client.Client {
 		ExitError(err.Error())
 	}
 	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
-		ExitError("not authenticated; run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key")
+		ExitError("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts)
 }
@@ -176,7 +175,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
 			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.RefreshToken)
 			if err != nil {
-				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith login --profile %s' to reauthenticate", profileName, err, profileName)
+				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
 			applyTokenResponse(&profile, token, time.Now())
 			cfg.Profiles[profileName] = profile
@@ -196,13 +195,13 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	return opts, nil
 }
 
-// ExitError prints a JSON error to stderr and exits.
+// ExitError prints an error to stderr and exits.
 func ExitError(msg string) {
-	fmt.Fprintf(os.Stderr, `{"error": %q}`+"\n", msg)
+	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
 }
 
-// ExitErrorf prints a formatted JSON error to stderr and exits.
+// ExitErrorf prints a formatted error to stderr and exits.
 func ExitErrorf(format string, args ...any) {
 	ExitError(fmt.Sprintf(format, args...))
 }
