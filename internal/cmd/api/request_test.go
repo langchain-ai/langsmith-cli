@@ -31,7 +31,7 @@ func TestRunRequest_GET(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("test-key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,12 +61,74 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, nil, false, &out)
+	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if code != 201 {
 		t.Errorf("expected 201, got %d", code)
+	}
+}
+
+func TestRunRequest_POSTWithFields(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var data map[string]any
+		if err := json.Unmarshal(body, &data); err != nil {
+			t.Fatalf("invalid json body: %v", err)
+		}
+		if data["name"] != "test" {
+			t.Errorf("expected name=test, got %v", data["name"])
+		}
+		if data["limit"] != float64(10) {
+			t.Errorf("expected limit=10, got %v", data["limit"])
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	c := client.New("key", ts.URL)
+	params := map[string]any{"name": "test", "limit": 10}
+	code, err := runRequest(c, "POST", "sessions", "", "", params, nil, false, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 200 {
+		t.Errorf("expected 200, got %d", code)
+	}
+}
+
+func TestRunRequest_GETWithFieldsAddsQuery(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("limit") != "10" {
+			t.Errorf("expected limit=10, got %q", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("name") != "test" {
+			t.Errorf("expected name=test, got %q", r.URL.RawQuery)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if len(body) != 0 {
+			t.Errorf("expected empty body, got %q", body)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	c := client.New("key", ts.URL)
+	params := map[string]any{"name": "test", "limit": 10}
+	_, err := runRequest(c, "GET", "sessions?existing=1", "", "", params, nil, false, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -82,7 +144,7 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Custom:val"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Custom:val"}, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,7 +160,7 @@ func TestRunRequest_Include(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", nil, true, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, nil, true, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +181,7 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", nil, false, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +207,7 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), nil, false, &out)
+	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -172,7 +234,7 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", "https://different.host")
-	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", nil, false, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +256,7 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", []string{"X-Multi:one", "X-Multi:two"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Multi:one", "X-Multi:two"}, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +284,7 @@ func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
 	c := client.New("secret-key", apiURL)
 
 	var out bytes.Buffer
-	code, err := runRequest(c, "GET", ts.URL+"/steal", "", nil, false, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/steal", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -280,5 +342,39 @@ func TestResolveBody_FileNotFound(t *testing.T) {
 	_, err := resolveBody("@/nonexistent/path.json")
 	if err == nil {
 		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestResolveRequestBody_InputFile(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "input-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"from":"input"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := resolveRequestBody("POST", "", f.Name(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := io.ReadAll(r)
+	if string(data) != `{"from":"input"}` {
+		t.Fatalf("unexpected body: %s", data)
+	}
+}
+
+func TestResolveRequestBody_Errors(t *testing.T) {
+	_, err := resolveRequestBody("POST", "{}", "body.json", nil)
+	if err == nil || !strings.Contains(err.Error(), "only one of --input or --body") {
+		t.Fatalf("expected input/body conflict, got %v", err)
+	}
+
+	_, err = resolveRequestBody("POST", "", "body.json", map[string]any{"name": "x"})
+	if err == nil || !strings.Contains(err.Error(), "--input cannot be combined") {
+		t.Fatalf("expected input/fields conflict, got %v", err)
 	}
 }

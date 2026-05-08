@@ -17,13 +17,23 @@ import (
 
 // Client wraps the LangSmith Go SDK and provides helpers for raw HTTP calls.
 type Client struct {
-	SDK         *langsmith.Client
-	apiKey      string
-	apiURL      string
-	workspaceID string
+	SDK              *langsmith.Client
+	apiKey           string
+	oauthAccessToken string
+	apiURL           string
+	workspaceID      string
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
+}
+
+// Options controls LangSmith client authentication and routing.
+type Options struct {
+	APIKey           string
+	OAuthAccessToken string
+	APIURL           string
+	WorkspaceID      string
+	ProfileName      string
 }
 
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
@@ -36,28 +46,42 @@ func NormalizeURL(apiURL string) string {
 
 // New creates a new Client.
 func New(apiKey, apiURL string) *Client {
-	normalized := NormalizeURL(apiURL)
+	return NewWithOptions(Options{
+		APIKey:      apiKey,
+		APIURL:      apiURL,
+		WorkspaceID: os.Getenv("LANGSMITH_WORKSPACE_ID"),
+	})
+}
 
-	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
+// NewWithOptions creates a new Client from resolved options.
+func NewWithOptions(options Options) *Client {
+	normalized := NormalizeURL(options.APIURL)
+
+	var opts []option.RequestOption
+	if options.ProfileName != "" && options.APIKey == "" {
+		opts = append(opts, langsmith.WithProfile(options.ProfileName))
+	}
+	if options.APIKey != "" {
+		opts = append(opts, option.WithAPIKey(options.APIKey))
+	}
+	if options.OAuthAccessToken != "" && options.ProfileName == "" && options.APIKey == "" {
+		opts = append(opts, option.WithHeader("authorization", "Bearer "+options.OAuthAccessToken))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).
 	if normalized != "" {
 		opts = append(opts, option.WithBaseURL(normalized))
 	}
-	// Forward LANGSMITH_WORKSPACE_ID to the SDK as the tenant ID.
-	// The SDK already reads LANGSMITH_TENANT_ID, but LANGSMITH_WORKSPACE_ID
-	// is the documented env var for the CLI and MCP server.
-	if wsID := os.Getenv("LANGSMITH_WORKSPACE_ID"); wsID != "" {
-		opts = append(opts, option.WithTenantID(wsID))
+	if options.WorkspaceID != "" {
+		opts = append(opts, option.WithTenantID(options.WorkspaceID))
 	}
 
 	return &Client{
-		SDK:          langsmith.NewClient(opts...),
-		apiKey:       apiKey,
-		apiURL:       normalized,
-		workspaceID:  os.Getenv("LANGSMITH_WORKSPACE_ID"),
-		sessionCache: make(map[string]string),
+		SDK:              langsmith.NewClient(opts...),
+		apiKey:           options.APIKey,
+		oauthAccessToken: options.OAuthAccessToken,
+		apiURL:           normalized,
+		workspaceID:      options.WorkspaceID,
+		sessionCache:     make(map[string]string),
 	}
 }
 
@@ -111,6 +135,13 @@ type httpResponse struct {
 	body       []byte
 }
 
+type httpErrorBody struct {
+	Error            string `json:"error"`
+	Message          string `json:"message"`
+	ErrorDescription string `json:"error_description"`
+	Detail           any    `json:"detail"`
+}
+
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
 func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
 	url := c.apiURL + path
@@ -120,7 +151,12 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.Header.Set("x-api-key", c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("x-api-key", c.apiKey)
+	}
+	if c.oauthAccessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.oauthAccessToken)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.workspaceID != "" {
 		req.Header.Set("x-tenant-id", c.workspaceID)
@@ -164,6 +200,9 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 // APIKey returns the client's API key.
 func (c *Client) APIKey() string { return c.apiKey }
 
+// OAuthAccessToken returns the client's OAuth access token.
+func (c *Client) OAuthAccessToken() string { return c.oauthAccessToken }
+
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }
 
@@ -183,7 +222,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.statusCode, string(resp.body))
+		return fmt.Errorf("HTTP %d: %s", resp.statusCode, formatHTTPErrorBody(resp.body))
 	}
 
 	if result != nil {
@@ -193,4 +232,39 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	return nil
+}
+
+func formatHTTPErrorBody(body []byte) string {
+	raw := strings.TrimSpace(string(body))
+	var parsed httpErrorBody
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return raw
+	}
+
+	code := strings.TrimSpace(parsed.Error)
+	message := strings.TrimSpace(parsed.Message)
+	if message == "" {
+		message = strings.TrimSpace(parsed.ErrorDescription)
+	}
+	if message == "" && parsed.Detail != nil {
+		switch detail := parsed.Detail.(type) {
+		case string:
+			message = strings.TrimSpace(detail)
+		default:
+			if data, err := json.Marshal(detail); err == nil {
+				message = strings.TrimSpace(string(data))
+			}
+		}
+	}
+
+	switch {
+	case code != "" && message != "":
+		return code + ": " + message
+	case code != "":
+		return code
+	case message != "":
+		return message
+	default:
+		return raw
+	}
 }

@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -14,10 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/hashicorp/yamux"
-
-	"github.com/langchain-ai/langsmith-cli/internal/tunnel"
+	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
+	"golang.org/x/net/websocket"
 )
 
 // ==================== Command structure ====================
@@ -74,107 +72,47 @@ func TestSandboxTunnelCmd_RequiredFlags(t *testing.T) {
 
 // ==================== Integration test ====================
 
-func startEchoServer(t *testing.T) (net.Listener, int) {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				defer func() { _ = c.Close() }()
-				io.Copy(c, c) //nolint:errcheck
-			}(conn)
-		}
-	}()
-
-	return ln, ln.Addr().(*net.TCPAddr).Port
-}
-
 // startTunnelServer starts a WebSocket server that acts as the daemon-side
-// tunnel handler: yamux server accepting streams, reading connect headers,
-// dialing the target port, and bridging.
+// tunnel handler for the SDK tunnel client. It accepts yamux streams, reads
+// connect headers, and echoes stream payloads.
 func startTunnelServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	upgrader := websocket.Upgrader{
-		CheckOrigin:     func(r *http.Request) bool { return true },
-		ReadBufferSize:  4096,
-		WriteBufferSize: 4096,
-	}
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			t.Logf("upgrade error: %v", err)
-			return
-		}
-		defer func() { _ = conn.Close() }()
-
-		adapter := tunnel.NewWSAdapter(conn)
-
-		cfg := yamux.DefaultConfig()
-		cfg.LogOutput = io.Discard
-		session, err := yamux.Server(adapter, cfg)
-		if err != nil {
-			t.Logf("yamux server error: %v", err)
-			return
-		}
-		defer func() { _ = session.Close() }()
+	return httptest.NewServer(websocket.Handler(func(ws *websocket.Conn) {
+		reader := &testWSFrameReader{ws: ws}
+		connected := map[uint32]bool{}
 
 		for {
-			stream, err := session.AcceptStream()
+			msgType, flags, streamID, payload, err := reader.readFrame()
 			if err != nil {
 				return
 			}
-			go handleTestStream(t, r.Context(), stream)
+			switch {
+			case msgType == 1 && flags&1 != 0:
+				connected[streamID] = false
+			case msgType == 0 && len(payload) == 3 && !connected[streamID]:
+				status := byte(langsmith.SandboxTunnelStatusOK)
+				if payload[0] != byte(langsmith.SandboxTunnelProtocolVersion) {
+					status = byte(langsmith.SandboxTunnelStatusUnsupportedVersion)
+				}
+				if err := sendTestYamuxFrame(ws, 0, 0, streamID, []byte{status}); err != nil {
+					return
+				}
+				connected[streamID] = status == byte(langsmith.SandboxTunnelStatusOK)
+			case msgType == 0 && connected[streamID]:
+				if err := sendTestYamuxFrame(ws, 0, 0, streamID, payload); err != nil {
+					return
+				}
+			}
 		}
 	}))
 }
 
-func handleTestStream(t *testing.T, ctx context.Context, stream *yamux.Stream) {
-	t.Helper()
-	defer func() { _ = stream.Close() }()
-
-	hdr, err := tunnel.ReadConnectHeader(stream)
-	if err != nil {
-		return
-	}
-	if hdr.Version != tunnel.ProtocolVersion {
-		tunnel.WriteStatus(stream, tunnel.StatusUnsupportedVersion) //nolint:errcheck
-		return
-	}
-
-	addr := fmt.Sprintf("127.0.0.1:%d", hdr.Port)
-	tcpConn, err := net.DialTimeout("tcp", addr, 5*time.Second)
-	if err != nil {
-		tunnel.WriteStatus(stream, tunnel.StatusDialFailed) //nolint:errcheck
-		return
-	}
-
-	if err := tunnel.WriteStatus(stream, tunnel.StatusOK); err != nil {
-		_ = tcpConn.Close()
-		return
-	}
-
-	tunnel.Bridge(ctx, stream, tcpConn)
-}
-
 func TestSandboxTunnel_EndToEnd(t *testing.T) {
-	echoLn, echoPort := startEchoServer(t)
-	defer func() { _ = echoLn.Close() }()
-
 	tunnelSrv := startTunnelServer(t)
 	defer tunnelSrv.Close()
 
-	// Convert httptest URL to a sandbox-like URL (the tunnel command appends /tunnel).
-	// Strip the trailing path so connectTunnel appends /tunnel correctly.
+	remotePort := 8080
 	sandboxURL := tunnelSrv.URL
 
 	// Pick a free local port.
@@ -190,12 +128,9 @@ func TestSandboxTunnel_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// The tunnel server expects the WebSocket at /tunnel, but our test server
-	// handles all paths. connectTunnel will append /tunnel to the URL, which is fine.
-
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runTunnel(ctx, logger, sandboxURL, echoPort, localPort)
+		errCh <- runTunnel(ctx, logger, newTestTunnelClient(), sandboxURL, remotePort, localPort)
 	}()
 
 	// Wait for the listener to come up.
@@ -241,11 +176,10 @@ func TestSandboxTunnel_EndToEnd(t *testing.T) {
 }
 
 func TestSandboxTunnel_MultipleConnections(t *testing.T) {
-	echoLn, echoPort := startEchoServer(t)
-	defer func() { _ = echoLn.Close() }()
-
 	tunnelSrv := startTunnelServer(t)
 	defer tunnelSrv.Close()
+
+	remotePort := 8080
 
 	localLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -260,7 +194,7 @@ func TestSandboxTunnel_MultipleConnections(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		runTunnel(ctx, logger, tunnelSrv.URL, echoPort, localPort) //nolint:errcheck
+		runTunnel(ctx, logger, newTestTunnelClient(), tunnelSrv.URL, remotePort, localPort) //nolint:errcheck
 	}()
 
 	// Wait for listener.
@@ -301,6 +235,57 @@ func TestSandboxTunnel_MultipleConnections(t *testing.T) {
 
 	wg.Wait()
 	cancel()
+}
+
+func newTestTunnelClient() *langsmith.Client {
+	return langsmith.NewClient(
+		option.WithBaseURL("http://control-plane.test"),
+		option.WithAPIKey("test-api-key"),
+		option.WithMaxRetries(0),
+	)
+}
+
+type testWSFrameReader struct {
+	ws  *websocket.Conn
+	buf []byte
+}
+
+func (r *testWSFrameReader) read(n int) ([]byte, error) {
+	for len(r.buf) < n {
+		var msg []byte
+		if err := websocket.Message.Receive(r.ws, &msg); err != nil {
+			return nil, err
+		}
+		r.buf = append(r.buf, msg...)
+	}
+	out := append([]byte(nil), r.buf[:n]...)
+	r.buf = r.buf[n:]
+	return out, nil
+}
+
+func (r *testWSFrameReader) readFrame() (msgType byte, flags uint16, streamID uint32, payload []byte, err error) {
+	header, err := r.read(12)
+	if err != nil {
+		return 0, 0, 0, nil, err
+	}
+	length := binary.BigEndian.Uint32(header[8:12])
+	if length > 0 {
+		payload, err = r.read(int(length))
+		if err != nil {
+			return 0, 0, 0, nil, err
+		}
+	}
+	return header[1], binary.BigEndian.Uint16(header[2:4]), binary.BigEndian.Uint32(header[4:8]), payload, nil
+}
+
+func sendTestYamuxFrame(ws *websocket.Conn, msgType byte, flags uint16, streamID uint32, payload []byte) error {
+	frame := make([]byte, 12+len(payload))
+	frame[1] = msgType
+	binary.BigEndian.PutUint16(frame[2:4], flags)
+	binary.BigEndian.PutUint32(frame[4:8], streamID)
+	binary.BigEndian.PutUint32(frame[8:12], uint32(len(payload)))
+	copy(frame[12:], payload)
+	return websocket.Message.Send(ws, frame)
 }
 
 func TestSandboxTunnel_MissingFlags(t *testing.T) {

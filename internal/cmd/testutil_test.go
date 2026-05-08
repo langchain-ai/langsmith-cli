@@ -44,15 +44,18 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 	t.Helper()
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
+	oldProfile := flagProfile
 	oldFmt := flagOutputFormat
 
 	flagAPIKey = "test-api-key"
 	flagAPIURL = serverURL
-	flagOutputFormat = "json"
+	flagProfile = ""
+	flagOutputFormat = "pretty"
 
 	return func() {
 		flagAPIKey = oldKey
 		flagAPIURL = oldURL
+		flagProfile = oldProfile
 		flagOutputFormat = oldFmt
 	}
 }

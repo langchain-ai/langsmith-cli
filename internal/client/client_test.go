@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,6 +69,117 @@ func TestNew_EmptyURL(t *testing.T) {
 	}
 }
 
+func TestNewWithOptions_CreatesOAuthClient(t *testing.T) {
+	c := NewWithOptions(Options{
+		OAuthAccessToken: "test-access-token",
+		APIURL:           "http://localhost:1234",
+		WorkspaceID:      "ws-123",
+	})
+	if c == nil || c.SDK == nil {
+		t.Fatal("expected non-nil client and SDK")
+	}
+	if c.OAuthAccessToken() != "test-access-token" {
+		t.Fatalf("unexpected OAuth access token: %q", c.OAuthAccessToken())
+	}
+	if c.APIKey() != "" {
+		t.Fatalf("expected empty API key, got %q", c.APIKey())
+	}
+}
+
+func TestNewWithOptions_ProfileNameDelegatesAuthToSDK(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/info" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "api_key": "default-api-key"
+    },
+    "prod": {
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewWithOptions(Options{
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer prod-access-token" {
+		t.Fatalf("expected explicit profile bearer auth, got %q", gotAuth)
+	}
+	if gotAPIKey != "" {
+		t.Fatalf("expected explicit OAuth profile to override default API key, got %q", gotAPIKey)
+	}
+}
+
+func TestNewWithOptions_APIKeyOverridesProfileName(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewWithOptions(Options{
+		APIKey:      "explicit-key",
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAPIKey != "explicit-key" {
+		t.Fatalf("expected explicit API key, got %q", gotAPIKey)
+	}
+	if gotAuth != "" {
+		t.Fatalf("expected no profile bearer auth when API key wins, got %q", gotAuth)
+	}
+}
+
 // ---------- RawGet ----------
 
 func TestRawGet_Success(t *testing.T) {
@@ -112,6 +225,30 @@ func TestRawGet_HTTPError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("expected error to contain 403, got %q", err.Error())
+	}
+}
+
+func TestRawGet_JSONHTTPErrorIncludesMessage(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "org_scoped_key_requires_workspace",
+			"message": "This API key requires a workspace ID.",
+		})
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	err := c.RawGet(context.Background(), "/fail", nil)
+	if err == nil {
+		t.Fatal("expected error for 403")
+	}
+	if !strings.Contains(err.Error(), "org_scoped_key_requires_workspace") {
+		t.Fatalf("expected error code, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "workspace ID") {
+		t.Fatalf("expected workspace guidance, got %q", err.Error())
 	}
 }
 
@@ -252,6 +389,23 @@ func TestRawRequest_NoWorkspaceHeaderWhenUnset(t *testing.T) {
 	defer ts.Close()
 
 	c := New("key", ts.URL)
+	_ = c.RawGet(context.Background(), "/test", nil)
+}
+
+func TestRawRequest_SetsOAuthAuthorizationHeader(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
+			t.Errorf("expected bearer auth header, got %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Errorf("expected empty x-api-key, got %q", got)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer ts.Close()
+
+	c := NewWithOptions(Options{OAuthAccessToken: "test-access-token", APIURL: ts.URL})
 	_ = c.RawGet(context.Background(), "/test", nil)
 }
 

@@ -4,46 +4,23 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	"github.com/langchain-ai/langsmith-cli/internal/output"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
+	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
-// Sandbox API types.
-
-type boxResponse struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	SnapshotID      *string `json:"snapshot_id,omitempty"`
-	VCPUs           int     `json:"vcpus,omitempty"`
-	MemBytes        int64   `json:"mem_bytes,omitempty"`
-	FsCapacityBytes *int64  `json:"fs_capacity_bytes,omitempty"`
-	Status          string  `json:"status"`
-	DataplaneURL    *string `json:"dataplane_url,omitempty"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
-}
-
-type boxListResponse struct {
-	Sandboxes []boxResponse `json:"sandboxes"`
-}
-
-type boxStatusResponse struct {
-	Status        string  `json:"status"`
-	StatusMessage *string `json:"status_message,omitempty"`
-}
-
 const defaultBoxPollInterval = 2 * time.Second
 
-// waitForBoxReady polls until the sandbox reaches "ready" or a terminal state.
-func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout time.Duration) (boxStatusResponse, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		var resp boxStatusResponse
-		if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+name+"/status", &resp); err != nil {
-			return boxStatusResponse{}, err
+func waitForBoxReady(ctx context.Context, c *client.Client, name string) (*langsmith.SandboxBoxGetStatusResponse, error) {
+	for {
+		resp, err := c.SDK.Sandboxes.Boxes.GetStatus(ctx, name)
+		if err != nil {
+			return nil, err
 		}
 		switch resp.Status {
 		case "ready":
@@ -51,26 +28,28 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string, timeout
 		case "failed":
 			return resp, fmt.Errorf("sandbox entered %s state", resp.Status)
 		}
-		time.Sleep(defaultBoxPollInterval)
+		timer := time.NewTimer(defaultBoxPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
-	return boxStatusResponse{}, fmt.Errorf("timed out after %s waiting for sandbox", timeout)
 }
 
-func newSandboxCreateCmd() *cobra.Command {
-	var (
-		snapshotID  string
-		vcpus       int
-		memory      string
-		rootfs      string
-		proxyConfig string
-		wait        bool
-		timeoutSec  int
-	)
+type sandboxCreateInput struct {
+	SnapshotID  string
+	VCPUs       int
+	Memory      string
+	RootFS      string
+	ProxyConfig string
+}
 
-	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a sandbox VM from a snapshot",
-		Long: `Create a sandbox VM from a snapshot.
+var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
+	Use:   "create <name>",
+	Short: "Create a sandbox VM from a snapshot",
+	Long: `Create a sandbox VM from a snapshot.
 
 The --proxy-config flag accepts inline JSON or a file path prefixed with @.
 The proxy config controls which outbound HTTP requests the sandbox proxy
@@ -100,251 +79,271 @@ responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
 Examples:
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
-  langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb --wait
+  langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
   langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
-		Args: cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			name := args[0]
-			if snapshotID == "" {
-				ExitError("--snapshot-id is required")
-			}
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxCreateInput {
+		in := &sandboxCreateInput{
+			VCPUs:  2,
+			Memory: "512mb",
+		}
+		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from (required)")
+		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
+		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
+		return in
+	},
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxCreateInput, args []string) (any, error) {
+		name := args[0]
+		if in.SnapshotID == "" {
+			return nil, fmt.Errorf("--snapshot-id is required")
+		}
 
-			c := MustGetClient()
-			ctx := context.Background()
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-			memBytes, err := parseByteSize(memory)
+		memBytes, err := parseByteSize(in.Memory)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --memory: %w", err)
+		}
+
+		params := langsmith.SandboxBoxNewParams{
+			Name:       langsmith.F(name),
+			SnapshotID: langsmith.F(in.SnapshotID),
+			Vcpus:      langsmith.F(int64(in.VCPUs)),
+			MemBytes:   langsmith.F(memBytes),
+		}
+		if in.RootFS != "" {
+			rootfsBytes, err := parseByteSize(in.RootFS)
 			if err != nil {
-				ExitErrorf("invalid --memory: %v", err)
+				return nil, fmt.Errorf("invalid --rootfs-capacity: %w", err)
 			}
+			params.FsCapacityBytes = langsmith.F(rootfsBytes)
+		}
+		if in.ProxyConfig != "" {
+			pc, err := loadJSONArg(in.ProxyConfig)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --proxy-config: %w", err)
+			}
+			params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
+		}
+		resp, err := c.SDK.Sandboxes.Boxes.New(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("creating sandbox: %w", err)
+		}
 
-			body := map[string]any{
-				"name":        name,
-				"snapshot_id": snapshotID,
-				"vcpus":       vcpus,
-				"mem_bytes":   memBytes,
-			}
-			if rootfs != "" {
-				rootfsBytes, err := parseByteSize(rootfs)
-				if err != nil {
-					ExitErrorf("invalid --rootfs-capacity: %v", err)
-				}
-				body["fs_capacity_bytes"] = rootfsBytes
-			}
-			if proxyConfig != "" {
-				pc, err := loadJSONArg(proxyConfig)
-				if err != nil {
-					ExitErrorf("invalid --proxy-config: %v", err)
-				}
-				body["proxy_config"] = pc
-			}
-			if wait {
-				body["wait_for_ready"] = true
-				body["timeout"] = timeoutSec
-			}
-
-			var resp boxResponse
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes", body, &resp); err != nil {
-				ExitErrorf("creating sandbox: %v", err)
-			}
-
-			output.OutputJSON(resp, "")
-		},
-	}
-
-	cmd.Flags().StringVar(&snapshotID, "snapshot-id", "", "Snapshot ID to boot from (required)")
-	cmd.Flags().IntVar(&vcpus, "vcpus", 2, "Number of vCPUs")
-	cmd.Flags().StringVar(&memory, "memory", "512mb", "Memory with unit (e.g. 512mb, 1gb)")
-	cmd.Flags().StringVar(&rootfs, "rootfs-capacity", "", "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
-	cmd.Flags().StringVar(&proxyConfig, "proxy-config", "", "Proxy config as JSON or @file.json")
-	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the sandbox to become ready")
-	cmd.Flags().IntVar(&timeoutSec, "timeout", 120, "Timeout in seconds when using --wait")
-
-	return cmd
+		return resp, nil
+	},
+	Render: structured.Template(`Name:     {{.Name}}
+Status:   {{.Status}}
+VCPUs:    {{formatCount .Vcpus}}
+Memory:   {{formatBytesOrDash .MemBytes}}
+Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
+Snapshot: {{shortID .SnapshotID}}
+Created:  {{formatTime .CreatedAt}}
+`),
 }
 
-func newSandboxListCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all sandboxes",
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+var sandboxListCommand = structured.Command[struct{}]{
+	Use:   "list",
+	Short: "List all sandboxes",
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-			var resp boxListResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/boxes", &resp); err != nil {
-				ExitErrorf("listing sandboxes: %v", err)
-			}
-
-			fmt_ := GetFormat()
-
-			if fmt_ == "pretty" && len(resp.Sandboxes) > 0 {
-				columns := []string{"Name", "Status", "VCPUs", "Mem", "Rootfs", "Snapshot", "Created"}
-				var rows [][]string
-				for _, b := range resp.Sandboxes {
-					snap := "-"
-					if b.SnapshotID != nil {
-						if len(*b.SnapshotID) > 8 {
-							snap = (*b.SnapshotID)[:8] + "..."
-						} else {
-							snap = *b.SnapshotID
-						}
-					}
-					diskStr := "-"
-					if b.FsCapacityBytes != nil {
-						diskStr = formatBytes(*b.FsCapacityBytes)
-					}
-					mem := "-"
-					if b.MemBytes > 0 {
-						mem = formatBytes(b.MemBytes)
-					}
-					vcpusStr := "-"
-					if b.VCPUs > 0 {
-						vcpusStr = fmt.Sprintf("%d", b.VCPUs)
-					}
-					rows = append(rows, []string{
-						b.Name, b.Status, vcpusStr, mem, diskStr, snap, formatTime(b.CreatedAt),
-					})
-				}
-				output.OutputTable(columns, rows, "Sandboxes")
-			} else {
-				output.OutputJSON(resp.Sandboxes, "")
-			}
+		resp, err := c.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{})
+		if err != nil {
+			return nil, fmt.Errorf("listing sandboxes: %w", err)
+		}
+		return resp.Sandboxes, nil
+	},
+	Render: structured.Table{
+		Title: "Sandboxes",
+		Rows:  ".",
+		Columns: []structured.Column{
+			{Header: "Name", Template: "{{.Name}}"},
+			{Header: "Status", Template: "{{.Status}}"},
+			{Header: "VCPUs", Template: "{{formatCount .Vcpus}}"},
+			{Header: "Mem", Template: "{{formatBytesOrDash .MemBytes}}"},
+			{Header: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
+			{Header: "Snapshot", Template: "{{shortID .SnapshotID}}"},
+			{Header: "Created", Template: "{{formatTime .CreatedAt}}"},
 		},
-	}
-	return cmd
+	},
 }
 
-func newSandboxGetCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "get <name>",
-		Short: "Get a sandbox by name",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+var sandboxGetCommand = structured.Command[struct{}]{
+	Use:   "get <name>",
+	Short: "Get a sandbox by name",
+	Args:  cobra.ExactArgs(1),
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-			var resp boxResponse
-			if err := c.RawGet(ctx, "/v2/sandboxes/boxes/"+args[0], &resp); err != nil {
-				ExitErrorf("getting sandbox: %v", err)
-			}
+		resp, err := c.SDK.Sandboxes.Boxes.Get(ctx, args[0])
+		if err != nil {
+			return nil, fmt.Errorf("getting sandbox: %w", err)
+		}
 
-			output.OutputJSON(resp, "")
-		},
-	}
-	return cmd
+		return resp, nil
+	},
+	Render: structured.Template(`Name:     {{.Name}}
+Status:   {{.Status}}
+VCPUs:    {{formatCount .Vcpus}}
+Memory:   {{formatBytesOrDash .MemBytes}}
+Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
+Snapshot: {{shortID .SnapshotID}}
+Created:  {{formatTime .CreatedAt}}
+`),
 }
 
-func newSandboxUpdateCmd() *cobra.Command {
-	var (
-		vcpus       int
-		memory      string
-		rootfs      string
-		proxyConfig string
-	)
+type sandboxUpdateInput struct {
+	VCPUs       int
+	Memory      string
+	RootFS      string
+	ProxyConfig string
+}
 
-	cmd := &cobra.Command{
-		Use:   "update <name>",
-		Short: "Update sandbox resources (takes effect on next start)",
-		Long: `Update sandbox resources or proxy configuration.
+var sandboxUpdateCommand = structured.Command[*sandboxUpdateInput]{
+	Use:   "update <name>",
+	Short: "Update sandbox resources (takes effect on next start)",
+	Long: `Update sandbox resources or proxy configuration.
 
 Resource changes (--vcpus, --memory, --rootfs-capacity) take effect on next start.
 Proxy config changes take effect immediately.
 
 The --proxy-config flag accepts inline JSON or @file.json. See "create --help"
 for the proxy config JSON format.`,
-		Args: cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxUpdateInput {
+		in := &sandboxUpdateInput{}
+		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
+		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
+		return in
+	},
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxUpdateInput, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-			body := map[string]any{}
-			if cmd.Flags().Changed("vcpus") {
-				body["vcpus"] = vcpus
-			}
-			if cmd.Flags().Changed("memory") {
-				memBytes, err := parseByteSize(memory)
-				if err != nil {
-					ExitErrorf("invalid --memory: %v", err)
-				}
-				body["mem_bytes"] = memBytes
-			}
-			if cmd.Flags().Changed("rootfs-capacity") {
-				rootfsBytes, err := parseByteSize(rootfs)
-				if err != nil {
-					ExitErrorf("invalid --rootfs-capacity: %v", err)
-				}
-				body["fs_capacity_bytes"] = rootfsBytes
-			}
-			if cmd.Flags().Changed("proxy-config") {
-				pc, err := loadJSONArg(proxyConfig)
-				if err != nil {
-					ExitErrorf("invalid --proxy-config: %v", err)
-				}
-				body["proxy_config"] = pc
-			}
-
-			if len(body) == 0 {
-				ExitError("nothing to update (use --vcpus, --memory, --rootfs-capacity, or --proxy-config)")
-			}
-
-			var resp boxResponse
-			if err := c.RawPatch(ctx, "/v2/sandboxes/boxes/"+args[0], body, &resp); err != nil {
-				ExitErrorf("updating sandbox: %v", err)
-			}
-
-			output.OutputJSON(resp, "")
-		},
-	}
-
-	cmd.Flags().IntVar(&vcpus, "vcpus", 0, "Number of vCPUs")
-	cmd.Flags().StringVar(&memory, "memory", "", "Memory with unit (e.g. 512mb, 1gb)")
-	cmd.Flags().StringVar(&rootfs, "rootfs-capacity", "", "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
-	cmd.Flags().StringVar(&proxyConfig, "proxy-config", "", "Proxy config as JSON or @file.json")
-
-	return cmd
-}
-
-func newSandboxDeleteCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a sandbox",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
-			if err := c.RawDelete(ctx, "/v2/sandboxes/boxes/"+args[0], nil); err != nil {
-				ExitErrorf("deleting sandbox: %v", err)
-			}
-
-			fmt.Println("Sandbox deleted.")
-		},
-	}
-	return cmd
-}
-
-func newSandboxWaitCmd() *cobra.Command {
-	var timeoutSec int
-
-	cmd := &cobra.Command{
-		Use:   "wait <name>",
-		Short: "Wait for a sandbox to become ready",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
-			_, err := waitForBoxReady(ctx, c, args[0], time.Duration(timeoutSec)*time.Second)
+		params := langsmith.SandboxBoxUpdateParams{}
+		if cmd.Flags().Changed("vcpus") {
+			params.Vcpus = langsmith.F(int64(in.VCPUs))
+		}
+		if cmd.Flags().Changed("memory") {
+			memBytes, err := parseByteSize(in.Memory)
 			if err != nil {
-				ExitErrorf("%v", err)
+				return nil, fmt.Errorf("invalid --memory: %w", err)
 			}
-			fmt.Printf("Sandbox %s is ready\n", args[0])
-		},
-	}
+			params.MemBytes = langsmith.F(memBytes)
+		}
+		if cmd.Flags().Changed("rootfs-capacity") {
+			rootfsBytes, err := parseByteSize(in.RootFS)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --rootfs-capacity: %w", err)
+			}
+			params.FsCapacityBytes = langsmith.F(rootfsBytes)
+		}
+		if cmd.Flags().Changed("proxy-config") {
+			pc, err := loadJSONArg(in.ProxyConfig)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --proxy-config: %w", err)
+			}
+			params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxUpdateParamsProxyConfig](pc)
+		}
 
-	cmd.Flags().IntVar(&timeoutSec, "timeout", 120, "Timeout in seconds")
+		if !cmd.Flags().Changed("vcpus") && !cmd.Flags().Changed("memory") && !cmd.Flags().Changed("rootfs-capacity") && !cmd.Flags().Changed("proxy-config") {
+			return nil, fmt.Errorf("nothing to update (use --vcpus, --memory, --rootfs-capacity, or --proxy-config)")
+		}
 
-	return cmd
+		resp, err := c.SDK.Sandboxes.Boxes.Update(ctx, args[0], params)
+		if err != nil {
+			return nil, fmt.Errorf("updating sandbox: %w", err)
+		}
+
+		return resp, nil
+	},
+	Render: structured.Template(`Name:     {{.Name}}
+Status:   {{.Status}}
+VCPUs:    {{formatCount .Vcpus}}
+Memory:   {{formatBytesOrDash .MemBytes}}
+Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
+Snapshot: {{shortID .SnapshotID}}
+Created:  {{formatTime .CreatedAt}}
+`),
+}
+
+var sandboxDeleteCommand = structured.Command[struct{}]{
+	Use:   "delete <name>",
+	Short: "Delete a sandbox",
+	Args:  cobra.ExactArgs(1),
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := c.SDK.Sandboxes.Boxes.Delete(ctx, args[0]); err != nil {
+			return nil, fmt.Errorf("deleting sandbox: %w", err)
+		}
+
+		return sandboxMessage{Name: args[0], Message: "Sandbox deleted."}, nil
+	},
+	Render: structured.Template(`{{.Message}}
+`),
+}
+
+var sandboxStartCommand = structured.Command[struct{}]{
+	Use:   "start <name>",
+	Short: "Start a stopped sandbox",
+	Args:  cobra.ExactArgs(1),
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := c.SDK.Sandboxes.Boxes.Start(ctx, args[0]); err != nil {
+			return nil, fmt.Errorf("starting sandbox: %w", err)
+		}
+
+		if _, err := waitForBoxReady(ctx, c, args[0]); err != nil {
+			return nil, err
+		}
+		return sandboxMessage{Name: args[0], Message: fmt.Sprintf("Sandbox %s started", args[0])}, nil
+	},
+	Render: structured.Template(`{{.Message}}
+`),
+}
+
+var sandboxStopCommand = structured.Command[struct{}]{
+	Use:   "stop <name>",
+	Short: "Stop a running sandbox (preserves data)",
+	Args:  cobra.ExactArgs(1),
+	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := c.SDK.Sandboxes.Boxes.Stop(ctx, args[0]); err != nil {
+			return nil, fmt.Errorf("stopping sandbox: %w", err)
+		}
+
+		return sandboxMessage{Name: args[0], Message: "Sandbox stopped."}, nil
+	},
+	Render: structured.Template(`{{.Message}}
+`),
 }
 
 func newSandboxExecCmd() *cobra.Command {
@@ -372,14 +371,19 @@ Examples:
 				return fmt.Errorf("no command specified")
 			}
 
-			ctx := context.Background()
-			ep, err := resolveSandbox(ctx, name)
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			c, err := cmdutil.GetClient(cmd)
 			if err != nil {
 				return err
 			}
 
-			var result execResult
-			if err := dataplanePost(ep.DataplaneURL, "/execute", map[string]interface{}{"command": command}, &result); err != nil {
+			result, err := c.SDK.Sandboxes.Boxes.Run(ctx, name, langsmith.SandboxBoxRunParams{
+				Command: langsmith.F(sandboxShellCommand(command)),
+			})
+			if err != nil {
 				return fmt.Errorf("execute: %w", err)
 			}
 
@@ -390,7 +394,7 @@ Examples:
 				fmt.Fprint(os.Stderr, result.Stderr)
 			}
 			if result.ExitCode != 0 {
-				os.Exit(result.ExitCode)
+				os.Exit(int(result.ExitCode))
 			}
 			return nil
 		},
@@ -398,54 +402,10 @@ Examples:
 	return cmd
 }
 
-func newSandboxStartCmd() *cobra.Command {
-	var (
-		wait       bool
-		timeoutSec int
-	)
-
-	cmd := &cobra.Command{
-		Use:   "start <name>",
-		Short: "Start a stopped sandbox",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes/"+args[0]+"/start", nil, nil); err != nil {
-				ExitErrorf("starting sandbox: %v", err)
-			}
-
-			if wait {
-				if _, err := waitForBoxReady(ctx, c, args[0], time.Duration(timeoutSec)*time.Second); err != nil {
-					ExitErrorf("%v", err)
-				}
-			}
-			fmt.Printf("Sandbox %s started\n", args[0])
-		},
+func sandboxShellCommand(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
 	}
-
-	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the sandbox to become ready")
-	cmd.Flags().IntVar(&timeoutSec, "timeout", 120, "Timeout in seconds when using --wait")
-
-	return cmd
-}
-
-func newSandboxStopCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "stop <name>",
-		Short: "Stop a running sandbox (preserves data)",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
-			if err := c.RawPost(ctx, "/v2/sandboxes/boxes/"+args[0]+"/stop", nil, nil); err != nil {
-				ExitErrorf("stopping sandbox: %v", err)
-			}
-
-			fmt.Println("Sandbox stopped.")
-		},
-	}
-	return cmd
+	return strings.Join(quoted, " ")
 }

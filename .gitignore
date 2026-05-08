@@ -38,8 +38,19 @@ Thumbs.db
 # Environment
 .env
 /.env.*
+.env.*
+*.pem
+*.key
+*.crt
+credentials.json
+token.json
 
 .envrc
+
+# Local dependency and virtualenv directories
+node_modules/
+__pycache__/
+.venv/
 
 # Claude Code
 .claude/

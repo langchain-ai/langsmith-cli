@@ -240,6 +240,7 @@ func TestRunListCmd_Execute_WithProject_Succeeds(t *testing.T) {
 	)
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	cmd := newRunListCmd()
 	_ = cmd.Flags().Set("project", "my-app")
@@ -265,6 +266,7 @@ func TestRunListCmd_Execute_WithEnvProject_Succeeds(t *testing.T) {
 	)
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 	t.Setenv("LANGSMITH_PROJECT", "env-project")
 
 	cmd := newRunListCmd()

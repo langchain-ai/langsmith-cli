@@ -1,15 +1,24 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 )
+
+func isolateConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "missing.json"))
+}
 
 // ---------- Command tree structure ----------
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "self-update", "api"}
+	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "sandbox", "auth", "profile", "workspace", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -77,14 +86,26 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	if f == nil {
 		t.Fatal("--format flag not found")
 	}
-	if f.DefValue != "json" {
-		t.Errorf("expected default json, got %q", f.DefValue)
+	if f.DefValue != "pretty" {
+		t.Errorf("expected default pretty, got %q", f.DefValue)
+	}
+}
+
+func TestRootCmd_PersistentFlags_Profile(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("profile")
+	if f == nil {
+		t.Fatal("--profile flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
 	}
 }
 
 // ---------- getAPIKey ----------
 
 func TestGetAPIKey_FlagPrecedence(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -97,6 +118,7 @@ func TestGetAPIKey_FlagPrecedence(t *testing.T) {
 }
 
 func TestGetAPIKey_EnvFallback(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -108,7 +130,38 @@ func TestGetAPIKey_EnvFallback(t *testing.T) {
 	}
 }
 
+func TestGetAPIKey_EnvFallbackWithMalformedConfig(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(path, []byte(`{`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "from-env" {
+		t.Fatalf("expected env API key despite malformed config, got %q", got)
+	}
+	if got := GetAPIURL(); got != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL despite malformed config, got %q", got)
+	}
+}
+
 func TestGetAPIKey_Empty(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIKey
 	defer func() { flagAPIKey = old }()
 
@@ -123,6 +176,7 @@ func TestGetAPIKey_Empty(t *testing.T) {
 // ---------- getAPIURL ----------
 
 func TestGetAPIURL_FlagPrecedence(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -135,6 +189,7 @@ func TestGetAPIURL_FlagPrecedence(t *testing.T) {
 }
 
 func TestGetAPIURL_EnvFallback(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -146,7 +201,25 @@ func TestGetAPIURL_EnvFallback(t *testing.T) {
 	}
 }
 
+func TestGetAPIURL_NormalizesOverrides(t *testing.T) {
+	old := flagAPIURL
+	defer func() { flagAPIURL = old }()
+	flagAPIURL = ""
+	isolateConfig(t)
+
+	t.Setenv("LANGSMITH_ENDPOINT", "https://env.example.com/api/v1")
+	if got := GetAPIURL(); got != "https://env.example.com" {
+		t.Fatalf("expected normalized env URL, got %q", got)
+	}
+
+	flagAPIURL = "https://flag.example.com/api/v1"
+	if got := GetAPIURL(); got != "https://flag.example.com" {
+		t.Fatalf("expected normalized flag URL, got %q", got)
+	}
+}
+
 func TestGetAPIURL_DefaultValue(t *testing.T) {
+	isolateConfig(t)
 	old := flagAPIURL
 	defer func() { flagAPIURL = old }()
 
@@ -158,11 +231,185 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 	}
 }
 
+func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+			t.Fatalf("unexpected refresh token %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    300,
+			RefreshToken: "new-refresh-token",
+		})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+ts.URL+`",
+      "oauth": {
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, err := resolveClientOptions(true)
+	if err != nil {
+		t.Fatalf("resolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
+func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {
+      "api_url": "https://profile.example.com",
+      "workspace_id": "ws-123",
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetOAuthAccessToken(); got != "test-access-token" {
+		t.Fatalf("expected profile OAuth access token, got %q", got)
+	}
+	if got := GetAPIURL(); got != "https://profile.example.com" {
+		t.Fatalf("expected profile API URL, got %q", got)
+	}
+	if got := GetWorkspaceID(); got != "ws-123" {
+		t.Fatalf("expected profile workspace, got %q", got)
+	}
+}
+
+func TestGetAPIKey_ProfileEnvTrimsWhitespace(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", " prod ")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "api_key": "profile-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "profile-api-key" {
+		t.Fatalf("expected profile API key from trimmed env profile, got %q", got)
+	}
+}
+
+func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
+	oldKey := flagAPIKey
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "default": {
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := GetAPIKey(); got != "from-env" {
+		t.Fatalf("expected env API key, got %q", got)
+	}
+	if got := GetOAuthAccessToken(); got != "" {
+		t.Fatalf("expected profile OAuth access token to be ignored, got %q", got)
+	}
+}
+
 // ---------- getFormat ----------
 
 func TestGetFormat_ReturnsValue(t *testing.T) {
-	old := flagOutputFormat
-	defer func() { flagOutputFormat = old }()
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagOutputFormat = oldFormat
+	}()
 
 	flagOutputFormat = "pretty"
 	if got := GetFormat(); got != "pretty" {

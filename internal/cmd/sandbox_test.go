@@ -81,7 +81,7 @@ func TestSandboxCmd_FlatSubcommands(t *testing.T) {
 	cmd := newSandboxCmd()
 	expected := map[string]bool{
 		"create": false, "list": false, "get": false, "update": false,
-		"delete": false, "start": false, "stop": false, "wait": false,
+		"delete": false, "start": false, "stop": false,
 		"exec": false, "console": false, "tunnel": false, "ssh-setup": false,
 		"snapshot": false,
 	}
@@ -98,10 +98,10 @@ func TestSandboxCmd_FlatSubcommands(t *testing.T) {
 }
 
 func TestSnapshotCmd_Subcommands(t *testing.T) {
-	cmd := newSandboxSnapshotCmd()
+	cmd := sandboxSnapshotCommand.Cobra()
 	expected := map[string]bool{
 		"build": false, "capture": false, "list": false,
-		"get": false, "delete": false, "wait": false,
+		"get": false, "delete": false,
 	}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
@@ -116,7 +116,7 @@ func TestSnapshotCmd_Subcommands(t *testing.T) {
 }
 
 func TestSandboxCreateCmd_PositionalName(t *testing.T) {
-	cmd := newSandboxCreateCmd()
+	cmd := sandboxCreateCommand.Cobra()
 	if cmd.Args == nil {
 		t.Fatal("expected Args validator")
 	}
@@ -155,7 +155,7 @@ func TestSandboxTunnelCmd_HiddenNameFlag(t *testing.T) {
 }
 
 func TestSnapshotBuildCmd_PositionalName(t *testing.T) {
-	cmd := newSnapshotBuildCmd()
+	cmd := snapshotBuildCommand.Cobra()
 	if err := cmd.Args(cmd, []string{}); err == nil {
 		t.Error("expected error with 0 args")
 	}
@@ -165,7 +165,7 @@ func TestSnapshotBuildCmd_PositionalName(t *testing.T) {
 }
 
 func TestSnapshotCaptureCmd_PositionalName(t *testing.T) {
-	cmd := newSnapshotCaptureCmd()
+	cmd := snapshotCaptureCommand.Cobra()
 	if err := cmd.Args(cmd, []string{}); err == nil {
 		t.Error("expected error with 0 args")
 	}
@@ -175,7 +175,7 @@ func TestSnapshotCaptureCmd_PositionalName(t *testing.T) {
 }
 
 func TestSandboxCreateCmd_SizeFlags(t *testing.T) {
-	cmd := newSandboxCreateCmd()
+	cmd := sandboxCreateCommand.Cobra()
 	for _, name := range []string{"memory", "rootfs-capacity"} {
 		f := cmd.Flags().Lookup(name)
 		if f == nil {
@@ -185,7 +185,7 @@ func TestSandboxCreateCmd_SizeFlags(t *testing.T) {
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
-	cmd := newSandboxUpdateCmd()
+	cmd := sandboxUpdateCommand.Cobra()
 	for _, name := range []string{"memory", "rootfs-capacity"} {
 		f := cmd.Flags().Lookup(name)
 		if f == nil {
@@ -195,13 +195,25 @@ func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
 }
 
 func TestSnapshotBuildCmd_CapacityFlag(t *testing.T) {
-	cmd := newSnapshotBuildCmd()
+	cmd := snapshotBuildCommand.Cobra()
 	f := cmd.Flags().Lookup("capacity")
 	if f == nil {
 		t.Fatal("flag --capacity not found")
 	}
 	if f.DefValue != "4gb" {
 		t.Errorf("expected default 4gb, got %q", f.DefValue)
+	}
+}
+
+func TestSnapshotBuildCmd_RegistryIDFlag(t *testing.T) {
+	cmd := snapshotBuildCommand.Cobra()
+	if f := cmd.Flags().Lookup("registry-id"); f == nil {
+		t.Fatal("flag --registry-id not found")
+	}
+	for _, name := range []string{"registry-url", "registry-username", "registry-password"} {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			t.Fatalf("obsolete flag --%s should not exist", name)
+		}
 	}
 }
 
@@ -284,7 +296,7 @@ func TestLoadJSONArg_FileAbsolutePath(t *testing.T) {
 // ==================== proxy-config flag ====================
 
 func TestSandboxCreateCmd_ProxyConfigFlag(t *testing.T) {
-	cmd := newSandboxCreateCmd()
+	cmd := sandboxCreateCommand.Cobra()
 	f := cmd.Flags().Lookup("proxy-config")
 	if f == nil {
 		t.Fatal("flag --proxy-config not found on create command")
@@ -292,7 +304,7 @@ func TestSandboxCreateCmd_ProxyConfigFlag(t *testing.T) {
 }
 
 func TestSandboxUpdateCmd_ProxyConfigFlag(t *testing.T) {
-	cmd := newSandboxUpdateCmd()
+	cmd := sandboxUpdateCommand.Cobra()
 	f := cmd.Flags().Lookup("proxy-config")
 	if f == nil {
 		t.Fatal("flag --proxy-config not found on update command")
