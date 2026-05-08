@@ -38,6 +38,40 @@ func TestTemplateRenderText(t *testing.T) {
 	require.Equal(t, "Name: sandbox", out.String())
 }
 
+func TestPropertyListRenderText(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct {
+		Name  string
+		Empty string
+	}{
+		Name: "sandbox",
+	}, PropertyList{
+		Properties: []Property{
+			{Label: "Name", Template: "{{.Name}}"},
+			{Label: "Empty", Template: "{{.Empty}}", OmitEmpty: true},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Name:  sandbox\n", out.String())
+}
+
+func TestPropertyListRenderTextMultiline(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct{ Message string }{Message: "first\nsecond"}, PropertyList{
+		Properties: []Property{
+			{Label: "Message", Template: "{{.Message}}"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Message:  first\n          second\n", out.String())
+}
+
 func TestRenderJQFiltersModel(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)
