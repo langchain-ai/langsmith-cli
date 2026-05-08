@@ -47,40 +47,23 @@ var authInfoCommand = structured.Command[struct{}]{
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		return resolveAuthInfo()
 	},
-	Render: structured.Template(`Authenticated: {{.Authenticated}}
-Auth: {{.Auth}}
-{{- if .AuthSource}}
-Auth source: {{.AuthSource}}
-{{- end}}
-{{- if .AuthNote}}
-Auth note: {{.AuthNote}}
-{{- end}}
-API URL: {{.APIURL}}
-{{- if .WorkspaceID}}
-Workspace ID: {{.WorkspaceID}}
-{{- end}}
-{{- if .Profile}}
-Profile: {{.Profile}}{{if .ProfileFound}}{{if not .ProfileFound}} (not found){{end}}{{end}}
-{{- end}}
-{{- if .ConfigFile}}
-Config file: {{.ConfigFile}}
-{{- end}}
-{{- if .APIKey}}
-API key: {{.APIKey}}
-{{- end}}
-{{- if .OAuthAccessToken}}
-OAuth access token: present
-{{- end}}
-{{- if .OAuthRefreshToken}}
-OAuth refresh token: present
-{{- end}}
-{{- if .OAuthExpiresAt}}
-OAuth expires at: {{.OAuthExpiresAt}}{{if .OAuthExpired}}{{if .OAuthExpired}} (expired){{end}}{{end}}
-{{- end}}
-{{- if .ConfigError}}
-Config error: {{.ConfigError}}
-{{- end}}
-`),
+	Render: structured.PropertyList{
+		Properties: []structured.Property{
+			{Label: "Authenticated", Template: "{{.Authenticated}}"},
+			{Label: "Auth", Template: "{{.Auth}}"},
+			{Label: "Auth source", Template: "{{.AuthSource}}", OmitEmpty: true},
+			{Label: "Auth note", Template: "{{.AuthNote}}", OmitEmpty: true},
+			{Label: "API URL", Template: "{{.APIURL}}"},
+			{Label: "Workspace ID", Template: "{{.WorkspaceID}}", OmitEmpty: true},
+			{Label: "Profile", Template: "{{.Profile}}{{if .ProfileFound}}{{if not .ProfileFound}} (not found){{end}}{{end}}", OmitEmpty: true},
+			{Label: "Config file", Template: "{{.ConfigFile}}", OmitEmpty: true},
+			{Label: "API key", Template: "{{.APIKey}}", OmitEmpty: true},
+			{Label: "OAuth access token", Template: "{{if .OAuthAccessToken}}present{{end}}", OmitEmpty: true},
+			{Label: "OAuth refresh token", Template: "{{if .OAuthRefreshToken}}present{{end}}", OmitEmpty: true},
+			{Label: "OAuth expires at", Template: "{{.OAuthExpiresAt}}{{if .OAuthExpired}}{{if .OAuthExpired}} (expired){{end}}{{end}}", OmitEmpty: true},
+			{Label: "Config error", Template: "{{.ConfigError}}", OmitEmpty: true},
+		},
+	},
 }
 
 var authTokenCommand = structured.Command[struct{}]{
