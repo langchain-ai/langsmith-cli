@@ -28,13 +28,6 @@ func isHTTP409(err error) bool {
 	return isHTTPStatus(err, http.StatusConflict)
 }
 
-func isRawHTTPStatus(err error, statusCode int) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), fmt.Sprintf("HTTP %d:", statusCode))
-}
-
 func strPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
@@ -131,7 +124,7 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 		create["tags"] = meta.Tags
 	}
 	if err := c.RawPost(ctx, "/api/v1/repos", create, nil); err != nil {
-		if isHTTP409(err) || isRawHTTPStatus(err, http.StatusConflict) {
+		if isHTTP409(err) || strings.Contains(err.Error(), "HTTP 409:") {
 			return nil
 		}
 		return fmt.Errorf("creating %s/%s: %w", owner, name, err)
