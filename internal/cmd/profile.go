@@ -359,15 +359,19 @@ func profileEnvName() string {
 
 func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Note", "Expires At"})
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Expires At"})
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
+	authNote := ""
 	for _, profile := range profiles {
 		active := ""
 		if profile.Active {
 			active = "*"
+		}
+		if authNote == "" {
+			authNote = profile.AuthNote
 		}
 		table.Append([]string{
 			active,
@@ -375,16 +379,18 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 			profile.APIURL,
 			profile.WorkspaceID,
 			profile.Auth,
-			profile.AuthNote,
 			profile.OAuthExpiresAt,
 		})
 	}
 	table.Render()
+	if authNote != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), authNote)
+	}
 }
 
 func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Note", "API Key", "Expires At"})
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
@@ -399,11 +405,13 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.APIURL,
 		profile.WorkspaceID,
 		profile.Auth,
-		profile.AuthNote,
 		profile.APIKey,
 		profile.OAuthExpiresAt,
 	})
 	table.Render()
+	if profile.AuthNote != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), profile.AuthNote)
+	}
 }
 
 func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {
