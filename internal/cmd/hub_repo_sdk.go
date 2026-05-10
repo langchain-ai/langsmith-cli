@@ -116,8 +116,6 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 		"repo_handle": name,
 		"repo_type":   string(sdkRepoType),
 		"is_public":   false,
-		// Hub-created repos should default to internal so Agent Builder
-		// workspace listings include them as first-party resources.
 		"source": "internal",
 	}
 	if meta.IsPublic != nil {
