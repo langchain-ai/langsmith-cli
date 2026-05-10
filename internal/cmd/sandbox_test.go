@@ -363,11 +363,16 @@ func TestSandboxCreateCmd_RendersAPIValidationError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	got := err.Error()
-	if !strings.Contains(got, "creating sandbox: 422 Unprocessable Entity: one of snapshot_id or snapshot_name is required") {
+	if !strings.Contains(got, `POST "`) || !strings.Contains(got, `"detail"`) {
+		t.Fatalf("expected original SDK error, got %q", got)
+	}
+
+	display := FormatErrorMessage(err)
+	if !strings.Contains(display, "creating sandbox: 422 Unprocessable Entity: one of snapshot_id or snapshot_name is required") {
 		t.Fatalf("unexpected error: %q", got)
 	}
-	if strings.Contains(got, "POST ") || strings.Contains(got, `"detail"`) {
-		t.Fatalf("expected simplified error, got %q", got)
+	if strings.Contains(display, "POST ") || strings.Contains(display, `"detail"`) {
+		t.Fatalf("expected simplified error, got %q", display)
 	}
 }
 

@@ -1,4 +1,4 @@
-package structured
+package cmd
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ func testAPIError(t *testing.T, statusCode int, body string) *langsmith.Error {
 	return apiErr
 }
 
-func TestFormatErrorSimplifiesAPIValidationDetail(t *testing.T) {
+func TestFormatErrorMessageSimplifiesAPIValidationDetail(t *testing.T) {
 	apiErr := testAPIError(t, http.StatusUnprocessableEntity, `{
 		"detail": [{
 			"loc": ["body", "snapshot_id"],
@@ -41,14 +41,14 @@ func TestFormatErrorSimplifiesAPIValidationDetail(t *testing.T) {
 		}]
 	}`)
 
-	err := FormatError(fmt.Errorf("creating sandbox: %w", apiErr))
+	got := FormatErrorMessage(fmt.Errorf("creating sandbox: %w", apiErr))
 
-	require.Equal(t, "creating sandbox: 422 Unprocessable Entity: snapshot_id: field required; snapshot_name: field required", err.Error())
-	require.NotContains(t, err.Error(), "POST")
-	require.NotContains(t, err.Error(), `"detail"`)
+	require.Equal(t, "creating sandbox: 422 Unprocessable Entity: snapshot_id: field required; snapshot_name: field required", got)
+	require.NotContains(t, got, "POST")
+	require.NotContains(t, got, `"detail"`)
 }
 
-func TestFormatErrorSimplifiesBodyLevelAPIValidationDetail(t *testing.T) {
+func TestFormatErrorMessageSimplifiesBodyLevelAPIValidationDetail(t *testing.T) {
 	apiErr := testAPIError(t, http.StatusUnprocessableEntity, `{
 		"detail": [{
 			"loc": ["body"],
@@ -57,26 +57,26 @@ func TestFormatErrorSimplifiesBodyLevelAPIValidationDetail(t *testing.T) {
 		}]
 	}`)
 
-	err := FormatError(fmt.Errorf("creating sandbox: %w", apiErr))
+	got := FormatErrorMessage(fmt.Errorf("creating sandbox: %w", apiErr))
 
-	require.Equal(t, "creating sandbox: 422 Unprocessable Entity: one of snapshot_id or snapshot_name is required", err.Error())
+	require.Equal(t, "creating sandbox: 422 Unprocessable Entity: one of snapshot_id or snapshot_name is required", got)
 }
 
-func TestFormatErrorUsesMessageFields(t *testing.T) {
+func TestFormatErrorMessageUsesMessageFields(t *testing.T) {
 	apiErr := testAPIError(t, http.StatusForbidden, `{
 		"error": "Forbidden",
 		"message": "workspace access required"
 	}`)
 
-	err := FormatError(apiErr)
+	got := FormatErrorMessage(apiErr)
 
-	require.Equal(t, "403 Forbidden: workspace access required", err.Error())
+	require.Equal(t, "403 Forbidden: workspace access required", got)
 }
 
-func TestFormatErrorReturnsOriginalNonAPIError(t *testing.T) {
-	original := errors.New("plain error")
+func TestFormatErrorMessageReturnsNonAPIErrorString(t *testing.T) {
+	err := errors.New("plain error")
 
-	err := FormatError(original)
+	got := FormatErrorMessage(err)
 
-	require.Same(t, original, err)
+	require.Equal(t, "plain error", got)
 }

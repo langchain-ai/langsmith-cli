@@ -1,4 +1,4 @@
-package structured
+package cmd
 
 import (
 	"encoding/json"
@@ -23,23 +23,23 @@ type apiValidationDetail struct {
 	Type string `json:"type"`
 }
 
-func FormatError(err error) error {
+func FormatErrorMessage(err error) string {
 	if err == nil {
-		return nil
+		return ""
 	}
 	var apiErr *langsmith.Error
 	if !errors.As(err, &apiErr) {
-		return err
+		return err.Error()
 	}
 
 	message := formatAPIError(apiErr)
 	if message == "" {
-		return err
+		return err.Error()
 	}
 	if prefix := strings.TrimSuffix(err.Error(), apiErr.Error()); prefix != err.Error() {
-		return errors.New(prefix + message)
+		return prefix + message
 	}
-	return errors.New(message)
+	return message
 }
 
 func formatAPIError(err *langsmith.Error) string {

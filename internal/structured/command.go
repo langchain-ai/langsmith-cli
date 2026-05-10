@@ -26,7 +26,7 @@ func (c Command[I]) Cobra() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := c.Action(cmd.Context(), cmd, input, args)
 			if err != nil {
-				return FormatError(err)
+				return err
 			}
 			return Render(cmd, result, c.Render)
 		},
