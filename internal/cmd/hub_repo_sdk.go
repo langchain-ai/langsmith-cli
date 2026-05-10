@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -25,6 +26,13 @@ func isHTTP404(err error) bool {
 
 func isHTTP409(err error) bool {
 	return isHTTPStatus(err, http.StatusConflict)
+}
+
+func isRawHTTPStatus(err error, statusCode int) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), fmt.Sprintf("HTTP %d:", statusCode))
 }
 
 func strPtrOrNil(s string) *string {
@@ -104,25 +112,28 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 	if err != nil {
 		return err
 	}
-	create := langsmith.RepoNewParams{
-		RepoHandle: langsmith.F(name),
-		RepoType:   langsmith.F(sdkRepoType),
-		IsPublic:   langsmith.F(false),
+	create := map[string]any{
+		"repo_handle": name,
+		"repo_type":   string(sdkRepoType),
+		"is_public":   false,
+		// Hub-created repos should default to internal so Agent Builder
+		// workspace listings include them as first-party resources.
+		"source": "internal",
 	}
 	if meta.IsPublic != nil {
-		create.IsPublic = langsmith.F(*meta.IsPublic)
+		create["is_public"] = *meta.IsPublic
 	}
 	if meta.Description != nil {
-		create.Description = langsmith.F(*meta.Description)
+		create["description"] = *meta.Description
 	}
 	if meta.Readme != nil {
-		create.Readme = langsmith.F(*meta.Readme)
+		create["readme"] = *meta.Readme
 	}
 	if meta.Tags != nil {
-		create.Tags = langsmith.F(meta.Tags)
+		create["tags"] = meta.Tags
 	}
-	if _, err := c.SDK.Repos.New(ctx, create); err != nil {
-		if isHTTP409(err) {
+	if err := c.RawPost(ctx, "/api/v1/repos", create, nil); err != nil {
+		if isHTTP409(err) || isRawHTTPStatus(err, http.StatusConflict) {
 			return nil
 		}
 		return fmt.Errorf("creating %s/%s: %w", owner, name, err)
