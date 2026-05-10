@@ -14,6 +14,10 @@ const (
 	DefaultAPIURL = "https://api.smith.langchain.com"
 )
 
+func EnvAPIKey() string {
+	return os.Getenv("LANGSMITH_API_KEY")
+}
+
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
 	APIKey      string `json:"api_key,omitempty"`

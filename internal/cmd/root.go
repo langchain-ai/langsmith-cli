@@ -88,10 +88,6 @@ func GetAPIKey() string {
 	return opts.APIKey
 }
 
-func envAPIKey() string {
-	return os.Getenv("LANGSMITH_API_KEY")
-}
-
 // GetOAuthAccessToken resolves the access token from the active OAuth profile.
 func GetOAuthAccessToken() string {
 	opts, _ := resolveClientOptions(false)
@@ -172,8 +168,8 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	switch {
 	case flagAPIKey != "":
 		opts.APIKey = flagAPIKey
-	case envAPIKey() != "":
-		opts.APIKey = envAPIKey()
+	case lsconfig.EnvAPIKey() != "":
+		opts.APIKey = lsconfig.EnvAPIKey()
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {

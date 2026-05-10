@@ -190,7 +190,7 @@ func profileCreateAPIKey() string {
 	if flagAPIKey != "" {
 		return flagAPIKey
 	}
-	return envAPIKey()
+	return lsconfig.EnvAPIKey()
 }
 
 func profileCreateAPIURL() string {
@@ -337,14 +337,14 @@ func profileAuthType(profile lsconfig.Profile) string {
 }
 
 func activeProfileName(cfg *lsconfig.Config) string {
-	if flagAPIKey != "" || envAPIKey() != "" {
+	if flagAPIKey != "" || lsconfig.EnvAPIKey() != "" {
 		return ""
 	}
 	return cfg.ResolveProfileName(flagProfile, profileEnvName())
 }
 
 func profileAuthNote() string {
-	if envAPIKey() != "" {
+	if lsconfig.EnvAPIKey() != "" {
 		return "LANGSMITH_API_KEY is set and takes precedence over saved profiles."
 	}
 	return ""
