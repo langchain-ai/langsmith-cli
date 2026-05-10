@@ -55,6 +55,10 @@ func ResolveAPIKey(cmd *cobra.Command) string {
 	if v := getFlagString(cmd, "api-key"); v != "" {
 		return v
 	}
+	return envAPIKey()
+}
+
+func envAPIKey() string {
 	return os.Getenv("LANGSMITH_API_KEY")
 }
 
@@ -146,8 +150,8 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	switch {
 	case getFlagString(cmd, "api-key") != "":
 		opts.APIKey = getFlagString(cmd, "api-key")
-	case os.Getenv("LANGSMITH_API_KEY") != "":
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+	case envAPIKey() != "":
+		opts.APIKey = envAPIKey()
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
