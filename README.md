@@ -351,13 +351,6 @@ Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands lik
 
 - Go 1.23+
 - golangci-lint (for linting)
-- prek (for pre-commit checks)
-
-Run pre-commit checks locally with:
-
-```bash
-prek run --all-files
-```
 
 ## License
 
