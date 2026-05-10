@@ -19,6 +19,7 @@ type profileListItem struct {
 	APIURL         string `json:"api_url,omitempty"`
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
+	AuthNote       string `json:"auth_note,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
@@ -28,6 +29,7 @@ type profileShowItem struct {
 	APIURL         string `json:"api_url,omitempty"`
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
+	AuthNote       string `json:"auth_note,omitempty"`
 	APIKey         string `json:"api_key,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
@@ -214,13 +216,14 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		return fmt.Errorf("profile %q not found", profileName)
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
+	activeName := activeProfileName(cfg)
 	item := profileShowItem{
 		Name:           profileName,
 		Active:         profileName == activeName,
 		APIURL:         profile.APIURL,
 		WorkspaceID:    profile.WorkspaceID,
 		Auth:           profileAuthType(profile),
+		AuthNote:       profileAuthNote(),
 		OAuthExpiresAt: profile.OAuth.ExpiresAt,
 	}
 	if profile.APIKey != "" {
@@ -295,7 +298,8 @@ func runProfileList(cmd *cobra.Command) error {
 		return err
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
+	activeName := activeProfileName(cfg)
+	authNote := profileAuthNote()
 	items := make([]profileListItem, 0, len(cfg.Profiles))
 	for name, profile := range cfg.Profiles {
 		items = append(items, profileListItem{
@@ -304,6 +308,7 @@ func runProfileList(cmd *cobra.Command) error {
 			APIURL:         profile.APIURL,
 			WorkspaceID:    profile.WorkspaceID,
 			Auth:           profileAuthType(profile),
+			AuthNote:       authNote,
 			OAuthExpiresAt: profile.OAuth.ExpiresAt,
 		})
 	}
@@ -334,13 +339,27 @@ func profileAuthType(profile lsconfig.Profile) string {
 	}
 }
 
+func activeProfileName(cfg *lsconfig.Config) string {
+	if flagAPIKey != "" || os.Getenv("LANGSMITH_API_KEY") != "" {
+		return ""
+	}
+	return cfg.ResolveProfileName(flagProfile, profileEnvName())
+}
+
+func profileAuthNote() string {
+	if os.Getenv("LANGSMITH_API_KEY") != "" {
+		return "LANGSMITH_API_KEY is set and takes precedence over saved profiles."
+	}
+	return ""
+}
+
 func profileEnvName() string {
 	return strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
 }
 
 func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Expires At"})
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Note", "Expires At"})
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
@@ -356,6 +375,7 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 			profile.APIURL,
 			profile.WorkspaceID,
 			profile.Auth,
+			profile.AuthNote,
 			profile.OAuthExpiresAt,
 		})
 	}
@@ -364,7 +384,7 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 
 func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Note", "API Key", "Expires At"})
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
@@ -379,6 +399,7 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.APIURL,
 		profile.WorkspaceID,
 		profile.Auth,
+		profile.AuthNote,
 		profile.APIKey,
 		profile.OAuthExpiresAt,
 	})
