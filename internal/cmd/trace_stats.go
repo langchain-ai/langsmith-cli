@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
