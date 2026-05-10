@@ -54,7 +54,11 @@ func newProfileCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create an API-key profile",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create an API-key profile.
+
+To create or update a profile that uses OAuth, run:
+  langsmith auth login --profile NAME`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProfileCreate(cmd, args[0], workspaceID, setCurrent)
 		},
@@ -186,7 +190,7 @@ func profileCreateAPIKey() string {
 	if flagAPIKey != "" {
 		return flagAPIKey
 	}
-	return os.Getenv("LANGSMITH_API_KEY")
+	return lsconfig.EnvAPIKey()
 }
 
 func profileCreateAPIURL() string {
@@ -210,7 +214,7 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		return fmt.Errorf("profile %q not found", profileName)
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
+	activeName := activeProfileName(cfg)
 	item := profileShowItem{
 		Name:           profileName,
 		Active:         profileName == activeName,
@@ -225,6 +229,7 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 
 	if GetFormat() == "pretty" {
 		renderProfileShowTable(cmd, item)
+		printProfileAuthNote(cmd)
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -291,7 +296,7 @@ func runProfileList(cmd *cobra.Command) error {
 		return err
 	}
 
-	activeName := cfg.ResolveProfileName(flagProfile, profileEnvName())
+	activeName := activeProfileName(cfg)
 	items := make([]profileListItem, 0, len(cfg.Profiles))
 	for name, profile := range cfg.Profiles {
 		items = append(items, profileListItem{
@@ -312,6 +317,7 @@ func runProfileList(cmd *cobra.Command) error {
 
 	if GetFormat() == "pretty" {
 		renderProfileTable(cmd, items)
+		printProfileAuthNote(cmd)
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -327,6 +333,26 @@ func profileAuthType(profile lsconfig.Profile) string {
 		return "api_key"
 	default:
 		return "none"
+	}
+}
+
+func activeProfileName(cfg *lsconfig.Config) string {
+	if flagAPIKey != "" || lsconfig.EnvAPIKey() != "" {
+		return ""
+	}
+	return cfg.ResolveProfileName(flagProfile, profileEnvName())
+}
+
+func profileAuthNote() string {
+	if lsconfig.EnvAPIKey() != "" {
+		return "LANGSMITH_API_KEY is set and takes precedence over saved profiles."
+	}
+	return ""
+}
+
+func printProfileAuthNote(cmd *cobra.Command) {
+	if note := profileAuthNote(); note != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), note)
 	}
 }
 

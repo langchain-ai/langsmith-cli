@@ -238,6 +238,7 @@ func TestProfileShowDoesNotExposeSecrets(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
 	apiKey := "test-profile-api-key"
 	accessToken := "test-access-token"
 	refreshToken := "test-refresh-token"
@@ -296,6 +297,7 @@ func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", " prod ")
+	t.Setenv("LANGSMITH_API_KEY", "")
 	if err := os.WriteFile(configPath, []byte(`{
   "current_profile": "dev",
   "profiles": {
@@ -333,6 +335,88 @@ func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
 	}
 	if len(listResult) != 2 || listResult[0].Name != "prod" || !listResult[0].Active {
 		t.Fatalf("expected whitespace-padded env profile to mark prod active first: %+v", listResult)
+	}
+}
+
+func TestProfileDisplayShowsNoActiveProfileWhenEnvAPIKeyWins(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	oldAPIKey := flagAPIKey
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+		flagAPIKey = oldAPIKey
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+	flagAPIKey = ""
+
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", "dev")
+	t.Setenv("LANGSMITH_API_KEY", "env-api-key")
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key": "dev-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	showStdout, err := executeCommand(t, "--format=json", "profile", "show", "dev")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v\nstdout: %s", err, showStdout)
+	}
+	var showResult profileShowItem
+	if err := json.Unmarshal([]byte(showStdout), &showResult); err != nil {
+		t.Fatalf("profile show stdout was not JSON: %v\n%s", err, showStdout)
+	}
+	if showResult.Active {
+		t.Fatalf("expected no active profile when env API key wins: %+v", showResult)
+	}
+	if strings.Contains(showStdout, "auth_note") {
+		t.Fatalf("profile show JSON should not include output-only auth note: %s", showStdout)
+	}
+
+	listStdout, err := executeCommand(t, "--format=json", "profile", "list")
+	if err != nil {
+		t.Fatalf("profile list returned error: %v\nstdout: %s", err, listStdout)
+	}
+	var listResult []profileListItem
+	if err := json.Unmarshal([]byte(listStdout), &listResult); err != nil {
+		t.Fatalf("profile list stdout was not JSON: %v\n%s", err, listStdout)
+	}
+	if len(listResult) != 1 || listResult[0].Active {
+		t.Fatalf("expected list to show no active profile when env API key wins: %+v", listResult)
+	}
+	if strings.Contains(listStdout, "auth_note") {
+		t.Fatalf("profile list JSON should not include output-only auth note: %s", listStdout)
+	}
+
+	showPretty, err := executeCommand(t, "profile", "show", "dev")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v\nstdout: %s", err, showPretty)
+	}
+	if !strings.Contains(showPretty, "LANGSMITH_API_KEY is set and takes precedence over saved profiles.") {
+		t.Fatalf("expected env API key note in pretty show output: %s", showPretty)
+	}
+	if strings.Contains(showPretty, "NOTE") {
+		t.Fatalf("did not expect auth note as a table column: %s", showPretty)
+	}
+
+	listPretty, err := executeCommand(t, "profile", "list")
+	if err != nil {
+		t.Fatalf("profile list returned error: %v\nstdout: %s", err, listPretty)
+	}
+	if !strings.Contains(listPretty, "LANGSMITH_API_KEY is set and takes precedence over saved profiles.") {
+		t.Fatalf("expected env API key note in pretty list output: %s", listPretty)
+	}
+	if strings.Contains(listPretty, "NOTE") {
+		t.Fatalf("did not expect auth note as a table column: %s", listPretty)
 	}
 }
 
@@ -498,6 +582,7 @@ func TestProfileSetWorkspace(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
 	accessToken := "test-access-token"
 	if err := os.WriteFile(configPath, []byte(`{
   "current_profile": "local",
@@ -568,6 +653,7 @@ func TestProfileListDoesNotExposeSecrets(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
 	accessToken := "test-access-token"
 	refreshToken := "test-refresh-token"
 	apiKey := "test-api-key"
