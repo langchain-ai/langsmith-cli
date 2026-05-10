@@ -30,6 +30,18 @@ type traceTrajectory struct {
 	Steps         []trajectoryStep `json:"steps"`
 }
 
+func traceMessageItems(result map[string]any) []any {
+	traces, _ := result["items"].([]any)
+	if traces != nil {
+		return traces
+	}
+	traces, _ = result["traces"].([]any)
+	if traces != nil {
+		return traces
+	}
+	return []any{}
+}
+
 func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff         FilterFlags
@@ -127,10 +139,7 @@ Examples:
 					ExitErrorf("%v", err)
 				}
 
-				traces, _ := result["items"].([]any)
-				if traces == nil {
-					traces = []any{}
-				}
+				traces := traceMessageItems(result)
 
 				attachRootIO(ctx, c, sessionID, startTime, traces)
 				for _, t := range traces {
@@ -175,7 +184,7 @@ Examples:
 					ExitErrorf("%v", err)
 				}
 
-				traces, _ := result["items"].([]any)
+				traces := traceMessageItems(result)
 				allTraces = append(allTraces, traces...)
 				remaining -= len(traces)
 

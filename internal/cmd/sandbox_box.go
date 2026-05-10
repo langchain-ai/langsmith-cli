@@ -46,10 +46,41 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
+func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.SandboxBoxNewParams, error) {
+	memBytes, err := parseByteSize(in.Memory)
+	if err != nil {
+		return langsmith.SandboxBoxNewParams{}, fmt.Errorf("invalid --memory: %w", err)
+	}
+
+	params := langsmith.SandboxBoxNewParams{
+		Name:     langsmith.F(name),
+		Vcpus:    langsmith.F(int64(in.VCPUs)),
+		MemBytes: langsmith.F(memBytes),
+	}
+	if in.SnapshotID != "" {
+		params.SnapshotID = langsmith.F(in.SnapshotID)
+	}
+	if in.RootFS != "" {
+		rootfsBytes, err := parseByteSize(in.RootFS)
+		if err != nil {
+			return langsmith.SandboxBoxNewParams{}, fmt.Errorf("invalid --rootfs-capacity: %w", err)
+		}
+		params.FsCapacityBytes = langsmith.F(rootfsBytes)
+	}
+	if in.ProxyConfig != "" {
+		pc, err := loadJSONArg(in.ProxyConfig)
+		if err != nil {
+			return langsmith.SandboxBoxNewParams{}, fmt.Errorf("invalid --proxy-config: %w", err)
+		}
+		params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
+	}
+	return params, nil
+}
+
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create <name>",
-	Short: "Create a sandbox VM from a snapshot",
-	Long: `Create a sandbox VM from a snapshot.
+	Short: "Create a sandbox VM",
+	Long: `Create a sandbox VM.
 
 The --proxy-config flag accepts inline JSON or a file path prefixed with @.
 The proxy config controls which outbound HTTP requests the sandbox proxy
@@ -77,6 +108,7 @@ Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
 
 Examples:
+  langsmith sandbox create my-vm
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
@@ -87,7 +119,7 @@ Examples:
 			VCPUs:  2,
 			Memory: "512mb",
 		}
-		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from (required)")
+		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from")
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
@@ -96,39 +128,15 @@ Examples:
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxCreateInput, args []string) (any, error) {
 		name := args[0]
-		if in.SnapshotID == "" {
-			return nil, fmt.Errorf("--snapshot-id is required")
-		}
 
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
 			return nil, err
 		}
 
-		memBytes, err := parseByteSize(in.Memory)
+		params, err := sandboxCreateParams(name, in)
 		if err != nil {
-			return nil, fmt.Errorf("invalid --memory: %w", err)
-		}
-
-		params := langsmith.SandboxBoxNewParams{
-			Name:       langsmith.F(name),
-			SnapshotID: langsmith.F(in.SnapshotID),
-			Vcpus:      langsmith.F(int64(in.VCPUs)),
-			MemBytes:   langsmith.F(memBytes),
-		}
-		if in.RootFS != "" {
-			rootfsBytes, err := parseByteSize(in.RootFS)
-			if err != nil {
-				return nil, fmt.Errorf("invalid --rootfs-capacity: %w", err)
-			}
-			params.FsCapacityBytes = langsmith.F(rootfsBytes)
-		}
-		if in.ProxyConfig != "" {
-			pc, err := loadJSONArg(in.ProxyConfig)
-			if err != nil {
-				return nil, fmt.Errorf("invalid --proxy-config: %w", err)
-			}
-			params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
+			return nil, err
 		}
 		resp, err := c.SDK.Sandboxes.Boxes.New(ctx, params)
 		if err != nil {

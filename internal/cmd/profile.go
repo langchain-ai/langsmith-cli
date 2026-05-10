@@ -54,7 +54,11 @@ func newProfileCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create an API-key profile",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create an API-key profile.
+
+To create or update a profile that uses OAuth, run:
+  langsmith auth login --profile NAME`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProfileCreate(cmd, args[0], workspaceID, setCurrent)
 		},
