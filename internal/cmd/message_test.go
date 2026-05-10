@@ -606,6 +606,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "test-api-key")
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
