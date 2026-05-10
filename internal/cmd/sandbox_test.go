@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -335,6 +337,37 @@ func TestSandboxCreateCmd_ProxyConfigFlag(t *testing.T) {
 	f := cmd.Flags().Lookup("proxy-config")
 	if f == nil {
 		t.Fatal("flag --proxy-config not found on create command")
+	}
+}
+
+func TestSandboxCreateCmd_RendersAPIValidationError(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/sandboxes/boxes" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"detail": []map[string]any{{
+				"loc":  []string{"body"},
+				"msg":  "one of snapshot_id or snapshot_name is required",
+				"type": "value_error",
+			}},
+		})
+	})
+
+	root := NewRootCmd("test", "test")
+	root.SetArgs([]string{"--api-key", "test-key", "--api-url", ts.URL, "sandbox", "create", "ramonn-test"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "creating sandbox: 422 Unprocessable Entity: one of snapshot_id or snapshot_name is required") {
+		t.Fatalf("unexpected error: %q", got)
+	}
+	if strings.Contains(got, "POST ") || strings.Contains(got, `"detail"`) {
+		t.Fatalf("expected simplified error, got %q", got)
 	}
 }
 
