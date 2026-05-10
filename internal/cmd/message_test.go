@@ -578,7 +578,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 			// API returns feedback_stats directly on each trace
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"traces": []map[string]any{
+				"items": []map[string]any{
 					{
 						"trace_id": "trace-with-feedback",
 						"groups":   []any{},
@@ -592,7 +592,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 						"feedback_stats": map[string]any{},
 					},
 				},
-				"cursors": map[string]any{},
+				"next_cursor": "",
 			})
 		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
 			w.Header().Set("Content-Type", "application/json")
@@ -606,6 +606,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "test-api-key")
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()

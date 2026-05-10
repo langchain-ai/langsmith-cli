@@ -108,6 +108,7 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 		RepoHandle: langsmith.F(name),
 		RepoType:   langsmith.F(sdkRepoType),
 		IsPublic:   langsmith.F(false),
+		Source:     langsmith.F(langsmith.RepoNewParamsSourceInternal),
 	}
 	if meta.IsPublic != nil {
 		create.IsPublic = langsmith.F(*meta.IsPublic)
