@@ -171,7 +171,7 @@ func resolveRows(model any, path string) ([]any, error) {
 		return nil, nil
 	}
 	if value.Kind() != reflect.Slice && value.Kind() != reflect.Array {
-		return nil, fmt.Errorf("rows path %q resolved to %s, want slice or array", path, value.Kind())
+		return []any{value.Interface()}, nil
 	}
 
 	rows := make([]any, 0, value.Len())

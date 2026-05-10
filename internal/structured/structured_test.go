@@ -141,6 +141,25 @@ func TestTableRenderText(t *testing.T) {
 	require.False(t, strings.Contains(got, "{{"))
 }
 
+func TestTableRenderTextSingleRow(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct {
+		Name string
+	}{
+		Name: "default",
+	}, Table{
+		Rows: ".",
+		Columns: []Column{
+			{Header: "Name", Template: "{{.Name}}"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "default")
+}
+
 func TestTableRenderTextMissingRowsPath(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)

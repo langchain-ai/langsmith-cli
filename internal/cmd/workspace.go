@@ -62,7 +62,17 @@ func newWorkspaceSetDefaultCmd() *cobra.Command {
 		Short: "Set the default workspace for the selected profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProfileSetWorkspace(cmd, args[0])
+			result, err := runProfileSetWorkspace(args[0])
+			if err != nil {
+				return err
+			}
+			if GetFormat() == "pretty" {
+				fmt.Fprintln(cmd.OutOrStdout(), result.Message)
+				return nil
+			}
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(result)
 		},
 	}
 }
