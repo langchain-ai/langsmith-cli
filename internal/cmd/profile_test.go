@@ -378,8 +378,8 @@ func TestProfileDisplayShowsNoActiveProfileWhenEnvAPIKeyWins(t *testing.T) {
 	if showResult.Active {
 		t.Fatalf("expected no active profile when env API key wins: %+v", showResult)
 	}
-	if showResult.AuthNote == "" {
-		t.Fatalf("expected env API key note: %+v", showResult)
+	if strings.Contains(showStdout, "auth_note") {
+		t.Fatalf("profile show JSON should not include output-only auth note: %s", showStdout)
 	}
 
 	listStdout, err := executeCommand(t, "--format=json", "profile", "list")
@@ -393,8 +393,30 @@ func TestProfileDisplayShowsNoActiveProfileWhenEnvAPIKeyWins(t *testing.T) {
 	if len(listResult) != 1 || listResult[0].Active {
 		t.Fatalf("expected list to show no active profile when env API key wins: %+v", listResult)
 	}
-	if listResult[0].AuthNote == "" {
-		t.Fatalf("expected env API key note in list: %+v", listResult)
+	if strings.Contains(listStdout, "auth_note") {
+		t.Fatalf("profile list JSON should not include output-only auth note: %s", listStdout)
+	}
+
+	showPretty, err := executeCommand(t, "profile", "show", "dev")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v\nstdout: %s", err, showPretty)
+	}
+	if !strings.Contains(showPretty, "LANGSMITH_API_KEY is set and takes precedence over saved profiles.") {
+		t.Fatalf("expected env API key note in pretty show output: %s", showPretty)
+	}
+	if strings.Contains(showPretty, "NOTE") {
+		t.Fatalf("did not expect auth note as a table column: %s", showPretty)
+	}
+
+	listPretty, err := executeCommand(t, "profile", "list")
+	if err != nil {
+		t.Fatalf("profile list returned error: %v\nstdout: %s", err, listPretty)
+	}
+	if !strings.Contains(listPretty, "LANGSMITH_API_KEY is set and takes precedence over saved profiles.") {
+		t.Fatalf("expected env API key note in pretty list output: %s", listPretty)
+	}
+	if strings.Contains(listPretty, "NOTE") {
+		t.Fatalf("did not expect auth note as a table column: %s", listPretty)
 	}
 }
 

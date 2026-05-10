@@ -19,7 +19,6 @@ type profileListItem struct {
 	APIURL         string `json:"api_url,omitempty"`
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
-	AuthNote       string `json:"auth_note,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
@@ -29,7 +28,6 @@ type profileShowItem struct {
 	APIURL         string `json:"api_url,omitempty"`
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
-	AuthNote       string `json:"auth_note,omitempty"`
 	APIKey         string `json:"api_key,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
@@ -223,7 +221,6 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		APIURL:         profile.APIURL,
 		WorkspaceID:    profile.WorkspaceID,
 		Auth:           profileAuthType(profile),
-		AuthNote:       profileAuthNote(),
 		OAuthExpiresAt: profile.OAuth.ExpiresAt,
 	}
 	if profile.APIKey != "" {
@@ -232,6 +229,7 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 
 	if GetFormat() == "pretty" {
 		renderProfileShowTable(cmd, item)
+		printProfileAuthNote(cmd)
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -299,7 +297,6 @@ func runProfileList(cmd *cobra.Command) error {
 	}
 
 	activeName := activeProfileName(cfg)
-	authNote := profileAuthNote()
 	items := make([]profileListItem, 0, len(cfg.Profiles))
 	for name, profile := range cfg.Profiles {
 		items = append(items, profileListItem{
@@ -308,7 +305,6 @@ func runProfileList(cmd *cobra.Command) error {
 			APIURL:         profile.APIURL,
 			WorkspaceID:    profile.WorkspaceID,
 			Auth:           profileAuthType(profile),
-			AuthNote:       authNote,
 			OAuthExpiresAt: profile.OAuth.ExpiresAt,
 		})
 	}
@@ -321,6 +317,7 @@ func runProfileList(cmd *cobra.Command) error {
 
 	if GetFormat() == "pretty" {
 		renderProfileTable(cmd, items)
+		printProfileAuthNote(cmd)
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -353,6 +350,12 @@ func profileAuthNote() string {
 	return ""
 }
 
+func printProfileAuthNote(cmd *cobra.Command) {
+	if note := profileAuthNote(); note != "" {
+		fmt.Fprintln(cmd.OutOrStdout(), note)
+	}
+}
+
 func profileEnvName() string {
 	return strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
 }
@@ -364,14 +367,10 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
-	authNote := ""
 	for _, profile := range profiles {
 		active := ""
 		if profile.Active {
 			active = "*"
-		}
-		if authNote == "" {
-			authNote = profile.AuthNote
 		}
 		table.Append([]string{
 			active,
@@ -383,9 +382,6 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 		})
 	}
 	table.Render()
-	if authNote != "" {
-		fmt.Fprintln(cmd.OutOrStdout(), authNote)
-	}
 }
 
 func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
@@ -409,9 +405,6 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.OAuthExpiresAt,
 	})
 	table.Render()
-	if profile.AuthNote != "" {
-		fmt.Fprintln(cmd.OutOrStdout(), profile.AuthNote)
-	}
 }
 
 func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {
