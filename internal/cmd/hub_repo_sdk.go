@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -104,25 +105,26 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 	if err != nil {
 		return err
 	}
-	create := langsmith.RepoNewParams{
-		RepoHandle: langsmith.F(name),
-		RepoType:   langsmith.F(sdkRepoType),
-		IsPublic:   langsmith.F(false),
+	create := map[string]any{
+		"repo_handle": name,
+		"repo_type":   string(sdkRepoType),
+		"is_public":   false,
+		"source": "internal",
 	}
 	if meta.IsPublic != nil {
-		create.IsPublic = langsmith.F(*meta.IsPublic)
+		create["is_public"] = *meta.IsPublic
 	}
 	if meta.Description != nil {
-		create.Description = langsmith.F(*meta.Description)
+		create["description"] = *meta.Description
 	}
 	if meta.Readme != nil {
-		create.Readme = langsmith.F(*meta.Readme)
+		create["readme"] = *meta.Readme
 	}
 	if meta.Tags != nil {
-		create.Tags = langsmith.F(meta.Tags)
+		create["tags"] = meta.Tags
 	}
-	if _, err := c.SDK.Repos.New(ctx, create); err != nil {
-		if isHTTP409(err) {
+	if err := c.RawPost(ctx, "/api/v1/repos", create, nil); err != nil {
+		if isHTTP409(err) || strings.Contains(err.Error(), "HTTP 409:") {
 			return nil
 		}
 		return fmt.Errorf("creating %s/%s: %w", owner, name, err)

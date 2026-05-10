@@ -198,6 +198,9 @@ func TestEnsureHubRepo_404_CreatesRepo(t *testing.T) {
 	if got, _ := body["is_public"].(bool); got {
 		t.Fatalf("is_public = %v, want false", got)
 	}
+	if got, _ := body["source"].(string); got != "internal" {
+		t.Fatalf("source = %q, want internal", got)
+	}
 }
 
 func TestEnsureHubRepo_404_CreateConflict_IsIgnored(t *testing.T) {
