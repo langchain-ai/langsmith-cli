@@ -168,8 +168,8 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	switch {
 	case flagAPIKey != "":
 		opts.APIKey = flagAPIKey
-	case os.Getenv("LANGSMITH_API_KEY") != "":
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+	case lsconfig.EnvAPIKey() != "":
+		opts.APIKey = lsconfig.EnvAPIKey()
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {

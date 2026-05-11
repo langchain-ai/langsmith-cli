@@ -170,11 +170,11 @@ func resolveAuthInfo() (authInfoResult, error) {
 		result.Auth = "api_key"
 		result.AuthSource = "flag"
 		result.APIKey = lsconfig.MaskSecret(flagAPIKey)
-	case os.Getenv("LANGSMITH_API_KEY") != "":
+	case lsconfig.EnvAPIKey() != "":
 		result.Auth = "api_key"
 		result.AuthSource = "env"
 		result.AuthNote = "LANGSMITH_API_KEY is set and takes precedence over saved profile auth."
-		result.APIKey = lsconfig.MaskSecret(os.Getenv("LANGSMITH_API_KEY"))
+		result.APIKey = lsconfig.MaskSecret(lsconfig.EnvAPIKey())
 	case hasProfile && (profile.AccessToken() != "" || profile.OAuth.RefreshToken != ""):
 		result.Auth = "oauth"
 		result.AuthSource = "profile"
