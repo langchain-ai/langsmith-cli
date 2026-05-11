@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ==================== parseByteSize ====================
@@ -182,6 +185,40 @@ func TestSandboxCreateCmd_SizeFlags(t *testing.T) {
 			t.Errorf("flag --%s not found", name)
 		}
 	}
+}
+
+func TestSandboxBoxDetailRenderIncludesIdentityAndTTL(t *testing.T) {
+	var out bytes.Buffer
+	model := struct {
+		ID              string
+		Name            string
+		Status          string
+		SizeClass       string
+		Vcpus           int64
+		MemBytes        int64
+		FsCapacityBytes int64
+		SnapshotID      string
+		IdleTtlSeconds  int64
+		CreatedAt       string
+	}{
+		ID:              "box-123",
+		Name:            "my-vm",
+		Status:          "running",
+		SizeClass:       "small",
+		Vcpus:           2,
+		MemBytes:        512 * 1024 * 1024,
+		FsCapacityBytes: 4 * 1024 * 1024 * 1024,
+		SnapshotID:      "1234567890abcdef",
+		IdleTtlSeconds:  900,
+		CreatedAt:       "2026-05-11T12:00:00Z",
+	}
+
+	err := sandboxBoxDetailRender.RenderText(&out, model)
+
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "ID:       box-123")
+	require.Contains(t, out.String(), "Size:     small")
+	require.Contains(t, out.String(), "Idle TTL: 900s")
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {

@@ -46,6 +46,18 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
+var sandboxBoxDetailRender = structured.Template(`Name:     {{.Name}}
+ID:       {{.ID}}
+Status:   {{.Status}}
+Size:     {{.SizeClass}}
+VCPUs:    {{formatCount .Vcpus}}
+Memory:   {{formatBytesOrDash .MemBytes}}
+Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
+Snapshot: {{shortID .SnapshotID}}
+Idle TTL: {{formatCount .IdleTtlSeconds}}s
+Created:  {{formatTime .CreatedAt}}
+`)
+
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create <name>",
 	Short: "Create a sandbox VM from a snapshot",
@@ -137,14 +149,7 @@ Examples:
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 var sandboxListCommand = structured.Command[struct{}]{
@@ -194,14 +199,7 @@ var sandboxGetCommand = structured.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 type sandboxUpdateInput struct {
@@ -273,14 +271,7 @@ for the proxy config JSON format.`,
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 var sandboxDeleteCommand = structured.Command[struct{}]{
