@@ -143,8 +143,7 @@ VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
 Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
 Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+Created:  {{formatTime .CreatedAt}}`),
 }
 
 var sandboxListCommand = structured.Command[struct{}]{
@@ -200,8 +199,7 @@ VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
 Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
 Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+Created:  {{formatTime .CreatedAt}}`),
 }
 
 type sandboxUpdateInput struct {
@@ -279,8 +277,7 @@ VCPUs:    {{formatCount .Vcpus}}
 Memory:   {{formatBytesOrDash .MemBytes}}
 Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
 Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+Created:  {{formatTime .CreatedAt}}`),
 }
 
 var sandboxDeleteCommand = structured.Command[struct{}]{
@@ -299,8 +296,7 @@ var sandboxDeleteCommand = structured.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Sandbox deleted."}, nil
 	},
-	Render: structured.Template(`{{.Message}}
-`),
+	Render: structured.Template(`{{.Message}}`),
 }
 
 var sandboxStartCommand = structured.Command[struct{}]{
@@ -322,8 +318,7 @@ var sandboxStartCommand = structured.Command[struct{}]{
 		}
 		return sandboxMessage{Name: args[0], Message: fmt.Sprintf("Sandbox %s started", args[0])}, nil
 	},
-	Render: structured.Template(`{{.Message}}
-`),
+	Render: structured.Template(`{{.Message}}`),
 }
 
 var sandboxStopCommand = structured.Command[struct{}]{
@@ -342,8 +337,7 @@ var sandboxStopCommand = structured.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Sandbox stopped."}, nil
 	},
-	Render: structured.Template(`{{.Message}}
-`),
+	Render: structured.Template(`{{.Message}}`),
 }
 
 func newSandboxExecCmd() *cobra.Command {

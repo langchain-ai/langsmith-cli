@@ -166,8 +166,7 @@ profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 				OAuthExpiresAt: profile.OAuth.ExpiresAt,
 			}, nil
 		},
-		Render: structured.Template(`Logged in to {{.APIURL}} as profile {{printf "%q" .Profile}}
-`),
+		Render: structured.Template(`Logged in to {{.APIURL}} as profile {{printf "%q" .Profile}}`),
 	}.Cobra()
 }
 

@@ -136,8 +136,7 @@ func newProfileCreateCmd() *cobra.Command {
 				Message:     message,
 			}, nil
 		},
-		Render: structured.Template(`{{.Message}}
-`),
+		Render: structured.Template(`{{.Message}}`),
 	}.Cobra()
 }
 
@@ -259,8 +258,7 @@ func newProfileDeleteCmd() *cobra.Command {
 				Message: fmt.Sprintf("Deleted profile %q", profileName),
 			}, nil
 		},
-		Render: structured.Template(`{{.Message}}
-`),
+		Render: structured.Template(`{{.Message}}`),
 	}.Cobra()
 }
 
@@ -289,8 +287,7 @@ func newProfileUseCmd() *cobra.Command {
 				Message: fmt.Sprintf("Using profile %q", profileName),
 			}, nil
 		},
-		Render: structured.Template(`{{.Message}}
-`),
+		Render: structured.Template(`{{.Message}}`),
 	}.Cobra()
 }
 
@@ -333,8 +330,7 @@ func newProfileSetWorkspaceCmd() *cobra.Command {
 				Message:     fmt.Sprintf("Set default workspace for profile %q", profileName),
 			}, nil
 		},
-		Render: structured.Template(`{{.Message}}
-`),
+		Render: structured.Template(`{{.Message}}`),
 	}.Cobra()
 }
 

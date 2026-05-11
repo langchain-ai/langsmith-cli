@@ -35,7 +35,17 @@ func TestTemplateRenderText(t *testing.T) {
 	err := Render(cmd, struct{ Name string }{Name: "sandbox"}, Template(`Name: {{.Name}}`))
 
 	require.NoError(t, err)
-	require.Equal(t, "Name: sandbox", out.String())
+	require.Equal(t, "Name: sandbox\n", out.String())
+}
+
+func TestTemplateRenderTextDoesNotDoubleNewline(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct{ Name string }{Name: "sandbox"}, Template("Name: {{.Name}}\n"))
+
+	require.NoError(t, err)
+	require.Equal(t, "Name: sandbox\n", out.String())
 }
 
 func TestPropertyListRenderText(t *testing.T) {

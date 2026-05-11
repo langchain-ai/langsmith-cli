@@ -18,7 +18,17 @@ func (s Template) RenderText(w io.Writer, model any) error {
 	if err != nil {
 		return err
 	}
-	return tmpl.Execute(w, model)
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, model); err != nil {
+		return err
+	}
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		return err
+	}
+	if !strings.HasSuffix(buf.String(), "\n") {
+		_, err = fmt.Fprintln(w)
+	}
+	return err
 }
 
 type PropertyList struct {

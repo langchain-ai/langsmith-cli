@@ -114,8 +114,7 @@ var authTokenCommand = structured.Command[struct{}]{
 
 		return profile.AccessToken(), nil
 	},
-	Render: structured.Template(`{{.}}
-`),
+	Render: structured.Template(`{{.}}`),
 }
 
 func resolveAuthInfo() (authInfoResult, error) {
