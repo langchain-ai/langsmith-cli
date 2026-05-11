@@ -216,9 +216,9 @@ func TestSandboxBoxDetailRenderIncludesIdentityAndTTL(t *testing.T) {
 	err := sandboxBoxDetailRender.RenderText(&out, model)
 
 	require.NoError(t, err)
-	require.Contains(t, out.String(), "ID:       box-123")
-	require.Contains(t, out.String(), "Size:     small")
-	require.Contains(t, out.String(), "Idle TTL: 900s")
+	require.Contains(t, out.String(), "ID:        box-123")
+	require.Contains(t, out.String(), "Size:      small")
+	require.Contains(t, out.String(), "Idle TTL:  900s")
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {

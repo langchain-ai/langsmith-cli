@@ -46,17 +46,20 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
-var sandboxBoxDetailRender = structured.Template(`Name:     {{.Name}}
-ID:       {{.ID}}
-Status:   {{.Status}}
-Size:     {{.SizeClass}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Idle TTL: {{formatCount .IdleTtlSeconds}}s
-Created:  {{formatTime .CreatedAt}}
-`)
+var sandboxBoxDetailRender = structured.PropertyList{
+	Properties: []structured.Property{
+		{Label: "Name", Template: "{{.Name}}"},
+		{Label: "ID", Template: "{{.ID}}"},
+		{Label: "Status", Template: "{{.Status}}"},
+		{Label: "Size", Template: "{{.SizeClass}}"},
+		{Label: "VCPUs", Template: "{{formatCount .Vcpus}}"},
+		{Label: "Memory", Template: "{{formatBytesOrDash .MemBytes}}"},
+		{Label: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
+		{Label: "Snapshot", Template: "{{shortID .SnapshotID}}"},
+		{Label: "Idle TTL", Template: "{{formatCount .IdleTtlSeconds}}s"},
+		{Label: "Created", Template: "{{formatTime .CreatedAt}}"},
+	},
+}
 
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create <name>",
