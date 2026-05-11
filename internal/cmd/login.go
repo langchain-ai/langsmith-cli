@@ -91,90 +91,84 @@ profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 			return in
 		},
 		Action: func(ctx context.Context, cmd *cobra.Command, in *loginInput, args []string) (any, error) {
-			return runLogin(cmd, in.noBrowser, in.timeout, in.workspaceID, in.promptWorkspace)
+			cfg, err := lsconfig.Load()
+			if err != nil {
+				return loginResult{}, err
+			}
+			workspaceID := strings.TrimSpace(in.workspaceID)
+			if workspaceID != "" {
+				if err := validateWorkspaceID(workspaceID); err != nil {
+					return loginResult{}, err
+				}
+			}
+
+			profileName := loginProfileName(cfg)
+			if err := validateProfileName(profileName); err != nil {
+				return loginResult{}, err
+			}
+			apiURL := loginAPIURL(cfg, profileName)
+			if ctx == nil {
+				ctx = context.Background()
+			}
+
+			device, err := requestDeviceCode(ctx, apiURL)
+			if err != nil {
+				return loginResult{}, err
+			}
+
+			errOut := cmd.ErrOrStderr()
+			fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\nEnter code: %s\n\n", device.VerificationURI, device.UserCode)
+			if !in.noBrowser {
+				if err := openBrowser(device.VerificationURI); err != nil {
+					fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
+				}
+			}
+			fmt.Fprintln(errOut, "Waiting for authorization...")
+
+			waitFor := in.timeout
+			if waitFor <= 0 {
+				waitFor = time.Duration(device.ExpiresIn+10) * time.Second
+			}
+			pollCtx, cancel := context.WithTimeout(ctx, waitFor)
+			defer cancel()
+
+			interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
+			token, err := pollDeviceToken(pollCtx, apiURL, device.DeviceCode, interval)
+			if err != nil {
+				return loginResult{}, err
+			}
+
+			profile := cfg.Profiles[profileName]
+			if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
+				profile.APIURL = apiURL
+			}
+			if workspaceID == "" && in.promptWorkspace {
+				workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
+				if err != nil {
+					return loginResult{}, err
+				}
+			}
+			if workspaceID != "" {
+				profile.WorkspaceID = workspaceID
+			}
+			applyTokenResponse(&profile, token, time.Now())
+			cfg.Profiles[profileName] = profile
+			cfg.CurrentProfile = profileName
+			if err := cfg.Save(); err != nil {
+				return loginResult{}, err
+			}
+
+			return loginResult{
+				Status:         "logged_in",
+				Profile:        profileName,
+				APIURL:         apiURL,
+				WorkspaceID:    profile.WorkspaceID,
+				OAuthExpiresAt: profile.OAuth.ExpiresAt,
+			}, nil
 		},
 		Render: structured.Template(`Logged in to {{.APIURL}} as profile {{printf "%q" .Profile}}
 `),
 	}.Cobra()
-}
-
-func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string, promptWorkspace bool) (loginResult, error) {
-	cfg, err := lsconfig.Load()
-	if err != nil {
-		return loginResult{}, err
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID != "" {
-		if err := validateWorkspaceID(workspaceID); err != nil {
-			return loginResult{}, err
-		}
-	}
-
-	profileName := loginProfileName(cfg)
-	if err := validateProfileName(profileName); err != nil {
-		return loginResult{}, err
-	}
-	apiURL := loginAPIURL(cfg, profileName)
-
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	device, err := requestDeviceCode(ctx, apiURL)
-	if err != nil {
-		return loginResult{}, err
-	}
-
-	errOut := cmd.ErrOrStderr()
-	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\nEnter code: %s\n\n", device.VerificationURI, device.UserCode)
-	if !noBrowser {
-		if err := openBrowser(device.VerificationURI); err != nil {
-			fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
-		}
-	}
-	fmt.Fprintln(errOut, "Waiting for authorization...")
-
-	waitFor := timeout
-	if waitFor <= 0 {
-		waitFor = time.Duration(device.ExpiresIn+10) * time.Second
-	}
-	pollCtx, cancel := context.WithTimeout(ctx, waitFor)
-	defer cancel()
-
-	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
-	token, err := pollDeviceToken(pollCtx, apiURL, device.DeviceCode, interval)
-	if err != nil {
-		return loginResult{}, err
-	}
-
-	profile := cfg.Profiles[profileName]
-	if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
-		profile.APIURL = apiURL
-	}
-	if workspaceID == "" && promptWorkspace {
-		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
-		if err != nil {
-			return loginResult{}, err
-		}
-	}
-	if workspaceID != "" {
-		profile.WorkspaceID = workspaceID
-	}
-	applyTokenResponse(&profile, token, time.Now())
-	cfg.Profiles[profileName] = profile
-	cfg.CurrentProfile = profileName
-	if err := cfg.Save(); err != nil {
-		return loginResult{}, err
-	}
-
-	return loginResult{
-		Status:         "logged_in",
-		Profile:        profileName,
-		APIURL:         apiURL,
-		WorkspaceID:    profile.WorkspaceID,
-		OAuthExpiresAt: profile.OAuth.ExpiresAt,
-	}, nil
 }
 
 func loginProfileName(cfg *lsconfig.Config) string {
