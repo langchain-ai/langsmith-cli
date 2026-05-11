@@ -46,6 +46,21 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
+var sandboxBoxDetailRender = structured.PropertyList{
+	Properties: []structured.Property{
+		{Label: "Name", Template: "{{.Name}}"},
+		{Label: "ID", Template: "{{.ID}}"},
+		{Label: "Status", Template: "{{.Status}}"},
+		{Label: "Size", Template: "{{.SizeClass}}"},
+		{Label: "VCPUs", Template: "{{formatCount .Vcpus}}"},
+		{Label: "Memory", Template: "{{formatBytesOrDash .MemBytes}}"},
+		{Label: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
+		{Label: "Snapshot", Template: "{{shortID .SnapshotID}}"},
+		{Label: "Idle TTL", Template: "{{formatCount .IdleTtlSeconds}}s"},
+		{Label: "Created", Template: "{{formatTime .CreatedAt}}"},
+	},
+}
+
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create <name>",
 	Short: "Create a sandbox VM from a snapshot",
@@ -137,14 +152,7 @@ Examples:
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 var sandboxListCommand = structured.Command[struct{}]{
@@ -194,14 +202,7 @@ var sandboxGetCommand = structured.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 type sandboxUpdateInput struct {
@@ -273,14 +274,7 @@ for the proxy config JSON format.`,
 
 		return resp, nil
 	},
-	Render: structured.Template(`Name:     {{.Name}}
-Status:   {{.Status}}
-VCPUs:    {{formatCount .Vcpus}}
-Memory:   {{formatBytesOrDash .MemBytes}}
-Rootfs:   {{formatBytesOrDash .FsCapacityBytes}}
-Snapshot: {{shortID .SnapshotID}}
-Created:  {{formatTime .CreatedAt}}
-`),
+	Render: sandboxBoxDetailRender,
 }
 
 var sandboxDeleteCommand = structured.Command[struct{}]{
