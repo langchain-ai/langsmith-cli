@@ -83,10 +83,7 @@ Examples:
   langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
-		in := &sandboxCreateInput{
-			VCPUs:  2,
-			Memory: "512mb",
-		}
+		in := &sandboxCreateInput{}
 		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from (required)")
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
@@ -105,16 +102,19 @@ Examples:
 			return nil, err
 		}
 
-		memBytes, err := parseByteSize(in.Memory)
-		if err != nil {
-			return nil, fmt.Errorf("invalid --memory: %w", err)
-		}
-
 		params := langsmith.SandboxBoxNewParams{
 			Name:       langsmith.F(name),
 			SnapshotID: langsmith.F(in.SnapshotID),
-			Vcpus:      langsmith.F(int64(in.VCPUs)),
-			MemBytes:   langsmith.F(memBytes),
+		}
+		if cmd.Flags().Changed("vcpus") {
+			params.Vcpus = langsmith.F(int64(in.VCPUs))
+		}
+		if cmd.Flags().Changed("memory") {
+			memBytes, err := parseByteSize(in.Memory)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --memory: %w", err)
+			}
+			params.MemBytes = langsmith.F(memBytes)
 		}
 		if in.RootFS != "" {
 			rootfsBytes, err := parseByteSize(in.RootFS)
