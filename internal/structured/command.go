@@ -7,22 +7,24 @@ import (
 )
 
 type Command[I any] struct {
-	Use    string
-	Short  string
-	Long   string
-	Args   cobra.PositionalArgs
-	Input  func(*cobra.Command) I
-	Action func(context.Context, *cobra.Command, I, []string) (any, error)
-	Render Spec
+	Use     string
+	Aliases []string
+	Short   string
+	Long    string
+	Args    cobra.PositionalArgs
+	Input   func(*cobra.Command) I
+	Action  func(context.Context, *cobra.Command, I, []string) (any, error)
+	Render  Spec
 }
 
 func (c Command[I]) Cobra() *cobra.Command {
 	var input I
 	cmd := &cobra.Command{
-		Use:   c.Use,
-		Short: c.Short,
-		Long:  c.Long,
-		Args:  c.Args,
+		Use:     c.Use,
+		Aliases: c.Aliases,
+		Short:   c.Short,
+		Long:    c.Long,
+		Args:    c.Args,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := c.Action(cmd.Context(), cmd, input, args)
 			if err != nil {

@@ -35,7 +35,17 @@ func TestTemplateRenderText(t *testing.T) {
 	err := Render(cmd, struct{ Name string }{Name: "sandbox"}, Template(`Name: {{.Name}}`))
 
 	require.NoError(t, err)
-	require.Equal(t, "Name: sandbox", out.String())
+	require.Equal(t, "Name: sandbox\n", out.String())
+}
+
+func TestTemplateRenderTextDoesNotDoubleNewline(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct{ Name string }{Name: "sandbox"}, Template("Name: {{.Name}}\n"))
+
+	require.NoError(t, err)
+	require.Equal(t, "Name: sandbox\n", out.String())
 }
 
 func TestPropertyListRenderText(t *testing.T) {
@@ -139,6 +149,25 @@ func TestTableRenderText(t *testing.T) {
 	require.Contains(t, got, "a")
 	require.Contains(t, got, "12345678...")
 	require.False(t, strings.Contains(got, "{{"))
+}
+
+func TestTableRenderTextSingleRow(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct {
+		Name string
+	}{
+		Name: "default",
+	}, Table{
+		Rows: ".",
+		Columns: []Column{
+			{Header: "Name", Template: "{{.Name}}"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "default")
 }
 
 func TestTableRenderTextMissingRowsPath(t *testing.T) {

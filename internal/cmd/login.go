@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -51,6 +52,21 @@ type oauthErrorResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
+type loginInput struct {
+	noBrowser       bool
+	timeout         time.Duration
+	workspaceID     string
+	promptWorkspace bool
+}
+
+type loginResult struct {
+	Status         string `json:"status"`
+	Profile        string `json:"profile"`
+	APIURL         string `json:"api_url"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	OAuthExpiresAt string `json:"oauth_expires_at"`
+}
+
 func (e *oauthErrorResponse) Error() string {
 	if e.ErrorDescription == "" {
 		return e.Code
@@ -59,69 +75,65 @@ func (e *oauthErrorResponse) Error() string {
 }
 
 func newLoginCmd() *cobra.Command {
-	var (
-		noBrowser       bool
-		timeout         time.Duration
-		workspaceID     string
-		promptWorkspace bool
-	)
-
-	cmd := &cobra.Command{
+	return structured.Command[*loginInput]{
 		Use:   "login",
 		Short: "Authenticate with LangSmith using OAuth",
 		Long: `Authenticate with LangSmith using OAuth.
 
 The command stores OAuth tokens in ~/.langsmith/config.json under the selected
 profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd, noBrowser, timeout, workspaceID, promptWorkspace)
+		Input: func(cmd *cobra.Command) *loginInput {
+			in := &loginInput{}
+			cmd.Flags().BoolVar(&in.noBrowser, "no-browser", false, "Do not open a browser automatically")
+			cmd.Flags().DurationVar(&in.timeout, "timeout", 0, "Maximum time to wait for authorization (default: device-code expiry)")
+			cmd.Flags().StringVar(&in.workspaceID, "workspace-id", "", "Workspace ID override to save in the selected profile")
+			cmd.Flags().BoolVar(&in.promptWorkspace, "prompt-workspace", false, "Prompt to select and save a workspace override")
+			return in
 		},
-	}
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Do not open a browser automatically")
-	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait for authorization (default: device-code expiry)")
-	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Workspace ID override to save in the selected profile")
-	cmd.Flags().BoolVar(&promptWorkspace, "prompt-workspace", false, "Prompt to select and save a workspace override")
-	return cmd
+		Action: func(ctx context.Context, cmd *cobra.Command, in *loginInput, args []string) (any, error) {
+			return runLogin(ctx, in, cmd.ErrOrStderr(), func(apiURL, accessToken string) (string, error) {
+				return promptWorkspaceSelection(cmd, apiURL, accessToken)
+			})
+		},
+		Render: structured.Template(`Logged in to {{.APIURL}} as profile {{printf "%q" .Profile}}`),
+	}.Cobra()
 }
 
-func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string, promptWorkspace bool) error {
+func runLogin(ctx context.Context, in *loginInput, errOut io.Writer, promptWorkspace func(apiURL, accessToken string) (string, error)) (loginResult, error) {
 	cfg, err := lsconfig.Load()
 	if err != nil {
-		return err
+		return loginResult{}, err
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
+	workspaceID := strings.TrimSpace(in.workspaceID)
 	if workspaceID != "" {
 		if err := validateWorkspaceID(workspaceID); err != nil {
-			return err
+			return loginResult{}, err
 		}
 	}
 
 	profileName := loginProfileName(cfg)
 	if err := validateProfileName(profileName); err != nil {
-		return err
+		return loginResult{}, err
 	}
 	apiURL := loginAPIURL(cfg, profileName)
-
-	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	device, err := requestDeviceCode(ctx, apiURL)
 	if err != nil {
-		return err
+		return loginResult{}, err
 	}
 
-	errOut := cmd.ErrOrStderr()
 	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\nEnter code: %s\n\n", device.VerificationURI, device.UserCode)
-	if !noBrowser {
+	if !in.noBrowser {
 		if err := openBrowser(device.VerificationURI); err != nil {
 			fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
 		}
 	}
 	fmt.Fprintln(errOut, "Waiting for authorization...")
 
-	waitFor := timeout
+	waitFor := in.timeout
 	if waitFor <= 0 {
 		waitFor = time.Duration(device.ExpiresIn+10) * time.Second
 	}
@@ -131,17 +143,17 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
 	token, err := pollDeviceToken(pollCtx, apiURL, device.DeviceCode, interval)
 	if err != nil {
-		return err
+		return loginResult{}, err
 	}
 
 	profile := cfg.Profiles[profileName]
 	if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
 		profile.APIURL = apiURL
 	}
-	if workspaceID == "" && promptWorkspace {
-		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
+	if workspaceID == "" && in.promptWorkspace {
+		workspaceID, err = promptWorkspace(apiURL, token.AccessToken)
 		if err != nil {
-			return err
+			return loginResult{}, err
 		}
 	}
 	if workspaceID != "" {
@@ -151,25 +163,16 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	cfg.Profiles[profileName] = profile
 	cfg.CurrentProfile = profileName
 	if err := cfg.Save(); err != nil {
-		return err
+		return loginResult{}, err
 	}
 
-	result := map[string]string{
-		"status":           "logged_in",
-		"profile":          profileName,
-		"api_url":          apiURL,
-		"oauth_expires_at": profile.OAuth.ExpiresAt,
-	}
-	if profile.WorkspaceID != "" {
-		result["workspace_id"] = profile.WorkspaceID
-	}
-	if GetFormat() == "pretty" {
-		fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s as profile %q\n", apiURL, profileName)
-		return nil
-	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return loginResult{
+		Status:         "logged_in",
+		Profile:        profileName,
+		APIURL:         apiURL,
+		WorkspaceID:    profile.WorkspaceID,
+		OAuthExpiresAt: profile.OAuth.ExpiresAt,
+	}, nil
 }
 
 func loginProfileName(cfg *lsconfig.Config) string {

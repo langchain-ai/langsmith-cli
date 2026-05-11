@@ -125,8 +125,7 @@ Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
 Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
-`),
+Created: {{formatTime .CreatedAt}}`),
 }
 
 type snapshotCaptureInput struct {
@@ -181,8 +180,7 @@ Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
 Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
-`),
+Created: {{formatTime .CreatedAt}}`),
 }
 
 var snapshotGetCommand = structured.Command[struct{}]{
@@ -207,8 +205,7 @@ Name:    {{.Name}}
 Image:   {{dash .DockerImage}}
 Status:  {{.Status}}
 Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
-`),
+Created: {{formatTime .CreatedAt}}`),
 }
 
 var snapshotDeleteCommand = structured.Command[struct{}]{
@@ -227,8 +224,7 @@ var snapshotDeleteCommand = structured.Command[struct{}]{
 
 		return sandboxMessage{Name: args[0], Message: "Snapshot deleted."}, nil
 	},
-	Render: structured.Template(`{{.Message}}
-`),
+	Render: structured.Template(`{{.Message}}`),
 }
 
 func parseByteSize(s string) (int64, error) {
