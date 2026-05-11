@@ -91,13 +91,15 @@ profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 			return in
 		},
 		Action: func(ctx context.Context, cmd *cobra.Command, in *loginInput, args []string) (any, error) {
-			return runLogin(ctx, cmd, in)
+			return runLogin(ctx, in, cmd.ErrOrStderr(), func(apiURL, accessToken string) (string, error) {
+				return promptWorkspaceSelection(cmd, apiURL, accessToken)
+			})
 		},
 		Render: structured.Template(`Logged in to {{.APIURL}} as profile {{printf "%q" .Profile}}`),
 	}.Cobra()
 }
 
-func runLogin(ctx context.Context, cmd *cobra.Command, in *loginInput) (loginResult, error) {
+func runLogin(ctx context.Context, in *loginInput, errOut io.Writer, promptWorkspace func(apiURL, accessToken string) (string, error)) (loginResult, error) {
 	cfg, err := lsconfig.Load()
 	if err != nil {
 		return loginResult{}, err
@@ -123,7 +125,6 @@ func runLogin(ctx context.Context, cmd *cobra.Command, in *loginInput) (loginRes
 		return loginResult{}, err
 	}
 
-	errOut := cmd.ErrOrStderr()
 	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\nEnter code: %s\n\n", device.VerificationURI, device.UserCode)
 	if !in.noBrowser {
 		if err := openBrowser(device.VerificationURI); err != nil {
@@ -150,7 +151,7 @@ func runLogin(ctx context.Context, cmd *cobra.Command, in *loginInput) (loginRes
 		profile.APIURL = apiURL
 	}
 	if workspaceID == "" && in.promptWorkspace {
-		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
+		workspaceID, err = promptWorkspace(apiURL, token.AccessToken)
 		if err != nil {
 			return loginResult{}, err
 		}
