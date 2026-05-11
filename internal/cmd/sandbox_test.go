@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -187,38 +188,78 @@ func TestSandboxCreateCmd_SizeFlags(t *testing.T) {
 	}
 }
 
-func TestSandboxBoxDetailRenderIncludesIdentityAndTTL(t *testing.T) {
-	var out bytes.Buffer
-	model := struct {
-		ID              string
-		Name            string
-		Status          string
-		SizeClass       string
-		Vcpus           int64
-		MemBytes        int64
-		FsCapacityBytes int64
-		SnapshotID      string
-		IdleTtlSeconds  int64
-		CreatedAt       string
+func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		model   any
+		wantID  string
+		wantTTL string
 	}{
-		ID:              "box-123",
-		Name:            "my-vm",
-		Status:          "running",
-		SizeClass:       "small",
-		Vcpus:           2,
-		MemBytes:        512 * 1024 * 1024,
-		FsCapacityBytes: 4 * 1024 * 1024 * 1024,
-		SnapshotID:      "1234567890abcdef",
-		IdleTtlSeconds:  900,
-		CreatedAt:       "2026-05-11T12:00:00Z",
+		{
+			name: "new response",
+			model: langsmith.SandboxBoxNewResponse{
+				ID:              "box-new",
+				Name:            "new-vm",
+				Status:          "running",
+				SizeClass:       "small",
+				Vcpus:           2,
+				MemBytes:        512 * 1024 * 1024,
+				FsCapacityBytes: 4 * 1024 * 1024 * 1024,
+				SnapshotID:      "1234567890abcdef",
+				IdleTtlSeconds:  900,
+				CreatedAt:       "2026-05-11T12:00:00Z",
+			},
+			wantID:  "ID:        box-new",
+			wantTTL: "Idle TTL:  900s",
+		},
+		{
+			name: "get response",
+			model: langsmith.SandboxBoxGetResponse{
+				ID:              "box-get",
+				Name:            "get-vm",
+				Status:          "running",
+				SizeClass:       "medium",
+				Vcpus:           4,
+				MemBytes:        1024 * 1024 * 1024,
+				FsCapacityBytes: 8 * 1024 * 1024 * 1024,
+				SnapshotID:      "abcdef1234567890",
+				IdleTtlSeconds:  1800,
+				CreatedAt:       "2026-05-11T12:00:00Z",
+			},
+			wantID:  "ID:        box-get",
+			wantTTL: "Idle TTL:  1800s",
+		},
+		{
+			name: "update response",
+			model: langsmith.SandboxBoxUpdateResponse{
+				ID:              "box-update",
+				Name:            "update-vm",
+				Status:          "stopped",
+				SizeClass:       "large",
+				Vcpus:           8,
+				MemBytes:        2 * 1024 * 1024 * 1024,
+				FsCapacityBytes: 16 * 1024 * 1024 * 1024,
+				SnapshotID:      "fedcba0987654321",
+				IdleTtlSeconds:  3600,
+				CreatedAt:       "2026-05-11T12:00:00Z",
+			},
+			wantID:  "ID:        box-update",
+			wantTTL: "Idle TTL:  3600s",
+		},
 	}
 
-	err := sandboxBoxDetailRender.RenderText(&out, model)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
 
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "ID:        box-123")
-	require.Contains(t, out.String(), "Size:      small")
-	require.Contains(t, out.String(), "Idle TTL:  900s")
+			err := sandboxBoxDetailRender.RenderText(&out, tc.model)
+
+			require.NoError(t, err)
+			require.Contains(t, out.String(), tc.wantID)
+			require.Contains(t, out.String(), "Size:")
+			require.Contains(t, out.String(), tc.wantTTL)
+		})
+	}
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
