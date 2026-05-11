@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ==================== parseByteSize ====================
@@ -182,6 +184,18 @@ func TestSandboxCreateCmd_SizeFlags(t *testing.T) {
 			t.Errorf("flag --%s not found", name)
 		}
 	}
+}
+
+func TestSandboxCreateCmd_ResourceFlagsDefaultToServerSelected(t *testing.T) {
+	cmd := sandboxCreateCommand.Cobra()
+
+	vcpus := cmd.Flags().Lookup("vcpus")
+	require.NotNil(t, vcpus)
+	require.Equal(t, "0", vcpus.DefValue)
+
+	memory := cmd.Flags().Lookup("memory")
+	require.NotNil(t, memory)
+	require.Empty(t, memory.DefValue)
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
