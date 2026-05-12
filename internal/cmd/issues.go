@@ -40,10 +40,8 @@ var severityLabels = map[int]string{
 func newProjectIssuesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "issues",
-		Short:  "[Private Beta] Manage issues for a tracing project",
-		Hidden: true,
-		Long: `[Private Beta] Manage Issues Board issues for a tracing project.
-This feature is currently in private beta and may not be available to all users.
+		Short: "Manage issues for a tracing project",
+		Long: `Manage Issues Board issues for a tracing project.
 
 Examples:
   langsmith project issues list --project my-app
@@ -69,8 +67,8 @@ func newProjectIssuesListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "[Private Beta] List issues for a tracing project",
-		Long: `[Private Beta] List forge issues associated with a tracing project.
+		Short: "List issues for a tracing project",
+		Long: `List forge issues associated with a tracing project.
 
 Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
@@ -170,8 +168,8 @@ func newProjectIssuesEventsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "events",
-		Short: "[Private Beta] List issue events for a tracing project",
-		Long: `[Private Beta] List issue events for the Issues Board of a tracing project.
+		Short: "List issue events for a tracing project",
+		Long: `List issue events for the Issues Board of a tracing project.
 
 Issue events record user and agent actions on issues: status changes, severity
 edits, evaluator deployments, and issue creation. The ABM agent reads these on
@@ -275,8 +273,8 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update <issue-id>",
-		Short: "[Private Beta] Update an existing issue's name, description, proposed fix, evaluator, or status",
-		Long: `[Private Beta] Update an existing issue.
+		Short: "Update an existing issue's name, description, proposed fix, evaluator, or status",
+		Long: `Update an existing issue.
 
 To link runs as evidence, use 'langsmith project issues runs add' instead.
 
@@ -456,9 +454,8 @@ func truncate(s string, n int) string {
 func newProjectIssuesRunsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "runs",
-		Short:  "[Private Beta] Manage linked runs for an issue",
-		Hidden: true,
-		Long: `[Private Beta] Link and unlink runs to/from an issue.
+		Short: "Manage linked runs for an issue",
+		Long: `Link and unlink runs to/from an issue.
 
 Examples:
   langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
