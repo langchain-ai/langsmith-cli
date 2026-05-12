@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -233,6 +234,35 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	if opts.ProfileName != "" {
 		t.Fatalf("expected profile name to be ignored when API key auth wins, got %q", opts.ProfileName)
 	}
+}
+
+func TestResolveClientOptions_ProfileFlagWarnsWhenEnvAPIKeyOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "oauth": {
+        "access_token": "test-access-token"
+      }
+    }
+  }
+}
+`), 0600)
+	require.NoError(t, err)
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	err = cmd.PersistentFlags().Set("profile", "prod")
+	require.NoError(t, err)
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "from-env", opts.APIKey)
+	require.Empty(t, opts.OAuthAccessToken)
+	require.Contains(t, stderr.String(), "warning: --profile was specified, but LANGSMITH_API_KEY is set")
 }
 
 func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
