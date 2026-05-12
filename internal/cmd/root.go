@@ -169,6 +169,9 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	case flagAPIKey != "":
 		opts.APIKey = flagAPIKey
 	case os.Getenv("LANGSMITH_API_KEY") != "":
+		if flagProfile != "" {
+			fmt.Fprintln(os.Stderr, "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
+		}
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&

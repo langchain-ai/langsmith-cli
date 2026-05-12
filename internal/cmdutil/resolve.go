@@ -50,6 +50,16 @@ func getFlagString(cmd *cobra.Command, name string) string {
 	return ""
 }
 
+func isFlagChanged(cmd *cobra.Command, name string) bool {
+	if f := cmd.Flags().Lookup(name); f != nil {
+		return f.Changed
+	}
+	if f := cmd.PersistentFlags().Lookup(name); f != nil {
+		return f.Changed
+	}
+	return false
+}
+
 // ResolveAPIKey reads the API key from cobra's flag tree → env.
 func ResolveAPIKey(cmd *cobra.Command) string {
 	if v := getFlagString(cmd, "api-key"); v != "" {
@@ -147,6 +157,9 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	case getFlagString(cmd, "api-key") != "":
 		opts.APIKey = getFlagString(cmd, "api-key")
 	case os.Getenv("LANGSMITH_API_KEY") != "":
+		if isFlagChanged(cmd, "profile") {
+			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
+		}
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
