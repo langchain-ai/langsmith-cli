@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,6 +261,38 @@ func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
 			require.Contains(t, out.String(), tc.wantTTL)
 		})
 	}
+}
+
+func TestSandboxCreateParams_OmitsEmptySnapshotID(t *testing.T) {
+	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{
+		VCPUs:  2,
+		Memory: "512mb",
+	})
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(params)
+	require.NoError(t, err)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(raw, &body))
+
+	assert.NotContains(t, body, "snapshot_id")
+	assert.Equal(t, "my-vm", body["name"])
+}
+
+func TestSandboxCreateParams_IncludesSnapshotIDWhenSet(t *testing.T) {
+	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{
+		SnapshotID: "snap-123",
+		VCPUs:      2,
+		Memory:     "512mb",
+	})
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(params)
+	require.NoError(t, err)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(raw, &body))
+
+	assert.Equal(t, "snap-123", body["snapshot_id"])
 }
 
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {

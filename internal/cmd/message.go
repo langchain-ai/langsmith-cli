@@ -37,7 +37,7 @@ func newTraceMessagesCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:    "messages",
+		Use:   "messages",
 		Short: "Get conversation messages for multiple traces (batch)",
 		Long: `Get conversation messages for multiple traces in a single request.
 
