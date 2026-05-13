@@ -39,7 +39,7 @@ var severityLabels = map[int]string{
 
 func newProjectIssuesCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "issues",
+		Use:   "issues",
 		Short: "Manage issues for a tracing project",
 		Long: `Manage Issues Board issues for a tracing project.
 
@@ -453,7 +453,7 @@ func truncate(s string, n int) string {
 
 func newProjectIssuesRunsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "runs",
+		Use:   "runs",
 		Short: "Manage linked runs for an issue",
 		Long: `Link and unlink runs to/from an issue.
 
