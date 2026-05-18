@@ -33,7 +33,7 @@ Browse endpoints:
 
 Make requests:
   langsmith api sessions?limit=5
-  langsmith api runs/query -F session_id=abc -F limit=10
+  langsmith api runs/query -F 'session[]=abc' -F limit=10
   langsmith api sessions/abc-123 -X DELETE
   langsmith api datasets --input body.json
   echo '{"name":"x"}' | langsmith api sessions --input -
