@@ -53,6 +53,7 @@ Examples:
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
+	cmd.AddCommand(newProjectIssuesExamplesCmd())
 	return cmd
 }
 
@@ -539,5 +540,122 @@ func newProjectIssuesRunsRemoveCmd() *cobra.Command {
 		},
 	}
 
+	return cmd
+}
+
+func newProjectIssuesExamplesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "examples",
+		Short: "Manage regression examples for an issue",
+		Long: `Propose regression examples for an issue.
+
+Examples:
+  langsmith project issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Response must be factually correct"
+  langsmith project issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Must be correct" --assertion format="Output must be JSON"`,
+	}
+
+	cmd.AddCommand(newProjectIssuesProposeExampleCmd())
+	return cmd
+}
+
+// exampleAssertion is a single key=comment assertion for a proposed regression example.
+type exampleAssertion struct {
+	Key     string `json:"key"`
+	Comment string `json:"comment"`
+}
+
+// parseAssertion parses a "key=comment" string into an exampleAssertion.
+// The first '=' is the delimiter; the comment may contain '=' characters.
+func parseAssertion(s string) (exampleAssertion, error) {
+	idx := strings.IndexByte(s, '=')
+	if idx < 1 {
+		return exampleAssertion{}, fmt.Errorf("assertion %q must be in key=comment format", s)
+	}
+	key := strings.TrimSpace(s[:idx])
+	comment := strings.TrimSpace(s[idx+1:])
+	if key == "" {
+		return exampleAssertion{}, fmt.Errorf("assertion key cannot be empty in %q", s)
+	}
+	if comment == "" {
+		return exampleAssertion{}, fmt.Errorf("assertion comment cannot be empty in %q", s)
+	}
+	return exampleAssertion{Key: key, Comment: comment}, nil
+}
+
+func newProjectIssuesProposeExampleCmd() *cobra.Command {
+	var (
+		runID      string
+		assertions []string
+		outputFile string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "propose <issue-id>",
+		Short: "Propose a regression example for an issue",
+		Long: `Propose a run as a regression example for an issue, with assertions that
+the run should satisfy. The issues agent uses these to generate evaluators
+and test cases for the issue.
+
+Each --assertion flag takes a key=comment pair. The key is a short identifier
+for the assertion (e.g. "correctness"), and the comment describes what the run
+should demonstrate. You may specify up to 10 assertions; keys must be unique.
+
+Examples:
+  langsmith project issues examples propose <issue-id> \
+    --run-id <run-id> \
+    --assertion correctness="Response must be factually correct"
+
+  langsmith project issues examples propose <issue-id> \
+    --run-id <run-id> \
+    --assertion correctness="Must cite sources" \
+    --assertion format="Output must be valid JSON"`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			issueID := args[0]
+			if runID == "" {
+				ExitError("--run-id is required")
+			}
+			if len(assertions) == 0 {
+				ExitError("at least one --assertion is required")
+			}
+			if len(assertions) > 10 {
+				ExitError("at most 10 assertions are allowed")
+			}
+
+			parsed := make([]exampleAssertion, 0, len(assertions))
+			seen := make(map[string]bool, len(assertions))
+			for _, raw := range assertions {
+				a, err := parseAssertion(raw)
+				if err != nil {
+					ExitErrorf("invalid assertion: %v", err)
+				}
+				if seen[a.Key] {
+					ExitErrorf("duplicate assertion key %q", a.Key)
+				}
+				seen[a.Key] = true
+				parsed = append(parsed, a)
+			}
+
+			c := MustGetClient()
+			ctx := context.Background()
+
+			body := map[string]any{
+				"run_id":     runID,
+				"assertions": parsed,
+			}
+
+			path := fmt.Sprintf("/v1/platform/issues/%s/proposed-examples", issueID)
+			var result map[string]any
+			if err := c.RawPost(ctx, path, body, &result); err != nil {
+				ExitErrorf("proposing example: %v", err)
+			}
+
+			output.OutputJSON(result, outputFile)
+		},
+	}
+
+	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to propose as a regression example (required)")
+	cmd.Flags().StringArrayVar(&assertions, "assertion", nil, `Assertion in key=comment format. May be repeated up to 10 times.`)
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
