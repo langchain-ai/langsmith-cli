@@ -52,7 +52,7 @@ var sandboxBoxDetailRender = structured.PropertyList{
 		{Label: "ID", Template: "{{.ID}}"},
 		{Label: "Status", Template: "{{.Status}}"},
 		{Label: "Size", Template: "{{.SizeClass}}"},
-		{Label: "VCPUs", Template: "{{formatCount .Vcpus}}"},
+		{Label: "vCPU", Template: "{{formatCount .Vcpus}}"},
 		{Label: "Memory", Template: "{{formatBytesOrDash .MemBytes}}"},
 		{Label: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
 		{Label: "Snapshot", Template: "{{shortID .SnapshotID}}"},
@@ -137,7 +137,7 @@ Examples:
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{}
 		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from")
-		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
+		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
@@ -189,7 +189,7 @@ var sandboxListCommand = structured.Command[struct{}]{
 		Columns: []structured.Column{
 			{Header: "Name", Template: "{{.Name}}"},
 			{Header: "Status", Template: "{{.Status}}"},
-			{Header: "VCPUs", Template: "{{formatCount .Vcpus}}"},
+			{Header: "vCPU", Template: "{{formatCount .Vcpus}}"},
 			{Header: "Mem", Template: "{{formatBytesOrDash .MemBytes}}"},
 			{Header: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
 			{Header: "Snapshot", Template: "{{shortID .SnapshotID}}"},
@@ -238,7 +238,7 @@ for the proxy config JSON format.`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxUpdateInput {
 		in := &sandboxUpdateInput{}
-		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPUs")
+		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
