@@ -287,10 +287,7 @@ func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
 }
 
 func TestSandboxCreateParams_OmitsEmptySnapshotID(t *testing.T) {
-	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{
-		VCPUs:  2,
-		Memory: "512mb",
-	})
+	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{})
 	require.NoError(t, err)
 
 	raw, err := json.Marshal(params)
@@ -299,14 +296,14 @@ func TestSandboxCreateParams_OmitsEmptySnapshotID(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &body))
 
 	assert.NotContains(t, body, "snapshot_id")
+	assert.NotContains(t, body, "vcpus")
+	assert.NotContains(t, body, "mem_bytes")
 	assert.Equal(t, "my-vm", body["name"])
 }
 
 func TestSandboxCreateParams_IncludesSnapshotIDWhenSet(t *testing.T) {
 	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{
 		SnapshotID: "snap-123",
-		VCPUs:      2,
-		Memory:     "512mb",
 	})
 	require.NoError(t, err)
 
