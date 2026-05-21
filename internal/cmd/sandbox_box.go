@@ -68,9 +68,11 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 	}
 
 	params := langsmith.SandboxBoxNewParams{
-		Name:     langsmith.F(name),
 		Vcpus:    langsmith.F(int64(in.VCPUs)),
 		MemBytes: langsmith.F(memBytes),
+	}
+	if name != "" {
+		params.Name = langsmith.F(name)
 	}
 	if in.SnapshotID != "" {
 		params.SnapshotID = langsmith.F(in.SnapshotID)
@@ -93,7 +95,7 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 }
 
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
-	Use:   "create <name>",
+	Use:   "create [name]",
 	Short: "Create a sandbox VM",
 	Long: `Create a sandbox VM.
 
@@ -123,12 +125,13 @@ Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
 
 Examples:
+  langsmith sandbox create
   langsmith sandbox create my-vm
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
   langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{
 			VCPUs:  2,
@@ -142,7 +145,10 @@ Examples:
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxCreateInput, args []string) (any, error) {
-		name := args[0]
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
 
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
