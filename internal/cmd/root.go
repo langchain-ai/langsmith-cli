@@ -18,6 +18,7 @@ var (
 	flagAPIKey       string
 	flagAPIURL       string
 	flagProfile      string
+	flagWorkspaceID  string
 	flagOutputFormat string
 )
 
@@ -35,6 +36,7 @@ Authentication:
   Run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key.
   Optionally set LANGSMITH_ENDPOINT for self-hosted instances.
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
+  Pass --workspace to target a specific workspace for one command.
   Set a default workspace with 'langsmith profile set-workspace <workspace-id>'.
   Set LANGSMITH_PROJECT as a default project name for trace/run queries.
 
@@ -57,6 +59,9 @@ Quick start:
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
+	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
+	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace-id", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
+	_ = rootCmd.PersistentFlags().MarkHidden("workspace-id")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
 
 	// Register all subcommand groups
@@ -100,7 +105,7 @@ func GetAPIURL() string {
 	return opts.APIURL
 }
 
-// GetWorkspaceID resolves the workspace ID from env → profile.
+// GetWorkspaceID resolves the workspace ID from flag → env → profile.
 func GetWorkspaceID() string {
 	opts, _ := resolveClientOptions(false)
 	return opts.WorkspaceID
@@ -164,6 +169,9 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	}
 	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
 		opts.WorkspaceID = v
+	}
+	if flagWorkspaceID != "" {
+		opts.WorkspaceID = flagWorkspaceID
 	}
 	switch {
 	case flagAPIKey != "":

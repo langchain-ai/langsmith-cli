@@ -84,6 +84,13 @@ func TestProfileCreate(t *testing.T) {
 	}
 }
 
+func TestProfileCreateDoesNotDefineLocalWorkspaceIDFlag(t *testing.T) {
+	cmd := newProfileCreateCmd()
+	if f := cmd.Flags().Lookup("workspace-id"); f != nil {
+		t.Fatal("profile create should use the inherited workspace flag, not a local --workspace-id flag")
+	}
+}
+
 func TestProfileCreateUsesEnvAPIKeyAndEndpoint(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
