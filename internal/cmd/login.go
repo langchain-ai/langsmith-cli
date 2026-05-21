@@ -62,7 +62,6 @@ func newLoginCmd() *cobra.Command {
 	var (
 		noBrowser       bool
 		timeout         time.Duration
-		workspaceID     string
 		promptWorkspace bool
 	)
 
@@ -74,12 +73,11 @@ func newLoginCmd() *cobra.Command {
 The command stores OAuth tokens in ~/.langsmith/config.json under the selected
 profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd, noBrowser, timeout, workspaceID, promptWorkspace)
+			return runLogin(cmd, noBrowser, timeout, flagWorkspaceID, promptWorkspace)
 		},
 	}
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Do not open a browser automatically")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait for authorization (default: device-code expiry)")
-	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Workspace ID override to save in the selected profile")
 	cmd.Flags().BoolVar(&promptWorkspace, "prompt-workspace", false, "Prompt to select and save a workspace override")
 	return cmd
 }

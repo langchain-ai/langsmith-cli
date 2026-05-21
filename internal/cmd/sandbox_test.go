@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,13 +126,35 @@ func TestSandboxCreateCmd_PositionalName(t *testing.T) {
 	if cmd.Args == nil {
 		t.Fatal("expected Args validator")
 	}
-	// Should require exactly 1 arg
-	if err := cmd.Args(cmd, []string{}); err == nil {
-		t.Error("expected error with 0 args")
+	if err := cmd.Args(cmd, []string{}); err != nil {
+		t.Errorf("expected no error with 0 args, got: %v", err)
 	}
 	if err := cmd.Args(cmd, []string{"my-vm"}); err != nil {
 		t.Errorf("expected no error with 1 arg, got: %v", err)
 	}
+	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
+		t.Error("expected error with 2 args")
+	}
+}
+
+func TestSandboxCreateCmd_AllowsNoArgs(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v2/sandboxes/boxes", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"id":"box-id","name":"my-vm","status":"running","vcpus":2,"mem_bytes":536870912}`))
+		require.NoError(t, err)
+	})
+
+	out, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "create", "--format", "json")
+
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+	require.NotContains(t, body, "name")
+	require.NotContains(t, body, "snapshot_id")
 }
 
 func TestSandboxTunnelCmd_PositionalNameOrURL(t *testing.T) {

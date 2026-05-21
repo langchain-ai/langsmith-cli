@@ -45,13 +45,14 @@ Optionally set defaults:
 
 ```bash
 export LANGSMITH_ENDPOINT="https://api.smith.langchain.com"  # For self-hosted
+export LANGSMITH_WORKSPACE_ID="<workspace-id>"                # Default workspace
 export LANGSMITH_PROJECT="my-default-project"                 # Default project for queries
 ```
 
 Or pass them as flags:
 
 ```bash
-langsmith --api-key lsv2_pt_... trace list --project my-app
+langsmith --api-key lsv2_pt_... --workspace <workspace-id> trace list --project my-app
 ```
 
 ## Quick Start
