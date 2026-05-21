@@ -16,6 +16,13 @@ import (
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 )
 
+func TestLoginDoesNotDefineLocalWorkspaceIDFlag(t *testing.T) {
+	cmd := newLoginCmd()
+	if f := cmd.Flags().Lookup("workspace-id"); f != nil {
+		t.Fatal("auth login should use the inherited workspace flag, not a local --workspace-id flag")
+	}
+}
+
 func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL

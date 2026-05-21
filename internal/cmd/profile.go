@@ -48,18 +48,16 @@ func newProfileCmd() *cobra.Command {
 
 func newProfileCreateCmd() *cobra.Command {
 	var (
-		workspaceID string
-		setCurrent  bool
+		setCurrent bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create an API-key profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProfileCreate(cmd, args[0], workspaceID, setCurrent)
+			return runProfileCreate(cmd, args[0], flagWorkspaceID, setCurrent)
 		},
 	}
-	cmd.Flags().StringVar(&workspaceID, "workspace-id", "", "Default workspace ID to save in the profile")
 	cmd.Flags().BoolVar(&setCurrent, "set-current", false, "Set the new profile as the current profile")
 	return cmd
 }

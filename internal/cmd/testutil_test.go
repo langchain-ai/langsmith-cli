@@ -45,17 +45,20 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
+	oldWorkspace := flagWorkspaceID
 	oldFmt := flagOutputFormat
 
 	flagAPIKey = "test-api-key"
 	flagAPIURL = serverURL
 	flagProfile = ""
+	flagWorkspaceID = ""
 	flagOutputFormat = "pretty"
 
 	return func() {
 		flagAPIKey = oldKey
 		flagAPIURL = oldURL
 		flagProfile = oldProfile
+		flagWorkspaceID = oldWorkspace
 		flagOutputFormat = oldFmt
 	}
 }
@@ -64,6 +67,19 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 // and returns captured stdout and any error.
 func executeCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldWorkspace := flagWorkspaceID
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagWorkspaceID = oldWorkspace
+		flagOutputFormat = oldFormat
+	}()
+
 	cmd := NewRootCmd("test", "test")
 	var outBuf bytes.Buffer
 	cmd.SetOut(&outBuf)

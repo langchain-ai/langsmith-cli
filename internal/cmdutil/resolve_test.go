@@ -18,6 +18,8 @@ func newTestCmd() *cobra.Command {
 	root.PersistentFlags().String("api-key", "", "")
 	root.PersistentFlags().String("api-url", "", "")
 	root.PersistentFlags().String("profile", "", "")
+	root.PersistentFlags().String("workspace", "", "")
+	root.PersistentFlags().String("workspace-id", "", "")
 	root.PersistentFlags().String("format", "pretty", "")
 	return root
 }
@@ -200,6 +202,66 @@ func TestResolveClientOptions_ProfileFlagSetsProfileName(t *testing.T) {
 	}
 	if opts.WorkspaceID != "ws-prod" {
 		t.Fatalf("expected profile workspace ID, got %q", opts.WorkspaceID)
+	}
+}
+
+func TestResolveClientOptions_WorkspaceFlagOverridesEnvAndProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-env")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "api_key": "default-key",
+      "workspace_id": "ws-profile"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("workspace", "ws-flag")
+	opts, err := ResolveClientOptions(cmd, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.WorkspaceID != "ws-flag" {
+		t.Fatalf("expected flag workspace ID, got %q", opts.WorkspaceID)
+	}
+}
+
+func TestResolveClientOptions_WorkspaceIDAliasOverridesEnvAndProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-env")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "default",
+  "profiles": {
+    "default": {
+      "api_key": "default-key",
+      "workspace_id": "ws-profile"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("workspace-id", "ws-alias")
+	opts, err := ResolveClientOptions(cmd, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.WorkspaceID != "ws-alias" {
+		t.Fatalf("expected alias workspace ID, got %q", opts.WorkspaceID)
 	}
 }
 

@@ -102,6 +102,28 @@ func TestRootCmd_PersistentFlags_Profile(t *testing.T) {
 	}
 }
 
+func TestRootCmd_PersistentFlags_Workspace(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("workspace")
+	if f == nil {
+		t.Fatal("--workspace flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("expected default empty, got %q", f.DefValue)
+	}
+}
+
+func TestRootCmd_PersistentFlags_WorkspaceIDAlias(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	f := root.PersistentFlags().Lookup("workspace-id")
+	if f == nil {
+		t.Fatal("--workspace-id flag not found")
+	}
+	if !f.Hidden {
+		t.Fatal("expected --workspace-id alias to be hidden")
+	}
+}
+
 // ---------- getAPIKey ----------
 
 func TestGetAPIKey_FlagPrecedence(t *testing.T) {
@@ -332,6 +354,42 @@ func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 	}
 	if got := GetWorkspaceID(); got != "ws-123" {
 		t.Fatalf("expected profile workspace, got %q", got)
+	}
+}
+
+func TestGetWorkspaceID_FlagOverridesEnv(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-env")
+
+	oldWorkspace := flagWorkspaceID
+	defer func() {
+		flagWorkspaceID = oldWorkspace
+	}()
+
+	root := NewRootCmd("dev", "dev")
+	if err := root.PersistentFlags().Set("workspace", "ws-flag"); err != nil {
+		t.Fatalf("setting workspace flag: %v", err)
+	}
+	if got := GetWorkspaceID(); got != "ws-flag" {
+		t.Fatalf("expected flag workspace, got %q", got)
+	}
+}
+
+func TestGetWorkspaceID_WorkspaceIDAliasOverridesEnv(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-env")
+
+	oldWorkspace := flagWorkspaceID
+	defer func() {
+		flagWorkspaceID = oldWorkspace
+	}()
+
+	root := NewRootCmd("dev", "dev")
+	if err := root.PersistentFlags().Set("workspace-id", "ws-alias"); err != nil {
+		t.Fatalf("setting workspace-id flag: %v", err)
+	}
+	if got := GetWorkspaceID(); got != "ws-alias" {
+		t.Fatalf("expected alias workspace, got %q", got)
 	}
 }
 

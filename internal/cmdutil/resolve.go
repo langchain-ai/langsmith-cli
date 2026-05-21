@@ -152,6 +152,11 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
 		opts.WorkspaceID = v
 	}
+	if v := getFlagString(cmd, "workspace"); v != "" {
+		opts.WorkspaceID = v
+	} else if v := getFlagString(cmd, "workspace-id"); v != "" {
+		opts.WorkspaceID = v
+	}
 
 	switch {
 	case getFlagString(cmd, "api-key") != "":
