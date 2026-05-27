@@ -354,7 +354,10 @@ func TestSandboxServiceURLCmd_GeneratesServiceURL(t *testing.T) {
 	assert.Equal(t, float64(3600), body["expires_in_seconds"])
 	assert.Contains(t, out, "Service URL:")
 	assert.Contains(t, out, "https://service.example")
-	assert.Contains(t, out, "Token:")
+	assert.Contains(t, out, "Browser URL:")
+	assert.Contains(t, out, "https://browser.example")
+	assert.Contains(t, out, "Service Token:")
+	assert.Contains(t, out, `curl -H "X-Langsmith-Sandbox-Service-Token: token-123" "https://service.example"`)
 }
 
 func TestSandboxServiceURLCmd_OmitsExpiresInSecondsWhenUnset(t *testing.T) {

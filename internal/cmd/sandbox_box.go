@@ -176,11 +176,13 @@ Examples:
 
 var sandboxServiceURLRender = structured.PropertyList{
 	Properties: []structured.Property{
-		{Label: "Service URL", Template: "{{.ServiceURL}}"},
 		{Label: "Browser URL", Template: "{{.BrowserURL}}"},
+		{Label: "Service URL", Template: "{{.ServiceURL}}"},
 		{Label: "Expires", Template: "{{formatTime .ExpiresAt}}"},
-		{Label: "Token", Template: "{{.Token}}"},
+		{Label: "Service Token", Template: "{{.Token}}"},
 	},
+	Commentary: `Example:
+  curl -H "X-Langsmith-Sandbox-Service-Token: {{.Token}}" "{{.ServiceURL}}"`,
 }
 
 var sandboxServiceURLCommand = structured.Command[*sandboxServiceURLInput]{

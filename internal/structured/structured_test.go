@@ -72,6 +72,21 @@ func TestPropertyListRenderTextMultiline(t *testing.T) {
 	require.Equal(t, "Message:  first\n          second\n", out.String())
 }
 
+func TestPropertyListRenderTextCommentary(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+
+	err := Render(cmd, struct{ Name string }{Name: "sandbox"}, PropertyList{
+		Properties: []Property{
+			{Label: "Name", Template: "{{.Name}}"},
+		},
+		Commentary: "Example: {{.Name}}",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Name:  sandbox\n\nExample: sandbox\n", out.String())
+}
+
 func TestRenderJQFiltersModel(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)
