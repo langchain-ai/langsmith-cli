@@ -46,6 +46,11 @@ type sandboxCreateInput struct {
 	ProxyConfig string
 }
 
+type sandboxServiceURLInput struct {
+	Port             int
+	ExpiresInSeconds int64
+}
+
 var sandboxBoxDetailRender = structured.PropertyList{
 	Properties: []structured.Property{
 		{Label: "Name", Template: "{{.Name}}"},
@@ -167,6 +172,63 @@ Examples:
 		return resp, nil
 	},
 	Render: sandboxBoxDetailRender,
+}
+
+var sandboxServiceURLRender = structured.PropertyList{
+	Properties: []structured.Property{
+		{Label: "Service URL", Template: "{{.ServiceURL}}"},
+		{Label: "Browser URL", Template: "{{.BrowserURL}}"},
+		{Label: "Expires", Template: "{{formatTime .ExpiresAt}}"},
+		{Label: "Token", Template: "{{.Token}}"},
+	},
+}
+
+var sandboxServiceURLCommand = structured.Command[*sandboxServiceURLInput]{
+	Use:   "service-url <name> --port <port>",
+	Short: "Generate an authenticated URL for a sandbox HTTP service",
+	Long: `Generate an authenticated URL for an HTTP service running inside a sandbox.
+
+Use the service URL with the X-Langsmith-Sandbox-Service-Token header, or open
+the browser URL directly.
+
+Examples:
+  langsmith sandbox service-url my-vm --port 8000
+  langsmith sandbox service-url my-vm --port 8000 --expires-in-seconds 3600`,
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxServiceURLInput {
+		in := &sandboxServiceURLInput{}
+		cmd.Flags().IntVar(&in.Port, "port", in.Port, "Port inside the sandbox")
+		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "URL TTL in seconds")
+		_ = cmd.MarkFlagRequired("port")
+		return in
+	},
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxServiceURLInput, args []string) (any, error) {
+		if in.Port < 1 || in.Port > 65535 {
+			return nil, fmt.Errorf("--port must be between 1 and 65535 (got %d)", in.Port)
+		}
+		if cmd.Flags().Changed("expires-in-seconds") && in.ExpiresInSeconds < 1 {
+			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
+		}
+
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		params := langsmith.SandboxBoxGenerateServiceURLParams{
+			Port: langsmith.F(int64(in.Port)),
+		}
+		if cmd.Flags().Changed("expires-in-seconds") {
+			params.ExpiresInSeconds = langsmith.F(in.ExpiresInSeconds)
+		}
+
+		resp, err := c.SDK.Sandboxes.Boxes.GenerateServiceURL(ctx, args[0], params)
+		if err != nil {
+			return nil, fmt.Errorf("generating service URL: %w", err)
+		}
+		return resp, nil
+	},
+	Render: sandboxServiceURLRender,
 }
 
 var sandboxListCommand = structured.Command[struct{}]{

@@ -30,6 +30,9 @@ Common workflows:
   # Tunnel a remote port (e.g. Postgres) to localhost
   langsmith sandbox tunnel my-vm --remote-port 5432
 
+  # Generate an authenticated HTTP URL for a service inside the sandbox
+  langsmith sandbox service-url my-vm --port 8000
+
   # Set up SSH access (writes ~/.ssh/config so "ssh sandbox-my-vm" works)
   # Requires sshd to be installed in your Docker image.
   langsmith sandbox ssh-setup my-vm`,
@@ -47,6 +50,7 @@ Common workflows:
 	// Connectivity
 	cmd.AddCommand(newSandboxExecCmd())
 	cmd.AddCommand(newSandboxConsoleCmd())
+	cmd.AddCommand(sandboxServiceURLCommand.Cobra())
 	cmd.AddCommand(newSandboxTunnelCmd())
 	cmd.AddCommand(newSandboxSSHSetupCmd())
 
