@@ -88,7 +88,7 @@ func TestSandboxCmd_FlatSubcommands(t *testing.T) {
 	expected := map[string]bool{
 		"create": false, "list": false, "get": false, "update": false,
 		"delete": false, "start": false, "stop": false,
-		"exec": false, "console": false, "tunnel": false, "ssh-setup": false,
+		"exec": false, "console": false, "service-url": false, "tunnel": false, "ssh-setup": false,
 		"snapshot": false,
 	}
 	for _, sub := range cmd.Commands() {
@@ -323,6 +323,62 @@ func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
 			t.Errorf("flag --%s not found", name)
 		}
 	}
+}
+
+func TestSandboxServiceURLCmd_Flags(t *testing.T) {
+	cmd := sandboxServiceURLCommand.Cobra()
+
+	require.NotNil(t, cmd.Flags().Lookup("port"))
+	require.NotNil(t, cmd.Flags().Lookup("expires-in-seconds"))
+}
+
+func TestSandboxServiceURLCmd_GeneratesServiceURL(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v2/sandboxes/boxes/my-vm/service-url", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"service_url":"https://service.example","browser_url":"https://browser.example","expires_at":"2026-05-27T12:00:00Z","token":"token-123"}`))
+		require.NoError(t, err)
+	})
+
+	out, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "service-url", "my-vm", "--port", "8000", "--expires-in-seconds", "3600")
+
+	require.NoError(t, err)
+	assert.Equal(t, float64(8000), body["port"])
+	assert.Equal(t, float64(3600), body["expires_in_seconds"])
+	assert.Contains(t, out, "Service URL:")
+	assert.Contains(t, out, "https://service.example")
+	assert.Contains(t, out, "Browser URL:")
+	assert.Contains(t, out, "https://browser.example")
+	assert.Contains(t, out, "Service Token:")
+	assert.Contains(t, out, `curl -H "X-Langsmith-Sandbox-Service-Token: token-123" "https://service.example"`)
+}
+
+func TestSandboxServiceURLCmd_OmitsExpiresInSecondsWhenUnset(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"service_url":"https://service.example","browser_url":"https://browser.example","expires_at":"2026-05-27T12:00:00Z","token":"token-123"}`))
+		require.NoError(t, err)
+	})
+
+	_, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "service-url", "my-vm", "--port", "8000")
+
+	require.NoError(t, err)
+	assert.Equal(t, float64(8000), body["port"])
+	assert.NotContains(t, body, "expires_in_seconds")
+}
+
+func TestSandboxServiceURLCmd_RejectsInvalidPort(t *testing.T) {
+	_, err := executeCommand(t, "--api-key", "test-key", "sandbox", "service-url", "my-vm", "--port", "0")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--port must be between 1 and 65535")
 }
 
 func TestSnapshotBuildCmd_CapacityFlag(t *testing.T) {
