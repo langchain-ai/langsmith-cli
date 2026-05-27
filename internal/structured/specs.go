@@ -24,7 +24,7 @@ func (s Template) RenderText(w io.Writer, model any) error {
 type PropertyList struct {
 	Title      string
 	Properties []Property
-	Commentary string
+	Caption    string
 }
 
 type Property struct {
@@ -78,14 +78,14 @@ func (p PropertyList) RenderText(w io.Writer, model any) error {
 			fmt.Fprintf(w, "%-*s  %s\n", maxLabelWidth, "", line)
 		}
 	}
-	if p.Commentary != "" {
-		tmpl, err := template.New("commentary").Funcs(templateFuncs()).Parse(p.Commentary)
+	if p.Caption != "" {
+		tmpl, err := template.New("caption").Funcs(templateFuncs()).Parse(p.Caption)
 		if err != nil {
-			return fmt.Errorf("parsing commentary: %w", err)
+			return fmt.Errorf("parsing caption: %w", err)
 		}
 		var buf bytes.Buffer
 		if err := tmpl.Execute(&buf, model); err != nil {
-			return fmt.Errorf("rendering commentary: %w", err)
+			return fmt.Errorf("rendering caption: %w", err)
 		}
 		text := strings.TrimSpace(buf.String())
 		if text != "" {

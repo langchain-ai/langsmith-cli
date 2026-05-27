@@ -72,7 +72,7 @@ func TestPropertyListRenderTextMultiline(t *testing.T) {
 	require.Equal(t, "Message:  first\n          second\n", out.String())
 }
 
-func TestPropertyListRenderTextCommentary(t *testing.T) {
+func TestPropertyListRenderTextCaption(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)
 
@@ -80,7 +80,7 @@ func TestPropertyListRenderTextCommentary(t *testing.T) {
 		Properties: []Property{
 			{Label: "Name", Template: "{{.Name}}"},
 		},
-		Commentary: "Example: {{.Name}}",
+		Caption: "Example: {{.Name}}",
 	})
 
 	require.NoError(t, err)

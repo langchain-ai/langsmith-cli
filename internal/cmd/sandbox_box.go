@@ -181,7 +181,7 @@ var sandboxServiceURLRender = structured.PropertyList{
 		{Label: "Expires", Template: "{{formatTime .ExpiresAt}}"},
 		{Label: "Service Token", Template: "{{.Token}}"},
 	},
-	Commentary: `Example:
+	Caption: `Example:
   curl -H "X-Langsmith-Sandbox-Service-Token: {{.Token}}" "{{.ServiceURL}}"`,
 }
 
