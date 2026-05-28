@@ -383,7 +383,7 @@ func priorityToSeverity(p string) int {
 }
 
 func issueToMap(issue forgeIssue) map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		"id":            issue.ID,
 		"session_id":    issue.SessionID,
 		"name":          issue.Name,
@@ -397,6 +397,21 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
+	// Include actions (evaluator spec) and traces so callers can read the
+	// existing evaluator and run it against new evidence traces.
+	if len(issue.Actions) > 0 {
+		var actions any
+		if err := json.Unmarshal(issue.Actions, &actions); err == nil {
+			m["actions"] = actions
+		}
+	}
+	if len(issue.Traces) > 0 {
+		var traces any
+		if err := json.Unmarshal(issue.Traces, &traces); err == nil {
+			m["traces"] = traces
+		}
+	}
+	return m
 }
 
 // eventPayloadFields holds the fields we extract from an event payload.
