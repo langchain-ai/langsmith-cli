@@ -9,13 +9,14 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/extract"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 
 	"github.com/google/uuid"
 )
 
 // queryRuns queries runs with the given params and optional session resolution.
 // minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
-func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int, opts ...option.RequestOption) ([]langsmith.RunSchema, error) {
 	// Resolve project name → session ID
 	if projectName != "" {
 		sessionID, err := c.ResolveSessionID(ctx, projectName)
@@ -29,7 +30,7 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 	remaining := limit
 
 	for {
-		resp, err := c.SDK.Runs.Query(ctx, params)
+		resp, err := c.SDK.Runs.Query(ctx, params, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("querying runs: %w", err)
 		}

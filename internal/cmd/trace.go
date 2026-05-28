@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +48,7 @@ func newTraceListCmd() *cobra.Command {
 		includeFlagged  bool
 		full            bool
 		showHierarchy   bool
+		onePerThread    bool
 		outputFile      string
 	)
 
@@ -76,7 +78,11 @@ func newTraceListCmd() *cobra.Command {
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
+			var queryOpts []option.RequestOption
+			if onePerThread {
+				queryOpts = append(queryOpts, option.WithJSONSet("one_per_thread", true))
+			}
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens, queryOpts...)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -152,6 +158,7 @@ func newTraceListCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&includeFlagged, "include-flagged", false, "Add flagged_comment field populated from user-flagged trace feedback")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().BoolVar(&showHierarchy, "show-hierarchy", false, "Fetch the full run tree for each trace")
+	cmd.Flags().BoolVar(&onePerThread, "one-per-thread", false, "Ask the server to return at most one trace per non-empty thread_id")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd

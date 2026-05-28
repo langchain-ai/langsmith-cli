@@ -137,6 +137,9 @@ langsmith trace list --project my-app --full               # All fields (metadat
 # Show trace hierarchy (fetches full run tree for each trace)
 langsmith trace list --project my-app --show-hierarchy --limit 3
 
+# Ask the server for at most one trace per non-empty thread_id
+langsmith trace list --project my-app --one-per-thread
+
 # Get a specific trace
 langsmith trace get <trace-id> --project my-app --full
 
