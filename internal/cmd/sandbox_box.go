@@ -417,60 +417,59 @@ var sandboxStopCommand = structured.Command[struct{}]{
 `),
 }
 
-func newSandboxExecCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "exec <name> -- <command>",
-		Short: "Execute a command inside a sandbox",
-		Long: `Execute a one-off command inside a running sandbox and print its output.
+type sandboxExecInput struct{}
+
+var sandboxExecCommand = structured.Command[sandboxExecInput]{
+	Use:   "exec <name> -- <command>",
+	Short: "Execute a command inside a sandbox",
+	Long: `Execute a one-off command inside a running sandbox and print its output.
 
 Examples:
   langsmith sandbox exec my-vm -- uname -a
   langsmith sandbox exec my-vm -- ls -la /
   langsmith sandbox exec my-vm -- cat /etc/os-release`,
-		Args:               cobra.MinimumNArgs(1),
-		DisableFlagParsing: false,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+	Args:         cobra.MinimumNArgs(1),
+	Input:        func(cmd *cobra.Command) sandboxExecInput { return sandboxExecInput{} },
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in sandboxExecInput, args []string) (any, error) {
+		name := args[0]
 
-			// Everything after "--" is the command.
-			cmdArgs := cmd.ArgsLenAtDash()
-			if cmdArgs < 0 || cmdArgs >= len(args) {
-				return fmt.Errorf("usage: langsmith sandbox exec <name> -- <command>")
-			}
-			command := args[cmdArgs:]
-			if len(command) == 0 {
-				return fmt.Errorf("no command specified")
-			}
+		cmdArgs := cmd.ArgsLenAtDash()
+		if cmdArgs < 0 || cmdArgs >= len(args) {
+			return nil, fmt.Errorf("usage: langsmith sandbox exec <name> -- <command>")
+		}
+		command := args[cmdArgs:]
+		if len(command) == 0 {
+			return nil, fmt.Errorf("no command specified")
+		}
 
-			ctx := cmd.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			c, err := cmdutil.GetClient(cmd)
-			if err != nil {
-				return err
-			}
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
 
-			result, err := c.SDK.Sandboxes.Boxes.Run(ctx, name, langsmith.SandboxBoxRunParams{
-				Command: langsmith.F(sandboxShellCommand(command)),
-			})
-			if err != nil {
-				return fmt.Errorf("execute: %w", err)
-			}
+		result, err := c.SDK.Sandboxes.Boxes.Run(ctx, name, langsmith.SandboxBoxRunParams{
+			Command: langsmith.F(sandboxShellCommand(command)),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("execute: %w", err)
+		}
 
-			if result.Stdout != "" {
-				fmt.Print(result.Stdout)
-			}
-			if result.Stderr != "" {
-				fmt.Fprint(os.Stderr, result.Stderr)
-			}
-			if result.ExitCode != 0 {
-				os.Exit(int(result.ExitCode))
-			}
-			return nil
-		},
-	}
-	return cmd
+		if result.Stdout != "" {
+			fmt.Print(result.Stdout)
+		}
+		if result.Stderr != "" {
+			fmt.Fprint(os.Stderr, result.Stderr)
+		}
+		if result.ExitCode != 0 {
+			os.Exit(int(result.ExitCode))
+		}
+		return nil, nil
+	},
+}
+
+func newSandboxExecCmd() *cobra.Command {
+	return sandboxExecCommand.Cobra()
 }
 
 func sandboxShellCommand(args []string) string {

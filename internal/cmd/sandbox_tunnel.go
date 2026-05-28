@@ -10,24 +10,24 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
-func newSandboxTunnelCmd() *cobra.Command {
-	var (
-		sandboxURL  string
-		sandboxName string
-		remotePort  int
-		localPort   int
-		logLevel    string
-		stdio       bool
-	)
+type sandboxTunnelInput struct {
+	SandboxURL  string
+	SandboxName string
+	RemotePort  int
+	LocalPort   int
+	LogLevel    string
+	Stdio       bool
+}
 
-	cmd := &cobra.Command{
-		Use:   "tunnel <name> --remote-port <port>",
-		Short: "Create a TCP tunnel to a service inside a sandbox",
-		Long: `Create a TCP tunnel from a local port to a port inside a remote sandbox.
+var sandboxTunnelCommand = structured.Command[*sandboxTunnelInput]{
+	Use:   "tunnel <name> --remote-port <port>",
+	Short: "Create a TCP tunnel to a service inside a sandbox",
+	Long: `Create a TCP tunnel from a local port to a port inside a remote sandbox.
 
 The tunnel multiplexes many TCP connections over a single WebSocket,
 so you can connect tools like psql, redis-cli, or curl to services
@@ -42,62 +42,66 @@ Examples:
   langsmith sandbox tunnel my-vm --remote-port 5432 --local-port 15432
   langsmith sandbox tunnel my-vm --remote-port 22 --stdio
   langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Resolve name: positional arg takes precedence over --name flag.
-			name := sandboxName
-			if len(args) > 0 {
-				name = args[0]
+	Args: cobra.MaximumNArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxTunnelInput {
+		in := &sandboxTunnelInput{LogLevel: "info"}
+		cmd.Flags().StringVar(&in.SandboxURL, "url", in.SandboxURL, "Sandbox URL (override; skips name resolution)")
+		cmd.Flags().StringVar(&in.SandboxName, "name", in.SandboxName, "")
+		cmd.Flags().IntVar(&in.RemotePort, "remote-port", in.RemotePort, "Port inside the sandbox to tunnel to")
+		cmd.Flags().IntVar(&in.LocalPort, "local-port", in.LocalPort, "Local port to listen on (defaults to remote-port)")
+		cmd.Flags().StringVar(&in.LogLevel, "log-level", in.LogLevel, "Log level: debug, info, warn, error")
+		cmd.Flags().BoolVar(&in.Stdio, "stdio", in.Stdio, "Bridge stdin/stdout to the remote port (for use as SSH ProxyCommand)")
+		_ = cmd.Flags().MarkHidden("name")
+		_ = cmd.MarkFlagRequired("remote-port")
+		return in
+	},
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxTunnelInput, args []string) (any, error) {
+		name := in.SandboxName
+		if len(args) > 0 {
+			name = args[0]
+		}
+		if name == "" && in.SandboxURL == "" {
+			return nil, fmt.Errorf("provide a sandbox name or --url")
+		}
+		client := MustGetClient()
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer cancel()
+		sandboxURL := in.SandboxURL
+		if sandboxURL == "" {
+			box, err := client.SDK.Sandboxes.Boxes.Get(ctx, name)
+			if err != nil {
+				return nil, fmt.Errorf("getting sandbox: %w", err)
 			}
-			if name == "" && sandboxURL == "" {
-				return fmt.Errorf("provide a sandbox name or --url")
+			if box.DataplaneURL == "" {
+				return nil, fmt.Errorf("sandbox %q has no dataplane URL", name)
 			}
-			client := MustGetClient()
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-			defer cancel()
-			if sandboxURL == "" {
-				box, err := client.SDK.Sandboxes.Boxes.Get(ctx, name)
-				if err != nil {
-					return fmt.Errorf("getting sandbox: %w", err)
-				}
-				if box.DataplaneURL == "" {
-					return fmt.Errorf("sandbox %q has no dataplane URL", name)
-				}
-				sandboxURL = box.DataplaneURL
-			}
-			if remotePort < 1 || remotePort > 65535 {
-				return fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", remotePort)
-			}
+			sandboxURL = box.DataplaneURL
+		}
+		if in.RemotePort < 1 || in.RemotePort > 65535 {
+			return nil, fmt.Errorf("--remote-port must be between 1 and 65535 (got %d)", in.RemotePort)
+		}
 
-			if stdio {
-				logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-				return runTunnelStdio(ctx, logger, client.SDK, sandboxURL, remotePort)
-			}
+		if in.Stdio {
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			return nil, runTunnelStdio(ctx, logger, client.SDK, sandboxURL, in.RemotePort)
+		}
 
-			if localPort == 0 {
-				localPort = remotePort
-			}
-			if localPort < 1 || localPort > 65535 {
-				return fmt.Errorf("--local-port must be between 1 and 65535 (got %d)", localPort)
-			}
+		localPort := in.LocalPort
+		if localPort == 0 {
+			localPort = in.RemotePort
+		}
+		if localPort < 1 || localPort > 65535 {
+			return nil, fmt.Errorf("--local-port must be between 1 and 65535 (got %d)", localPort)
+		}
 
-			logger := newTunnelLogger(logLevel)
+		logger := newTunnelLogger(in.LogLevel)
+		return nil, runTunnel(ctx, logger, client.SDK, sandboxURL, in.RemotePort, localPort)
+	},
+}
 
-			return runTunnel(ctx, logger, client.SDK, sandboxURL, remotePort, localPort)
-		},
-	}
-
-	cmd.Flags().StringVar(&sandboxURL, "url", "", "Sandbox URL (override; skips name resolution)")
-	cmd.Flags().StringVar(&sandboxName, "name", "", "")
-	cmd.Flags().IntVar(&remotePort, "remote-port", 0, "Port inside the sandbox to tunnel to")
-	cmd.Flags().IntVar(&localPort, "local-port", 0, "Local port to listen on (defaults to remote-port)")
-	cmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
-	cmd.Flags().BoolVar(&stdio, "stdio", false, "Bridge stdin/stdout to the remote port (for use as SSH ProxyCommand)")
-
-	_ = cmd.Flags().MarkHidden("name")
-	_ = cmd.MarkFlagRequired("remote-port")
-
-	return cmd
+func newSandboxTunnelCmd() *cobra.Command {
+	return sandboxTunnelCommand.Cobra()
 }
 
 func newTunnelLogger(level string) *slog.Logger {
@@ -124,7 +128,7 @@ func runTunnel(ctx context.Context, logger *slog.Logger, client *langsmith.Clien
 	}
 	defer func() { _ = tunnel.Close() }()
 
-	logger.Info("tunnel ready",
+	logger.InfoContext(ctx, "tunnel ready",
 		"local", fmt.Sprintf("127.0.0.1:%d", tunnel.LocalPort),
 		"remote_port", remotePort,
 		"sandbox_url", sandboxURL,
@@ -143,6 +147,6 @@ func runTunnelStdio(ctx context.Context, logger *slog.Logger, client *langsmith.
 	}
 	defer func() { _ = stream.Close() }()
 
-	logger.Debug("tunnel stream established", "remote_port", remotePort, "sandbox_url", sandboxURL)
+	logger.DebugContext(ctx, "tunnel stream established", "remote_port", remotePort, "sandbox_url", sandboxURL)
 	return langsmith.BridgeSandboxTunnelIO(ctx, stream, os.Stdin, os.Stdout)
 }

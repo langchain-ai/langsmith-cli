@@ -7,13 +7,14 @@ import (
 )
 
 type Command[I any] struct {
-	Use    string
-	Short  string
-	Long   string
-	Args   cobra.PositionalArgs
-	Input  func(*cobra.Command) I
-	Action func(context.Context, *cobra.Command, I, []string) (any, error)
-	Render Spec
+	Use          string
+	Short        string
+	Long         string
+	Args         cobra.PositionalArgs
+	Input        func(*cobra.Command) I
+	Action       func(context.Context, *cobra.Command, I, []string) (any, error)
+	Render       Spec
+	CustomOutput bool
 }
 
 func (c Command[I]) Cobra() *cobra.Command {
@@ -28,13 +29,18 @@ func (c Command[I]) Cobra() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if c.CustomOutput {
+				return nil
+			}
 			return Render(cmd, result, c.Render)
 		},
 	}
 	if c.Input != nil {
 		input = c.Input(cmd)
 	}
-	cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
+	if !c.CustomOutput {
+		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
+	}
 	return cmd
 }
 
