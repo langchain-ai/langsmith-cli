@@ -24,10 +24,11 @@ type forgeIssue struct {
 	FixPrompt   *string         `json:"fix_prompt"`
 	FixPRNumber *int            `json:"fix_pr_number"`
 	ProposedFix *string         `json:"proposed_fix"`
-	Actions     json.RawMessage `json:"actions"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	Traces      json.RawMessage `json:"traces"`
+	Actions          json.RawMessage `json:"actions"`
+	ProposedExamples json.RawMessage `json:"proposed_examples"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Traces           json.RawMessage `json:"traces"`
 }
 
 var severityLabels = map[int]string{
@@ -397,12 +398,18 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
-	// Include actions (evaluator spec) and traces so callers can read the
-	// existing evaluator and run it against new evidence traces.
+	// Include actions (evaluator spec), proposed_examples (per-trace
+	// assertions), and traces so callers can read and update all three.
 	if len(issue.Actions) > 0 {
 		var actions any
 		if err := json.Unmarshal(issue.Actions, &actions); err == nil {
 			m["actions"] = actions
+		}
+	}
+	if len(issue.ProposedExamples) > 0 {
+		var examples any
+		if err := json.Unmarshal(issue.ProposedExamples, &examples); err == nil {
+			m["proposed_examples"] = examples
 		}
 	}
 	if len(issue.Traces) > 0 {
