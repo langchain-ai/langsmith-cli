@@ -11,16 +11,21 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
-func newSandboxConsoleCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "console <name>",
-		Short: "Open an interactive shell inside a sandbox",
-		Long: `Open an interactive terminal session inside a running sandbox.
+type sandboxConsoleInput struct {
+	Shell           string
+	ForwardSSHAgent bool
+}
+
+var sandboxConsoleCommand = structured.Command[*sandboxConsoleInput]{
+	Use:   "console <name>",
+	Short: "Open an interactive shell inside a sandbox",
+	Long: `Open an interactive terminal session inside a running sandbox.
 
 Connects via WebSocket to the sandbox daemon and allocates a PTY,
 giving you a full interactive shell (bash by default).
@@ -29,18 +34,21 @@ Examples:
   langsmith sandbox console my-vm
   langsmith sandbox console my-vm --shell /bin/sh
   langsmith sandbox console my-vm --forward-ssh-agent`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			shell, _ := cmd.Flags().GetString("shell")
-			forwardSSHAgent, _ := cmd.Flags().GetBool("forward-ssh-agent")
-			return runConsole(args[0], shell, forwardSSHAgent)
-		},
-	}
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxConsoleInput {
+		in := &sandboxConsoleInput{}
+		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use (default: sandbox default, usually /bin/bash)")
+		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the sandbox")
+		return in
+	},
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxConsoleInput, args []string) (any, error) {
+		return nil, runConsole(args[0], in.Shell, in.ForwardSSHAgent)
+	},
+}
 
-	cmd.Flags().String("shell", "", "Shell to use (default: sandbox default, usually /bin/bash)")
-	cmd.Flags().Bool("forward-ssh-agent", false, "Forward the local SSH agent (SSH_AUTH_SOCK) into the sandbox")
-
-	return cmd
+func newSandboxConsoleCmd() *cobra.Command {
+	return sandboxConsoleCommand.Cobra()
 }
 
 func runConsole(name, shell string, forwardSSHAgent bool) error {

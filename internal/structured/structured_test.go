@@ -28,6 +28,27 @@ func TestRenderJSONIgnoresTextSpec(t *testing.T) {
 	require.JSONEq(t, `{"name":"sandbox"}`, out.String())
 }
 
+func TestCommandCustomOutputSkipsRender(t *testing.T) {
+	var out bytes.Buffer
+	cmd := Command[struct{}]{
+		Use:          "custom",
+		CustomOutput: true,
+		Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
+			_, err := cmd.OutOrStdout().Write([]byte("raw\n"))
+			return map[string]string{"rendered": "no"}, err
+		},
+		Render: Template(`rendered`),
+	}.Cobra()
+	cmd.PersistentFlags().String("format", "json", "")
+	cmd.SetOut(&out)
+
+	err := cmd.Execute()
+
+	require.NoError(t, err)
+	require.Nil(t, cmd.Flags().Lookup("jq"))
+	require.Equal(t, "raw\n", out.String())
+}
+
 func TestTemplateRenderText(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)

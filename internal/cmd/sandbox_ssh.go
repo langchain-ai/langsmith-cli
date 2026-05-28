@@ -10,17 +10,19 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
-func newSandboxSSHSetupCmd() *cobra.Command {
-	var identity string
+type sandboxSSHSetupInput struct {
+	Identity string
+}
 
-	cmd := &cobra.Command{
-		Use:   "ssh-setup <name>",
-		Short: "Upload your SSH public key and configure ~/.ssh/config for a sandbox",
-		Long: `Upload your SSH public key to a running sandbox so you can connect
+var sandboxSSHSetupCommand = structured.Command[*sandboxSSHSetupInput]{
+	Use:   "ssh-setup <name>",
+	Short: "Upload your SSH public key and configure ~/.ssh/config for a sandbox",
+	Long: `Upload your SSH public key to a running sandbox so you can connect
 with standard SSH tools (ssh, scp, rsync, sftp).
 
 This command uploads your key, fetches the host key, writes a
@@ -30,15 +32,20 @@ immediately connect with: ssh sandbox-<name>
 Examples:
   langsmith sandbox ssh-setup my-sandbox
   langsmith sandbox ssh-setup my-sandbox --identity ~/.ssh/id_ed25519.pub`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSSHSetup(cmd, args[0], identity)
-		},
-	}
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxSSHSetupInput {
+		in := &sandboxSSHSetupInput{}
+		cmd.Flags().StringVar(&in.Identity, "identity", in.Identity, "Path to SSH public key (default: auto-detect)")
+		return in
+	},
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxSSHSetupInput, args []string) (any, error) {
+		return nil, runSSHSetup(cmd, args[0], in.Identity)
+	},
+}
 
-	cmd.Flags().StringVar(&identity, "identity", "", "Path to SSH public key (default: auto-detect)")
-
-	return cmd
+func newSandboxSSHSetupCmd() *cobra.Command {
+	return sandboxSSHSetupCommand.Cobra()
 }
 
 func runSSHSetup(cmd *cobra.Command, name, identity string) error {

@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +157,71 @@ func TestSandboxCreateCmd_AllowsNoArgs(t *testing.T) {
 	require.NotEmpty(t, out)
 	require.NotContains(t, body, "name")
 	require.NotContains(t, body, "snapshot_id")
+}
+
+func TestSandboxExecCmd_PositionalNameAndCommandSeparator(t *testing.T) {
+	cmd := newSandboxExecCmd()
+	require.NoError(t, cmd.Args(cmd, []string{"my-vm", "echo", "hi"}))
+	require.Error(t, cmd.Args(cmd, []string{}))
+}
+
+func TestSandboxExecCmd_WritesCommandOutputDirectly(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/sandboxes/boxes/my-vm":
+			_, err := w.Write([]byte(`{"id":"box-id","name":"my-vm","status":"ready","dataplane_url":"` + tsURL(t, r) + `"}`))
+			require.NoError(t, err)
+		case r.Method == http.MethodPost && r.URL.Path == "/execute":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			_, err := w.Write([]byte(`{"stdout":"hello\n","stderr":"","exit_code":0}`))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	var out string
+	var err error
+	stdout := captureStdout(t, func() {
+		out, err = executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "exec", "my-vm", "--", "echo", "hello")
+	})
+
+	require.NoError(t, err)
+	assert.Empty(t, out)
+	assert.Equal(t, "hello\n", stdout)
+	assert.Equal(t, "'echo' 'hello'", body["command"])
+}
+
+func tsURL(t *testing.T, r *http.Request) string {
+	t.Helper()
+	return "http://" + r.Host
+}
+
+func TestSandboxCustomOutputCommands_Flags(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  *cobra.Command
+		want []string
+	}{
+		{"tunnel", newSandboxTunnelCmd(), []string{"url", "name", "remote-port", "local-port", "stdio", "log-level"}},
+		{"ssh-setup", newSandboxSSHSetupCmd(), []string{"identity"}},
+	}
+	if runtime.GOOS != "windows" {
+		tests = append(tests, struct {
+			name string
+			cmd  *cobra.Command
+			want []string
+		}{"console", newSandboxConsoleCmd(), []string{"shell", "forward-ssh-agent"}})
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, name := range tc.want {
+				require.NotNil(t, tc.cmd.Flags().Lookup(name), "flag --%s not found", name)
+			}
+		})
+	}
 }
 
 func TestSandboxTunnelCmd_PositionalNameOrURL(t *testing.T) {
