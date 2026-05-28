@@ -2,7 +2,6 @@ package extract
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -48,16 +47,16 @@ func ExtractRun(run langsmith.RunSchema, includeMetadata, includeIO, includeFeed
 		}
 
 		var costs map[string]any
-		if run.PromptCost != "" || run.CompletionCost != "" || run.TotalCost != "" {
+		if run.PromptCost > 0 || run.CompletionCost > 0 || run.TotalCost > 0 {
 			costs = map[string]any{}
-			if f, err := strconv.ParseFloat(run.PromptCost, 64); err == nil && f > 0 {
-				costs["prompt_cost"] = f
+			if run.PromptCost > 0 {
+				costs["prompt_cost"] = run.PromptCost
 			}
-			if f, err := strconv.ParseFloat(run.CompletionCost, 64); err == nil && f > 0 {
-				costs["completion_cost"] = f
+			if run.CompletionCost > 0 {
+				costs["completion_cost"] = run.CompletionCost
 			}
-			if f, err := strconv.ParseFloat(run.TotalCost, 64); err == nil && f > 0 {
-				costs["total_cost"] = f
+			if run.TotalCost > 0 {
+				costs["total_cost"] = run.TotalCost
 			}
 		}
 		if len(costs) == 0 {
