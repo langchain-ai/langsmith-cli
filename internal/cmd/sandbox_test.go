@@ -183,7 +183,7 @@ func TestSandboxCreateCmd_SetsDefaultSandboxOnCurrentProfile(t *testing.T) {
 	require.NoError(t, err)
 	cfg, err := lsconfig.LoadFrom(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, "created-vm", cfg.Profiles["dev"].DefaultSandbox)
+	assert.Equal(t, "created-vm", cfg.Profiles["dev"].DefaultSandboxName)
 }
 
 func TestSandboxGetCmd_UsesDefaultSandboxWhenNameOmitted(t *testing.T) {
@@ -210,7 +210,7 @@ func TestSandboxGetCmd_UsesDefaultSandboxWhenNameOmitted(t *testing.T) {
 	assert.Contains(t, out, "current-vm")
 }
 
-func TestSandboxGetCmd_RequiresNameWhenNoDefaultSandbox(t *testing.T) {
+func TestSandboxGetCmd_RequiresNameWhenNoDefaultSandboxName(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	require.NoError(t, os.WriteFile(configPath, []byte(`{

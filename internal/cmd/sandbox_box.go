@@ -115,16 +115,16 @@ func defaultSandboxName(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 	profileName, profile, ok := cfg.ResolveProfile(flagProfile, profileEnvName())
-	if !ok || profile.DefaultSandbox == "" {
+	if !ok || profile.DefaultSandboxName == "" {
 		if profileName != "" {
 			return "", fmt.Errorf("no sandbox specified and profile %q has no default sandbox", profileName)
 		}
 		return "", fmt.Errorf("no sandbox specified and no default profile is selected")
 	}
-	return profile.DefaultSandbox, nil
+	return profile.DefaultSandboxName, nil
 }
 
-func setDefaultSandbox(cmd *cobra.Command, name string) error {
+func setDefaultSandboxName(cmd *cobra.Command, name string) error {
 	if name == "" {
 		return nil
 	}
@@ -136,7 +136,7 @@ func setDefaultSandbox(cmd *cobra.Command, name string) error {
 	if !ok {
 		return nil
 	}
-	profile.DefaultSandbox = name
+	profile.DefaultSandboxName = name
 	cfg.Profiles[profileName] = profile
 	return cfg.Save()
 }
@@ -211,7 +211,7 @@ Examples:
 		if defaultName == "" {
 			defaultName = resp.ID
 		}
-		if err := setDefaultSandbox(cmd, defaultName); err != nil {
+		if err := setDefaultSandboxName(cmd, defaultName); err != nil {
 			return nil, fmt.Errorf("setting default sandbox: %w", err)
 		}
 
