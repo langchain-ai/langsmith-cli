@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -159,6 +160,72 @@ func TestSandboxCreateCmd_AllowsNoArgs(t *testing.T) {
 	require.NotContains(t, body, "snapshot_id")
 }
 
+func TestSandboxCreateCmd_SetsDefaultSandboxOnCurrentProfile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	require.NoError(t, os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {"api_key": "profile-key"}
+  }
+}`), 0600))
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v2/sandboxes/boxes", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"id":"box-id","name":"created-vm","status":"running"}`))
+		require.NoError(t, err)
+	})
+
+	_, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "create", "created-vm", "--format", "json")
+
+	require.NoError(t, err)
+	cfg, err := lsconfig.LoadFrom(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "created-vm", cfg.Profiles["dev"].DefaultSandbox)
+}
+
+func TestSandboxGetCmd_UsesDefaultSandboxWhenNameOmitted(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	require.NoError(t, os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {"api_key": "profile-key", "api_url": "http://placeholder", "default_sandbox": "current-vm"}
+  }
+}`), 0600))
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/v2/sandboxes/boxes/current-vm", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"id":"box-id","name":"current-vm","status":"running"}`))
+		require.NoError(t, err)
+	})
+
+	out, err := executeCommand(t, "--api-url", ts.URL, "sandbox", "get")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "current-vm")
+}
+
+func TestSandboxGetCmd_RequiresNameWhenNoDefaultSandbox(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	require.NoError(t, os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {"api_key": "profile-key"}
+  }
+}`), 0600))
+
+	_, err := executeCommand(t, "sandbox", "get")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `profile "dev" has no default sandbox`)
+}
+
 func TestSandboxExecCmd_PositionalNameAndCommandSeparator(t *testing.T) {
 	cmd := newSandboxExecCmd()
 	require.NoError(t, cmd.Args(cmd, []string{"my-vm", "echo", "hi"}))
@@ -267,6 +334,29 @@ func TestSnapshotCaptureCmd_PositionalName(t *testing.T) {
 	if err := cmd.Args(cmd, []string{"my-snap"}); err != nil {
 		t.Errorf("expected no error with 1 arg, got: %v", err)
 	}
+}
+
+func TestSnapshotCaptureCmd_UsesDefaultSandboxWhenBoxOmitted(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	require.NoError(t, os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {"api_key": "profile-key", "default_sandbox": "current-vm"}
+  }
+}`), 0600))
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v2/sandboxes/boxes/current-vm/snapshot", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"id":"snap-id","name":"snap-name","status":"pending"}`))
+		require.NoError(t, err)
+	})
+
+	_, err := executeCommand(t, "--api-url", ts.URL, "sandbox", "snapshot", "capture", "snap-name")
+
+	require.NoError(t, err)
 }
 
 func TestSandboxCreateCmd_SizeFlags(t *testing.T) {

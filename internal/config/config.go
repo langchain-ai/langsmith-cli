@@ -16,10 +16,11 @@ const (
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
-	APIKey      string `json:"api_key,omitempty"`
-	APIURL      string `json:"api_url,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	OAuth       OAuth  `json:"oauth,omitempty"`
+	APIKey         string `json:"api_key,omitempty"`
+	APIURL         string `json:"api_url,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	DefaultSandbox string `json:"default_sandbox,omitempty"`
+	OAuth          OAuth  `json:"oauth,omitempty"`
 }
 
 // OAuth stores OAuth tokens written by `langsmith login`.

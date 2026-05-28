@@ -23,7 +23,7 @@ type sandboxConsoleInput struct {
 }
 
 var sandboxConsoleCommand = structured.Command[*sandboxConsoleInput]{
-	Use:   "console <name>",
+	Use:   "console [name]",
 	Short: "Open an interactive shell inside a sandbox",
 	Long: `Open an interactive terminal session inside a running sandbox.
 
@@ -34,7 +34,7 @@ Examples:
   langsmith sandbox console my-vm
   langsmith sandbox console my-vm --shell /bin/sh
   langsmith sandbox console my-vm --forward-ssh-agent`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxConsoleInput {
 		in := &sandboxConsoleInput{}
 		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use (default: sandbox default, usually /bin/bash)")
@@ -43,7 +43,11 @@ Examples:
 	},
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxConsoleInput, args []string) (any, error) {
-		return nil, runConsole(args[0], in.Shell, in.ForwardSSHAgent)
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
+		return nil, runConsole(name, in.Shell, in.ForwardSSHAgent)
 	},
 }
 

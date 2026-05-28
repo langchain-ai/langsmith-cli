@@ -23,6 +23,7 @@ Common workflows:
 
   # Run a command inside the sandbox
   langsmith sandbox exec my-vm -- uname -a
+  langsmith sandbox exec -- uname -a
 
   # Open an interactive shell
   langsmith sandbox console my-vm

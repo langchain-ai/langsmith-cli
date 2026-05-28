@@ -25,7 +25,7 @@ type sandboxTunnelInput struct {
 }
 
 var sandboxTunnelCommand = structured.Command[*sandboxTunnelInput]{
-	Use:   "tunnel <name> --remote-port <port>",
+	Use:   "tunnel [name] --remote-port <port>",
 	Short: "Create a TCP tunnel to a service inside a sandbox",
 	Long: `Create a TCP tunnel from a local port to a port inside a remote sandbox.
 
@@ -62,7 +62,11 @@ Examples:
 			name = args[0]
 		}
 		if name == "" && in.SandboxURL == "" {
-			return nil, fmt.Errorf("provide a sandbox name or --url")
+			var err error
+			name, err = defaultSandboxName(cmd)
+			if err != nil {
+				return nil, err
+			}
 		}
 		client := MustGetClient()
 		ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
