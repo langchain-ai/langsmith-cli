@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -204,9 +205,15 @@ func TestSandboxCustomOutputCommands_Flags(t *testing.T) {
 		cmd  *cobra.Command
 		want []string
 	}{
-		{"console", newSandboxConsoleCmd(), []string{"shell", "forward-ssh-agent"}},
 		{"tunnel", newSandboxTunnelCmd(), []string{"url", "name", "remote-port", "local-port", "stdio", "log-level"}},
 		{"ssh-setup", newSandboxSSHSetupCmd(), []string{"identity"}},
+	}
+	if runtime.GOOS != "windows" {
+		tests = append(tests, struct {
+			name string
+			cmd  *cobra.Command
+			want []string
+		}{"console", newSandboxConsoleCmd(), []string{"shell", "forward-ssh-agent"}})
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

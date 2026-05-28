@@ -65,7 +65,7 @@ Examples:
 			return nil, fmt.Errorf("provide a sandbox name or --url")
 		}
 		client := MustGetClient()
-		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 		defer cancel()
 		sandboxURL := in.SandboxURL
 		if sandboxURL == "" {
