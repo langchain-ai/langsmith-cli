@@ -13,17 +13,17 @@ import (
 
 // forgeIssue mirrors the JSON shape returned by GET /v1/platform/issues.
 type forgeIssue struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Severity    int             `json:"severity"`
-	Status      string          `json:"status"`
-	Tags        []string        `json:"tags"`
-	FixBranch   *string         `json:"fix_branch"`
-	FixPrompt   *string         `json:"fix_prompt"`
-	FixPRNumber *int            `json:"fix_pr_number"`
-	ProposedFix *string         `json:"proposed_fix"`
+	ID               string          `json:"id"`
+	SessionID        string          `json:"session_id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	Severity         int             `json:"severity"`
+	Status           string          `json:"status"`
+	Tags             []string        `json:"tags"`
+	FixBranch        *string         `json:"fix_branch"`
+	FixPrompt        *string         `json:"fix_prompt"`
+	FixPRNumber      *int            `json:"fix_pr_number"`
+	ProposedFix      *string         `json:"proposed_fix"`
 	Actions          json.RawMessage `json:"actions"`
 	ProposedExamples json.RawMessage `json:"proposed_examples"`
 	CreatedAt        time.Time       `json:"created_at"`
