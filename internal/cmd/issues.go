@@ -13,21 +13,22 @@ import (
 
 // forgeIssue mirrors the JSON shape returned by GET /v1/platform/issues.
 type forgeIssue struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Severity    int             `json:"severity"`
-	Status      string          `json:"status"`
-	Tags        []string        `json:"tags"`
-	FixBranch   *string         `json:"fix_branch"`
-	FixPrompt   *string         `json:"fix_prompt"`
-	FixPRNumber *int            `json:"fix_pr_number"`
-	ProposedFix *string         `json:"proposed_fix"`
-	Actions     json.RawMessage `json:"actions"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	Traces      json.RawMessage `json:"traces"`
+	ID               string          `json:"id"`
+	SessionID        string          `json:"session_id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	Severity         int             `json:"severity"`
+	Status           string          `json:"status"`
+	Tags             []string        `json:"tags"`
+	FixBranch        *string         `json:"fix_branch"`
+	FixPrompt        *string         `json:"fix_prompt"`
+	FixPRNumber      *int            `json:"fix_pr_number"`
+	ProposedFix      *string         `json:"proposed_fix"`
+	Actions          json.RawMessage `json:"actions"`
+	ProposedExamples json.RawMessage `json:"proposed_examples"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Traces           json.RawMessage `json:"traces"`
 }
 
 var severityLabels = map[int]string{
@@ -383,7 +384,7 @@ func priorityToSeverity(p string) int {
 }
 
 func issueToMap(issue forgeIssue) map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		"id":            issue.ID,
 		"session_id":    issue.SessionID,
 		"name":          issue.Name,
@@ -397,6 +398,27 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
+	// Include actions (evaluator spec), proposed_examples (per-trace
+	// assertions), and traces so callers can read and update all three.
+	if len(issue.Actions) > 0 {
+		var actions any
+		if err := json.Unmarshal(issue.Actions, &actions); err == nil {
+			m["actions"] = actions
+		}
+	}
+	if len(issue.ProposedExamples) > 0 {
+		var examples any
+		if err := json.Unmarshal(issue.ProposedExamples, &examples); err == nil {
+			m["proposed_examples"] = examples
+		}
+	}
+	if len(issue.Traces) > 0 {
+		var traces any
+		if err := json.Unmarshal(issue.Traces, &traces); err == nil {
+			m["traces"] = traces
+		}
+	}
+	return m
 }
 
 // eventPayloadFields holds the fields we extract from an event payload.
