@@ -165,7 +165,6 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []runsv2.SelectField {
 		runsv2.SelectTraceID,
 		runsv2.SelectName,
 		runsv2.SelectRunType,
-		runsv2.SelectStatus,
 		runsv2.SelectStartTime,
 		runsv2.SelectEndTime,
 		runsv2.SelectParentRunIDs,
@@ -196,10 +195,20 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []runsv2.SelectField {
 // runV2ToSchema converts a v2 Run into the legacy v1 RunSchema shape so the
 // existing extract/output pipeline can consume it unchanged.
 func runV2ToSchema(r runsv2.Run) langsmith.RunSchema {
+	extra := decodeJSONMap(r.Extra)
+	if md := decodeJSONMap(r.Metadata); md != nil {
+		if extra == nil {
+			extra = map[string]interface{}{}
+		}
+		if _, ok := extra["metadata"]; !ok {
+			extra["metadata"] = md
+		}
+	}
+
 	out := langsmith.RunSchema{
 		Inputs:        decodeJSONMap(r.Inputs),
 		Outputs:       decodeJSONMap(r.Outputs),
-		Extra:         decodeJSONMap(r.Extra),
+		Extra:         extra,
 		FeedbackStats: decodeFeedbackStats(r.FeedbackStats),
 	}
 	if r.ID != nil {
@@ -213,9 +222,6 @@ func runV2ToSchema(r runsv2.Run) langsmith.RunSchema {
 	}
 	if r.RunType != nil {
 		out.RunType = langsmith.RunTypeEnum(*r.RunType)
-	}
-	if r.Status != nil {
-		out.Status = *r.Status
 	}
 	if r.StartTime != nil {
 		if t, err := time.Parse(time.RFC3339, *r.StartTime); err == nil {
