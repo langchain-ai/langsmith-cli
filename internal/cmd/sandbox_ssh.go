@@ -20,7 +20,7 @@ type sandboxSSHSetupInput struct {
 }
 
 var sandboxSSHSetupCommand = structured.Command[*sandboxSSHSetupInput]{
-	Use:   "ssh-setup <name>",
+	Use:   "ssh-setup [name]",
 	Short: "Upload your SSH public key and configure ~/.ssh/config for a sandbox",
 	Long: `Upload your SSH public key to a running sandbox so you can connect
 with standard SSH tools (ssh, scp, rsync, sftp).
@@ -32,7 +32,7 @@ immediately connect with: ssh sandbox-<name>
 Examples:
   langsmith sandbox ssh-setup my-sandbox
   langsmith sandbox ssh-setup my-sandbox --identity ~/.ssh/id_ed25519.pub`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxSSHSetupInput {
 		in := &sandboxSSHSetupInput{}
 		cmd.Flags().StringVar(&in.Identity, "identity", in.Identity, "Path to SSH public key (default: auto-detect)")
@@ -40,7 +40,11 @@ Examples:
 	},
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxSSHSetupInput, args []string) (any, error) {
-		return nil, runSSHSetup(cmd, args[0], in.Identity)
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
+		return nil, runSSHSetup(cmd, name, in.Identity)
 	},
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -101,6 +102,45 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 	return params, nil
 }
 
+func resolveSandboxName(cmd *cobra.Command, args []string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	return defaultSandboxName(cmd)
+}
+
+func defaultSandboxName(cmd *cobra.Command) (string, error) {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return "", err
+	}
+	profileName, profile, ok := cfg.ResolveProfile(flagProfile, profileEnvName())
+	if !ok || profile.DefaultSandboxName == "" {
+		if profileName != "" {
+			return "", fmt.Errorf("no sandbox specified and profile %q has no default sandbox", profileName)
+		}
+		return "", fmt.Errorf("no sandbox specified and no default profile is selected")
+	}
+	return profile.DefaultSandboxName, nil
+}
+
+func setDefaultSandboxName(cmd *cobra.Command, name string) error {
+	if name == "" {
+		return nil
+	}
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return err
+	}
+	profileName, profile, ok := cfg.ResolveProfile(flagProfile, profileEnvName())
+	if !ok {
+		return nil
+	}
+	profile.DefaultSandboxName = name
+	cfg.Profiles[profileName] = profile
+	return cfg.Save()
+}
+
 var sandboxCreateCommand = structured.Command[*sandboxCreateInput]{
 	Use:   "create [name]",
 	Short: "Create a sandbox VM",
@@ -167,6 +207,13 @@ Examples:
 		if err != nil {
 			return nil, fmt.Errorf("creating sandbox: %w", err)
 		}
+		defaultName := resp.Name
+		if defaultName == "" {
+			defaultName = resp.ID
+		}
+		if err := setDefaultSandboxName(cmd, defaultName); err != nil {
+			return nil, fmt.Errorf("setting default sandbox: %w", err)
+		}
 
 		return resp, nil
 	},
@@ -185,7 +232,7 @@ var sandboxServiceURLRender = structured.PropertyList{
 }
 
 var sandboxServiceURLCommand = structured.Command[*sandboxServiceURLInput]{
-	Use:   "service-url <name> --port <port>",
+	Use:   "service-url [name] --port <port>",
 	Short: "Generate an authenticated URL for a sandbox HTTP service",
 	Long: `Generate an authenticated URL for an HTTP service running inside a sandbox.
 
@@ -195,7 +242,7 @@ the browser URL directly.
 Examples:
   langsmith sandbox service-url my-vm --port 8000
   langsmith sandbox service-url my-vm --port 8000 --expires-in-seconds 3600`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxServiceURLInput {
 		in := &sandboxServiceURLInput{}
 		cmd.Flags().IntVar(&in.Port, "port", in.Port, "Port inside the sandbox")
@@ -215,6 +262,10 @@ Examples:
 		if err != nil {
 			return nil, err
 		}
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
 
 		params := langsmith.SandboxBoxGenerateServiceURLParams{
 			Port: langsmith.F(int64(in.Port)),
@@ -223,7 +274,7 @@ Examples:
 			params.ExpiresInSeconds = langsmith.F(in.ExpiresInSeconds)
 		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.GenerateServiceURL(ctx, args[0], params)
+		resp, err := c.SDK.Sandboxes.Boxes.GenerateServiceURL(ctx, name, params)
 		if err != nil {
 			return nil, fmt.Errorf("generating service URL: %w", err)
 		}
@@ -263,16 +314,20 @@ var sandboxListCommand = structured.Command[struct{}]{
 }
 
 var sandboxGetCommand = structured.Command[struct{}]{
-	Use:   "get <name>",
+	Use:   "get [name]",
 	Short: "Get a sandbox by name",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
 			return nil, err
 		}
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.Get(ctx, args[0])
+		resp, err := c.SDK.Sandboxes.Boxes.Get(ctx, name)
 		if err != nil {
 			return nil, fmt.Errorf("getting sandbox: %w", err)
 		}
@@ -290,7 +345,7 @@ type sandboxUpdateInput struct {
 }
 
 var sandboxUpdateCommand = structured.Command[*sandboxUpdateInput]{
-	Use:   "update <name>",
+	Use:   "update [name]",
 	Short: "Update sandbox resources (takes effect on next start)",
 	Long: `Update sandbox resources or proxy configuration.
 
@@ -299,7 +354,7 @@ Proxy config changes take effect immediately.
 
 The --proxy-config flag accepts inline JSON or @file.json. See "create --help"
 for the proxy config JSON format.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxUpdateInput {
 		in := &sandboxUpdateInput{}
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
@@ -310,6 +365,10 @@ for the proxy config JSON format.`,
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxUpdateInput, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+		name, err := resolveSandboxName(cmd, args)
 		if err != nil {
 			return nil, err
 		}
@@ -344,7 +403,7 @@ for the proxy config JSON format.`,
 			return nil, fmt.Errorf("nothing to update (use --vcpus, --memory, --rootfs-capacity, or --proxy-config)")
 		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.Update(ctx, args[0], params)
+		resp, err := c.SDK.Sandboxes.Boxes.Update(ctx, name, params)
 		if err != nil {
 			return nil, fmt.Errorf("updating sandbox: %w", err)
 		}
@@ -355,63 +414,75 @@ for the proxy config JSON format.`,
 }
 
 var sandboxDeleteCommand = structured.Command[struct{}]{
-	Use:   "delete <name>",
+	Use:   "delete [name]",
 	Short: "Delete a sandbox",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
 			return nil, err
 		}
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
 
-		if err := c.SDK.Sandboxes.Boxes.Delete(ctx, args[0]); err != nil {
+		if err := c.SDK.Sandboxes.Boxes.Delete(ctx, name); err != nil {
 			return nil, fmt.Errorf("deleting sandbox: %w", err)
 		}
 
-		return sandboxMessage{Name: args[0], Message: "Sandbox deleted."}, nil
+		return sandboxMessage{Name: name, Message: fmt.Sprintf("Sandbox %s deleted.", name)}, nil
 	},
 	Render: structured.Template(`{{.Message}}
 `),
 }
 
 var sandboxStartCommand = structured.Command[struct{}]{
-	Use:   "start <name>",
+	Use:   "start [name]",
 	Short: "Start a stopped sandbox",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
 			return nil, err
 		}
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
 
-		if _, err := c.SDK.Sandboxes.Boxes.Start(ctx, args[0]); err != nil {
+		if _, err := c.SDK.Sandboxes.Boxes.Start(ctx, name); err != nil {
 			return nil, fmt.Errorf("starting sandbox: %w", err)
 		}
 
-		if _, err := waitForBoxReady(ctx, c, args[0]); err != nil {
+		if _, err := waitForBoxReady(ctx, c, name); err != nil {
 			return nil, err
 		}
-		return sandboxMessage{Name: args[0], Message: fmt.Sprintf("Sandbox %s started", args[0])}, nil
+		return sandboxMessage{Name: name, Message: fmt.Sprintf("Sandbox %s started", name)}, nil
 	},
 	Render: structured.Template(`{{.Message}}
 `),
 }
 
 var sandboxStopCommand = structured.Command[struct{}]{
-	Use:   "stop <name>",
+	Use:   "stop [name]",
 	Short: "Stop a running sandbox (preserves data)",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
 		if err != nil {
 			return nil, err
 		}
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
 
-		if err := c.SDK.Sandboxes.Boxes.Stop(ctx, args[0]); err != nil {
+		if err := c.SDK.Sandboxes.Boxes.Stop(ctx, name); err != nil {
 			return nil, fmt.Errorf("stopping sandbox: %w", err)
 		}
 
-		return sandboxMessage{Name: args[0], Message: "Sandbox stopped."}, nil
+		return sandboxMessage{Name: name, Message: fmt.Sprintf("Sandbox %s stopped.", name)}, nil
 	},
 	Render: structured.Template(`{{.Message}}
 `),
@@ -420,7 +491,7 @@ var sandboxStopCommand = structured.Command[struct{}]{
 type sandboxExecInput struct{}
 
 var sandboxExecCommand = structured.Command[sandboxExecInput]{
-	Use:   "exec <name> -- <command>",
+	Use:   "exec [name] -- <command>",
 	Short: "Execute a command inside a sandbox",
 	Long: `Execute a one-off command inside a running sandbox and print its output.
 
@@ -432,11 +503,19 @@ Examples:
 	Input:        func(cmd *cobra.Command) sandboxExecInput { return sandboxExecInput{} },
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in sandboxExecInput, args []string) (any, error) {
-		name := args[0]
-
 		cmdArgs := cmd.ArgsLenAtDash()
 		if cmdArgs < 0 || cmdArgs >= len(args) {
-			return nil, fmt.Errorf("usage: langsmith sandbox exec <name> -- <command>")
+			return nil, fmt.Errorf("usage: langsmith sandbox exec [name] -- <command>")
+		}
+		var name string
+		var err error
+		if cmdArgs == 0 {
+			name, err = defaultSandboxName(cmd)
+		} else {
+			name = args[0]
+		}
+		if err != nil {
+			return nil, err
 		}
 		command := args[cmdArgs:]
 		if len(command) == 0 {

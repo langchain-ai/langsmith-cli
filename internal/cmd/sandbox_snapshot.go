@@ -147,14 +147,18 @@ fresh checkpoint from the running VM's current state.
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotCaptureInput {
 		in := &snapshotCaptureInput{}
-		cmd.Flags().StringVar(&in.BoxName, "box", in.BoxName, "Sandbox name to capture from (required)")
+		cmd.Flags().StringVar(&in.BoxName, "box", in.BoxName, "Sandbox name to capture from (defaults to profile default sandbox)")
 		cmd.Flags().StringVar(&in.Checkpoint, "checkpoint", in.Checkpoint, "Checkpoint timestamp to use (omit for fresh checkpoint)")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *snapshotCaptureInput, args []string) (any, error) {
 		name := args[0]
 		if in.BoxName == "" {
-			return nil, fmt.Errorf("--box is required")
+			boxName, err := defaultSandboxName(cmd)
+			if err != nil {
+				return nil, err
+			}
+			in.BoxName = boxName
 		}
 
 		c, err := cmdutil.GetClient(cmd)
@@ -225,7 +229,7 @@ var snapshotDeleteCommand = structured.Command[struct{}]{
 			return nil, fmt.Errorf("deleting snapshot: %w", err)
 		}
 
-		return sandboxMessage{Name: args[0], Message: "Snapshot deleted."}, nil
+		return sandboxMessage{Name: args[0], Message: fmt.Sprintf("Snapshot %s deleted.", args[0])}, nil
 	},
 	Render: structured.Template(`{{.Message}}
 `),

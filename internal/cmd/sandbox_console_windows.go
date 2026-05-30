@@ -9,12 +9,16 @@ import (
 )
 
 var sandboxConsoleCommand = structured.Command[struct{}]{
-	Use:          "console <name>",
+	Use:          "console [name]",
 	Short:        "Open an interactive shell inside a sandbox (not supported on Windows)",
-	Args:         cobra.ExactArgs(1),
+	Args:         cobra.MaximumNArgs(1),
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
-		return nil, fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandbox ssh-setup %s", args[0])
+		name, err := resolveSandboxName(cmd, args)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandbox ssh-setup %s", name)
 	},
 }
 
