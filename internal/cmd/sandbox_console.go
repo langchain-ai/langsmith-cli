@@ -68,7 +68,7 @@ func sandboxConsoleEnvFrom(environ []string, extra []string) (map[string]string,
 			continue
 		}
 		local[key] = value
-		if value != "" && sandboxConsoleEnvAllowed(key) {
+		if value != "" && sandboxConsoleEnvPropagated(key) {
 			env[key] = value
 		}
 	}
@@ -90,7 +90,7 @@ func sandboxConsoleEnvFrom(environ []string, extra []string) (map[string]string,
 	return env, nil
 }
 
-func sandboxConsoleEnvAllowed(key string) bool {
+func sandboxConsoleEnvPropagated(key string) bool {
 	switch key {
 	case "TERM", "COLORTERM", "LANG", "CLICOLOR", "CLICOLOR_FORCE", "FORCE_COLOR", "NO_COLOR":
 		return true
