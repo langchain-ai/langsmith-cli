@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -20,6 +21,7 @@ import (
 type sandboxConsoleInput struct {
 	Shell           string
 	ForwardSSHAgent bool
+	Env             []string
 }
 
 var sandboxConsoleCommand = structured.Command[*sandboxConsoleInput]{
@@ -33,17 +35,19 @@ giving you a full interactive shell (bash by default).
 Examples:
   langsmith sandbox console my-vm
   langsmith sandbox console my-vm --shell /bin/sh
+  langsmith sandbox console my-vm --env TERM=xterm-256color --env FOO
   langsmith sandbox console my-vm --forward-ssh-agent`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxConsoleInput {
 		in := &sandboxConsoleInput{}
 		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use (default: sandbox default, usually /bin/bash)")
 		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the sandbox")
+		cmd.Flags().StringArrayVar(&in.Env, "env", nil, "Additional environment variable to pass into the sandbox (KEY or KEY=VALUE, repeatable)")
 		return in
 	},
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxConsoleInput, args []string) (any, error) {
-		return nil, runConsole(args[0], in.Shell, in.ForwardSSHAgent)
+		return nil, runConsole(args[0], in.Shell, in.ForwardSSHAgent, in.Env)
 	},
 }
 
@@ -51,7 +55,51 @@ func newSandboxConsoleCmd() *cobra.Command {
 	return sandboxConsoleCommand.Cobra()
 }
 
-func runConsole(name, shell string, forwardSSHAgent bool) error {
+func sandboxConsoleEnv(extra []string) (map[string]string, error) {
+	return sandboxConsoleEnvFrom(os.Environ(), extra)
+}
+
+func sandboxConsoleEnvFrom(environ []string, extra []string) (map[string]string, error) {
+	env := make(map[string]string)
+	local := make(map[string]string)
+	for _, kv := range environ {
+		key, value, ok := strings.Cut(kv, "=")
+		if !ok || key == "" {
+			continue
+		}
+		local[key] = value
+		if value != "" && sandboxConsoleEnvAllowed(key) {
+			env[key] = value
+		}
+	}
+	for _, spec := range extra {
+		key, value, hasValue := strings.Cut(spec, "=")
+		if key == "" {
+			return nil, fmt.Errorf("--env must be KEY or KEY=VALUE")
+		}
+		if hasValue {
+			env[key] = value
+			continue
+		}
+		value, ok := local[key]
+		if !ok {
+			return nil, fmt.Errorf("--env %s is not set in the local environment", key)
+		}
+		env[key] = value
+	}
+	return env, nil
+}
+
+func sandboxConsoleEnvAllowed(key string) bool {
+	switch key {
+	case "TERM", "COLORTERM", "LANG", "CLICOLOR", "CLICOLOR_FORCE", "FORCE_COLOR", "NO_COLOR":
+		return true
+	default:
+		return strings.HasPrefix(key, "LC_")
+	}
+}
+
+func runConsole(name, shell string, forwardSSHAgent bool, extraEnv []string) error {
 	client := MustGetClient()
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
@@ -86,10 +134,16 @@ func runConsole(name, shell string, forwardSSHAgent bool) error {
 		IdleTimeoutSeconds: langsmith.Int(-1),
 		SSHAgentForward:    langsmith.Bool(forwardSSHAgent),
 	}
+	env, err := sandboxConsoleEnv(extraEnv)
+	if err != nil {
+		return err
+	}
+	if len(env) > 0 {
+		params.Env = langsmith.F(env)
+	}
 	if shell != "" {
 		params.Shell = langsmith.String(shell)
 	}
-	var err error
 	handle, err = client.SDK.Sandboxes.Boxes.StartCommandWithCallbacks(ctx, name, params, callbacks)
 	close(handleReady)
 	if err != nil {
