@@ -12,6 +12,8 @@ name: Sync RC branches with upstream
 # Requires a secret RC_SYNC_TOKEN with contents:write + issues:write on BOTH
 # repos. The default GITHUB_TOKEN is repo-scoped and cannot push cross-repo.
 
+permissions: {}
+
 on:
   schedule:
     - cron: '23 */4 * * *' # every 4 hours
