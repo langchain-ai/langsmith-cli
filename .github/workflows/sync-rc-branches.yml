@@ -1,0 +1,63 @@
+name: Sync RC branches with upstream
+
+# Keeps the engine-facing RC branches in sync with their upstream integration
+# branches while the v2 runs-query work is consumed pre-release:
+#   - langsmith-go  rc/runs-v2-engine  <- next   (custom code lives off `next`)
+#   - langsmith-cli rc/runs-v2-engine  <- main
+#
+# Merges (never rebases/force-pushes) so engine's go.mod pin to the RC HEAD
+# stays valid. On conflict it leaves the last-good RC untouched and opens a
+# single deduped issue for manual resolution.
+#
+# Requires a secret RC_SYNC_TOKEN with contents:write + issues:write on BOTH
+# repos. The default GITHUB_TOKEN is repo-scoped and cannot push cross-repo.
+
+on:
+  schedule:
+    - cron: '23 */4 * * *' # every 4 hours
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-rc-runs-v2-engine
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { repo: langchain-ai/langsmith-go, upstream: next, rc: rc/runs-v2-engine }
+          - { repo: langchain-ai/langsmith-cli, upstream: main, rc: rc/runs-v2-engine }
+    steps:
+      - name: Merge ${{ matrix.upstream }} into ${{ matrix.rc }} (${{ matrix.repo }})
+        env:
+          GH_TOKEN: ${{ secrets.RC_SYNC_TOKEN }}
+          REPO: ${{ matrix.repo }}
+          UPSTREAM: ${{ matrix.upstream }}
+          RC: ${{ matrix.rc }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "langsmith-rc-sync[bot]"
+          git config --global user.email "rc-sync@users.noreply.github.com"
+
+          git clone --no-tags "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" repo
+          cd repo
+          git fetch origin "$UPSTREAM" "$RC"
+          git checkout "$RC"
+
+          if git merge --no-edit "origin/$UPSTREAM"; then
+            git push origin "HEAD:$RC"
+            echo "Synced $REPO: $UPSTREAM -> $RC"
+          else
+            git merge --abort
+            echo "::warning::Merge conflict syncing $UPSTREAM into $RC in $REPO"
+            TITLE="RC sync conflict: $UPSTREAM -> $RC"
+            BODY="Automated RC sync could not merge \`$UPSTREAM\` into \`$RC\`. Resolve manually: \`git checkout $RC && git merge origin/$UPSTREAM\`, then push."
+            EXISTING="$(gh issue list --repo "$REPO" --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')"
+            if [ -z "$EXISTING" ]; then
+              gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY"
+            fi
+            exit 1
+          fi
