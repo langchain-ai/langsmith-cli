@@ -29,6 +29,7 @@ type FilterFlags struct {
 	Tags         string
 	Metadata     string
 	RawFilter    string
+	Version      string
 }
 
 // addCommonFilterFlags attaches shared filter flags to a command.
@@ -53,6 +54,11 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	if includeRunType {
 		cmd.Flags().StringVar(&f.RunType, "run-type", "", "Filter by run type (llm, chain, tool, retriever, prompt, parser)")
 	}
+}
+
+// addVersionFlag attaches the --version flag for selecting the runs query backend.
+func addVersionFlag(cmd *cobra.Command, f *FilterFlags) {
+	cmd.Flags().StringVar(&f.Version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 }
 
 // resolveStartTime returns the start time for a query.
