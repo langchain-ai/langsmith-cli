@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -41,6 +44,7 @@ func TestTraceListCmd_Flags(t *testing.T) {
 		{"include-io", "false", ""},
 		{"full", "false", ""},
 		{"show-hierarchy", "false", ""},
+		{"one-per-thread", "false", ""},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {
@@ -73,6 +77,86 @@ func TestTraceListCmd_NoRunTypeFlag(t *testing.T) {
 	cmd := newTraceListCmd()
 	if cmd.Flags().Lookup("run-type") != nil {
 		t.Error("trace list should not have --run-type flag")
+	}
+}
+
+// traceListTestServer returns a handler that mocks /sessions and /runs/query.
+// sessions maps project name to session ID. requestBodies captures every
+// /runs/query request body.
+func traceListTestServer(t *testing.T, sessions map[string]string, requestBodies *[]map[string]any) *httptest.Server {
+	t.Helper()
+	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
+			name := r.URL.Query().Get("name")
+			id, ok := sessions[name]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": id, "name": name}})
+		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decoding runs query body: %v", err)
+			}
+			*requestBodies = append(*requestBodies, body)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"runs": []map[string]any{{
+					"id":         "run-1",
+					"trace_id":   "trace-1",
+					"name":       "agent",
+					"run_type":   "chain",
+					"start_time": "2026-01-01T00:00:00Z",
+				}},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+}
+
+func TestTraceListCmd_OnePerThreadSendsServerParam(t *testing.T) {
+	var requestBodies []map[string]any
+	ts := traceListTestServer(t, map[string]string{"my-app": "session-123"}, &requestBodies)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	cmd := newTraceListCmd()
+	_ = cmd.Flags().Set("project", "my-app")
+	_ = cmd.Flags().Set("one-per-thread", "true")
+	_ = cmd.Flags().Set("limit", "1")
+
+	_ = captureStdout(t, func() { cmd.Run(cmd, nil) })
+
+	if len(requestBodies) != 1 {
+		t.Fatalf("expected 1 runs query request, got %d", len(requestBodies))
+	}
+	if got := requestBodies[0]["one_per_thread"]; got != true {
+		t.Fatalf("expected one_per_thread=true, got %#v in %#v", got, requestBodies[0])
+	}
+}
+
+func TestTraceListCmd_OnePerThreadDefaultOmitsServerParam(t *testing.T) {
+	var requestBodies []map[string]any
+	ts := traceListTestServer(t, map[string]string{"my-app": "session-123"}, &requestBodies)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	cmd := newTraceListCmd()
+	_ = cmd.Flags().Set("project", "my-app")
+	_ = cmd.Flags().Set("limit", "1")
+
+	_ = captureStdout(t, func() { cmd.Run(cmd, nil) })
+
+	if len(requestBodies) != 1 {
+		t.Fatalf("expected 1 runs query request, got %d", len(requestBodies))
+	}
+	if _, ok := requestBodies[0]["one_per_thread"]; ok {
+		t.Fatalf("expected one_per_thread to be omitted, got %#v", requestBodies[0])
 	}
 }
 
