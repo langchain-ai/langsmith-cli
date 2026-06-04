@@ -311,6 +311,37 @@ langsmith self-update --dry-run
 langsmith self-update
 ```
 
+### `setup` — Trace coding agents to LangSmith
+
+Configure Claude Code or Codex to send full-content traces (prompts, responses, tool
+calls) to a LangSmith project. Installs the LangSmith tracing plugin for the agent and
+writes the credentials it needs to the agent's local config, so every future session
+traces automatically. Requires an API key (the key is written to the agent config at
+`0600`); OAuth profiles are not supported here.
+
+```bash
+# Configure Claude Code (writes ~/.claude/settings.json)
+langsmith setup claude
+
+# Configure Codex (writes ~/.codex/config.toml + ~/.codex/langsmith.json)
+langsmith setup codex
+
+# Both at once
+langsmith setup all
+
+# Trace to a named project (default: "claude-code" / "codex", or $LANGSMITH_PROJECT)
+langsmith setup claude --project my-agent
+
+# Write project-local config instead of user-global
+langsmith setup claude --scope project    # ./.claude/settings.local.json
+langsmith setup codex --scope project     # ./.codex/...
+
+# Only write config; skip the plugin marketplace install step
+langsmith setup claude --no-install
+```
+
+After running, start the agent. Verify Claude Code with `tail -f ~/.claude/state/hook.log`.
+
 ## Filter Options
 
 Most `trace` and `run` commands share these filter options:
