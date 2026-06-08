@@ -311,6 +311,53 @@ langsmith self-update --dry-run
 langsmith self-update
 ```
 
+### `trace setup` — Trace coding agents to LangSmith
+
+Configure Claude Code or Codex to send full-content traces (prompts, responses, tool
+calls) to a LangSmith project, by writing the agent's local config files. Requires an
+API key — it is written to the agent config at `0600` (OAuth profiles are not supported
+here). Each command previews the exact changes and asks you to confirm (pass `--yes` to skip the prompt), then installs the plugin via the agent's own CLI.
+
+```bash
+# Bare: try both Claude Code and Codex (best-effort; an uninstalled agent just fails)
+langsmith trace setup
+
+# Configure Claude Code: API key, URL, and project as positional args (bare host gains https://)
+langsmith trace setup claude demo-key dev.smith.com shared-claude
+
+# Or take the key + URL from env/profile
+langsmith trace setup claude
+
+# Configure Codex (writes ~/.codex/config.toml + ~/.codex/langsmith.json)
+langsmith trace setup codex
+
+# Trace to a named project (default: "claude-code" / "codex", or $LANGSMITH_PROJECT)
+langsmith trace setup claude --project my-agent
+
+# Override the auto-detected name/email attached to every trace
+langsmith trace setup claude --user "Jane Doe" --email jane@example.com
+
+# Pass everything explicitly (self-hosted or a specific workspace key)
+langsmith trace setup claude demo-key https://my-host/api/v1 my-team   # all positional
+
+# Apply without the interactive confirmation prompt
+langsmith trace setup claude --yes
+
+# Write config only; skip running the plugin install
+langsmith trace setup claude --no-install
+
+# Write project-local config instead of user-global
+langsmith trace setup claude --scope project    # ./.claude/settings.local.json
+langsmith trace setup codex --scope project     # ./.codex/...
+```
+
+`trace setup claude` installs the plugin via `claude plugin marketplace add` + `claude plugin install`;
+`trace setup codex` fetches it via `codex plugin marketplace add`. Once enabled, the plugin runs on
+every session and sends your prompts, responses, and tool output to LangSmith. Your name and
+email (auto-detected from `git config user.name`/`user.email`, or set via `--user`/`--email`)
+are attached to every trace as `user_name`/`user_email` metadata. Verify Claude Code with
+`tail -f ~/.claude/state/hook.log`.
+
 ## Filter Options
 
 Most `trace` and `run` commands share these filter options:
