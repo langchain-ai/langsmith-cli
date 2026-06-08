@@ -69,6 +69,11 @@ func assertPerm0600(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
 	}
+	// Windows does not implement Unix permission bits
+	// so we just have to check for Existence (above test)
+	if runtime.GOOS == "windows" {
+		return
+	}
 	if perm := fi.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("expected %s to be 0600, got %o", path, perm)
 	}
