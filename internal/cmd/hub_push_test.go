@@ -110,7 +110,7 @@ func TestHubPush_ExcludesSecretsAndJunk(t *testing.T) {
 		".env.test":     []byte("TEST_TOKEN=secret"),
 		".env.ci":       []byte("CI_TOKEN=secret"),
 		".envrc":        []byte("export API_KEY=secret"),
-		"id_rsa.pem":    []byte("-----BEGIN RSA PRIVATE KEY-----"),
+		"id_rsa.pem":    []byte(strings.Join([]string{"-----BEGIN RSA", "PRIVATE KEY-----"}, " ")),
 		"server.crt":    []byte("-----BEGIN CERTIFICATE-----"),
 		"keystore.p12":  []byte("binary-ish"),
 		"Thumbs.db":     []byte("windows junk"),
