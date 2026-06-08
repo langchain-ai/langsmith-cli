@@ -7,6 +7,7 @@ require (
 	github.com/itchyny/gojq v0.12.15
 	github.com/langchain-ai/langsmith-go v0.14.1-0.20260528183050-669ac70d7d2d
 	github.com/olekukonko/tablewriter v0.0.5
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/xlab/treeprint v1.2.0

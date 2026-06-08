@@ -347,6 +347,7 @@ func newPromptPushCmd() *cobra.Command {
 	var (
 		manifestFile string
 		parentCommit string
+		description  string
 	)
 
 	cmd := &cobra.Command{
@@ -386,6 +387,9 @@ func newPromptPushCmd() *cobra.Command {
 			if parentCommit != "" {
 				params.ParentCommit = langsmith.F(parentCommit)
 			}
+			if description != "" {
+				params.Description = langsmith.F(description)
+			}
 
 			resp, err := c.SDK.Commits.New(ctx, owner, repo, params)
 			if err != nil {
@@ -405,6 +409,7 @@ func newPromptPushCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&manifestFile, "file", "f", "", "Path to manifest JSON file (reads stdin if omitted)")
 	cmd.Flags().StringVar(&parentCommit, "parent-commit", "", "Parent commit hash (optional)")
+	cmd.Flags().StringVar(&description, "description", "", "Commit description / message (optional)")
 	return cmd
 }
 
