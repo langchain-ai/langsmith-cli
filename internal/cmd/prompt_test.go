@@ -100,3 +100,50 @@ func TestPromptPush_OmitsDescriptionWhenUnset(t *testing.T) {
 		t.Fatalf("description should be omitted when --description is unset, body: %v", gotBody)
 	}
 }
+
+// TestPromptCommits_ShowsDescription verifies the commits read path surfaces
+// the per-commit description in JSON output.
+func TestPromptCommits_ShowsDescription(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/commits/acme/my-prompt" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// Return the commit only on the first page; an empty second page
+		// terminates the offset pager.
+		if off := r.URL.Query().Get("offset"); off != "" && off != "0" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"total": 1, "commits": []map[string]any{}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total": 1,
+			"commits": []map[string]any{
+				{
+					"id":          "11111111-1111-1111-1111-111111111111",
+					"commit_hash": "abc123",
+					"description": "first commit via CLI",
+					"created_at":  "2026-06-08T12:00:00Z",
+				},
+			},
+		})
+	})
+
+	out := captureStdout(t, func() {
+		if _, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL,
+			"prompt", "commits", "acme/my-prompt", "--format", "json"); err != nil {
+			t.Fatalf("commits command returned error: %v", err)
+		}
+	})
+
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("parsing commits output %q: %v", out, err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 commit, got %d: %v", len(got), got)
+	}
+	if d := got[0]["description"]; d != "first commit via CLI" {
+		t.Fatalf("description in commits output = %v, want %q", d, "first commit via CLI")
+	}
+}
