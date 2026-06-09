@@ -2,9 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/extract"
@@ -33,6 +38,7 @@ Examples:
 
 	cmd.AddCommand(newThreadListCmd())
 	cmd.AddCommand(newThreadGetCmd())
+	cmd.AddCommand(newThreadMessagesCmd())
 	return cmd
 }
 
@@ -269,4 +275,217 @@ func newThreadGetCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
+}
+
+func newThreadMessagesCmd() *cobra.Command {
+	var (
+		project    string
+		limit      int
+		cursor     string
+		traceID    string
+		outputFile string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "messages THREAD_ID",
+		Short: "Get conversation messages for a thread",
+		Long: `Stream conversation messages across all turns in a thread.
+
+Each response turn is preceded by a turn_boundary marker that carries the
+trace_id and turn index, so you can deeplink to the originating trace.
+
+Results are paginated (default: 10 turns, max: 100). Pass --cursor with the
+value from a previous response to advance forward or backward.
+
+Examples:
+  langsmith thread messages <thread-id> --project my-chatbot
+  langsmith thread messages <thread-id> --project my-chatbot --limit 5
+  langsmith thread messages <thread-id> --project my-chatbot --cursor <cursor>
+  langsmith thread messages <thread-id> --project my-chatbot --trace-id <trace-id>`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			threadID := args[0]
+
+			project = ResolveProject(project)
+			if project == "" {
+				ExitError("--project is required for thread messages (or set LANGSMITH_PROJECT)")
+			}
+
+			c := MustGetClient()
+			ctx := context.Background()
+
+			sessionID, err := c.ResolveSessionID(ctx, project)
+			if err != nil {
+				ExitErrorf("%v", err)
+			}
+
+			q := url.Values{}
+			q.Set("project_id", sessionID)
+			if limit > 0 {
+				q.Set("limit", strconv.Itoa(limit))
+			}
+			if cursor != "" {
+				q.Set("cursor", cursor)
+			}
+			if traceID != "" {
+				q.Set("trace_id", traceID)
+			}
+
+			path := fmt.Sprintf("/v2/threads/%s/messages?%s", url.PathEscape(threadID), q.Encode())
+
+			extraHeaders := http.Header{"Accept": {"text/event-stream"}}
+			_, _, _, body, err := c.RawDo(ctx, http.MethodGet, path, nil, extraHeaders)
+			if err != nil {
+				ExitErrorf("%v", err)
+			}
+
+			groups, nextCursor, prevCursor, sseErr := parseSSEGroups(body)
+			if sseErr != "" {
+				ExitErrorf("server error: %s", sseErr)
+			}
+
+			result := map[string]any{
+				"thread_id": threadID,
+				"groups":    groups,
+				"cursors": map[string]any{
+					"next": nextCursor,
+					"prev": prevCursor,
+				},
+			}
+
+			fmt_ := GetFormat()
+			if fmt_ == "pretty" {
+				printThreadMessages(result)
+			} else {
+				output.OutputJSON(result, outputFile)
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "Maximum number of turns to return (max 100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous response")
+	cmd.Flags().StringVar(&traceID, "trace-id", "", "Start the page at a specific trace ID")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+
+	return cmd
+}
+
+// sseEvent is a parsed Server-Sent Event.
+type sseEvent struct {
+	Event string
+	Data  string
+}
+
+// parseSSE parses a raw SSE response body into discrete events.
+func parseSSE(body []byte) []sseEvent {
+	var events []sseEvent
+	var currentEvent, currentData string
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			if currentData != "" || currentEvent != "" {
+				events = append(events, sseEvent{Event: currentEvent, Data: currentData})
+				currentEvent = ""
+				currentData = ""
+			}
+			continue
+		}
+		if after, ok := strings.CutPrefix(line, "event: "); ok {
+			currentEvent = after
+		} else if after, ok := strings.CutPrefix(line, "data: "); ok {
+			currentData = after
+		}
+	}
+	if currentData != "" || currentEvent != "" {
+		events = append(events, sseEvent{Event: currentEvent, Data: currentData})
+	}
+	return events
+}
+
+// parseSSEGroups collects ConversationGroups and cursors from a thread messages SSE stream.
+func parseSSEGroups(body []byte) (groups []any, nextCursor, prevCursor, errMsg string) {
+	for _, ev := range parseSSE(body) {
+		switch ev.Event {
+		case "data", "":
+			if ev.Data == "" {
+				continue
+			}
+			var group map[string]any
+			if err := json.Unmarshal([]byte(ev.Data), &group); err != nil {
+				continue
+			}
+			groups = append(groups, group)
+		case "metadata":
+			var meta struct {
+				NextCursor *string `json:"next_cursor"`
+				PrevCursor *string `json:"prev_cursor"`
+			}
+			if err := json.Unmarshal([]byte(ev.Data), &meta); err == nil {
+				if meta.NextCursor != nil {
+					nextCursor = *meta.NextCursor
+				}
+				if meta.PrevCursor != nil {
+					prevCursor = *meta.PrevCursor
+				}
+			}
+		case "error":
+			var errPayload struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(ev.Data), &errPayload); err == nil {
+				errMsg = errPayload.Error
+			}
+		}
+	}
+	return
+}
+
+// printThreadMessages prints a human-readable view of thread messages grouped by turn.
+func printThreadMessages(result map[string]any) {
+	threadID, _ := result["thread_id"].(string)
+	groups, _ := result["groups"].([]any)
+
+	if len(groups) == 0 {
+		fmt.Println("No messages found.")
+		return
+	}
+
+	fmt.Printf("Thread: %s\n", threadID)
+
+	for _, g := range groups {
+		group, _ := g.(map[string]any)
+		gType, _ := group["type"].(string)
+
+		switch gType {
+		case "turn_boundary":
+			boundary, _ := group["turnBoundary"].(map[string]any)
+			turnIndex, _ := boundary["turn_index"].(float64)
+			traceID, _ := boundary["trace_id"].(string)
+			fmt.Printf("\n--- Turn %d (trace: %s) ---\n", int(turnIndex)+1, traceID)
+		case "message":
+			msg, _ := group["message"].(map[string]any)
+			printMessage(msg)
+		case "tool_interaction":
+			aiMsg, _ := group["aiMessage"].(map[string]any)
+			printMessage(aiMsg)
+			toolCalls, _ := group["toolCalls"].([]any)
+			for _, tc := range toolCalls {
+				call, _ := tc.(map[string]any)
+				name, _ := call["name"].(string)
+				fmt.Printf("  [tool_call] %s\n", name)
+				if resultMsg, ok := call["result"].(map[string]any); ok {
+					printMessage(resultMsg)
+				}
+			}
+		}
+	}
+
+	cursors, _ := result["cursors"].(map[string]any)
+	if next, ok := cursors["next"].(string); ok && next != "" {
+		fmt.Printf("\nNext cursor: %s\n", next)
+	}
+	if prev, ok := cursors["prev"].(string); ok && prev != "" {
+		fmt.Printf("Prev cursor: %s\n", prev)
+	}
 }
