@@ -326,6 +326,7 @@ func newPromptPullCmd() *cobra.Command {
 				"owner":       owner,
 				"repo":        repo,
 				"commit_hash": resp.CommitHash,
+				"description": resp.Description,
 				"manifest":    resp.Manifest,
 			}
 
@@ -454,7 +455,7 @@ func newPromptCommitsCmd() *cobra.Command {
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"Hash", "Author", "Downloads", "Created"}
+				columns := []string{"Hash", "Author", "Description", "Downloads", "Created"}
 				var rows [][]string
 				for _, c := range commits {
 					hash := c.CommitHash
@@ -464,6 +465,7 @@ func newPromptCommitsCmd() *cobra.Command {
 					rows = append(rows, []string{
 						hash,
 						c.FullName,
+						truncate(c.Description, 40),
 						fmt.Sprintf("%d", c.NumDownloads),
 						formatTimeShort(c.CreatedAt),
 					})
@@ -476,6 +478,7 @@ func newPromptCommitsCmd() *cobra.Command {
 						"id":                 c.ID,
 						"commit_hash":        c.CommitHash,
 						"parent_commit_hash": nilStr(c.ParentCommitHash),
+						"description":        c.Description,
 						"full_name":          c.FullName,
 						"num_downloads":      c.NumDownloads,
 						"num_views":          c.NumViews,
