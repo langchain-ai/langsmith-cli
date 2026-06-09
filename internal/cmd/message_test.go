@@ -115,7 +115,7 @@ func TestTraceMessages_Success(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "my-project", "--limit", "5"})
+		cmd.SetArgs([]string{"--project", "my-project", "--limit", "5", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -163,12 +163,17 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 			"--run-type", "llm",
 			"--error",
 			"--filter", "gte(latency, 5)",
+			"--since", "2024-01-01T00:00:00Z",
 		})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
+	// min_start_time is a required request param; verify it is forwarded.
+	if receivedBody["min_start_time"] != "2024-01-01T00:00:00Z" {
+		t.Errorf("expected min_start_time=2024-01-01T00:00:00Z, got %v", receivedBody["min_start_time"])
+	}
 	if receivedBody["run_type"] != "llm" {
 		t.Errorf("expected run_type=llm, got %v", receivedBody["run_type"])
 	}
@@ -254,7 +259,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "my-project", "--limit", "2"})
+		cmd.SetArgs([]string{"--project", "my-project", "--limit", "2", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -345,7 +350,7 @@ func TestTraceMessages_Pagination(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "pag-proj", "--limit", "15"})
+		cmd.SetArgs([]string{"--project", "pag-proj", "--limit", "15", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -402,7 +407,7 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "lim-proj", "--limit", "5"})
+		cmd.SetArgs([]string{"--project", "lim-proj", "--limit", "5", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -450,7 +455,7 @@ func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "cur-proj", "--limit", "20", "--cursor", "cursor-abc"})
+		cmd.SetArgs([]string{"--project", "cur-proj", "--limit", "20", "--cursor", "cursor-abc", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -506,7 +511,7 @@ func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
 		// --cursor "" means first page in single-page mode
-		cmd.SetArgs([]string{"--project", "first-proj", "--limit", "20", "--cursor", ""})
+		cmd.SetArgs([]string{"--project", "first-proj", "--limit", "20", "--cursor", "", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -552,7 +557,7 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 
 	captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "bef-proj", "--before", "2024-01-15T00:00:00Z"})
+		cmd.SetArgs([]string{"--project", "bef-proj", "--before", "2024-01-15T00:00:00Z", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -610,7 +615,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "fb-proj", "--limit", "20"})
+		cmd.SetArgs([]string{"--project", "fb-proj", "--limit", "20", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -660,7 +665,7 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
-		cmd.SetArgs([]string{"--project", "empty-proj"})
+		cmd.SetArgs([]string{"--project", "empty-proj", "--since", "2024-01-01T00:00:00Z"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

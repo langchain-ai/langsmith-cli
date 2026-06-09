@@ -64,6 +64,13 @@ Examples:
 				ExitError("--limit cannot exceed 100 for trace messages")
 			}
 
+			// min_start_time is a required request param for POST /v2/traces/messages.
+			// Unlike the read/query commands, this command has no implicit time window:
+			// require the caller to scope it explicitly rather than silently defaulting.
+			if ff.Since == "" && ff.LastNMinutes <= 0 {
+				ExitError("trace messages requires an explicit start time: pass --since <timestamp> or --last-n-minutes <N>")
+			}
+
 			c := MustGetClient()
 			ctx := context.Background()
 			projectName := ResolveProject(ff.Project)
