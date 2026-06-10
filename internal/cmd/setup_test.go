@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -32,19 +31,6 @@ func hermeticSetupEnv(t *testing.T) (claudeDir, codexDir string) {
 	return claudeDir, codexDir
 }
 
-// stubRunSetupCommand records install shell-outs instead of executing them.
-func stubRunSetupCommand(t *testing.T) *[][]string {
-	t.Helper()
-	old := runSetupCommand
-	var calls [][]string
-	runSetupCommand = func(_ context.Context, name string, args ...string) error {
-		calls = append(calls, append([]string{name}, args...))
-		return nil
-	}
-	t.Cleanup(func() { runSetupCommand = old })
-	return &calls
-}
-
 func readJSONFile(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -69,9 +55,15 @@ func assertPerm0600(t *testing.T, path string) {
 	}
 }
 
+func claudeEnv(t *testing.T, claudeDir string) map[string]any {
+	t.Helper()
+	doc := readJSONFile(t, filepath.Join(claudeDir, "settings.json"))
+	env, _ := doc["env"].(map[string]any)
+	return env
+}
+
 func TestSetupClaudeWritesSettings(t *testing.T) {
 	claudeDir, _ := hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
 
 	// Pre-existing settings with an unrelated top-level key and env key that
 	// must survive the merge.
@@ -88,7 +80,6 @@ func TestSetupClaudeWritesSettings(t *testing.T) {
 		"setup", "claude",
 		"--api-key", "test-key-abc",
 		"--project", "demo",
-		"--no-install",
 	)
 	if err != nil {
 		t.Fatalf("setup claude error: %v\n%s", err, stdout)
@@ -130,60 +121,117 @@ func TestSetupClaudeWritesSettings(t *testing.T) {
 		t.Fatalf("unrelated env key was not preserved: %+v", env)
 	}
 	if env["TRACE_TO_LANGSMITH"] != "true" || env["CC_LANGSMITH_API_KEY"] != "test-key-abc" ||
-		env["CC_LANGSMITH_PROJECT"] != "demo" || env["LANGSMITH_API_KEY"] != "test-key-abc" ||
-		env["LANGSMITH_PROJECT"] != "demo" {
+		env["CC_LANGSMITH_PROJECT"] != "demo" {
 		t.Fatalf("tracing env not written correctly: %+v", env)
 	}
-	if _, ok := env["LANGSMITH_ENDPOINT"]; ok {
-		t.Fatalf("endpoint env should be omitted for default URL: %+v", env)
+	for _, key := range []string{"LANGSMITH_API_KEY", "LANGSMITH_PROJECT", "LANGSMITH_ENDPOINT", "CC_LANGSMITH_RUNS_ENDPOINTS"} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("env key %s should not be written: %+v", key, env)
+		}
 	}
 	assertPerm0600(t, settingsPath)
 }
 
-func TestSetupClaudeInstallShellOut(t *testing.T) {
+func TestSetupClaudePositionalKeyDefaults(t *testing.T) {
+	claudeDir, _ := hermeticSetupEnv(t)
+
+	stdout, err := executeCommand(t, "--format=json", "setup", "claude", "test-key-abc")
+	if err != nil {
+		t.Fatalf("setup claude error: %v\n%s", err, stdout)
+	}
+	if strings.Contains(stdout, "test-key-abc") {
+		t.Fatalf("setup output leaked the api key: %s", stdout)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout not JSON: %v\n%s", err, stdout)
+	}
+	if _, ok := result["project"]; ok {
+		t.Fatalf("project should be omitted when not configured (plugin default applies): %+v", result)
+	}
+
+	env := claudeEnv(t, claudeDir)
+	if env["TRACE_TO_LANGSMITH"] != "true" || env["CC_LANGSMITH_API_KEY"] != "test-key-abc" {
+		t.Fatalf("tracing env not written correctly: %+v", env)
+	}
+	if _, ok := env["CC_LANGSMITH_PROJECT"]; ok {
+		t.Fatalf("CC_LANGSMITH_PROJECT should be omitted so the plugin default applies: %+v", env)
+	}
+	if _, ok := env["CC_LANGSMITH_RUNS_ENDPOINTS"]; ok {
+		t.Fatalf("runs endpoints should be omitted for the default SaaS URL: %+v", env)
+	}
+}
+
+func TestSetupClaudeKeyConflict(t *testing.T) {
 	hermeticSetupEnv(t)
-	calls := stubRunSetupCommand(t)
 
-	if _, err := executeCommand(t,
-		"setup", "claude", "--api-key", "k", "--project", "p",
-	); err != nil {
-		t.Fatalf("setup claude error: %v", err)
+	_, err := executeCommand(t, "setup", "claude", "key-one", "--api-key", "key-two")
+	if err == nil {
+		t.Fatal("expected an error when the key is passed both positionally and via --api-key")
 	}
-
-	if len(*calls) != 1 {
-		t.Fatalf("expected one install shell-out, got %d: %+v", len(*calls), *calls)
-	}
-	got := (*calls)[0]
-	want := []string{"claude", "plugin", "marketplace", "add", claudeMarketplaceURL}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("unexpected install command\n got: %v\nwant: %v", got, want)
+	if !strings.Contains(err.Error(), "--api-key") {
+		t.Fatalf("expected conflicting-key error, got: %v", err)
 	}
 }
 
 func TestSetupClaudeSelfHostedEndpoint(t *testing.T) {
 	claudeDir, _ := hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
 
 	if _, err := executeCommand(t,
 		"setup", "claude",
-		"--api-key", "k", "--project", "p", "--no-install",
+		"--api-key", "k", "--project", "p",
 		"--api-url", "https://ls.internal.example.com/api/v1",
 	); err != nil {
 		t.Fatalf("setup claude error: %v", err)
 	}
 
-	doc := readJSONFile(t, filepath.Join(claudeDir, "settings.json"))
-	env, _ := doc["env"].(map[string]any)
-	if env["LANGSMITH_ENDPOINT"] != "https://ls.internal.example.com" {
-		t.Fatalf("expected normalized self-hosted endpoint, got %+v", env["LANGSMITH_ENDPOINT"])
+	env := claudeEnv(t, claudeDir)
+	raw, _ := env["CC_LANGSMITH_RUNS_ENDPOINTS"].(string)
+	if raw == "" {
+		t.Fatalf("expected CC_LANGSMITH_RUNS_ENDPOINTS for a self-hosted URL: %+v", env)
+	}
+	var replicas []map[string]any
+	if err := json.Unmarshal([]byte(raw), &replicas); err != nil {
+		t.Fatalf("runs endpoints not valid JSON: %v\n%s", err, raw)
+	}
+	if len(replicas) != 1 {
+		t.Fatalf("expected one replica, got %+v", replicas)
+	}
+	if replicas[0]["apiUrl"] != "https://ls.internal.example.com" || replicas[0]["apiKey"] != "k" ||
+		replicas[0]["projectName"] != "p" {
+		t.Fatalf("unexpected replica: %+v", replicas[0])
+	}
+}
+
+func TestSetupClaudeSelfHostedEndpointNoProject(t *testing.T) {
+	claudeDir, _ := hermeticSetupEnv(t)
+
+	if _, err := executeCommand(t,
+		"setup", "claude", "k",
+		"--api-url", "https://ls.internal.example.com",
+	); err != nil {
+		t.Fatalf("setup claude error: %v", err)
+	}
+
+	env := claudeEnv(t, claudeDir)
+	raw, _ := env["CC_LANGSMITH_RUNS_ENDPOINTS"].(string)
+	var replicas []map[string]any
+	if err := json.Unmarshal([]byte(raw), &replicas); err != nil {
+		t.Fatalf("runs endpoints not valid JSON: %v\n%s", err, raw)
+	}
+	if len(replicas) != 1 {
+		t.Fatalf("expected one replica, got %+v", replicas)
+	}
+	if _, ok := replicas[0]["projectName"]; ok {
+		t.Fatalf("projectName should be omitted when no project is configured: %+v", replicas[0])
 	}
 }
 
 func TestSetupClaudeRequiresAPIKey(t *testing.T) {
 	hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
 
-	_, err := executeCommand(t, "setup", "claude", "--no-install")
+	_, err := executeCommand(t, "setup", "claude")
 	if err == nil {
 		t.Fatal("expected an error when no API key is available")
 	}
@@ -192,16 +240,24 @@ func TestSetupClaudeRequiresAPIKey(t *testing.T) {
 	}
 }
 
-func TestSetupClaudeIdempotent(t *testing.T) {
+func TestSetupClaudeIdempotentAndDropsStaleProject(t *testing.T) {
 	claudeDir, _ := hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
 
-	for i := 0; i < 2; i++ {
-		if _, err := executeCommand(t,
-			"setup", "claude", "--api-key", "k", "--project", "p", "--no-install",
-		); err != nil {
-			t.Fatalf("run %d error: %v", i, err)
-		}
+	if _, err := executeCommand(t, "setup", "claude", "k", "--project", "p"); err != nil {
+		t.Fatalf("first run error: %v", err)
+	}
+	if env := claudeEnv(t, claudeDir); env["CC_LANGSMITH_PROJECT"] != "p" {
+		t.Fatalf("first run did not write the project: %+v", env)
+	}
+
+	// Re-running without --project removes the stale value so the plugin
+	// default applies again.
+	if _, err := executeCommand(t, "setup", "claude", "k"); err != nil {
+		t.Fatalf("second run error: %v", err)
+	}
+	env := claudeEnv(t, claudeDir)
+	if _, ok := env["CC_LANGSMITH_PROJECT"]; ok {
+		t.Fatalf("re-run without --project should remove CC_LANGSMITH_PROJECT: %+v", env)
 	}
 
 	doc := readJSONFile(t, filepath.Join(claudeDir, "settings.json"))
@@ -213,7 +269,6 @@ func TestSetupClaudeIdempotent(t *testing.T) {
 
 func TestSetupCodexWritesConfig(t *testing.T) {
 	_, codexDir := hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
 
 	// Pre-existing config.toml with an unrelated table that must survive.
 	if err := os.MkdirAll(codexDir, 0o700); err != nil {
@@ -230,7 +285,6 @@ func TestSetupCodexWritesConfig(t *testing.T) {
 		"--api-key", "test-key-xyz",
 		"--project", "demo",
 		"--api-url", "https://ls.internal.example.com",
-		"--no-install",
 	)
 	if err != nil {
 		t.Fatalf("setup codex error: %v\n%s", err, stdout)
@@ -272,22 +326,48 @@ func TestSetupCodexWritesConfig(t *testing.T) {
 	assertPerm0600(t, tomlPath)
 }
 
-func TestSetupCodexInstallShellOut(t *testing.T) {
-	hermeticSetupEnv(t)
-	calls := stubRunSetupCommand(t)
+func TestSetupCodexPositionalKeyDefaults(t *testing.T) {
+	_, codexDir := hermeticSetupEnv(t)
 
-	if _, err := executeCommand(t,
-		"setup", "codex", "--api-key", "k", "--project", "p",
-	); err != nil {
-		t.Fatalf("setup codex error: %v", err)
+	stdout, err := executeCommand(t, "--format=json", "setup", "codex", "test-key-xyz")
+	if err != nil {
+		t.Fatalf("setup codex error: %v\n%s", err, stdout)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("expected one install shell-out, got %d: %+v", len(*calls), *calls)
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout not JSON: %v\n%s", err, stdout)
 	}
-	got := strings.Join((*calls)[0], " ")
-	want := "codex plugin marketplace add " + codexMarketplaceURL
-	if got != want {
-		t.Fatalf("unexpected install command\n got: %s\nwant: %s", got, want)
+	if _, ok := result["project"]; ok {
+		t.Fatalf("project should be omitted when not configured (plugin default applies): %+v", result)
+	}
+
+	cred := readJSONFile(t, filepath.Join(codexDir, "langsmith.json"))
+	if cred["enabled"] != true || cred["api_key"] != "test-key-xyz" {
+		t.Fatalf("langsmith.json not written correctly: %+v", cred)
+	}
+	for _, key := range []string{"project", "api_url"} {
+		if _, ok := cred[key]; ok {
+			t.Fatalf("%s should be omitted so the plugin default applies: %+v", key, cred)
+		}
+	}
+}
+
+func TestSetupAllPositionalKey(t *testing.T) {
+	claudeDir, codexDir := hermeticSetupEnv(t)
+
+	if _, err := executeCommand(t, "setup", "all", "shared-key"); err != nil {
+		t.Fatalf("setup all error: %v", err)
+	}
+
+	if env := claudeEnv(t, claudeDir); env["CC_LANGSMITH_API_KEY"] != "shared-key" {
+		t.Fatalf("claude settings not written by setup all: %+v", env)
+	}
+	cred := readJSONFile(t, filepath.Join(codexDir, "langsmith.json"))
+	if cred["api_key"] != "shared-key" {
+		t.Fatalf("codex credentials not written by setup all: %+v", cred)
+	}
+	if _, err := os.Stat(filepath.Join(codexDir, "config.toml")); err != nil {
+		t.Fatalf("codex config.toml not written by setup all: %v", err)
 	}
 }

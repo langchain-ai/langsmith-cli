@@ -3,9 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/spf13/cobra"
@@ -13,49 +11,55 @@ import (
 
 // Claude Code LangSmith tracing plugin coordinates. The marketplace name must
 // match how the plugin is referenced (langsmith-tracing@<marketplace>), so the
-// enabledPlugins key and any 'claude plugin install' use the same name.
+// extraKnownMarketplaces key and enabledPlugins key stay consistent.
 const (
 	claudeMarketplaceName = "langsmith-claude-code-plugins"
 	claudeMarketplaceRepo = "langchain-ai/langsmith-claude-code-plugins"
 	claudeMarketplaceURL  = "https://github.com/langchain-ai/langsmith-claude-code-plugins.git"
 	claudePluginName      = "langsmith-tracing"
+
+	// Project the plugin traces to when CC_LANGSMITH_PROJECT is unset (its
+	// src/config.ts). Display-only — the CLI never writes this value.
+	claudeDefaultProject = "claude-code"
 )
 
 func newSetupClaudeCmd() *cobra.Command {
 	var (
-		project   string
-		scope     string
-		noInstall bool
+		project string
+		scope   string
 	)
 	cmd := &cobra.Command{
-		Use:   "claude",
+		Use:   "claude [api-key]",
 		Short: "Configure Claude Code to trace to LangSmith",
+		Args:  cobra.MaximumNArgs(1),
 		Long: `Configure Claude Code to send full-content traces to LangSmith.
 
-Writes the LangSmith tracing marketplace, enables the plugin, and stores your
-API key and project name in Claude Code's settings.json. Every future Claude
-Code session then traces to LangSmith automatically.
+Declares the LangSmith tracing marketplace, enables the plugin, and stores your
+API key in Claude Code's settings.json. Claude Code installs and enables the
+plugin on its next launch — this command does not run Claude Code.
 
-  langsmith setup claude                       # write ~/.claude/settings.json
+The API URL defaults to https://api.smith.langchain.com. Without --project, no
+project is written and the plugin's own default ("claude-code") applies.
+
+  langsmith setup claude <api-key>             # write ~/.claude/settings.json
   langsmith setup claude --project my-agent    # trace to a named project
   langsmith setup claude --scope project       # write ./.claude/settings.local.json`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runSetupClaude(cmd, project, scope, noInstall)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSetupClaude(cmd, positionalKey(args), project, scope)
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "LangSmith project name (default: $LANGSMITH_PROJECT, else \"claude-code\")")
+	cmd.Flags().StringVar(&project, "project", "", "LangSmith project name (default: $LANGSMITH_PROJECT, else the plugin's default \"claude-code\")")
 	cmd.Flags().StringVar(&scope, "scope", "user", "Config scope: user (~/.claude/settings.json) or project (./.claude/settings.local.json)")
-	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Only write config; skip the best-effort 'claude plugin marketplace add' catalog prefetch")
 	return cmd
 }
 
-func runSetupClaude(cmd *cobra.Command, project, scope string, noInstall bool) error {
-	opts, err := setupClientOptions()
+func runSetupClaude(cmd *cobra.Command, apiKey, project, scope string) error {
+	opts, err := setupClientOptions(apiKey)
 	if err != nil {
 		return err
 	}
 	if project == "" {
-		project = defaultTraceProject("claude-code")
+		project = envTraceProject()
 	}
 
 	settingsPath, err := claudeSettingsPath(scope)
@@ -64,23 +68,11 @@ func runSetupClaude(cmd *cobra.Command, project, scope string, noInstall bool) e
 	}
 
 	pluginRef := claudePluginName + "@" + claudeMarketplaceName
-
 	if err := writeClaudeSettings(settingsPath, pluginRef, opts, project); err != nil {
 		return err
 	}
 
-	// The settings file is the source of truth — Claude Code resolves the
-	// declared marketplace and enabled plugin on next launch. When allowed, best
-	// effort prefetch the marketplace catalog so the very first session traces
-	// without delay. Failure here (e.g. claude not on PATH) is non-fatal.
-	prefetched := false
-	var prefetchErr error
-	if !noInstall {
-		prefetchErr = runSetupCommand(cmd.Context(), claudeBinary(), "plugin", "marketplace", "add", claudeMarketplaceURL)
-		prefetched = prefetchErr == nil
-	}
-
-	return reportClaudeSetup(cmd, settingsPath, project, opts.APIURL, scope, pluginRef, noInstall, prefetched, prefetchErr)
+	return reportClaudeSetup(cmd, settingsPath, project, opts.APIURL, scope, pluginRef)
 }
 
 func claudeSettingsPath(scope string) (string, error) {
@@ -116,64 +108,73 @@ func writeClaudeSettings(path, pluginRef string, opts client.Options, project st
 		env := jsonObject(doc, "env")
 		env[envTraceToLangSmith] = "true"
 		env[envCCLangSmithAPIKey] = opts.APIKey
-		env[envLangSmithAPIKey] = opts.APIKey
-		env[envCCLangSmithProject] = project
-		env[envLangSmithProject] = project
+		// Without an explicit project the var is removed (not written empty) so
+		// the plugin's own default applies — including on re-runs that drop a
+		// previously configured project.
+		if project != "" {
+			env[envCCLangSmithProject] = project
+		} else {
+			delete(env, envCCLangSmithProject)
+		}
+		// A non-default (e.g. self-hosted) endpoint is expressed as a single
+		// replica destination — the documented way to point Claude Code's
+		// tracing at a custom API URL.
 		if !isDefaultEndpoint(opts.APIURL) {
-			env[envLangSmithEndpoint] = opts.APIURL
+			replica := map[string]any{
+				"apiUrl": opts.APIURL,
+				"apiKey": opts.APIKey,
+			}
+			if project != "" {
+				replica["projectName"] = project
+			}
+			encoded, err := json.Marshal([]map[string]any{replica})
+			if err != nil {
+				return fmt.Errorf("encoding runs endpoints: %w", err)
+			}
+			env[envCCLangSmithRunsEndpoints] = string(encoded)
+		} else {
+			delete(env, envCCLangSmithRunsEndpoints)
 		}
 		return nil
 	})
 }
 
-func claudeBinary() string {
-	if b := strings.TrimSpace(os.Getenv("LANGSMITH_CLAUDE_BIN")); b != "" {
-		return b
-	}
-	return "claude"
-}
-
-func reportClaudeSetup(cmd *cobra.Command, settingsPath, project, apiURL, scope, pluginRef string, noInstall, prefetched bool, prefetchErr error) error {
+func reportClaudeSetup(cmd *cobra.Command, settingsPath, project, apiURL, scope, pluginRef string) error {
 	if GetFormat() == "pretty" {
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, "Configured Claude Code tracing → LangSmith project %q\n", project)
+		if project == "" {
+			fmt.Fprintf(out, "Configured Claude Code tracing → LangSmith project %q (plugin default)\n", claudeDefaultProject)
+		} else {
+			fmt.Fprintf(out, "Configured Claude Code tracing → LangSmith project %q\n", project)
+		}
 		fmt.Fprintf(out, "  settings: %s (contains your API key; mode 0600)\n", settingsPath)
 		fmt.Fprintf(out, "  plugin:   %s\n", pluginRef)
 		if !isDefaultEndpoint(apiURL) {
 			fmt.Fprintf(out, "  endpoint: %s\n", apiURL)
 		}
-		if !noInstall && !prefetched {
-			fmt.Fprintf(out, "\nCould not prefetch the plugin marketplace (%v).\n", prefetchErr)
-			fmt.Fprintf(out, "That's fine — Claude Code installs it on next launch. To prefetch now, run:\n")
-			fmt.Fprintf(out, "  claude plugin marketplace add %s\n", claudeMarketplaceURL)
-		}
-		fmt.Fprintf(out, "\nStart Claude Code and verify with: tail -f ~/.claude/state/hook.log\n")
+		fmt.Fprintf(out, "\nClaude Code installs and enables the plugin on its next launch.\n")
+		fmt.Fprintf(out, "If it does not appear, run inside Claude Code:\n")
+		fmt.Fprintf(out, "  /plugin marketplace add %s\n", claudeMarketplaceURL)
+		fmt.Fprintf(out, "  /plugin install %s\n", pluginRef)
+		fmt.Fprintf(out, "Verify with: tail -f ~/.claude/state/hook.log\n")
 		return nil
 	}
 
 	result := map[string]any{
-		"status":                 "configured",
-		"agent":                  "claude-code",
-		"project":                project,
-		"settings_path":          settingsPath,
-		"scope":                  scopeOrDefault(scope),
-		"plugin":                 pluginRef,
-		"marketplace_prefetched": !noInstall && prefetched,
+		"status":        "configured",
+		"agent":         "claude-code",
+		"settings_path": settingsPath,
+		"scope":         scopeOrDefault(scope),
+		"plugin":        pluginRef,
+		"installs_on":   "next claude launch",
+	}
+	if project != "" {
+		result["project"] = project
 	}
 	if !isDefaultEndpoint(apiURL) {
 		result["endpoint"] = apiURL
 	}
-	if !noInstall && !prefetched && prefetchErr != nil {
-		result["marketplace_prefetch_error"] = prefetchErr.Error()
-	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
-}
-
-func scopeOrDefault(scope string) string {
-	if scope == "" {
-		return "user"
-	}
-	return scope
 }

@@ -314,30 +314,33 @@ langsmith self-update
 ### `setup` — Trace coding agents to LangSmith
 
 Configure Claude Code or Codex to send full-content traces (prompts, responses, tool
-calls) to a LangSmith project. Installs the LangSmith tracing plugin for the agent and
+calls) to a LangSmith project. Enables the LangSmith tracing plugin for the agent and
 writes the credentials it needs to the agent's local config, so every future session
 traces automatically. Requires an API key (the key is written to the agent config at
-`0600`); OAuth profiles are not supported here.
+`0600`); OAuth profiles are not supported here. The API URL defaults to
+`https://api.smith.langchain.com` (override with `--api-url` or `LANGSMITH_ENDPOINT`),
+and without `--project` no project is written — each plugin's own default applies
+(`claude-code` / `codex`).
 
 ```bash
 # Configure Claude Code (writes ~/.claude/settings.json)
-langsmith setup claude
+langsmith setup claude <api-key>
 
 # Configure Codex (writes ~/.codex/config.toml + ~/.codex/langsmith.json)
-langsmith setup codex
+langsmith setup codex <api-key>
 
 # Both at once
-langsmith setup all
+langsmith setup all <api-key>
 
-# Trace to a named project (default: "claude-code" / "codex", or $LANGSMITH_PROJECT)
+# Without an argument, the key resolves from --api-key, $LANGSMITH_API_KEY, or a saved profile
+langsmith setup claude
+
+# Trace to a named project (default: $LANGSMITH_PROJECT, else the plugin's own default)
 langsmith setup claude --project my-agent
 
 # Write project-local config instead of user-global
 langsmith setup claude --scope project    # ./.claude/settings.local.json
 langsmith setup codex --scope project     # ./.codex/...
-
-# Only write config; skip the plugin marketplace install step
-langsmith setup claude --no-install
 ```
 
 After running, start the agent. Verify Claude Code with `tail -f ~/.claude/state/hook.log`.

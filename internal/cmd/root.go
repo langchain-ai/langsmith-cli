@@ -57,7 +57,7 @@ Quick start:
 	}
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
-	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
+	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT] (default: "+lsconfig.DefaultAPIURL+")")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
 	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
 	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace-id", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
