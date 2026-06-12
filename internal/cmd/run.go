@@ -60,16 +60,16 @@ func newRunListCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(ff.Project)
-			if projectName == "" {
-				ExitError("--project is required for run list (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run list")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
+			runs, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -123,9 +123,9 @@ func newRunGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required for run get (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, project, "", "run get")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			params := langsmith.RunQueryParams{
@@ -137,7 +137,7 @@ func newRunGetCmd() *cobra.Command {
 				params.Select = langsmith.F(sel)
 			}
 
-			runs, err := queryRuns(ctx, c, params, projectName, 1, 0)
+			runs, err := queryRuns(ctx, c, params, sessionID, 1, 0)
 			if err != nil {
 				ExitErrorf("fetching run: %v", err)
 			}
@@ -196,16 +196,16 @@ func newRunExportCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(ff.Project)
-			if projectName == "" {
-				ExitError("--project is required for run export (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run export")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
+			runs, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}

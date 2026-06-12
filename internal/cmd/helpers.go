@@ -13,15 +13,34 @@ import (
 	"github.com/google/uuid"
 )
 
-// queryRuns queries runs with the given params and optional session resolution.
-// minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
-func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
-	// Resolve project name → session ID
-	if projectName != "" {
-		sessionID, err := c.ResolveSessionID(ctx, projectName)
-		if err != nil {
-			return nil, err
+// resolveSessionID resolves the target session (project) UUID for a command from
+// either an explicit project ID or a project name. Precedence:
+//
+//	--project-id (an explicit session UUID; takes precedence) →
+//	--project / $LANGSMITH_PROJECT (a project name, looked up via the API).
+//
+// projectID, when set, must be a well-formed UUID and is returned as-is without a
+// name lookup (saving a Sessions.List round-trip). cmdName is used only to build
+// the "required" error message.
+func resolveSessionID(ctx context.Context, c *client.Client, projectName, projectID, cmdName string) (string, error) {
+	if projectID != "" {
+		if _, err := uuid.Parse(projectID); err != nil {
+			return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
 		}
+		return projectID, nil
+	}
+	name := ResolveProject(projectName)
+	if name == "" {
+		return "", fmt.Errorf("--project or --project-id is required for %s (or set LANGSMITH_PROJECT)", cmdName)
+	}
+	return c.ResolveSessionID(ctx, name)
+}
+
+// queryRuns queries runs with the given params, scoped to sessionID when non-empty.
+// The caller is responsible for resolving sessionID (see resolveSessionID).
+// minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
+func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+	if sessionID != "" {
 		params.Session = langsmith.F([]string{sessionID})
 	}
 
