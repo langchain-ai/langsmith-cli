@@ -165,15 +165,20 @@ func TestSetupClaudeWritesSettings(t *testing.T) {
 	}
 	assertPerm0600(t, settingsPath)
 
-	// The plugin install shelled out: marketplace add + install.
-	if len(*calls) != 2 {
-		t.Fatalf("expected 2 install commands, got %d: %+v", len(*calls), *calls)
+	// The update steps bump a stale install to the latest version on re-run
+	want := []string{
+		"claude plugin marketplace add " + claudeMarketplaceURL,
+		"claude plugin marketplace update " + claudeMarketplaceName,
+		"claude plugin install langsmith-tracing@langsmith-claude-code-plugins --scope user",
+		"claude plugin update langsmith-tracing@langsmith-claude-code-plugins --scope user",
 	}
-	if got := strings.Join((*calls)[0], " "); got != "claude plugin marketplace add "+claudeMarketplaceURL {
-		t.Fatalf("unexpected marketplace-add command: %s", got)
+	if len(*calls) != len(want) {
+		t.Fatalf("expected %d install commands, got %d: %+v", len(want), len(*calls), *calls)
 	}
-	if got := strings.Join((*calls)[1], " "); got != "claude plugin install langsmith-tracing@langsmith-claude-code-plugins --scope user" {
-		t.Fatalf("unexpected install command: %s", got)
+	for i, w := range want {
+		if got := strings.Join((*calls)[i], " "); got != w {
+			t.Fatalf("install command %d: got %q, want %q", i, got, w)
+		}
 	}
 }
 

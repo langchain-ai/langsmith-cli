@@ -201,9 +201,11 @@ func claudeChangePreview(settingsPath, pluginRef string, opts client.Options, pr
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Will update %s with:\n\n%s\n", settingsPath, b)
 	if !noInstall {
-		fmt.Fprintf(&sb, "\nThen run:\n")
+		fmt.Fprintf(&sb, "\nThen run (updating an existing install to the latest version):\n")
 		fmt.Fprintf(&sb, "  %s plugin marketplace add %s\n", claudeBinary(), claudeMarketplaceURL)
+		fmt.Fprintf(&sb, "  %s plugin marketplace update %s\n", claudeBinary(), claudeMarketplaceName)
 		fmt.Fprintf(&sb, "  %s plugin install %s --scope %s\n", claudeBinary(), pluginRef, scopeOrDefault(scope))
+		fmt.Fprintf(&sb, "  %s plugin update %s --scope %s\n", claudeBinary(), pluginRef, scopeOrDefault(scope))
 	}
 	fmt.Fprintf(&sb, "\nThe plugin runs on every Claude Code session and sends your prompts,\nresponses, and tool output to LangSmith.\n")
 	return sb.String()
@@ -216,13 +218,38 @@ func claudeBinary() string {
 	return "claude"
 }
 
+// installClaudePlugin registers the tracing marketplace and installs the
+// plugin, then refreshes both so a re-run bumps a stale install forward.
+//
+// Plugin installs are version-pinned and never auto-update, so a user who set
+// up on an old plugin keeps tracing with it indefinitely. That matters here:
+// per-user identity metadata (local_username / anthropic_user_id) only ships in
+// langsmith-tracing v0.1.3+, so installs older than that trace with no
+// attribution. The marketplace-update + plugin-update steps carry those stale
+// installs up to the latest release; both are no-ops when already current.
 func installClaudePlugin(ctx context.Context, scope, pluginRef string) error {
 	bin := claudeBinary()
-	if err := runSetupCommand(ctx, bin, "plugin", "marketplace", "add", claudeMarketplaceURL); err != nil {
-		return fmt.Errorf("%s plugin marketplace add: %w", bin, err)
+	sc := scopeOrDefault(scope)
+
+	// Best-effort: `marketplace add` errors when the marketplace is already
+	// known, which is the common case on re-run. A genuine failure (e.g. claude
+	// not installed) surfaces on the update below, which needs it to exist.
+	_ = runSetupCommand(ctx, bin, "plugin", "marketplace", "add", claudeMarketplaceURL)
+
+	// Refresh the marketplace so the latest published plugin version is visible
+	// to install/update.
+	if err := runSetupCommand(ctx, bin, "plugin", "marketplace", "update", claudeMarketplaceName); err != nil {
+		return fmt.Errorf("%s plugin marketplace update: %w", bin, err)
 	}
-	if err := runSetupCommand(ctx, bin, "plugin", "install", pluginRef, "--scope", scopeOrDefault(scope)); err != nil {
+
+	// Install if missing (no-op when already installed).
+	if err := runSetupCommand(ctx, bin, "plugin", "install", pluginRef, "--scope", sc); err != nil {
 		return fmt.Errorf("%s plugin install: %w", bin, err)
+	}
+
+	// Bump an existing/stale install to the latest version (no-op when current).
+	if err := runSetupCommand(ctx, bin, "plugin", "update", pluginRef, "--scope", sc); err != nil {
+		return fmt.Errorf("%s plugin update: %w", bin, err)
 	}
 	return nil
 }
@@ -240,14 +267,18 @@ func reportClaudeSetup(cmd *cobra.Command, settingsPath, project, apiURL, scope,
 		case noInstall:
 			fmt.Fprintf(out, "\nSkipped install. Run inside Claude Code (or rerun without --no-install):\n")
 			fmt.Fprintf(out, "  /plugin marketplace add %s\n", claudeMarketplaceURL)
+			fmt.Fprintf(out, "  /plugin marketplace update %s\n", claudeMarketplaceName)
 			fmt.Fprintf(out, "  /plugin install %s\n", pluginRef)
+			fmt.Fprintf(out, "  /plugin update %s\n", pluginRef)
 		case installed:
 			fmt.Fprintf(out, "  install:  done\n")
 		default:
 			fmt.Fprintf(out, "\nConfig written, but the plugin install failed (%v).\n", installErr)
 			fmt.Fprintf(out, "Claude Code will still install it on next launch from settings.json, or run:\n")
 			fmt.Fprintf(out, "  %s plugin marketplace add %s\n", claudeBinary(), claudeMarketplaceURL)
+			fmt.Fprintf(out, "  %s plugin marketplace update %s\n", claudeBinary(), claudeMarketplaceName)
 			fmt.Fprintf(out, "  %s plugin install %s --scope %s\n", claudeBinary(), pluginRef, scopeOrDefault(scope))
+			fmt.Fprintf(out, "  %s plugin update %s --scope %s\n", claudeBinary(), pluginRef, scopeOrDefault(scope))
 		}
 		fmt.Fprintf(out, "\nVerify with: tail -f ~/.claude/state/hook.log\n")
 		return nil
