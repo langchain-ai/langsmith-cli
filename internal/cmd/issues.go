@@ -50,10 +50,12 @@ func newProjectIssuesCmd() *cobra.Command {
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open --priority high
+  langsmith project issues overview --project my-app
   langsmith project issues events --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
+	cmd.AddCommand(newProjectIssuesOverviewCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
@@ -63,12 +65,11 @@ Examples:
 
 func newProjectIssuesListCmd() *cobra.Command {
 	var (
-		project         string
-		status          string
-		priority        string
-		limit           int
-		outputFile      string
-		includeOverview bool
+		project    string
+		status     string
+		priority   string
+		limit      int
+		outputFile string
 	)
 
 	cmd := &cobra.Command{
@@ -80,15 +81,13 @@ Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
 
-Pass --include-overview to also fetch the project's Agent Overview (the
-markdown summary the issues agent maintains). With it, JSON output becomes
-an object {overview, issues:[...]} instead of a bare issues array.
+To fetch the project's Agent Overview (the markdown summary the issues
+agent maintains), use 'langsmith project issues overview'.
 
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
-  langsmith project issues list --project my-app --include-overview
   langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
@@ -119,28 +118,9 @@ Examples:
 				issues = issues[:limit]
 			}
 
-			var overview string
-			var haveOverview bool
-			if includeOverview {
-				sessionID, err := c.ResolveSessionID(ctx, projectName)
-				if err != nil {
-					ExitErrorf("resolving project for overview: %v", err)
-				}
-				overview, haveOverview = fetchAgentOverview(ctx, c, sessionID)
-			}
-
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				if includeOverview {
-					fmt.Println("=== Agent Overview ===")
-					if haveOverview {
-						fmt.Println(overview)
-					} else {
-						fmt.Println("(no agent overview)")
-					}
-					fmt.Println()
-				}
 				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
@@ -162,18 +142,7 @@ Examples:
 				for _, issue := range issues {
 					data = append(data, issueToMap(issue))
 				}
-				if includeOverview {
-					var overviewVal any
-					if haveOverview {
-						overviewVal = overview
-					}
-					output.OutputJSON(map[string]any{
-						"overview": overviewVal,
-						"issues":   data,
-					}, outputFile)
-				} else {
-					output.OutputJSON(data, outputFile)
-				}
+				output.OutputJSON(data, outputFile)
 			}
 		},
 	}
@@ -183,7 +152,67 @@ Examples:
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.Flags().BoolVar(&includeOverview, "include-overview", false, "Also fetch and include the project's Agent Overview")
+
+	return cmd
+}
+
+func newProjectIssuesOverviewCmd() *cobra.Command {
+	var (
+		project    string
+		outputFile string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "overview",
+		Short: "Fetch a tracing project's Agent Overview",
+		Long: `Fetch a tracing project's Agent Overview.
+
+The Agent Overview is the markdown summary the issues agent maintains for a
+project, derived from its traces and issues. It is stored as a Prompt Hub
+commit under the repo handle 'ao-<first 8 chars of session UUID>'.
+
+Output is JSON by default ({"overview": <markdown|null>}); pass
+--format pretty to print the markdown directly. If the project has no Agent
+Overview yet, "overview" is null (and pretty mode prints "(no agent overview)").
+
+Examples:
+  langsmith project issues overview --project my-app
+  langsmith project issues overview --project my-app --format pretty`,
+		Run: func(cmd *cobra.Command, args []string) {
+			c := MustGetClient()
+			ctx := context.Background()
+
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
+			}
+
+			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			if err != nil {
+				ExitErrorf("resolving project %q: %v", projectName, err)
+			}
+
+			overview, haveOverview := fetchAgentOverview(ctx, c, sessionID)
+
+			if GetFormat() == "pretty" {
+				if haveOverview {
+					fmt.Println(overview)
+				} else {
+					fmt.Println("(no agent overview)")
+				}
+				return
+			}
+
+			var overviewVal any
+			if haveOverview {
+				overviewVal = overview
+			}
+			output.OutputJSON(map[string]any{"overview": overviewVal}, outputFile)
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
 }
