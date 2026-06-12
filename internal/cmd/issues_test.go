@@ -10,6 +10,7 @@ func TestProjectIssuesCmd_Subcommands(t *testing.T) {
 	cmd := newProjectIssuesCmd()
 	expected := map[string]bool{
 		"list":     false,
+		"overview": false,
 		"events":   false,
 		"update":   false,
 		"runs":     false,
@@ -77,16 +78,25 @@ func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
 	}
 }
 
-// ==================== --include-overview flag ====================
+// ==================== overview command ====================
 
-func TestProjectIssuesListCmd_IncludeOverviewFlag(t *testing.T) {
-	cmd := newProjectIssuesListCmd()
-	f := cmd.Flags().Lookup("include-overview")
-	if f == nil {
-		t.Fatal("flag --include-overview not found")
+func TestProjectIssuesOverviewCmd_UseField(t *testing.T) {
+	cmd := newProjectIssuesOverviewCmd()
+	if cmd.Use != "overview" {
+		t.Errorf("expected Use=%q, got %q", "overview", cmd.Use)
 	}
-	if f.DefValue != "false" {
-		t.Errorf("flag --include-overview: expected default %q, got %q", "false", f.DefValue)
+}
+
+func TestProjectIssuesOverviewCmd_Flags(t *testing.T) {
+	cmd := newProjectIssuesOverviewCmd()
+	for _, name := range []string{"project", "output"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("flag --%s not found", name)
+		}
+	}
+	// 'list' must no longer carry the overview flag — overview is its own command.
+	if newProjectIssuesListCmd().Flags().Lookup("include-overview") != nil {
+		t.Error("list should not have --include-overview flag anymore")
 	}
 }
 
