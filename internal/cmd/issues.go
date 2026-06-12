@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -60,11 +63,12 @@ Examples:
 
 func newProjectIssuesListCmd() *cobra.Command {
 	var (
-		project    string
-		status     string
-		priority   string
-		limit      int
-		outputFile string
+		project         string
+		status          string
+		priority        string
+		limit           int
+		outputFile      string
+		includeOverview bool
 	)
 
 	cmd := &cobra.Command{
@@ -76,10 +80,15 @@ Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
 
+Pass --include-overview to also fetch the project's Agent Overview (the
+markdown summary the issues agent maintains). With it, JSON output becomes
+an object {overview, issues:[...]} instead of a bare issues array.
+
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
+  langsmith project issues list --project my-app --include-overview
   langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
@@ -110,9 +119,28 @@ Examples:
 				issues = issues[:limit]
 			}
 
+			var overview string
+			var haveOverview bool
+			if includeOverview {
+				sessionID, err := c.ResolveSessionID(ctx, projectName)
+				if err != nil {
+					ExitErrorf("resolving project for overview: %v", err)
+				}
+				overview, haveOverview = fetchAgentOverview(ctx, c, sessionID)
+			}
+
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
+				if includeOverview {
+					fmt.Println("=== Agent Overview ===")
+					if haveOverview {
+						fmt.Println(overview)
+					} else {
+						fmt.Println("(no agent overview)")
+					}
+					fmt.Println()
+				}
 				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
@@ -134,7 +162,18 @@ Examples:
 				for _, issue := range issues {
 					data = append(data, issueToMap(issue))
 				}
-				output.OutputJSON(data, outputFile)
+				if includeOverview {
+					var overviewVal any
+					if haveOverview {
+						overviewVal = overview
+					}
+					output.OutputJSON(map[string]any{
+						"overview": overviewVal,
+						"issues":   data,
+					}, outputFile)
+				} else {
+					output.OutputJSON(data, outputFile)
+				}
 			}
 		},
 	}
@@ -144,8 +183,47 @@ Examples:
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.Flags().BoolVar(&includeOverview, "include-overview", false, "Also fetch and include the project's Agent Overview")
 
 	return cmd
+}
+
+// fetchAgentOverview returns the project's Agent Overview markdown, or ("", false)
+// if the project has no overview yet. The AO repo handle is derived from the
+// session UUID (ao-<first8>), mirroring smith-go's agentOverviewRepoHandle. Fetch
+// failures (no AO repo yet, or transient errors) degrade gracefully so the issues
+// list still renders.
+func fetchAgentOverview(ctx context.Context, c *client.Client, sessionID string) (string, bool) {
+	if len(sessionID) < 8 {
+		return "", false
+	}
+	handle := "ao-" + sessionID[:8]
+	resp, err := c.SDK.Commits.Get(ctx, "-", handle, "latest", langsmith.CommitGetParams{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not fetch agent overview: %v\n", err)
+		return "", false
+	}
+	return extractOverviewTemplate(resp.Manifest)
+}
+
+// extractOverviewTemplate pulls the AO markdown out of a PromptTemplate manifest
+// (content lives at kwargs.template). The SDK types Manifest as interface{}, so
+// it arrives as a map[string]any after JSON decoding. Returns ("", false) if the
+// manifest is not shaped as expected.
+func extractOverviewTemplate(manifest any) (string, bool) {
+	m, ok := manifest.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	kwargs, ok := m["kwargs"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	tmpl, ok := kwargs["template"].(string)
+	if !ok {
+		return "", false
+	}
+	return tmpl, true
 }
 
 // issueEvent mirrors the JSON shape returned by GET /v1/platform/sessions/{id}/issue-events.

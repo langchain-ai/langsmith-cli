@@ -77,6 +77,75 @@ func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
 	}
 }
 
+// ==================== --include-overview flag ====================
+
+func TestProjectIssuesListCmd_IncludeOverviewFlag(t *testing.T) {
+	cmd := newProjectIssuesListCmd()
+	f := cmd.Flags().Lookup("include-overview")
+	if f == nil {
+		t.Fatal("flag --include-overview not found")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("flag --include-overview: expected default %q, got %q", "false", f.DefValue)
+	}
+}
+
+// ==================== extractOverviewTemplate ====================
+
+func TestExtractOverviewTemplate(t *testing.T) {
+	cases := []struct {
+		name     string
+		manifest any
+		wantTmpl string
+		wantOK   bool
+	}{
+		{
+			name: "valid",
+			manifest: map[string]any{
+				"kwargs": map[string]any{"template": "# Agent Overview\nbody"},
+			},
+			wantTmpl: "# Agent Overview\nbody",
+			wantOK:   true,
+		},
+		{
+			name:     "not a map",
+			manifest: "just a string",
+			wantOK:   false,
+		},
+		{
+			name:     "missing kwargs",
+			manifest: map[string]any{"id": []any{"langchain"}},
+			wantOK:   false,
+		},
+		{
+			name:     "kwargs wrong type",
+			manifest: map[string]any{"kwargs": "nope"},
+			wantOK:   false,
+		},
+		{
+			name:     "missing template",
+			manifest: map[string]any{"kwargs": map[string]any{"input_variables": []any{}}},
+			wantOK:   false,
+		},
+		{
+			name:     "template wrong type",
+			manifest: map[string]any{"kwargs": map[string]any{"template": 42}},
+			wantOK:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpl, ok := extractOverviewTemplate(tc.manifest)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if tmpl != tc.wantTmpl {
+				t.Errorf("template = %q, want %q", tmpl, tc.wantTmpl)
+			}
+		})
+	}
+}
+
 // ==================== parseAssertion ====================
 
 func TestParseAssertion_Valid(t *testing.T) {
