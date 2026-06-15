@@ -15,6 +15,7 @@ type FilterFlags struct {
 	TraceIDs     string
 	Limit        int
 	Project      string
+	ProjectID    string
 	LastNMinutes int
 	Since        string
 	Before       string
