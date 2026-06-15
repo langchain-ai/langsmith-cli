@@ -1,56 +1,12 @@
 package cmd
 
 import (
-	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
-
-// ---------- resolveSessionID ----------
-//
-// These cases all resolve (or error) before any API call, so a nil client is
-// safe. The project-name → session-ID lookup path is exercised via the
-// command-level tests that stub the client.
-
-func TestResolveSessionID_ProjectIDTakesPrecedence(t *testing.T) {
-	// A valid --project-id is returned as-is, even when a project name is set
-	// via --project / $LANGSMITH_PROJECT — without any name lookup.
-	t.Setenv("LANGSMITH_PROJECT", "some-project-name")
-	const id = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
-
-	got, err := resolveSessionID(context.Background(), nil, "another-name", id, "trace get")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != id {
-		t.Errorf("expected session id %q returned verbatim, got %q", id, got)
-	}
-}
-
-func TestResolveSessionID_InvalidProjectID(t *testing.T) {
-	_, err := resolveSessionID(context.Background(), nil, "", "not-a-uuid", "trace get")
-	if err == nil {
-		t.Fatal("expected error for malformed --project-id")
-	}
-	if !strings.Contains(err.Error(), "--project-id") {
-		t.Errorf("error should mention --project-id, got %q", err.Error())
-	}
-}
-
-func TestResolveSessionID_NeitherProvided(t *testing.T) {
-	t.Setenv("LANGSMITH_PROJECT", "")
-	_, err := resolveSessionID(context.Background(), nil, "", "", "trace stats")
-	if err == nil {
-		t.Fatal("expected error when neither --project nor --project-id is provided")
-	}
-	if !strings.Contains(err.Error(), "trace stats") {
-		t.Errorf("error should name the command, got %q", err.Error())
-	}
-}
 
 // ---------- formatTimedelta ----------
 
@@ -404,19 +360,6 @@ func TestBuildRunSelect_IncludesMetadataFields(t *testing.T) {
 	}
 }
 
-func TestBuildRunSelect_IncludesFirstTokenTimeAndEvents(t *testing.T) {
-	// first_token_time and events are native Run fields that --full is
-	// documented to return; a prior version of this select list silently
-	// dropped both even when --include-io/--include-metadata were requested.
-	has := selectSet(buildRunSelect(true, true))
-	if !has[langsmith.RunQueryParamsSelectFirstTokenTime] {
-		t.Error("missing first_token_time field")
-	}
-	if !has[langsmith.RunQueryParamsSelectEvents] {
-		t.Error("missing events field (should be requested alongside inputs/outputs/error)")
-	}
-}
-
 // selectSet converts a slice to a set for easy lookup.
 func selectSet(sel []langsmith.RunQueryParamsSelect) map[langsmith.RunQueryParamsSelect]bool {
 	m := make(map[langsmith.RunQueryParamsSelect]bool, len(sel))
@@ -495,58 +438,5 @@ func TestRunTreeData_AllFields(t *testing.T) {
 	if td.ID != "id" || td.ParentRunID != "pid" || td.Name != "name" ||
 		td.RunType != "chain" || *td.DurationMs != 100 || !td.HasError {
 		t.Error("unexpected RunTreeData field values")
-	}
-}
-
-// ---------- buildRunSelectV2 ----------
-
-func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
-	// Mirrors TestBuildRunSelect_IncludesFirstTokenTimeAndEvents for the v2
-	// select builder: first_token_time is a base field always requested,
-	// events is requested alongside inputs/outputs/error under --include-io.
-	base := buildRunSelectV2(false, false)
-	baseHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
-	for _, f := range base {
-		baseHas[f] = true
-	}
-	if !baseHas[langsmith.RunQueryV2ParamsSelectFirstTokenTime] {
-		t.Error("missing first_token_time field in base v2 select set")
-	}
-	if baseHas[langsmith.RunQueryV2ParamsSelectEvents] {
-		t.Error("events should not be requested without --include-io")
-	}
-
-	withIO := buildRunSelectV2(true, false)
-	ioHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
-	for _, f := range withIO {
-		ioHas[f] = true
-	}
-	if !ioHas[langsmith.RunQueryV2ParamsSelectEvents] {
-		t.Error("missing events field when --include-io requested")
-	}
-}
-
-// ---------- runV2ToSchema ----------
-
-func TestRunV2ToSchema_MapsFirstTokenTimeAndEvents(t *testing.T) {
-	firstToken := time.Date(2026, 1, 15, 10, 30, 1, 0, time.UTC)
-	v2 := langsmith.Run{
-		ID:             "run-123",
-		FirstTokenTime: firstToken,
-		Events: []langsmith.RunEvent{
-			{Name: "new_token", Kwargs: map[string]interface{}{"token": "hi"}},
-		},
-	}
-
-	out := runV2ToSchema(v2)
-
-	if !out.FirstTokenTime.Equal(firstToken) {
-		t.Errorf("expected FirstTokenTime=%v, got %v", firstToken, out.FirstTokenTime)
-	}
-	if len(out.Events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(out.Events))
-	}
-	if out.Events[0]["name"] != "new_token" {
-		t.Errorf("expected event name=new_token, got %v", out.Events[0]["name"])
 	}
 }

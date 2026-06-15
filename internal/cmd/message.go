@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -16,28 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Char caps for the per-trace digest fields. Bounded so a single huge message
-// or tool payload can't blow up the digest (and the context of any agent
-// reading it). The full untruncated content is still available in `groups`.
-const (
-	digestTextMax   = 600
-	digestArgsMax   = 200
-	digestResultMax = 200
-)
-
-// errorishPattern is a heuristic flag for a tool result whose content looks
-// like an *error response* (not merely text that mentions the word "error" —
-// technical docs and search results say "error" constantly). It requires
-// error-shaped context: an error/exception token with `:`/`=`, a quoted
-// `"error":` key, an HTTP/status 4xx-5xx, a 4xx-5xx code next to a failure
-// word, a traceback, or a common shell/tool failure string. Advisory, not
-// authoritative — a reader still confirms by looking at the result.
-var errorishPattern = regexp.MustCompile(`(?i)<tool_use_error>|traceback|command not found|permission denied|no such file|\b(error|exception)\b\s*[:=]|"error"\s*[:=]|\bhttp[ /]?[45]\d\d\b|\b[45]\d\d\b\s+\w*\s*(error|not found|forbidden|unauthorized|internal server)`)
-
-// trajectoryStep is a compact single-step view of one message/tool-call. It is
-// deliberately THIN: the trajectory is scanned across *all* traces in a batch
-// (triage), so per-trace content lives in the separate `digest` field, read
-// per-trace — not crammed into the bulk-scanned trajectory.
+// trajectoryStep is a compact single-step view of one message/tool-call in a trace.
 type trajectoryStep struct {
 	Role      string `json:"role"`
 	ToolName  string `json:"tool_name,omitempty"`
@@ -48,46 +24,10 @@ type trajectoryStep struct {
 
 // traceTrajectory is the compact trajectory for a single trace.
 type traceTrajectory struct {
-	TraceID string           `json:"trace_id"`
-	Steps   []trajectoryStep `json:"steps"`
-}
-
-// digestToolArg is one tool call's name and its (bounded) JSON args.
-type digestToolArg struct {
-	Name string `json:"name"`
-	Args string `json:"args"`
-}
-
-// digestGroup is one normalized group in a trace's digest — enough to verdict
-// the group without re-parsing the heterogeneously-shaped raw `groups`.
-type digestGroup struct {
-	I          int             `json:"i"`
-	Kind       string          `json:"kind"`
-	Role       string          `json:"role,omitempty"`
-	Chars      int             `json:"chars"`
-	Text       string          `json:"text,omitempty"`        // coerced content, ≤digestTextMax
-	Tools      []string        `json:"tools,omitempty"`       // tool-call names in this group
-	ToolArgs   []digestToolArg `json:"tool_args,omitempty"`   // per call: name + ≤digestArgsMax JSON args
-	ToolResult []string        `json:"tool_result,omitempty"` // per call: coerced result, ≤digestResultMax
-	Errorish   bool            `json:"errorish,omitempty"`    // any tool result looks like an error
-}
-
-// traceDigest is the detailed per-trace view a screener reads for the ONE trace
-// it is judging. It is emitted as its own field (NOT folded into the trajectory)
-// so this bulk detail is read per-trace, never scanned across the whole batch.
-type traceDigest struct {
-	FirstHuman string        `json:"first_human,omitempty"`
-	FinalAI    string        `json:"final_ai,omitempty"`
-	NGroups    int           `json:"n_groups"`
-	GroupIndex []digestGroup `json:"group_index"`
-}
-
-// attachTrajectory attaches the thin trajectory and the per-trace digest to a
-// trace map for JSON output. The trajectory is scanned across all traces; the
-// digest is read per-trace.
-func attachTrajectory(trace map[string]any, traj traceTrajectory, digest traceDigest) {
-	trace["trajectory"] = traj.Steps
-	trace["digest"] = digest
+	TraceID       string           `json:"trace_id"`
+	InputMessage  string           `json:"input_message,omitempty"`
+	OutputMessage string           `json:"output_message,omitempty"`
+	Steps         []trajectoryStep `json:"steps"`
 }
 
 func newTraceMessagesCmd() *cobra.Command {
@@ -133,7 +73,12 @@ Examples:
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace messages")
+			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				ExitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
+			}
+
+			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -196,7 +141,7 @@ Examples:
 				for _, t := range traces {
 					trace, _ := t.(map[string]any)
 					traj := buildTraceTrajectory(trace)
-					attachTrajectory(trace, traj, buildTraceDigest(trace))
+					trace["trajectory"] = traj.Steps
 				}
 
 				nextCursor, _ := result["next_cursor"].(string)
@@ -257,7 +202,7 @@ Examples:
 			for _, t := range allTraces {
 				trace, _ := t.(map[string]any)
 				traj := buildTraceTrajectory(trace)
-				attachTrajectory(trace, traj, buildTraceDigest(trace))
+				trace["trajectory"] = traj.Steps
 			}
 
 			combined := map[string]any{
@@ -275,9 +220,7 @@ Examples:
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }
@@ -418,12 +361,11 @@ func printTraceMessages(result map[string]any) {
 	}
 }
 
-// buildTraceTrajectory converts a raw trace map into a compact, THIN trajectory
-// (role/tool/tokens/latency/chars per step). It carries no message content —
-// the trajectory is scanned across all traces for triage, so detail lives in
-// buildTraceDigest and is read per-trace.
+// buildTraceTrajectory converts a raw trace map into a compact trajectory.
 func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 	traceID, _ := trace["trace_id"].(string)
+	inputsPreview, _ := trace["root_inputs_preview"].(string)
+	outputsPreview, _ := trace["root_outputs_preview"].(string)
 	groups, _ := trace["groups"].([]any)
 
 	var steps []trajectoryStep
@@ -431,6 +373,7 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 		group, _ := g.(map[string]any)
 		gType, _ := group["type"].(string)
 		meta, _ := group["metadata"].(map[string]any)
+
 		tokens := trajTokens(meta)
 		latency := trajLatency(meta)
 
@@ -466,85 +409,12 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 			}
 		}
 	}
-	return traceTrajectory{TraceID: traceID, Steps: steps}
-}
 
-// buildTraceDigest builds the detailed per-trace digest: the full first-human /
-// final-AI messages plus a normalized per-group index (content coerced to
-// strings, fields length-bounded). Read per-trace by a screener — kept OUT of
-// the bulk-scanned trajectory on purpose. Mirrors the fetch-time digest the
-// issues-agent screeners verdict from.
-func buildTraceDigest(trace map[string]any) traceDigest {
-	inputsPreview, _ := trace["root_inputs_preview"].(string)
-	outputsPreview, _ := trace["root_outputs_preview"].(string)
-	groups, _ := trace["groups"].([]any)
-
-	var firstHuman, finalAI string
-	index := make([]digestGroup, 0, len(groups))
-	for i, g := range groups {
-		group, _ := g.(map[string]any)
-		gType, _ := group["type"].(string)
-		dg := digestGroup{I: i, Kind: gType}
-		if dg.Kind == "" {
-			dg.Kind = "message"
-		}
-
-		var text string
-		switch gType {
-		case "message":
-			msg, _ := group["message"].(map[string]any)
-			dg.Role, _ = msg["role"].(string)
-			text = msgText(msg)
-			if dg.Role == "human" && firstHuman == "" {
-				firstHuman = text
-			}
-			if dg.Role == "ai" && text != "" {
-				finalAI = text
-			}
-		case "tool_interaction":
-			aiMsg, _ := group["aiMessage"].(map[string]any)
-			text = msgText(aiMsg)
-			if text != "" {
-				finalAI = text
-			}
-			toolCalls, _ := group["toolCalls"].([]any)
-			for _, tc := range toolCalls {
-				call, _ := tc.(map[string]any)
-				name, _ := call["name"].(string)
-				dg.Tools = append(dg.Tools, name)
-				dg.ToolArgs = append(dg.ToolArgs, digestToolArg{
-					Name: name,
-					Args: truncateHard(marshalArgs(call["args"]), digestArgsMax),
-				})
-				result, _ := call["result"].(map[string]any)
-				resultText := ""
-				if result != nil {
-					resultText = coerceContent(result["content"])
-				}
-				dg.ToolResult = append(dg.ToolResult, truncateHard(resultText, digestResultMax))
-				if resultText != "" && errorishPattern.MatchString(resultText) {
-					dg.Errorish = true
-				}
-			}
-		}
-		dg.Chars = len(text)
-		dg.Text = truncateHard(text, digestTextMax)
-		index = append(index, dg)
-	}
-
-	// Prefer the full message from groups; fall back to the (~150-char) preview
-	// only when groups don't carry it.
-	if firstHuman == "" {
-		firstHuman = inputsPreview
-	}
-	if finalAI == "" {
-		finalAI = outputsPreview
-	}
-	return traceDigest{
-		FirstHuman: firstHuman,
-		FinalAI:    finalAI,
-		NGroups:    len(groups),
-		GroupIndex: index,
+	return traceTrajectory{
+		TraceID:       traceID,
+		InputMessage:  inputsPreview,
+		OutputMessage: outputsPreview,
+		Steps:         steps,
 	}
 }
 
@@ -592,85 +462,6 @@ func msgChars(msg map[string]any) int {
 		}
 	}
 	return total
-}
-
-// coerceContent flattens a message/tool `content` value — which may be a
-// string, a list of content blocks, an object, or null — into a plain string.
-// Content shape is heterogeneous across integrations; normalizing here lets a
-// reader verdict off the trajectory without re-parsing each shape.
-func coerceContent(v any) string {
-	switch c := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return c
-	case []any:
-		var parts []string
-		for _, block := range c {
-			switch b := block.(type) {
-			case string:
-				parts = append(parts, b)
-			case map[string]any:
-				if t, ok := b["text"].(string); ok {
-					parts = append(parts, t)
-				} else if t, ok := b["content"].(string); ok {
-					parts = append(parts, t)
-				} else {
-					parts = append(parts, unrenderedContent(b))
-				}
-			default:
-				parts = append(parts, fmt.Sprintf("%v", b))
-			}
-		}
-		return strings.Join(parts, " ")
-	case map[string]any:
-		if t, ok := c["text"].(string); ok {
-			return t
-		}
-		if t, ok := c["content"].(string); ok {
-			return t
-		}
-		return unrenderedContent(c)
-	default:
-		return fmt.Sprintf("%v", c)
-	}
-}
-
-// unrenderedContent represents a non-null content block that carries no
-// plain-text `text`/`content` field (image, tool_use, or other structured
-// blocks) as a non-empty string. Collapsing these to "" makes structured
-// content indistinguishable from a genuinely empty turn, which misleads a
-// downstream reader (e.g. the engine screener) into treating the content as
-// absent. Prefer compact JSON (the downstream char caps truncate it); fall back
-// to a typed sentinel if the block can't be marshaled.
-func unrenderedContent(m map[string]any) string {
-	if b, err := json.Marshal(m); err == nil {
-		return string(b)
-	}
-	if t, ok := m["type"].(string); ok && t != "" {
-		return "[" + t + " content]"
-	}
-	return "[unrenderable content]"
-}
-
-// msgText returns a message's content coerced to a plain string.
-func msgText(msg map[string]any) string {
-	if msg == nil {
-		return ""
-	}
-	return coerceContent(msg["content"])
-}
-
-// marshalArgs renders tool-call args as compact JSON, or "" if absent/unmarshalable.
-func marshalArgs(args any) string {
-	if args == nil {
-		return ""
-	}
-	b, err := json.Marshal(args)
-	if err != nil {
-		return ""
-	}
-	return string(b)
 }
 
 // printMessage prints a single message in a compact format.

@@ -105,10 +105,10 @@ func newThreadListCmd() *cobra.Command {
 						threadsMap[tid] = append(threadsMap[tid], m)
 					}
 				}
-				if resp.Cursors.Next == "" {
+				if resp.Cursors == nil || resp.Cursors["next"] == "" {
 					break
 				}
-				cursor = resp.Cursors.Next
+				cursor = resp.Cursors["next"]
 			}
 
 			// Build thread summaries
@@ -267,8 +267,8 @@ func newThreadGetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
-	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
+	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
+	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of runs (turns) to return")

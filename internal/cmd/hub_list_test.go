@@ -19,7 +19,7 @@ func TestHubList_QueryParams(t *testing.T) {
 
 	captureStdout(t, func() {
 		cmd := newHubCmd()
-		cmd.SetArgs([]string{"list", "--type", "skill", "--source", "external", "--query", "foo", "--public", "--limit", "10", "--offset", "5"})
+		cmd.SetArgs([]string{"list", "--type", "skill", "--query", "foo", "--public", "--limit", "10", "--offset", "5"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
@@ -27,7 +27,6 @@ func TestHubList_QueryParams(t *testing.T) {
 
 	checks := map[string]string{
 		"repo_type":    "skill",
-		"source":       "external",
 		"query":        "foo",
 		"match_prefix": "true",
 		"is_public":    "true",
@@ -51,18 +50,6 @@ func TestHubList_RejectsBadType(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "agent") {
 		t.Errorf("expected error mentioning valid types; got %v", err)
-	}
-}
-
-func TestHubList_RejectsBadSource(t *testing.T) {
-	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {})
-	defer setupTestEnv(t, srv.URL)()
-
-	cmd := newHubCmd()
-	cmd.SetArgs([]string{"list", "--source", "unknown"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "internal") {
-		t.Errorf("expected error mentioning valid sources; got %v", err)
 	}
 }
 

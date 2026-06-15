@@ -31,7 +31,6 @@ type runStats struct {
 func newTraceStatsCmd() *cobra.Command {
 	var (
 		project     string
-		projectID   string
 		since       string
 		before      string
 		lastNMin    int
@@ -64,9 +63,14 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			sessionID, err := resolveSessionID(ctx, c, project, projectID, "trace stats")
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				return fmt.Errorf("--project is required (or set LANGSMITH_PROJECT)")
+			}
+
+			sessionID, err := c.ResolveSessionID(ctx, projectName)
 			if err != nil {
-				return err
+				return fmt.Errorf("resolving project %q: %w", projectName, err)
 			}
 
 			primary, err := fetchRunStats(ctx, c, sessionID, since, before, lastNMin, filter)
@@ -99,7 +103,6 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().StringVar(&projectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVar(&since, "since", "", "Start of time window (RFC3339 or YYYY-MM-DD; default: 7 days ago)")
 	cmd.Flags().StringVar(&before, "before", "", "End of time window (RFC3339 or YYYY-MM-DD; default: now)")
 	cmd.Flags().IntVar(&lastNMin, "last-n-minutes", 0, "Shorthand: window = last N minutes (overrides --since)")
@@ -108,7 +111,6 @@ Examples:
 	cmd.Flags().IntVar(&cmpLastNMin, "compare-last-n-minutes", 0, "Shorthand: comparison window = N minutes before the primary window starts")
 	cmd.Flags().StringVar(&filter, "filter", "", "LangSmith filter DSL (applied to both windows if comparing)")
 	cmd.Flags().StringVar(&outputFile, "output", "", "Write JSON output to file instead of stdout")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	return cmd
 }
 
@@ -163,13 +165,13 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 	}
 }
 
-func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost float64, errorRate float64, feedbackStats map[string]interface{}) runStats {
+func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost string, errorRate float64, feedbackStats map[string]interface{}) runStats {
 	fs := make(map[string]any, len(feedbackStats))
 	for k, v := range feedbackStats {
 		fs[k] = v
 	}
 	var cost any
-	if totalCost > 0 {
+	if totalCost != "" {
 		cost = totalCost
 	}
 	return runStats{

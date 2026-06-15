@@ -203,7 +203,7 @@ func TestRunUpdate_AlreadyUpToDate(t *testing.T) {
 	defer func() { flagOutputFormat = oldFmt }()
 
 	output := captureStdout(t, func() {
-		err := runUpdate(context.Background(), "0.1.7", false, false)
+		err := runUpdate(context.Background(), "0.1.7", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -235,7 +235,7 @@ func TestRunUpdate_DryRun(t *testing.T) {
 	defer func() { flagOutputFormat = oldFmt }()
 
 	output := captureStdout(t, func() {
-		err := runUpdate(context.Background(), "0.1.7", true, false)
+		err := runUpdate(context.Background(), "0.1.7", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -254,7 +254,7 @@ func TestRunUpdate_DryRun(t *testing.T) {
 }
 
 func TestRunUpdate_DevBuild(t *testing.T) {
-	err := runUpdate(context.Background(), "dev", false, false)
+	err := runUpdate(context.Background(), "dev", false)
 	if err == nil {
 		t.Error("expected error for dev build")
 	}

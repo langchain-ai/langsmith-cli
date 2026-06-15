@@ -51,7 +51,6 @@ func TestExtractRunBase(t *testing.T) {
 func TestExtractRunWithMetadata(t *testing.T) {
 	start := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 15, 10, 30, 5, 0, time.UTC)
-	firstToken := time.Date(2024, 1, 15, 10, 30, 1, 0, time.UTC)
 
 	run := langsmith.RunSchema{
 		ID:               "run-123",
@@ -60,14 +59,13 @@ func TestExtractRunWithMetadata(t *testing.T) {
 		RunType:          "llm",
 		StartTime:        start,
 		EndTime:          end,
-		FirstTokenTime:   firstToken,
 		Status:           "success",
 		PromptTokens:     100,
 		CompletionTokens: 50,
 		TotalTokens:      150,
-		PromptCost:       0.001,
-		CompletionCost:   0.0005,
-		TotalCost:        0.0015,
+		PromptCost:       "0.001",
+		CompletionCost:   "0.0005",
+		TotalCost:        "0.0015",
 		Tags:             []string{"production", "v2"},
 		Extra:            map[string]any{"metadata": map[string]any{"model": "gpt-4"}},
 	}
@@ -76,10 +74,6 @@ func TestExtractRunWithMetadata(t *testing.T) {
 
 	if result["status"] != "success" {
 		t.Errorf("expected status=success, got %v", result["status"])
-	}
-
-	if result["first_token_time"] != firstToken.Format(time.RFC3339Nano) {
-		t.Errorf("expected first_token_time=%s, got %v", firstToken.Format(time.RFC3339Nano), result["first_token_time"])
 	}
 
 	durationMs, ok := result["duration_ms"].(int64)
@@ -121,7 +115,6 @@ func TestExtractRunWithIO(t *testing.T) {
 		Inputs:    map[string]any{"query": "hello"},
 		Outputs:   map[string]any{"response": "world"},
 		Error:     "some error",
-		Events:    []map[string]interface{}{{"name": "new_token", "kwargs": map[string]interface{}{"token": "hi"}}},
 	}
 
 	result := ExtractRun(run, false, true, false)
@@ -138,30 +131,6 @@ func TestExtractRunWithIO(t *testing.T) {
 
 	if result["error"] != "some error" {
 		t.Errorf("expected error='some error', got %v", result["error"])
-	}
-
-	events, ok := result["events"].([]map[string]interface{})
-	if !ok {
-		t.Fatalf("expected events to be []map[string]interface{}, got %T", result["events"])
-	}
-	if len(events) != 1 || events[0]["name"] != "new_token" {
-		t.Errorf("expected one new_token event, got %v", events)
-	}
-}
-
-func TestExtractRunWithIOEmptyEvents(t *testing.T) {
-	run := langsmith.RunSchema{
-		ID:        "run-123",
-		TraceID:   "trace-456",
-		Name:      "ChatOpenAI",
-		RunType:   "llm",
-		StartTime: time.Now(),
-	}
-
-	result := ExtractRun(run, false, true, false)
-
-	if result["events"] != nil {
-		t.Errorf("expected events=nil for run with no events, got %v", result["events"])
 	}
 }
 

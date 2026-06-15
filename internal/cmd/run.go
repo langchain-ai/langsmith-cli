@@ -60,23 +60,16 @@ func newRunListCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run list")
-			if err != nil {
-				ExitErrorf("%v", err)
+			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				ExitError("--project is required for run list (or set LANGSMITH_PROJECT)")
 			}
 
-			var runs []langsmith.RunSchema
-			if ff.Version == "v2" {
-				body := buildRunQueryV2Params(&ff, false, ff.Limit)
-				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
-				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
-			} else {
-				params := BuildRunQueryParams(&ff, false, ff.Limit)
-				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-					params.Select = langsmith.F(sel)
-				}
-				runs, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
+			params := BuildRunQueryParams(&ff, false, ff.Limit)
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -94,9 +87,8 @@ func newRunListCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
-	addVersionFlag(cmd, &ff)
-	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
-	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
+	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
+	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
@@ -109,7 +101,6 @@ func newRunGetCmd() *cobra.Command {
 		project         string
 		since           string
 		lastNMinutes    int
-		version         string
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -132,31 +123,21 @@ func newRunGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, project, "", "run get")
-			if err != nil {
-				ExitErrorf("%v", err)
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				ExitError("--project is required for run get (or set LANGSMITH_PROJECT)")
 			}
 
-			var runs []langsmith.RunSchema
-			if version == "v2" {
-				params := langsmith.RunQueryV2Params{
-					IDs:          langsmith.F([]string{runID}),
-					MinStartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
-					PageSize:     langsmith.F(int64(1)),
-					Selects:      langsmith.F(buildRunSelectV2(includeIO, includeFeedback)),
-				}
-				runs, err = queryRunsV2(ctx, c, params, sessionID, 1, 0)
-			} else {
-				params := langsmith.RunQueryParams{
-					ID:        langsmith.F([]string{runID}),
-					Limit:     langsmith.F(int64(1)),
-					StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
-				}
-				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-					params.Select = langsmith.F(sel)
-				}
-				runs, err = queryRuns(ctx, c, params, sessionID, 1, 0)
+			params := langsmith.RunQueryParams{
+				ID:        langsmith.F([]string{runID}),
+				Limit:     langsmith.F(int64(1)),
+				StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
 			}
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
+			}
+
+			runs, err := queryRuns(ctx, c, params, projectName, 1, 0)
 			if err != nil {
 				ExitErrorf("fetching run: %v", err)
 			}
@@ -178,9 +159,8 @@ func newRunGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
 	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
-	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
-	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
-	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
+	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
+	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
@@ -216,23 +196,16 @@ func newRunExportCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run export")
-			if err != nil {
-				ExitErrorf("%v", err)
+			projectName := ResolveProject(ff.Project)
+			if projectName == "" {
+				ExitError("--project is required for run export (or set LANGSMITH_PROJECT)")
 			}
 
-			var runs []langsmith.RunSchema
-			if ff.Version == "v2" {
-				body := buildRunQueryV2Params(&ff, false, ff.Limit)
-				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
-				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
-			} else {
-				params := BuildRunQueryParams(&ff, false, ff.Limit)
-				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-					params.Select = langsmith.F(sel)
-				}
-				runs, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
+			params := BuildRunQueryParams(&ff, false, ff.Limit)
+			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+				params.Select = langsmith.F(sel)
 			}
+			runs, err := queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -243,9 +216,8 @@ func newRunExportCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
-	addVersionFlag(cmd, &ff)
-	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
-	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
+	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, token_usage, costs, tags, custom_metadata (incl. revision_id)")
+	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, and error fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 

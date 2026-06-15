@@ -1,5 +1,8 @@
 # langsmith-cli
 
+> [!IMPORTANT]
+> **Alpha** — This CLI is under active development. Commands, flags, and output schemas may change between releases. Feedback and bug reports welcome via [GitHub Issues](https://github.com/langchain-ai/langsmith-cli/issues).
+
 An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
 Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads.
@@ -168,13 +171,6 @@ langsmith run get <run-id> --full
 langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **For agents querying runs:** prefer `--version v2` first (SmithDB-backed; faster on tenants that are rolled out). If the call fails with a 4xx (typically 403, 404, or 422), retry the **same command without** `--version` to fall back to v1. Example:
->
-> ```bash
-> langsmith run list --project my-app --version v2 \
->   || langsmith run list --project my-app
-> ```
-
 ### `thread` — Query conversation threads
 
 A thread groups multiple root runs sharing a thread_id (multi-turn conversations).
@@ -297,7 +293,6 @@ langsmith hub pull acme/my-skill:production --dir ./out
 
 # Discover, inspect, delete
 langsmith hub list --type skill --query foo
-langsmith hub list --type skill --source external
 langsmith hub get acme/my-skill
 langsmith hub delete acme/my-skill --yes
 ```
@@ -315,19 +310,6 @@ langsmith self-update --dry-run
 # Update to the latest version
 langsmith self-update
 ```
-
-If langsmith was installed through a package manager, `self-update` won't replace the
-binary in place — it points you at the right command instead:
-
-| Installed via | Update with |
-| --- | --- |
-| Homebrew | `brew upgrade langchain-ai/tap/langsmith-cli` |
-| Scoop | `scoop update langsmith-cli` |
-| `go install` | `go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest` |
-
-Installs from the `install.sh`/`install.ps1` scripts or a direct GitHub Releases download
-are updated in place as usual. Pass `--force` to update in place regardless of how
-langsmith was installed.
 
 ### `trace setup` — Trace coding agents to LangSmith
 
