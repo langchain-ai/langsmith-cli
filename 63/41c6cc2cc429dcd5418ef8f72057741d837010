@@ -1,0 +1,19 @@
+internal/cmd/hub_list.go
+  s_c2e8238e629c32::t_c2008f9b6dcd62 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "6341c6cc2cc429dcd5418ef8f72057741d837010",
+  "prompts": {},
+  "sessions": {
+    "s_c2e8238e629c32": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6673c0ef-7ebf-4a39-b15e-b13deb6bfacc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
