@@ -62,23 +62,22 @@ func newRunListCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(ff.Project)
-			if projectName == "" {
-				ExitError("--project is required for run list (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run list")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			var runs []langsmith.RunSchema
-			var err error
 			if ff.Version == "v2" {
 				body := buildRunQueryV2Params(&ff, false, ff.Limit)
 				body.Selects = buildRunSelectV2(includeIO, includeFeedback)
-				runs, err = queryRunsV2(ctx, c, body, projectName, ff.Limit, ff.MinTokens)
+				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
 			} else {
 				params := BuildRunQueryParams(&ff, false, ff.Limit)
 				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 					params.Select = langsmith.F(sel)
 				}
-				runs, err = queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
+				runs, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			}
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -135,13 +134,12 @@ func newRunGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required for run get (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, project, "", "run get")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			var runs []langsmith.RunSchema
-			var err error
 			if version == "v2" {
 				minStart := resolveStartTime(since, lastNMinutes).UTC().Format(time.RFC3339)
 				body := runsv2.QueryRequest{
@@ -151,7 +149,7 @@ func newRunGetCmd() *cobra.Command {
 					SortOrder:    runsv2.Ptr(runsv2.SortOrderDesc),
 					Selects:      buildRunSelectV2(includeIO, includeFeedback),
 				}
-				runs, err = queryRunsV2(ctx, c, body, projectName, 1, 0)
+				runs, err = queryRunsV2(ctx, c, body, sessionID, 1, 0)
 			} else {
 				params := langsmith.RunQueryParams{
 					ID:        langsmith.F([]string{runID}),
@@ -161,7 +159,7 @@ func newRunGetCmd() *cobra.Command {
 				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 					params.Select = langsmith.F(sel)
 				}
-				runs, err = queryRuns(ctx, c, params, projectName, 1, 0)
+				runs, err = queryRuns(ctx, c, params, sessionID, 1, 0)
 			}
 			if err != nil {
 				ExitErrorf("fetching run: %v", err)
@@ -222,23 +220,22 @@ func newRunExportCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(ff.Project)
-			if projectName == "" {
-				ExitError("--project is required for run export (or set LANGSMITH_PROJECT)")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run export")
+			if err != nil {
+				ExitErrorf("%v", err)
 			}
 
 			var runs []langsmith.RunSchema
-			var err error
 			if ff.Version == "v2" {
 				body := buildRunQueryV2Params(&ff, false, ff.Limit)
 				body.Selects = buildRunSelectV2(includeIO, includeFeedback)
-				runs, err = queryRunsV2(ctx, c, body, projectName, ff.Limit, ff.MinTokens)
+				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
 			} else {
 				params := BuildRunQueryParams(&ff, false, ff.Limit)
 				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 					params.Select = langsmith.F(sel)
 				}
-				runs, err = queryRuns(ctx, c, params, projectName, ff.Limit, ff.MinTokens)
+				runs, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			}
 			if err != nil {
 				ExitErrorf("%v", err)
