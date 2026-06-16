@@ -13,6 +13,7 @@ import (
 func newHubListCmd() *cobra.Command {
 	var (
 		repoType   string
+		source     string
 		query      string
 		publicOnly bool
 		limit      int
@@ -34,6 +35,12 @@ func newHubListCmd() *cobra.Command {
 					return fmt.Errorf("--type must be 'agent' or 'skill' when set (got %q)", repoType)
 				}
 				params.RepoType = langsmith.F(langsmith.RepoListParamsRepoType(repoType))
+			}
+			if source != "" {
+				if source != "internal" && source != "external" {
+					return fmt.Errorf("--source must be 'internal' or 'external' when set (got %q)", source)
+				}
+				params.Source = langsmith.F(langsmith.RepoListParamsSource(source))
 			}
 			if query != "" {
 				params.Query = langsmith.F(query)
@@ -88,6 +95,7 @@ func newHubListCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&repoType, "type", "", "Filter by repo type: agent or skill")
+	cmd.Flags().StringVar(&source, "source", "", "Filter by source: internal or external")
 	cmd.Flags().StringVar(&query, "query", "", "Filter by name substring")
 	cmd.Flags().BoolVar(&publicOnly, "public", false, "Filter by public/private")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 100, "Maximum number of repos to return")

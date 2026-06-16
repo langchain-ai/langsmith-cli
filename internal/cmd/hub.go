@@ -54,6 +54,7 @@ type hubRepo struct {
 	Owner          *string  `json:"owner"`
 	RepoHandle     string   `json:"repo_handle"`
 	RepoType       string   `json:"repo_type"`
+	Source         *string  `json:"source"`
 	Description    *string  `json:"description"`
 	Readme         *string  `json:"readme"`
 	IsPublic       bool     `json:"is_public"`
