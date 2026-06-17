@@ -86,13 +86,42 @@ func (s *OpenAPISpec) Endpoints() []Endpoint {
 	return endpoints
 }
 
+// resolveShorthand maps a shorthand path to an absolute spec path (prefer /api/v1/, then exact /<path>, then a unique suffix match); "" if ambiguous.
+func (s *OpenAPISpec) resolveShorthand(path string) string {
+	if candidate := "/api/v1/" + path; s.hasPath(candidate) {
+		return candidate
+	}
+	if candidate := "/" + path; s.hasPath(candidate) {
+		return candidate
+	}
+	suffix := "/" + path
+	var match string
+	for key := range s.Paths {
+		if strings.HasSuffix(key, suffix) {
+			if match != "" {
+				return "" // ambiguous
+			}
+			match = key
+		}
+	}
+	return match
+}
+
+func (s *OpenAPISpec) hasPath(path string) bool {
+	_, ok := s.Paths[path]
+	return ok
+}
+
 // LookupEndpoint finds an endpoint by method and path, returning full detail.
 // The path argument can be shorthand ("sessions") or absolute ("/api/v1/sessions").
 func (s *OpenAPISpec) LookupEndpoint(method, path string) (*EndpointDetail, error) {
-	// Normalize: if shorthand, prefix /api/v1/
 	normalized := path
 	if !strings.HasPrefix(normalized, "/") {
-		normalized = "/api/v1/" + normalized
+		if resolved := s.resolveShorthand(normalized); resolved != "" {
+			normalized = resolved
+		} else {
+			normalized = "/api/v1/" + normalized
+		}
 	}
 	method = strings.ToUpper(method)
 
@@ -264,6 +293,19 @@ func (s *OpenAPISpec) resolveComponentRef(ref string) any {
 	var schema any
 	_ = json.Unmarshal(schemaRaw, &schema)
 	return schema
+}
+
+// cachedSpec returns the cached spec (nil on miss); it never fetches, so it is safe on the request hot path.
+func cachedSpec(apiURL, cacheDir string) *OpenAPISpec {
+	data, err := cache.ReadIfFresh(cache.PathForKey(cacheDir, "openapi", apiURL), specCacheTTL)
+	if err != nil {
+		return nil
+	}
+	var spec OpenAPISpec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return nil
+	}
+	return &spec
 }
 
 // loadSpec loads the OpenAPI spec, using cache if available and not expired.
