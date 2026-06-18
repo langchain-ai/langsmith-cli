@@ -1,0 +1,24 @@
+internal/cmd/message.go
+  s_165ff7510ff170::t_636c49d07821b5 520-577
+  s_165ff7510ff170::t_dd96f53555ee4e 5,8-9,19-32,40-46
+  s_165ff7510ff170::t_2008dbdd96934a 393,406-407,412-417,422-425,431,438-441,443-448,454-465,468-469
+internal/cmd/message_trajectory_test.go
+  s_165ff7510ff170::t_d52959ea72af68 54-56
+  s_165ff7510ff170::t_1b2a2245061266 1-53,57-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "bb98a56f863789f0f9e5f73ad984f9412167fd6d",
+  "prompts": {},
+  "sessions": {
+    "s_165ff7510ff170": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4358373f-1fed-42e4-8a4b-22c132b1ca06",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
