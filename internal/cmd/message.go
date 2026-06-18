@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -13,6 +16,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Char caps for the normalized trajectory fields. Bounded so a single huge
+// message or tool payload can't blow up the trajectory view (and the context
+// of any agent reading it). The full untruncated content is still available in
+// the trace's `groups`.
+const (
+	trajTextMax   = 600
+	trajArgsMax   = 200
+	trajResultMax = 200
+)
+
+// errorishPattern flags a tool result whose content looks like an error, so a
+// reader can spot failed tool calls without opening every result.
+var errorishPattern = regexp.MustCompile(`(?i)error|not found|unauthorized|timeout|exception|denied|forbidden|traceback|http 5`)
+
 // trajectoryStep is a compact single-step view of one message/tool-call in a trace.
 type trajectoryStep struct {
 	Role      string `json:"role"`
@@ -20,6 +37,13 @@ type trajectoryStep struct {
 	Tokens    *int64 `json:"tokens,omitempty"`
 	LatencyMS *int64 `json:"latency_ms,omitempty"`
 	Chars     int    `json:"chars,omitempty"`
+	// Normalized content so a reader can verdict straight off the trajectory
+	// without re-parsing `groups` (whose content is heterogeneously shaped —
+	// a string, a list of blocks, or null).
+	Text       string `json:"text,omitempty"`        // coerced message content, ≤trajTextMax
+	ToolArgs   string `json:"tool_args,omitempty"`   // JSON of the tool call args, ≤trajArgsMax
+	ToolResult string `json:"tool_result,omitempty"` // coerced tool result content, ≤trajResultMax
+	Errorish   bool   `json:"errorish,omitempty"`    // tool result content looks like an error
 }
 
 // traceTrajectory is the compact trajectory for a single trace.
@@ -366,6 +390,7 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 	groups, _ := trace["groups"].([]any)
 
 	var steps []trajectoryStep
+	var firstHuman, finalAI string
 	for _, g := range groups {
 		group, _ := g.(map[string]any)
 		gType, _ := group["type"].(string)
@@ -378,39 +403,70 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 		case "message":
 			msg, _ := group["message"].(map[string]any)
 			role, _ := msg["role"].(string)
-			step := trajectoryStep{Role: role, Chars: msgChars(msg)}
+			text := msgText(msg)
+			step := trajectoryStep{Role: role, Chars: msgChars(msg), Text: truncateHard(text, trajTextMax)}
 			if role == "ai" {
 				step.Tokens = tokens
 				step.LatencyMS = latency
+			}
+			if role == "human" && firstHuman == "" {
+				firstHuman = text
+			}
+			if role == "ai" && text != "" {
+				finalAI = text
 			}
 			steps = append(steps, step)
 		case "tool_interaction":
 			aiMsg, _ := group["aiMessage"].(map[string]any)
 			role, _ := aiMsg["role"].(string)
+			aiText := msgText(aiMsg)
+			if aiText != "" {
+				finalAI = aiText
+			}
 			steps = append(steps, trajectoryStep{
 				Role:      role,
 				Tokens:    tokens,
 				LatencyMS: latency,
 				Chars:     msgChars(aiMsg),
+				Text:      truncateHard(aiText, trajTextMax),
 			})
 			toolCalls, _ := group["toolCalls"].([]any)
 			for _, tc := range toolCalls {
 				call, _ := tc.(map[string]any)
 				name, _ := call["name"].(string)
 				result, _ := call["result"].(map[string]any)
+				resultText := ""
+				if result != nil {
+					resultText = coerceContent(result["content"])
+				}
 				steps = append(steps, trajectoryStep{
-					Role:     "tool",
-					ToolName: name,
-					Chars:    msgChars(result),
+					Role:       "tool",
+					ToolName:   name,
+					Chars:      msgChars(result),
+					ToolArgs:   truncateHard(marshalArgs(call["args"]), trajArgsMax),
+					ToolResult: truncateHard(resultText, trajResultMax),
+					Errorish:   resultText != "" && errorishPattern.MatchString(resultText),
 				})
 			}
 		}
 	}
 
+	// Prefer the full message from groups (untruncated) over the ~150-char
+	// API preview, which is clipped and sometimes shows a tool message instead
+	// of the answer. Fall back to the preview when groups don't carry it.
+	inputMessage := firstHuman
+	if inputMessage == "" {
+		inputMessage = inputsPreview
+	}
+	outputMessage := finalAI
+	if outputMessage == "" {
+		outputMessage = outputsPreview
+	}
+
 	return traceTrajectory{
 		TraceID:       traceID,
-		InputMessage:  inputsPreview,
-		OutputMessage: outputsPreview,
+		InputMessage:  inputMessage,
+		OutputMessage: outputMessage,
 		Steps:         steps,
 	}
 }
@@ -459,6 +515,64 @@ func msgChars(msg map[string]any) int {
 		}
 	}
 	return total
+}
+
+// coerceContent flattens a message/tool `content` value — which may be a
+// string, a list of content blocks, an object, or null — into a plain string.
+// Content shape is heterogeneous across integrations; normalizing here lets a
+// reader verdict off the trajectory without re-parsing each shape.
+func coerceContent(v any) string {
+	switch c := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, block := range c {
+			switch b := block.(type) {
+			case string:
+				parts = append(parts, b)
+			case map[string]any:
+				if t, ok := b["text"].(string); ok {
+					parts = append(parts, t)
+				} else if t, ok := b["content"].(string); ok {
+					parts = append(parts, t)
+				}
+			}
+		}
+		return strings.Join(parts, " ")
+	case map[string]any:
+		if t, ok := c["text"].(string); ok {
+			return t
+		}
+		if t, ok := c["content"].(string); ok {
+			return t
+		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", c)
+	}
+}
+
+// msgText returns a message's content coerced to a plain string.
+func msgText(msg map[string]any) string {
+	if msg == nil {
+		return ""
+	}
+	return coerceContent(msg["content"])
+}
+
+// marshalArgs renders tool-call args as compact JSON, or "" if absent/unmarshalable.
+func marshalArgs(args any) string {
+	if args == nil {
+		return ""
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // printMessage prints a single message in a compact format.
