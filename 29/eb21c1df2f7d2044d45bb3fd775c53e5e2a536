@@ -1,0 +1,23 @@
+internal/cmd/helpers.go
+  s_c2e8238e629c32::t_af94100d4c8f58 45,84-85
+internal/cmd/run.go
+  s_c2e8238e629c32::t_2c3f5347859cca 232,238
+  s_c2e8238e629c32::t_f4c43f70be657e 152,162
+  s_c2e8238e629c32::t_b99bb04a33c37f 74,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "29eb21c1df2f7d2044d45bb3fd775c53e5e2a536",
+  "prompts": {},
+  "sessions": {
+    "s_c2e8238e629c32": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6673c0ef-7ebf-4a39-b15e-b13deb6bfacc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
