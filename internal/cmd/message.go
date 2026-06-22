@@ -16,42 +16,78 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Char caps for the normalized trajectory fields. Bounded so a single huge
-// message or tool payload can't blow up the trajectory view (and the context
-// of any agent reading it). The full untruncated content is still available in
-// the trace's `groups`.
+// Char caps for the per-trace digest fields. Bounded so a single huge message
+// or tool payload can't blow up the digest (and the context of any agent
+// reading it). The full untruncated content is still available in `groups`.
 const (
-	trajTextMax   = 600
-	trajArgsMax   = 200
-	trajResultMax = 200
+	digestTextMax   = 600
+	digestArgsMax   = 200
+	digestResultMax = 200
 )
 
-// errorishPattern flags a tool result whose content looks like an error, so a
-// reader can spot failed tool calls without opening every result.
-var errorishPattern = regexp.MustCompile(`(?i)error|not found|unauthorized|timeout|exception|denied|forbidden|traceback|http 5`)
+// errorishPattern is a heuristic flag for a tool result whose content looks
+// like an *error response* (not merely text that mentions the word "error" —
+// technical docs and search results say "error" constantly). It requires
+// error-shaped context: an error/exception token with `:`/`=`, a quoted
+// `"error":` key, an HTTP/status 4xx-5xx, a 4xx-5xx code next to a failure
+// word, a traceback, or a common shell/tool failure string. Advisory, not
+// authoritative — a reader still confirms by looking at the result.
+var errorishPattern = regexp.MustCompile(`(?i)<tool_use_error>|traceback|command not found|permission denied|no such file|\b(error|exception)\b\s*[:=]|"error"\s*[:=]|\bhttp[ /]?[45]\d\d\b|\b[45]\d\d\b\s+\w*\s*(error|not found|forbidden|unauthorized|internal server)`)
 
-// trajectoryStep is a compact single-step view of one message/tool-call in a trace.
+// trajectoryStep is a compact single-step view of one message/tool-call. It is
+// deliberately THIN: the trajectory is scanned across *all* traces in a batch
+// (triage), so per-trace content lives in the separate `digest` field, read
+// per-trace — not crammed into the bulk-scanned trajectory.
 type trajectoryStep struct {
 	Role      string `json:"role"`
 	ToolName  string `json:"tool_name,omitempty"`
 	Tokens    *int64 `json:"tokens,omitempty"`
 	LatencyMS *int64 `json:"latency_ms,omitempty"`
 	Chars     int    `json:"chars,omitempty"`
-	// Normalized content so a reader can verdict straight off the trajectory
-	// without re-parsing `groups` (whose content is heterogeneously shaped —
-	// a string, a list of blocks, or null).
-	Text       string `json:"text,omitempty"`        // coerced message content, ≤trajTextMax
-	ToolArgs   string `json:"tool_args,omitempty"`   // JSON of the tool call args, ≤trajArgsMax
-	ToolResult string `json:"tool_result,omitempty"` // coerced tool result content, ≤trajResultMax
-	Errorish   bool   `json:"errorish,omitempty"`    // tool result content looks like an error
 }
 
 // traceTrajectory is the compact trajectory for a single trace.
 type traceTrajectory struct {
-	TraceID       string           `json:"trace_id"`
-	InputMessage  string           `json:"input_message,omitempty"`
-	OutputMessage string           `json:"output_message,omitempty"`
-	Steps         []trajectoryStep `json:"steps"`
+	TraceID string           `json:"trace_id"`
+	Steps   []trajectoryStep `json:"steps"`
+}
+
+// digestToolArg is one tool call's name and its (bounded) JSON args.
+type digestToolArg struct {
+	Name string `json:"name"`
+	Args string `json:"args"`
+}
+
+// digestGroup is one normalized group in a trace's digest — enough to verdict
+// the group without re-parsing the heterogeneously-shaped raw `groups`.
+type digestGroup struct {
+	I          int             `json:"i"`
+	Kind       string          `json:"kind"`
+	Role       string          `json:"role,omitempty"`
+	Chars      int             `json:"chars"`
+	Text       string          `json:"text,omitempty"`        // coerced content, ≤digestTextMax
+	Tools      []string        `json:"tools,omitempty"`       // tool-call names in this group
+	ToolArgs   []digestToolArg `json:"tool_args,omitempty"`   // per call: name + ≤digestArgsMax JSON args
+	ToolResult []string        `json:"tool_result,omitempty"` // per call: coerced result, ≤digestResultMax
+	Errorish   bool            `json:"errorish,omitempty"`    // any tool result looks like an error
+}
+
+// traceDigest is the detailed per-trace view a screener reads for the ONE trace
+// it is judging. It is emitted as its own field (NOT folded into the trajectory)
+// so this bulk detail is read per-trace, never scanned across the whole batch.
+type traceDigest struct {
+	FirstHuman string        `json:"first_human,omitempty"`
+	FinalAI    string        `json:"final_ai,omitempty"`
+	NGroups    int           `json:"n_groups"`
+	GroupIndex []digestGroup `json:"group_index"`
+}
+
+// attachTrajectory attaches the thin trajectory and the per-trace digest to a
+// trace map for JSON output. The trajectory is scanned across all traces; the
+// digest is read per-trace.
+func attachTrajectory(trace map[string]any, traj traceTrajectory, digest traceDigest) {
+	trace["trajectory"] = traj.Steps
+	trace["digest"] = digest
 }
 
 func newTraceMessagesCmd() *cobra.Command {
@@ -160,7 +196,7 @@ Examples:
 				for _, t := range traces {
 					trace, _ := t.(map[string]any)
 					traj := buildTraceTrajectory(trace)
-					trace["trajectory"] = traj.Steps
+					attachTrajectory(trace, traj, buildTraceDigest(trace))
 				}
 
 				nextCursor, _ := result["next_cursor"].(string)
@@ -221,7 +257,7 @@ Examples:
 			for _, t := range allTraces {
 				trace, _ := t.(map[string]any)
 				traj := buildTraceTrajectory(trace)
-				trace["trajectory"] = traj.Steps
+				attachTrajectory(trace, traj, buildTraceDigest(trace))
 			}
 
 			combined := map[string]any{
@@ -382,20 +418,19 @@ func printTraceMessages(result map[string]any) {
 	}
 }
 
-// buildTraceTrajectory converts a raw trace map into a compact trajectory.
+// buildTraceTrajectory converts a raw trace map into a compact, THIN trajectory
+// (role/tool/tokens/latency/chars per step). It carries no message content —
+// the trajectory is scanned across all traces for triage, so detail lives in
+// buildTraceDigest and is read per-trace.
 func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 	traceID, _ := trace["trace_id"].(string)
-	inputsPreview, _ := trace["root_inputs_preview"].(string)
-	outputsPreview, _ := trace["root_outputs_preview"].(string)
 	groups, _ := trace["groups"].([]any)
 
 	var steps []trajectoryStep
-	var firstHuman, finalAI string
 	for _, g := range groups {
 		group, _ := g.(map[string]any)
 		gType, _ := group["type"].(string)
 		meta, _ := group["metadata"].(map[string]any)
-
 		tokens := trajTokens(meta)
 		latency := trajLatency(meta)
 
@@ -403,71 +438,113 @@ func buildTraceTrajectory(trace map[string]any) traceTrajectory {
 		case "message":
 			msg, _ := group["message"].(map[string]any)
 			role, _ := msg["role"].(string)
-			text := msgText(msg)
-			step := trajectoryStep{Role: role, Chars: msgChars(msg), Text: truncateHard(text, trajTextMax)}
+			step := trajectoryStep{Role: role, Chars: msgChars(msg)}
 			if role == "ai" {
 				step.Tokens = tokens
 				step.LatencyMS = latency
-			}
-			if role == "human" && firstHuman == "" {
-				firstHuman = text
-			}
-			if role == "ai" && text != "" {
-				finalAI = text
 			}
 			steps = append(steps, step)
 		case "tool_interaction":
 			aiMsg, _ := group["aiMessage"].(map[string]any)
 			role, _ := aiMsg["role"].(string)
-			aiText := msgText(aiMsg)
-			if aiText != "" {
-				finalAI = aiText
-			}
 			steps = append(steps, trajectoryStep{
 				Role:      role,
 				Tokens:    tokens,
 				LatencyMS: latency,
 				Chars:     msgChars(aiMsg),
-				Text:      truncateHard(aiText, trajTextMax),
 			})
 			toolCalls, _ := group["toolCalls"].([]any)
 			for _, tc := range toolCalls {
 				call, _ := tc.(map[string]any)
 				name, _ := call["name"].(string)
 				result, _ := call["result"].(map[string]any)
-				resultText := ""
-				if result != nil {
-					resultText = coerceContent(result["content"])
-				}
 				steps = append(steps, trajectoryStep{
-					Role:       "tool",
-					ToolName:   name,
-					Chars:      msgChars(result),
-					ToolArgs:   truncateHard(marshalArgs(call["args"]), trajArgsMax),
-					ToolResult: truncateHard(resultText, trajResultMax),
-					Errorish:   resultText != "" && errorishPattern.MatchString(resultText),
+					Role:     "tool",
+					ToolName: name,
+					Chars:    msgChars(result),
 				})
 			}
 		}
 	}
+	return traceTrajectory{TraceID: traceID, Steps: steps}
+}
 
-	// Prefer the full message from groups (untruncated) over the ~150-char
-	// API preview, which is clipped and sometimes shows a tool message instead
-	// of the answer. Fall back to the preview when groups don't carry it.
-	inputMessage := firstHuman
-	if inputMessage == "" {
-		inputMessage = inputsPreview
-	}
-	outputMessage := finalAI
-	if outputMessage == "" {
-		outputMessage = outputsPreview
+// buildTraceDigest builds the detailed per-trace digest: the full first-human /
+// final-AI messages plus a normalized per-group index (content coerced to
+// strings, fields length-bounded). Read per-trace by a screener — kept OUT of
+// the bulk-scanned trajectory on purpose. Mirrors the fetch-time digest the
+// issues-agent screeners verdict from.
+func buildTraceDigest(trace map[string]any) traceDigest {
+	inputsPreview, _ := trace["root_inputs_preview"].(string)
+	outputsPreview, _ := trace["root_outputs_preview"].(string)
+	groups, _ := trace["groups"].([]any)
+
+	var firstHuman, finalAI string
+	index := make([]digestGroup, 0, len(groups))
+	for i, g := range groups {
+		group, _ := g.(map[string]any)
+		gType, _ := group["type"].(string)
+		dg := digestGroup{I: i, Kind: gType}
+		if dg.Kind == "" {
+			dg.Kind = "message"
+		}
+
+		var text string
+		switch gType {
+		case "message":
+			msg, _ := group["message"].(map[string]any)
+			dg.Role, _ = msg["role"].(string)
+			text = msgText(msg)
+			if dg.Role == "human" && firstHuman == "" {
+				firstHuman = text
+			}
+			if dg.Role == "ai" && text != "" {
+				finalAI = text
+			}
+		case "tool_interaction":
+			aiMsg, _ := group["aiMessage"].(map[string]any)
+			text = msgText(aiMsg)
+			if text != "" {
+				finalAI = text
+			}
+			toolCalls, _ := group["toolCalls"].([]any)
+			for _, tc := range toolCalls {
+				call, _ := tc.(map[string]any)
+				name, _ := call["name"].(string)
+				dg.Tools = append(dg.Tools, name)
+				dg.ToolArgs = append(dg.ToolArgs, digestToolArg{
+					Name: name,
+					Args: truncateHard(marshalArgs(call["args"]), digestArgsMax),
+				})
+				result, _ := call["result"].(map[string]any)
+				resultText := ""
+				if result != nil {
+					resultText = coerceContent(result["content"])
+				}
+				dg.ToolResult = append(dg.ToolResult, truncateHard(resultText, digestResultMax))
+				if resultText != "" && errorishPattern.MatchString(resultText) {
+					dg.Errorish = true
+				}
+			}
+		}
+		dg.Chars = len(text)
+		dg.Text = truncateHard(text, digestTextMax)
+		index = append(index, dg)
 	}
 
-	return traceTrajectory{
-		TraceID:       traceID,
-		InputMessage:  inputMessage,
-		OutputMessage: outputMessage,
-		Steps:         steps,
+	// Prefer the full message from groups; fall back to the (~150-char) preview
+	// only when groups don't carry it.
+	if firstHuman == "" {
+		firstHuman = inputsPreview
+	}
+	if finalAI == "" {
+		finalAI = outputsPreview
+	}
+	return traceDigest{
+		FirstHuman: firstHuman,
+		FinalAI:    finalAI,
+		NGroups:    len(groups),
+		GroupIndex: index,
 	}
 }
 

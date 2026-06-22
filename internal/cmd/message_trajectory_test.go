@@ -5,77 +5,79 @@ import (
 	"testing"
 )
 
-// buildTraceTrajectory should normalize heterogeneously-shaped group content
-// into the trajectory's text / tool_args / tool_result / errorish fields, and
-// source the full first-human / final-AI messages from groups (not the clipped
-// previews).
-func TestBuildTraceTrajectory_NormalizedFields(t *testing.T) {
+// The trajectory must stay THIN — no message content / tool args / results.
+// It is scanned across all traces, so per-trace detail belongs in the digest.
+func TestBuildTraceTrajectory_IsThin(t *testing.T) {
 	trace := map[string]any{
-		"trace_id":             "t1",
-		"root_inputs_preview":  "human: how do I use MCP?",
-		"root_outputs_preview": "tool: a truncated preview that is not the answer",
+		"trace_id": "t1",
 		"groups": []any{
+			map[string]any{"type": "message", "message": map[string]any{"role": "human", "content": "x" + strings.Repeat("y", 5000)}},
 			map[string]any{
-				"type":    "message",
-				"message": map[string]any{"role": "human", "content": "how do I use MCP?"},
-			},
-			map[string]any{
-				"type": "tool_interaction",
-				// aiMessage content as a list of blocks (must coerce to a string)
-				"aiMessage": map[string]any{
-					"role":    "ai",
-					"content": []any{map[string]any{"type": "text", "text": "searching the docs"}},
-				},
-				"toolCalls": []any{
-					map[string]any{
-						"name":   "search_docs",
-						"args":   map[string]any{"q": "mcp"},
-						"result": map[string]any{"content": "404 not found"},
-					},
-				},
-			},
-			map[string]any{
-				"type":    "message",
-				"message": map[string]any{"role": "ai", "content": "Use create_agent with the mcp arg."},
+				"type":      "tool_interaction",
+				"aiMessage": map[string]any{"role": "ai", "content": "thinking"},
+				"toolCalls": []any{map[string]any{"name": "search", "args": map[string]any{"q": "z"}, "result": map[string]any{"content": "404 not found"}}},
 			},
 		},
 	}
-
 	traj := buildTraceTrajectory(trace)
-
-	// first_human / final_ai come from groups (full), not the previews.
-	if traj.InputMessage != "how do I use MCP?" {
-		t.Errorf("InputMessage = %q, want full human message from groups", traj.InputMessage)
+	if len(traj.Steps) != 3 { // human, ai, tool
+		t.Fatalf("got %d steps, want 3", len(traj.Steps))
 	}
-	if traj.OutputMessage != "Use create_agent with the mcp arg." {
-		t.Errorf("OutputMessage = %q, want final ai message from groups", traj.OutputMessage)
+	// Steps carry only role/tool_name/chars — no content fields exist on the struct.
+	if traj.Steps[2].Role != "tool" || traj.Steps[2].ToolName != "search" {
+		t.Errorf("tool step = %+v", traj.Steps[2])
 	}
-
-	// steps: human, ai (tool_interaction), tool, ai (final message)
-	if len(traj.Steps) != 4 {
-		t.Fatalf("got %d steps, want 4", len(traj.Steps))
-	}
-	if traj.Steps[1].Text != "searching the docs" {
-		t.Errorf("ai step Text = %q, want list-of-blocks coerced to a string", traj.Steps[1].Text)
-	}
-	tool := traj.Steps[2]
-	if tool.Role != "tool" || tool.ToolName != "search_docs" {
-		t.Errorf("tool step = %+v, want role=tool name=search_docs", tool)
-	}
-	if !strings.Contains(tool.ToolArgs, `"q":"mcp"`) {
-		t.Errorf("tool_args = %q, want JSON of the call args", tool.ToolArgs)
-	}
-	if tool.ToolResult != "404 not found" {
-		t.Errorf("tool_result = %q, want coerced result content", tool.ToolResult)
-	}
-	if !tool.Errorish {
-		t.Errorf("errorish = false, want true for a '404 not found' result")
+	if traj.Steps[0].Chars != 5001 {
+		t.Errorf("human step chars = %d, want 5001 (count only, no content)", traj.Steps[0].Chars)
 	}
 }
 
-// Null / missing content must coerce to empty without panicking, and the
-// trajectory must fall back to previews when groups carry no human/ai message.
-func TestBuildTraceTrajectory_NullContentAndFallback(t *testing.T) {
+// buildTraceDigest carries the detail: full first/final messages + a normalized
+// per-group index with coerced content, tool args/results, and errorish flags.
+func TestBuildTraceDigest_NormalizedGroups(t *testing.T) {
+	trace := map[string]any{
+		"trace_id":             "t1",
+		"root_inputs_preview":  "human: how do I use MCP?",
+		"root_outputs_preview": "tool: clipped preview that isn't the answer",
+		"groups": []any{
+			map[string]any{"type": "message", "message": map[string]any{"role": "human", "content": "how do I use MCP?"}},
+			map[string]any{
+				"type":      "tool_interaction",
+				"aiMessage": map[string]any{"role": "ai", "content": []any{map[string]any{"type": "text", "text": "searching the docs"}}},
+				"toolCalls": []any{map[string]any{"name": "search_docs", "args": map[string]any{"q": "mcp"}, "result": map[string]any{"content": "404 not found"}}},
+			},
+			map[string]any{"type": "message", "message": map[string]any{"role": "ai", "content": "Use create_agent with the mcp arg."}},
+		},
+	}
+	d := buildTraceDigest(trace)
+
+	if d.FirstHuman != "how do I use MCP?" {
+		t.Errorf("first_human = %q, want full human message from groups", d.FirstHuman)
+	}
+	if d.FinalAI != "Use create_agent with the mcp arg." {
+		t.Errorf("final_ai = %q, want final ai message from groups", d.FinalAI)
+	}
+	if d.NGroups != 3 || len(d.GroupIndex) != 3 {
+		t.Fatalf("n_groups=%d group_index=%d, want 3/3", d.NGroups, len(d.GroupIndex))
+	}
+	// tool_interaction group: content coerced from list-of-blocks, tool fields present.
+	tg := d.GroupIndex[1]
+	if tg.Kind != "tool_interaction" || tg.Text != "searching the docs" {
+		t.Errorf("group[1] kind/text = %q/%q", tg.Kind, tg.Text)
+	}
+	if len(tg.Tools) != 1 || tg.Tools[0] != "search_docs" {
+		t.Errorf("group[1] tools = %v", tg.Tools)
+	}
+	if len(tg.ToolArgs) != 1 || tg.ToolArgs[0].Name != "search_docs" || !strings.Contains(tg.ToolArgs[0].Args, `"q":"mcp"`) {
+		t.Errorf("group[1] tool_args = %+v", tg.ToolArgs)
+	}
+	if len(tg.ToolResult) != 1 || tg.ToolResult[0] != "404 not found" {
+		t.Errorf("group[1] tool_result = %v", tg.ToolResult)
+	}
+}
+
+// Null/missing content coerces to empty (no panic); first/final fall back to previews.
+func TestBuildTraceDigest_NullAndFallback(t *testing.T) {
 	trace := map[string]any{
 		"trace_id":             "t2",
 		"root_inputs_preview":  "human: hi",
@@ -83,51 +85,69 @@ func TestBuildTraceTrajectory_NullContentAndFallback(t *testing.T) {
 		"groups": []any{
 			map[string]any{
 				"type":      "tool_interaction",
-				"aiMessage": map[string]any{"role": "ai", "content": nil}, // null content
-				"toolCalls": []any{
-					map[string]any{"name": "read_url", "result": map[string]any{"content": nil}}, // null result
-				},
+				"aiMessage": map[string]any{"role": "ai", "content": nil},
+				"toolCalls": []any{map[string]any{"name": "read_url", "result": map[string]any{"content": nil}}},
 			},
 		},
 	}
-
-	traj := buildTraceTrajectory(trace)
-
-	// No human msg and no non-empty ai content in groups → fall back to previews.
-	if traj.InputMessage != "human: hi" {
-		t.Errorf("InputMessage = %q, want preview fallback", traj.InputMessage)
+	d := buildTraceDigest(trace)
+	if d.FirstHuman != "human: hi" || d.FinalAI != "the answer" {
+		t.Errorf("fallbacks: first=%q final=%q", d.FirstHuman, d.FinalAI)
 	}
-	if traj.OutputMessage != "the answer" {
-		t.Errorf("OutputMessage = %q, want preview fallback", traj.OutputMessage)
-	}
-	tool := traj.Steps[len(traj.Steps)-1]
-	if tool.ToolResult != "" || tool.Errorish {
-		t.Errorf("null result should yield empty tool_result and errorish=false, got %+v", tool)
+	g := d.GroupIndex[0]
+	if g.Text != "" || g.ToolResult[0] != "" || g.Errorish {
+		t.Errorf("null content should be empty/non-errorish, got %+v", g)
 	}
 }
 
-// Long content is bounded to the trajectory caps.
-func TestBuildTraceTrajectory_Truncation(t *testing.T) {
-	big := strings.Repeat("x", 5000)
-	trace := map[string]any{
-		"trace_id": "t3",
-		"groups": []any{
-			map[string]any{"type": "message", "message": map[string]any{"role": "human", "content": big}},
-			map[string]any{
-				"type":      "tool_interaction",
-				"aiMessage": map[string]any{"role": "ai", "content": "ok"},
-				"toolCalls": []any{
-					map[string]any{"name": "f", "result": map[string]any{"content": big}},
-				},
-			},
-		},
+// errorish must flag error-SHAPED results, not text that merely mentions "error".
+func TestBuildTraceDigest_ErrorishPrecision(t *testing.T) {
+	cases := []struct {
+		content string
+		want    bool
+	}{
+		{"Error: connection refused", true},
+		{"404 not found", true},
+		{`{"error": "rate limited"}`, true},
+		{"HTTP 503 service unavailable", true},
+		{"Traceback (most recent call last):", true},
+		{"Evaluators help you catch error cases in your app.", false},
+		{"This guide covers error handling best practices.", false},
+		{`{"level": "error", "matched": 4}`, false},
 	}
+	for _, c := range cases {
+		trace := map[string]any{"groups": []any{map[string]any{
+			"type":      "tool_interaction",
+			"aiMessage": map[string]any{"role": "ai", "content": ""},
+			"toolCalls": []any{map[string]any{"name": "t", "result": map[string]any{"content": c.content}}},
+		}}}
+		got := buildTraceDigest(trace).GroupIndex[0].Errorish
+		if got != c.want {
+			t.Errorf("errorish(%q) = %v, want %v", c.content, got, c.want)
+		}
+	}
+}
 
-	traj := buildTraceTrajectory(trace)
-	if got := len(traj.Steps[0].Text); got != trajTextMax {
-		t.Errorf("human step Text len = %d, want %d", got, trajTextMax)
+// Long content is bounded to the digest caps.
+func TestBuildTraceDigest_Truncation(t *testing.T) {
+	big := strings.Repeat("x", 5000)
+	trace := map[string]any{"groups": []any{
+		map[string]any{"type": "message", "message": map[string]any{"role": "human", "content": big}},
+		map[string]any{
+			"type":      "tool_interaction",
+			"aiMessage": map[string]any{"role": "ai", "content": "ok"},
+			"toolCalls": []any{map[string]any{"name": "f", "args": map[string]any{"k": big}, "result": map[string]any{"content": big}}},
+		},
+	}}
+	d := buildTraceDigest(trace)
+	if got := len(d.GroupIndex[0].Text); got != digestTextMax {
+		t.Errorf("group text len = %d, want %d", got, digestTextMax)
 	}
-	if got := len(traj.Steps[2].ToolResult); got != trajResultMax {
-		t.Errorf("tool_result len = %d, want %d", got, trajResultMax)
+	tg := d.GroupIndex[1]
+	if got := len(tg.ToolResult[0]); got != digestResultMax {
+		t.Errorf("tool_result len = %d, want %d", got, digestResultMax)
+	}
+	if got := len(tg.ToolArgs[0].Args); got != digestArgsMax {
+		t.Errorf("tool_args len = %d, want %d", got, digestArgsMax)
 	}
 }
