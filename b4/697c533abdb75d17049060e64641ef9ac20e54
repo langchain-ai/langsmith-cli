@@ -1,0 +1,27 @@
+internal/cmd/message_trajectory_test.go
+  s_165ff7510ff170::t_bb7c89ea2d8923 8-10,12,14,16-18,23-24,26-50,52,54-58,60-61,63-66,68-69,71-72,74-75,79-80,88-89,93-95,97-99,101-104,116,119-124,131-132,134-139,141-144,146-148,150-151
+  s_165ff7510ff170::t_94eaaffa2eda69 105-115,117-118,125-127
+internal/cmd/message.go
+  s_165ff7510ff170::t_9a5494e1a1d700 19-21,23-25,37-40,51-88,90
+  s_165ff7510ff170::t_a221742abeb36e 260
+  s_165ff7510ff170::t_f9498479f23cb6 421-424,441,461-519,524-527,530-532,535-538,540-541,543-547
+  s_165ff7510ff170::t_97fda8ba5abbf9 28-35
+  s_165ff7510ff170::t_6cfcb91049dcfc 199
+  s_165ff7510ff170::t_bc059e28691d06 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "b4697c533abdb75d17049060e64641ef9ac20e54",
+  "prompts": {},
+  "sessions": {
+    "s_165ff7510ff170": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4358373f-1fed-42e4-8a4b-22c132b1ca06",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
