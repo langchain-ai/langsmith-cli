@@ -300,6 +300,7 @@ langsmith hub pull acme/my-skill:production --dir ./out
 
 # Discover, inspect, delete
 langsmith hub list --type skill --query foo
+langsmith hub list --type skill --source external
 langsmith hub get acme/my-skill
 langsmith hub delete acme/my-skill --yes
 ```

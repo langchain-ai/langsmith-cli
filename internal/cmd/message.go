@@ -73,12 +73,7 @@ Examples:
 
 			c := MustGetClient()
 			ctx := context.Background()
-			projectName := ResolveProject(ff.Project)
-			if projectName == "" {
-				ExitError("--project is required for trace messages (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace messages")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -220,7 +215,9 @@ Examples:
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
+	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }
