@@ -1,0 +1,21 @@
+internal/cmd/message_trajectory_test.go
+  s_288c70ddff9350::t_694296b594022d 103-126
+internal/cmd/message.go
+  s_288c70ddff9350::t_01659e3d00b8f8 618-619,621-622,633,639-653
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.11",
+  "base_commit_sha": "4f383150835c807d5feac95890ea9e938ba075b8",
+  "prompts": {},
+  "sessions": {
+    "s_288c70ddff9350": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e04457f-1b0b-451d-b221-7c9ebbd334d8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
