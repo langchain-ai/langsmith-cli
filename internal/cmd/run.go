@@ -3,12 +3,10 @@ package cmd
 import (
 	"context"
 	"os"
-	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/extract"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
-	"github.com/langchain-ai/langsmith-go/lib/runsv2"
 	"github.com/spf13/cobra"
 )
 
@@ -70,7 +68,7 @@ func newRunListCmd() *cobra.Command {
 			var runs []langsmith.RunSchema
 			if ff.Version == "v2" {
 				body := buildRunQueryV2Params(&ff, false, ff.Limit)
-				body.Selects = buildRunSelectV2(includeIO, includeFeedback)
+				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
 				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
 			} else {
 				params := BuildRunQueryParams(&ff, false, ff.Limit)
@@ -141,15 +139,13 @@ func newRunGetCmd() *cobra.Command {
 
 			var runs []langsmith.RunSchema
 			if version == "v2" {
-				minStart := resolveStartTime(since, lastNMinutes).UTC().Format(time.RFC3339)
-				body := runsv2.QueryRequest{
-					IDs:          []string{runID},
-					MinStartTime: &minStart,
-					PageSize:     runsv2.Ptr(uint64(1)),
-					SortOrder:    runsv2.Ptr(runsv2.SortOrderDesc),
-					Selects:      buildRunSelectV2(includeIO, includeFeedback),
+				params := langsmith.RunQueryV2Params{
+					IDs:          langsmith.F([]string{runID}),
+					MinStartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
+					PageSize:     langsmith.F(int64(1)),
+					Selects:      langsmith.F(buildRunSelectV2(includeIO, includeFeedback)),
 				}
-				runs, err = queryRunsV2(ctx, c, body, sessionID, 1, 0)
+				runs, err = queryRunsV2(ctx, c, params, sessionID, 1, 0)
 			} else {
 				params := langsmith.RunQueryParams{
 					ID:        langsmith.F([]string{runID}),
@@ -228,7 +224,7 @@ func newRunExportCmd() *cobra.Command {
 			var runs []langsmith.RunSchema
 			if ff.Version == "v2" {
 				body := buildRunQueryV2Params(&ff, false, ff.Limit)
-				body.Selects = buildRunSelectV2(includeIO, includeFeedback)
+				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
 				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
 			} else {
 				params := BuildRunQueryParams(&ff, false, ff.Limit)

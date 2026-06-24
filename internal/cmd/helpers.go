@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/extract"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
-	"github.com/langchain-ai/langsmith-go/lib/runsv2"
 
 	"github.com/google/uuid"
 )
@@ -68,10 +68,10 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 		}
 
 		// Check for next cursor
-		if resp.Cursors == nil || resp.Cursors["next"] == "" || remaining <= 0 {
+		if resp.Cursors.Next == "" || remaining <= 0 {
 			break
 		}
-		params.Cursor = langsmith.F(resp.Cursors["next"])
+		params.Cursor = langsmith.F(resp.Cursors.Next)
 	}
 
 	return allRuns, nil
@@ -81,38 +81,26 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 // project name to a session UUID, paginates on next_cursor, and normalizes
 // each v2 Run back into v1's RunSchema so downstream rendering is unchanged.
 // minTokens > 0 enables client-side filtering by total_tokens.
-func queryRunsV2(ctx context.Context, c *client.Client, body runsv2.QueryRequest, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQueryV2Params, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
 	if sessionID != "" {
-		body.ProjectIDs = []string{sessionID}
+		params.ProjectIDs = langsmith.F([]string{sessionID})
 	}
 
-	v2Client := runsv2.NewClient(c.APIURL(), c.APIKey())
-
 	var allRuns []langsmith.RunSchema
-	remaining := limit
 
-	for {
-		resp, err := v2Client.Query(ctx, body)
-		if err != nil {
-			return nil, fmt.Errorf("querying runs (v2): %w", err)
-		}
-
-		for i := range resp.Items {
-			if remaining <= 0 {
-				return allRuns, nil
-			}
-			run := runV2ToSchema(resp.Items[i])
-			if minTokens > 0 && run.TotalTokens < int64(minTokens) {
-				continue
-			}
-			allRuns = append(allRuns, run)
-			remaining--
-		}
-
-		if !resp.HasMore || resp.NextCursor == nil || *resp.NextCursor == "" || remaining <= 0 {
+	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params)
+	for iter.Next() {
+		if len(allRuns) >= limit {
 			break
 		}
-		body.Cursor = resp.NextCursor
+		run := runV2ToSchema(iter.Current())
+		if minTokens > 0 && run.TotalTokens < int64(minTokens) {
+			continue
+		}
+		allRuns = append(allRuns, run)
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("querying runs (v2): %w", err)
 	}
 
 	return allRuns, nil
@@ -120,22 +108,20 @@ func queryRunsV2(ctx context.Context, c *client.Client, body runsv2.QueryRequest
 
 // buildRunQueryV2Params translates FilterFlags into a v2 query body. The
 // project name is left for queryRunsV2 to resolve into ProjectIDs.
-func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) runsv2.QueryRequest {
-	body := runsv2.QueryRequest{
-		SortOrder: runsv2.Ptr(runsv2.SortOrderDesc),
-	}
+func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) langsmith.RunQueryV2Params {
+	var params langsmith.RunQueryV2Params
 
 	limit := defaultLimit
 	if f.Limit > 0 {
 		limit = f.Limit
 	}
-	body.PageSize = runsv2.Ptr(uint64(limit))
+	params.PageSize = langsmith.F(int64(limit))
 
 	if isRoot {
-		body.IsRoot = runsv2.Ptr(true)
+		params.IsRoot = langsmith.F(true)
 	}
 
-	body.MinStartTime = runsv2.Ptr(resolveStartTime(f.Since, f.LastNMinutes).Format(time.RFC3339))
+	params.MinStartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
 	if f.Before != "" {
 		t, err := time.Parse(time.RFC3339, f.Before)
 		if err != nil {
@@ -144,74 +130,78 @@ func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) runsv2
 				ExitErrorf("invalid --before timestamp: %s", f.Before)
 			}
 		}
-		body.MaxStartTime = runsv2.Ptr(t.UTC().Format(time.RFC3339))
+		params.MaxStartTime = langsmith.F(t.UTC())
 	}
 
 	if f.RunType != "" {
-		body.RunType = runsv2.Ptr(f.RunType)
+		params.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(f.RunType)))
 	}
 
 	if f.ErrorFlag {
-		body.HasError = runsv2.Ptr(true)
+		params.HasError = langsmith.F(true)
 	} else if f.NoErrorFlag {
-		body.HasError = runsv2.Ptr(false)
+		params.HasError = langsmith.F(false)
 	}
 
 	if f.TraceIDs != "" {
 		ids := splitTrim(f.TraceIDs)
 		if len(ids) == 1 {
-			body.TraceID = runsv2.Ptr(ids[0])
+			params.TraceID = langsmith.F(ids[0])
 		}
 	}
 
 	if s := buildFilterDSL(f); s != "" {
-		body.Filter = runsv2.Ptr(s)
+		params.Filter = langsmith.F(s)
 	}
 
-	return body
+	return params
 }
 
 // buildRunSelectV2 returns the v2 select-field set covering the same base
 // fields used by the downstream RunSchema pipeline plus the optional groups
 // requested by the include flags.
-func buildRunSelectV2(includeIO, includeFeedback bool) []runsv2.SelectField {
-	fields := []runsv2.SelectField{
-		runsv2.SelectID,
-		runsv2.SelectTraceID,
-		runsv2.SelectName,
-		runsv2.SelectRunType,
-		runsv2.SelectStartTime,
-		runsv2.SelectEndTime,
-		runsv2.SelectParentRunIDs,
-		runsv2.SelectProjectID,
-		runsv2.SelectDottedOrder,
-		runsv2.SelectIsRoot,
-		runsv2.SelectExtra,
-		runsv2.SelectMetadata,
-		runsv2.SelectTags,
-		runsv2.SelectPromptTokens,
-		runsv2.SelectCompletionTokens,
-		runsv2.SelectTotalTokens,
-		runsv2.SelectPromptCost,
-		runsv2.SelectCompletionCost,
-		runsv2.SelectTotalCost,
-		runsv2.SelectLatencySeconds,
-		runsv2.SelectAppPath,
+func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2ParamsSelect {
+	fields := []langsmith.RunQueryV2ParamsSelect{
+		langsmith.RunQueryV2ParamsSelectID,
+		langsmith.RunQueryV2ParamsSelectTraceID,
+		langsmith.RunQueryV2ParamsSelectName,
+		langsmith.RunQueryV2ParamsSelectRunType,
+		langsmith.RunQueryV2ParamsSelectStartTime,
+		langsmith.RunQueryV2ParamsSelectEndTime,
+		langsmith.RunQueryV2ParamsSelectParentRunIDs,
+		langsmith.RunQueryV2ParamsSelectProjectID,
+		langsmith.RunQueryV2ParamsSelectDottedOrder,
+		langsmith.RunQueryV2ParamsSelectIsRoot,
+		langsmith.RunQueryV2ParamsSelectExtra,
+		langsmith.RunQueryV2ParamsSelectMetadata,
+		langsmith.RunQueryV2ParamsSelectTags,
+		langsmith.RunQueryV2ParamsSelectPromptTokens,
+		langsmith.RunQueryV2ParamsSelectCompletionTokens,
+		langsmith.RunQueryV2ParamsSelectTotalTokens,
+		langsmith.RunQueryV2ParamsSelectPromptCost,
+		langsmith.RunQueryV2ParamsSelectCompletionCost,
+		langsmith.RunQueryV2ParamsSelectTotalCost,
+		langsmith.RunQueryV2ParamsSelectLatencySeconds,
+		langsmith.RunQueryV2ParamsSelectAppPath,
 	}
 	if includeIO {
-		fields = append(fields, runsv2.SelectInputs, runsv2.SelectOutputs, runsv2.SelectError)
+		fields = append(fields,
+			langsmith.RunQueryV2ParamsSelectInputs,
+			langsmith.RunQueryV2ParamsSelectOutputs,
+			langsmith.RunQueryV2ParamsSelectError,
+		)
 	}
 	if includeFeedback {
-		fields = append(fields, runsv2.SelectFeedbackStats)
+		fields = append(fields, langsmith.RunQueryV2ParamsSelectFeedbackStats)
 	}
 	return fields
 }
 
 // runV2ToSchema converts a v2 Run into the legacy v1 RunSchema shape so the
 // existing extract/output pipeline can consume it unchanged.
-func runV2ToSchema(r runsv2.Run) langsmith.RunSchema {
-	extra := decodeJSONMap(r.Extra)
-	if md := decodeJSONMap(r.Metadata); md != nil {
+func runV2ToSchema(r langsmith.QueryRunResponse) langsmith.RunSchema {
+	extra := asMap(r.Extra)
+	if md := asMap(r.Metadata); md != nil {
 		if extra == nil {
 			extra = map[string]interface{}{}
 		}
@@ -221,117 +211,61 @@ func runV2ToSchema(r runsv2.Run) langsmith.RunSchema {
 	}
 
 	out := langsmith.RunSchema{
-		Inputs:        decodeJSONMap(r.Inputs),
-		Outputs:       decodeJSONMap(r.Outputs),
-		Extra:         extra,
-		FeedbackStats: decodeFeedbackStats(r.FeedbackStats),
-	}
-	if r.ID != nil {
-		out.ID = *r.ID
-	}
-	if r.TraceID != nil {
-		out.TraceID = *r.TraceID
-	}
-	if r.Name != nil {
-		out.Name = *r.Name
-	}
-	if r.RunType != nil {
-		out.RunType = langsmith.RunTypeEnum(*r.RunType)
-	}
-	if r.StartTime != nil {
-		if t, err := time.Parse(time.RFC3339, *r.StartTime); err == nil {
-			out.StartTime = t
-		}
-	}
-	if r.EndTime != nil {
-		if t, err := time.Parse(time.RFC3339, *r.EndTime); err == nil {
-			out.EndTime = t
-		}
-	}
-	if r.FirstTokenTime != nil {
-		if t, err := time.Parse(time.RFC3339, *r.FirstTokenTime); err == nil {
-			out.FirstTokenTime = t
-		}
-	}
-	if r.ProjectID != nil {
-		out.SessionID = *r.ProjectID
+		ID:                 r.ID,
+		TraceID:            r.TraceID,
+		Name:               r.Name,
+		RunType:            langsmith.RunTypeEnum(strings.ToLower(string(r.RunType))),
+		StartTime:          r.StartTime,
+		EndTime:            r.EndTime,
+		FirstTokenTime:     r.FirstTokenTime,
+		SessionID:          r.ProjectID,
+		DottedOrder:        r.DottedOrder,
+		Tags:               r.Tags,
+		ThreadID:           r.ThreadID,
+		AppPath:            r.AppPath,
+		TotalTokens:        r.TotalTokens,
+		PromptTokens:       r.PromptTokens,
+		CompletionTokens:   r.CompletionTokens,
+		TotalCost:          r.TotalCost,
+		PromptCost:         r.PromptCost,
+		CompletionCost:     r.CompletionCost,
+		Error:              r.Error,
+		InputsPreview:      r.InputsPreview,
+		OutputsPreview:     r.OutputsPreview,
+		ReferenceExampleID: r.ReferenceExampleID,
+		ReferenceDatasetID: r.ReferenceDatasetID,
+		PriceModelID:       r.PriceModelID,
+		InDataset:          r.IsInDataset,
+		Inputs:             asMap(r.Inputs),
+		Outputs:            asMap(r.Outputs),
+		Extra:              extra,
+		FeedbackStats:      convertFeedbackStats(r.FeedbackStats),
 	}
 	if len(r.ParentRunIDs) > 0 {
 		out.ParentRunIDs = r.ParentRunIDs
 		out.ParentRunID = r.ParentRunIDs[len(r.ParentRunIDs)-1]
 	}
-	if r.DottedOrder != nil {
-		out.DottedOrder = *r.DottedOrder
-	}
-	if len(r.Tags) > 0 {
-		out.Tags = r.Tags
-	}
-	if r.ThreadID != nil {
-		out.ThreadID = *r.ThreadID
-	}
-	if r.AppPath != nil {
-		out.AppPath = *r.AppPath
-	}
-	if r.TotalTokens != nil {
-		out.TotalTokens = *r.TotalTokens
-	}
-	if r.PromptTokens != nil {
-		out.PromptTokens = *r.PromptTokens
-	}
-	if r.CompletionTokens != nil {
-		out.CompletionTokens = *r.CompletionTokens
-	}
-	if r.TotalCost != nil {
-		out.TotalCost = *r.TotalCost
-	}
-	if r.PromptCost != nil {
-		out.PromptCost = *r.PromptCost
-	}
-	if r.CompletionCost != nil {
-		out.CompletionCost = *r.CompletionCost
-	}
-	if r.LatencySeconds != nil {
-		// duration_ms is derived from EndTime-StartTime by the extractor;
-		// nothing to set on RunSchema for latency directly.
-		_ = r.LatencySeconds
-	}
-	if r.Error != nil {
-		out.Error = *r.Error
-	}
-	if r.InputsPreview != nil {
-		out.InputsPreview = *r.InputsPreview
-	}
-	if r.OutputsPreview != nil {
-		out.OutputsPreview = *r.OutputsPreview
-	}
-	if r.ReferenceExampleID != nil {
-		out.ReferenceExampleID = *r.ReferenceExampleID
-	}
-	if r.ReferenceDatasetID != nil {
-		out.ReferenceDatasetID = *r.ReferenceDatasetID
-	}
-	if r.PriceModelID != nil {
-		out.PriceModelID = *r.PriceModelID
-	}
-	if r.IsInDataset != nil {
-		out.InDataset = *r.IsInDataset
-	}
 	return out
 }
 
-func decodeJSONMap(raw json.RawMessage) map[string]interface{} {
-	if len(raw) == 0 {
-		return nil
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil {
+// asMap returns v as a map[string]interface{} when it is one, else nil.
+func asMap(v interface{}) map[string]interface{} {
+	m, ok := v.(map[string]interface{})
+	if !ok {
 		return nil
 	}
 	return m
 }
 
-func decodeFeedbackStats(raw json.RawMessage) map[string]map[string]interface{} {
-	if len(raw) == 0 {
+// convertFeedbackStats round-trips the generated feedback-stats shape into the
+// loosely-typed map the downstream pipeline expects. Returns nil on empty input
+// or any marshalling error.
+func convertFeedbackStats(stats map[string]langsmith.QueryRunResponseFeedbackStat) map[string]map[string]interface{} {
+	if len(stats) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(stats)
+	if err != nil {
 		return nil
 	}
 	var m map[string]map[string]interface{}
