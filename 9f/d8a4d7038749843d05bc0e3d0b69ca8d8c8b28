@@ -1,0 +1,32 @@
+internal/cmd/hub_list.go
+  s_c2e8238e629c32::t_94c315faf2ac5c 37
+internal/cmd/helpers.go
+  s_c2e8238e629c32::t_c1971480089b06 111-112,118,121,124,133,137,141,143,149,154,157
+  s_c2e8238e629c32::t_77d090a46a8795 163-185,188-192,195
+  s_c2e8238e629c32::t_3dfeb93b8d006c 202-204,214-242,251-254,260-268
+  s_c2e8238e629c32::t_02299cc402bf00 84,86,91-93,96-103
+  s_c2e8238e629c32::t_969cc08cd00845 7
+  s_c2e8238e629c32::t_508312df632436 71,74
+internal/cmd/run.go
+  s_c2e8238e629c32::t_0ff4e74593b048 71
+  s_c2e8238e629c32::t_b8c18d77ce676e 142-146,148
+  s_c2e8238e629c32::t_8bf61f6c966fd4 227
+internal/cmd/thread.go
+  s_c2e8238e629c32::t_18b2b520db18ad 108,111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "9fd8a4d7038749843d05bc0e3d0b69ca8d8c8b28",
+  "prompts": {},
+  "sessions": {
+    "s_c2e8238e629c32": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6673c0ef-7ebf-4a39-b15e-b13deb6bfacc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
