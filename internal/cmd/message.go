@@ -615,7 +615,11 @@ func coerceContent(v any) string {
 					parts = append(parts, t)
 				} else if t, ok := b["content"].(string); ok {
 					parts = append(parts, t)
+				} else {
+					parts = append(parts, unrenderedContent(b))
 				}
+			default:
+				parts = append(parts, fmt.Sprintf("%v", b))
 			}
 		}
 		return strings.Join(parts, " ")
@@ -626,10 +630,27 @@ func coerceContent(v any) string {
 		if t, ok := c["content"].(string); ok {
 			return t
 		}
-		return ""
+		return unrenderedContent(c)
 	default:
 		return fmt.Sprintf("%v", c)
 	}
+}
+
+// unrenderedContent represents a non-null content block that carries no
+// plain-text `text`/`content` field (image, tool_use, or other structured
+// blocks) as a non-empty string. Collapsing these to "" makes structured
+// content indistinguishable from a genuinely empty turn, which misleads a
+// downstream reader (e.g. the engine screener) into treating the content as
+// absent. Prefer compact JSON (the downstream char caps truncate it); fall back
+// to a typed sentinel if the block can't be marshaled.
+func unrenderedContent(m map[string]any) string {
+	if b, err := json.Marshal(m); err == nil {
+		return string(b)
+	}
+	if t, ok := m["type"].(string); ok && t != "" {
+		return "[" + t + " content]"
+	}
+	return "[unrenderable content]"
 }
 
 // msgText returns a message's content coerced to a plain string.

@@ -100,6 +100,30 @@ func TestBuildTraceDigest_NullAndFallback(t *testing.T) {
 	}
 }
 
+// Non-null structured content (image / tool_use blocks, or a map with no
+// text/content field) must NOT collapse to "" — that is indistinguishable from
+// a genuinely empty turn and misleads a downstream reader into thinking the
+// content is absent. Only nil stays empty.
+func TestCoerceContent_UnrenderedStructuredContent(t *testing.T) {
+	if got := coerceContent(nil); got != "" {
+		t.Errorf("nil content = %q, want empty", got)
+	}
+	// A structured object with no text/content field (e.g. an image block).
+	img := map[string]any{"type": "image", "source": map[string]any{"url": "https://x/y.png"}}
+	if got := coerceContent(img); got == "" || !strings.Contains(got, "image") {
+		t.Errorf("image block coerced to %q, want non-empty mentioning its type", got)
+	}
+	// A list with a renderable text block and an unrenderable tool_use block:
+	// the tool_use must still contribute non-empty content, not be dropped.
+	blocks := []any{
+		map[string]any{"type": "text", "text": "calling a tool"},
+		map[string]any{"type": "tool_use", "name": "search", "input": map[string]any{"q": "mcp"}},
+	}
+	if got := coerceContent(blocks); !strings.Contains(got, "calling a tool") || !strings.Contains(got, "tool_use") {
+		t.Errorf("block list coerced to %q, want both the text and the tool_use block", got)
+	}
+}
+
 // errorish must flag error-SHAPED results, not text that merely mentions "error".
 func TestBuildTraceDigest_ErrorishPrecision(t *testing.T) {
 	cases := []struct {
