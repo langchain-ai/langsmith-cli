@@ -284,6 +284,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				}
 				re := regexp.MustCompile(`\bdef\s+` + regexp.QuoteMeta(funcName) + `\s*\(`)
 				sourceStr = re.ReplaceAllString(sourceStr, "def "+evalFuncName+"(")
+				sourceStr = stripPythonReturnAnnotation(sourceStr, evalFuncName)
 			case "javascript":
 				sourceStr = extractJSFunction(string(source), funcName)
 				if sourceStr == "" {
@@ -436,6 +437,21 @@ func extractPythonFunction(source string, funcName string) string {
 	}
 
 	return strings.Join(lines[startIdx:endIdx], "\n") + "\n"
+}
+
+// stripPythonReturnAnnotation removes a return-type annotation from the def line of an
+// already-extracted, already-renamed function (e.g. `def perform_eval(run) -> dict | None:`
+// becomes `def perform_eval(run):`).
+//
+// The evaluator service's function finder does not handle PEP 604 union return annotations
+// (e.g. `-> dict | None`): uploading such a function fails with "Code evaluator does not
+// contain function with name perform_eval" even though the function is present. A plain
+// annotation (`-> dict`) or no annotation works. The annotation is irrelevant to execution,
+// so we drop it. Only single-line def signatures are handled (the common case); a multi-line
+// signature is left untouched.
+func stripPythonReturnAnnotation(source, funcName string) string {
+	re := regexp.MustCompile(`(?m)^(def ` + regexp.QuoteMeta(funcName) + `\(.*\))\s*->.*?:(\s*(?:#.*)?)$`)
+	return re.ReplaceAllString(source, "$1:$2")
 }
 
 // detectLanguage returns the API language value and the canonical eval function

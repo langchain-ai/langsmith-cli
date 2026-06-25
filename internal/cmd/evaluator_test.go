@@ -117,6 +117,49 @@ func TestExtractPythonFunction_EmptySource(t *testing.T) {
 	}
 }
 
+// ---------- stripPythonReturnAnnotation ----------
+
+func TestStripPythonReturnAnnotation_Union(t *testing.T) {
+	// PEP 604 union return annotation: the evaluator service's function finder
+	// can't handle it, so it must be stripped.
+	source := "def perform_eval(run) -> dict | None:\n    return {\"score\": 1}\n"
+	result := stripPythonReturnAnnotation(source, "perform_eval")
+	if !contains(result, "def perform_eval(run):") {
+		t.Errorf("union return annotation should be stripped, got:\n%s", result)
+	}
+	if contains(result, "->") {
+		t.Error("result should not contain a return annotation")
+	}
+	if !contains(result, `return {"score": 1}`) {
+		t.Error("body should be preserved")
+	}
+}
+
+func TestStripPythonReturnAnnotation_Plain(t *testing.T) {
+	source := "def perform_eval(run) -> dict:\n    return {\"score\": 1}\n"
+	result := stripPythonReturnAnnotation(source, "perform_eval")
+	if !contains(result, "def perform_eval(run):") {
+		t.Errorf("plain return annotation should be stripped, got:\n%s", result)
+	}
+}
+
+func TestStripPythonReturnAnnotation_WithParamsAndComment(t *testing.T) {
+	// params plus a trailing comment after the colon
+	source := "def perform_eval(run, example) -> dict | None:  # noqa\n    return {}\n"
+	result := stripPythonReturnAnnotation(source, "perform_eval")
+	if !contains(result, "def perform_eval(run, example):") {
+		t.Errorf("should strip annotation and keep params, got:\n%s", result)
+	}
+}
+
+func TestStripPythonReturnAnnotation_NoAnnotationUnchanged(t *testing.T) {
+	source := "def perform_eval(run):\n    return {\"score\": 1}\n"
+	result := stripPythonReturnAnnotation(source, "perform_eval")
+	if result != source {
+		t.Errorf("source without an annotation should be unchanged, got:\n%s", result)
+	}
+}
+
 // ---------- extractJSFunction ----------
 
 func TestExtractJSFunction_FunctionDeclaration(t *testing.T) {
