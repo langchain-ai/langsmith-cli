@@ -163,13 +163,13 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 	}
 }
 
-func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost string, errorRate float64, feedbackStats map[string]interface{}) runStats {
+func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost float64, errorRate float64, feedbackStats map[string]interface{}) runStats {
 	fs := make(map[string]any, len(feedbackStats))
 	for k, v := range feedbackStats {
 		fs[k] = v
 	}
 	var cost any
-	if totalCost != "" {
+	if totalCost > 0 {
 		cost = totalCost
 	}
 	return runStats{

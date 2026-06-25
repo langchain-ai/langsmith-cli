@@ -34,7 +34,7 @@ func newHubListCmd() *cobra.Command {
 				if repoType != "agent" && repoType != "skill" {
 					return fmt.Errorf("--type must be 'agent' or 'skill' when set (got %q)", repoType)
 				}
-				params.RepoType = langsmith.F(langsmith.RepoListParamsRepoType(repoType))
+				params.SingleRepoType = langsmith.F(langsmith.RepoListParamsRepoType(repoType))
 			}
 			if source != "" {
 				if source != "internal" && source != "external" {

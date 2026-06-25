@@ -105,10 +105,10 @@ func newThreadListCmd() *cobra.Command {
 						threadsMap[tid] = append(threadsMap[tid], m)
 					}
 				}
-				if resp.Cursors == nil || resp.Cursors["next"] == "" {
+				if resp.Cursors.Next == "" {
 					break
 				}
-				cursor = resp.Cursors["next"]
+				cursor = resp.Cursors.Next
 			}
 
 			// Build thread summaries
