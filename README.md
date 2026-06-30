@@ -171,6 +171,13 @@ langsmith run get <run-id> --full
 langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
+> **For agents querying runs:** prefer `--version v2` first (SmithDB-backed; faster on tenants that are rolled out). If the call fails with a 4xx (typically 403, 404, or 422), retry the **same command without** `--version` to fall back to v1. Example:
+>
+> ```bash
+> langsmith run list --project my-app --version v2 \
+>   || langsmith run list --project my-app
+> ```
+
 ### `thread` — Query conversation threads
 
 A thread groups multiple root runs sharing a thread_id (multi-turn conversations).
@@ -293,6 +300,7 @@ langsmith hub pull acme/my-skill:production --dir ./out
 
 # Discover, inspect, delete
 langsmith hub list --type skill --query foo
+langsmith hub list --type skill --source external
 langsmith hub get acme/my-skill
 langsmith hub delete acme/my-skill --yes
 ```

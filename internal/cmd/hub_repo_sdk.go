@@ -48,6 +48,7 @@ func sdkRepoToHubRepo(repo langsmith.RepoWithLookups) hubRepo {
 		Owner:          strPtrOrNil(repo.Owner),
 		RepoHandle:     repo.RepoHandle,
 		RepoType:       string(repo.RepoType),
+		Source:         strPtrOrNil(string(repo.Source)),
 		Description:    strPtrOrNil(repo.Description),
 		Readme:         strPtrOrNil(repo.Readme),
 		IsPublic:       repo.IsPublic,

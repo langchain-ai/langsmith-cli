@@ -1,12 +1,56 @@
 package cmd
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+// ---------- resolveSessionID ----------
+//
+// These cases all resolve (or error) before any API call, so a nil client is
+// safe. The project-name → session-ID lookup path is exercised via the
+// command-level tests that stub the client.
+
+func TestResolveSessionID_ProjectIDTakesPrecedence(t *testing.T) {
+	// A valid --project-id is returned as-is, even when a project name is set
+	// via --project / $LANGSMITH_PROJECT — without any name lookup.
+	t.Setenv("LANGSMITH_PROJECT", "some-project-name")
+	const id = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+
+	got, err := resolveSessionID(context.Background(), nil, "another-name", id, "trace get")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != id {
+		t.Errorf("expected session id %q returned verbatim, got %q", id, got)
+	}
+}
+
+func TestResolveSessionID_InvalidProjectID(t *testing.T) {
+	_, err := resolveSessionID(context.Background(), nil, "", "not-a-uuid", "trace get")
+	if err == nil {
+		t.Fatal("expected error for malformed --project-id")
+	}
+	if !strings.Contains(err.Error(), "--project-id") {
+		t.Errorf("error should mention --project-id, got %q", err.Error())
+	}
+}
+
+func TestResolveSessionID_NeitherProvided(t *testing.T) {
+	t.Setenv("LANGSMITH_PROJECT", "")
+	_, err := resolveSessionID(context.Background(), nil, "", "", "trace stats")
+	if err == nil {
+		t.Fatal("expected error when neither --project nor --project-id is provided")
+	}
+	if !strings.Contains(err.Error(), "trace stats") {
+		t.Errorf("error should name the command, got %q", err.Error())
+	}
+}
 
 // ---------- formatTimedelta ----------
 

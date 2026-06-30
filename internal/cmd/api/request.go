@@ -16,9 +16,9 @@ import (
 
 // runRequest executes an HTTP request and writes the response to w.
 // Returns the HTTP status code and any transport-level error.
-func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, spec *OpenAPISpec, w io.Writer) (int, error) {
+func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, w io.Writer) (int, error) {
 	apiURL := c.APIURL()
-	fullURL := resolveEndpoint(apiURL, path, spec)
+	fullURL := resolveEndpoint(apiURL, path)
 	if len(params) > 0 && strings.EqualFold(method, "GET") {
 		fullURL = addQueryParams(fullURL, params)
 	}

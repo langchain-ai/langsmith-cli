@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
@@ -66,14 +65,8 @@ Make requests:
 				return err
 			}
 
-			// Resolve shorthand paths against the cached spec so non-/api/v1 surfaces (e.g. /v2/sandboxes/boxes) work without a leading slash.
-			var spec *OpenAPISpec
-			if !strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
-				spec = cachedSpec(c.APIURL(), cache.DefaultDir())
-			}
-
 			w := cmd.OutOrStdout()
-			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, spec, w)
+			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, w)
 			if err != nil {
 				return err
 			}

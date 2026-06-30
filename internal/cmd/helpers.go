@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -13,15 +15,34 @@ import (
 	"github.com/google/uuid"
 )
 
-// queryRuns queries runs with the given params and optional session resolution.
-// minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
-func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, projectName string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
-	// Resolve project name → session ID
-	if projectName != "" {
-		sessionID, err := c.ResolveSessionID(ctx, projectName)
-		if err != nil {
-			return nil, err
+// resolveSessionID resolves the target session (project) UUID for a command from
+// either an explicit project ID or a project name. Precedence:
+//
+//	--project-id (an explicit session UUID; takes precedence) →
+//	--project / $LANGSMITH_PROJECT (a project name, looked up via the API).
+//
+// projectID, when set, must be a well-formed UUID and is returned as-is without a
+// name lookup (saving a Sessions.List round-trip). cmdName is used only to build
+// the "required" error message.
+func resolveSessionID(ctx context.Context, c *client.Client, projectName, projectID, cmdName string) (string, error) {
+	if projectID != "" {
+		if _, err := uuid.Parse(projectID); err != nil {
+			return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
 		}
+		return projectID, nil
+	}
+	name := ResolveProject(projectName)
+	if name == "" {
+		return "", fmt.Errorf("--project or --project-id is required for %s (or set LANGSMITH_PROJECT)", cmdName)
+	}
+	return c.ResolveSessionID(ctx, name)
+}
+
+// queryRuns queries runs with the given params, scoped to sessionID when non-empty.
+// The caller is responsible for resolving sessionID (see resolveSessionID).
+// minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
+func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+	if sessionID != "" {
 		params.Session = langsmith.F([]string{sessionID})
 	}
 
@@ -47,13 +68,211 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 		}
 
 		// Check for next cursor
-		if resp.Cursors == nil || resp.Cursors["next"] == "" || remaining <= 0 {
+		if resp.Cursors.Next == "" || remaining <= 0 {
 			break
 		}
-		params.Cursor = langsmith.F(resp.Cursors["next"])
+		params.Cursor = langsmith.F(resp.Cursors.Next)
 	}
 
 	return allRuns, nil
+}
+
+// queryRunsV2 queries runs against the v2 (SmithDB) endpoint, resolves the
+// project name to a session UUID, paginates on next_cursor, and normalizes
+// each v2 Run back into v1's RunSchema so downstream rendering is unchanged.
+// minTokens > 0 enables client-side filtering by total_tokens.
+func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQueryV2Params, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+	if sessionID != "" {
+		params.ProjectIDs = langsmith.F([]string{sessionID})
+	}
+
+	var allRuns []langsmith.RunSchema
+
+	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params)
+	for iter.Next() {
+		if len(allRuns) >= limit {
+			break
+		}
+		run := runV2ToSchema(iter.Current())
+		if minTokens > 0 && run.TotalTokens < int64(minTokens) {
+			continue
+		}
+		allRuns = append(allRuns, run)
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("querying runs (v2): %w", err)
+	}
+
+	return allRuns, nil
+}
+
+// buildRunQueryV2Params translates FilterFlags into a v2 query body. The
+// project name is left for queryRunsV2 to resolve into ProjectIDs.
+func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) langsmith.RunQueryV2Params {
+	var params langsmith.RunQueryV2Params
+
+	limit := defaultLimit
+	if f.Limit > 0 {
+		limit = f.Limit
+	}
+	params.PageSize = langsmith.F(int64(limit))
+
+	if isRoot {
+		params.IsRoot = langsmith.F(true)
+	}
+
+	params.MinStartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
+	if f.Before != "" {
+		t, err := time.Parse(time.RFC3339, f.Before)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
+			if err != nil {
+				ExitErrorf("invalid --before timestamp: %s", f.Before)
+			}
+		}
+		params.MaxStartTime = langsmith.F(t.UTC())
+	}
+
+	if f.RunType != "" {
+		params.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(f.RunType)))
+	}
+
+	if f.ErrorFlag {
+		params.HasError = langsmith.F(true)
+	} else if f.NoErrorFlag {
+		params.HasError = langsmith.F(false)
+	}
+
+	if f.TraceIDs != "" {
+		ids := splitTrim(f.TraceIDs)
+		if len(ids) == 1 {
+			params.TraceID = langsmith.F(ids[0])
+		}
+	}
+
+	if s := buildFilterDSL(f); s != "" {
+		params.Filter = langsmith.F(s)
+	}
+
+	return params
+}
+
+// buildRunSelectV2 returns the v2 select-field set covering the same base
+// fields used by the downstream RunSchema pipeline plus the optional groups
+// requested by the include flags.
+func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2ParamsSelect {
+	fields := []langsmith.RunQueryV2ParamsSelect{
+		langsmith.RunQueryV2ParamsSelectID,
+		langsmith.RunQueryV2ParamsSelectTraceID,
+		langsmith.RunQueryV2ParamsSelectName,
+		langsmith.RunQueryV2ParamsSelectRunType,
+		langsmith.RunQueryV2ParamsSelectStartTime,
+		langsmith.RunQueryV2ParamsSelectEndTime,
+		langsmith.RunQueryV2ParamsSelectParentRunIDs,
+		langsmith.RunQueryV2ParamsSelectProjectID,
+		langsmith.RunQueryV2ParamsSelectDottedOrder,
+		langsmith.RunQueryV2ParamsSelectIsRoot,
+		langsmith.RunQueryV2ParamsSelectExtra,
+		langsmith.RunQueryV2ParamsSelectMetadata,
+		langsmith.RunQueryV2ParamsSelectTags,
+		langsmith.RunQueryV2ParamsSelectPromptTokens,
+		langsmith.RunQueryV2ParamsSelectCompletionTokens,
+		langsmith.RunQueryV2ParamsSelectTotalTokens,
+		langsmith.RunQueryV2ParamsSelectPromptCost,
+		langsmith.RunQueryV2ParamsSelectCompletionCost,
+		langsmith.RunQueryV2ParamsSelectTotalCost,
+		langsmith.RunQueryV2ParamsSelectLatencySeconds,
+		langsmith.RunQueryV2ParamsSelectAppPath,
+	}
+	if includeIO {
+		fields = append(fields,
+			langsmith.RunQueryV2ParamsSelectInputs,
+			langsmith.RunQueryV2ParamsSelectOutputs,
+			langsmith.RunQueryV2ParamsSelectError,
+		)
+	}
+	if includeFeedback {
+		fields = append(fields, langsmith.RunQueryV2ParamsSelectFeedbackStats)
+	}
+	return fields
+}
+
+// runV2ToSchema converts a v2 Run into the legacy v1 RunSchema shape so the
+// existing extract/output pipeline can consume it unchanged.
+func runV2ToSchema(r langsmith.QueryRunResponse) langsmith.RunSchema {
+	extra := asMap(r.Extra)
+	if md := asMap(r.Metadata); md != nil {
+		if extra == nil {
+			extra = map[string]interface{}{}
+		}
+		if _, ok := extra["metadata"]; !ok {
+			extra["metadata"] = md
+		}
+	}
+
+	out := langsmith.RunSchema{
+		ID:                 r.ID,
+		TraceID:            r.TraceID,
+		Name:               r.Name,
+		RunType:            langsmith.RunTypeEnum(strings.ToLower(string(r.RunType))),
+		StartTime:          r.StartTime,
+		EndTime:            r.EndTime,
+		FirstTokenTime:     r.FirstTokenTime,
+		SessionID:          r.ProjectID,
+		DottedOrder:        r.DottedOrder,
+		Tags:               r.Tags,
+		ThreadID:           r.ThreadID,
+		AppPath:            r.AppPath,
+		TotalTokens:        r.TotalTokens,
+		PromptTokens:       r.PromptTokens,
+		CompletionTokens:   r.CompletionTokens,
+		TotalCost:          r.TotalCost,
+		PromptCost:         r.PromptCost,
+		CompletionCost:     r.CompletionCost,
+		Error:              r.Error,
+		InputsPreview:      r.InputsPreview,
+		OutputsPreview:     r.OutputsPreview,
+		ReferenceExampleID: r.ReferenceExampleID,
+		ReferenceDatasetID: r.ReferenceDatasetID,
+		PriceModelID:       r.PriceModelID,
+		InDataset:          r.IsInDataset,
+		Inputs:             asMap(r.Inputs),
+		Outputs:            asMap(r.Outputs),
+		Extra:              extra,
+		FeedbackStats:      convertFeedbackStats(r.FeedbackStats),
+	}
+	if len(r.ParentRunIDs) > 0 {
+		out.ParentRunIDs = r.ParentRunIDs
+		out.ParentRunID = r.ParentRunIDs[len(r.ParentRunIDs)-1]
+	}
+	return out
+}
+
+// asMap returns v as a map[string]interface{} when it is one, else nil.
+func asMap(v interface{}) map[string]interface{} {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return m
+}
+
+// convertFeedbackStats round-trips the generated feedback-stats shape into the
+// loosely-typed map the downstream pipeline expects. Returns nil on empty input
+// or any marshalling error.
+func convertFeedbackStats(stats map[string]langsmith.QueryRunResponseFeedbackStat) map[string]map[string]interface{} {
+	if len(stats) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(stats)
+	if err != nil {
+		return nil
+	}
+	var m map[string]map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // buildRunSelect returns the Select fields needed for the given include flags.

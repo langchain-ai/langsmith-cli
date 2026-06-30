@@ -31,7 +31,7 @@ func TestRunRequest_GET(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("test-key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestRunRequest_POSTWithFields(t *testing.T) {
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
 	params := map[string]any{"name": "test", "limit": 10}
-	code, err := runRequest(c, "POST", "sessions", "", "", params, nil, false, nil, &out)
+	code, err := runRequest(c, "POST", "sessions", "", "", params, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestRunRequest_GETWithFieldsAddsQuery(t *testing.T) {
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
 	params := map[string]any{"name": "test", "limit": 10}
-	_, err := runRequest(c, "GET", "sessions?existing=1", "", "", params, nil, false, nil, &out)
+	_, err := runRequest(c, "GET", "sessions?existing=1", "", "", params, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Custom:val"}, false, nil, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Custom:val"}, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestRunRequest_Include(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, nil, true, nil, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, nil, true, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", "https://different.host")
-	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Multi:one", "X-Multi:two"}, false, nil, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Multi:one", "X-Multi:two"}, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
 	c := client.New("secret-key", apiURL)
 
 	var out bytes.Buffer
-	code, err := runRequest(c, "GET", ts.URL+"/steal", "", "", nil, nil, false, nil, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/steal", "", "", nil, nil, false, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

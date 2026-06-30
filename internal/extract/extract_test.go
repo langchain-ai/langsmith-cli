@@ -63,9 +63,9 @@ func TestExtractRunWithMetadata(t *testing.T) {
 		PromptTokens:     100,
 		CompletionTokens: 50,
 		TotalTokens:      150,
-		PromptCost:       "0.001",
-		CompletionCost:   "0.0005",
-		TotalCost:        "0.0015",
+		PromptCost:       0.001,
+		CompletionCost:   0.0005,
+		TotalCost:        0.0015,
 		Tags:             []string{"production", "v2"},
 		Extra:            map[string]any{"metadata": map[string]any{"model": "gpt-4"}},
 	}
