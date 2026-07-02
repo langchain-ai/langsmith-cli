@@ -28,23 +28,95 @@ var githubDownloadBaseURL = "https://github.com"
 
 func newUpdateCmd(rawVersion string) *cobra.Command {
 	var dryRun bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "self-update",
 		Short: "Update langsmith to the latest version",
 		Long:  "Check for and install the latest version of the langsmith CLI.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(cmd.Context(), rawVersion, dryRun)
+			return runUpdate(cmd.Context(), rawVersion, dryRun, force)
 		},
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Check for updates without installing")
+	cmd.Flags().BoolVar(&force, "force", false, "Update in place even if the binary appears to be managed by a package manager")
 
 	return cmd
 }
 
-func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
+// installMethod identifies how the running binary was installed.
+type installMethod string
+
+const (
+	installMethodManaged  installMethod = "managed"
+	installMethodHomebrew installMethod = "homebrew"
+	installMethodScoop    installMethod = "scoop"
+	installMethodGo       installMethod = "go"
+)
+
+// updateCommandFor returns the command a user should run to update the CLI
+// for a given package-manager-managed install method.
+func updateCommandFor(method installMethod) string {
+	switch method {
+	case installMethodHomebrew:
+		return "brew upgrade langchain-ai/tap/langsmith-cli"
+	case installMethodScoop:
+		return "scoop update langsmith-cli"
+	case installMethodGo:
+		return "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"
+	default:
+		return ""
+	}
+}
+
+// detectInstallMethod inspects the resolved executable path (and current
+// version) to determine how the CLI was installed.
+func detectInstallMethod(execPath, currentVersion string) installMethod {
+	normalized := toSlashLower(execPath)
+
+	if strings.Contains(normalized, "/cellar/") || strings.Contains(normalized, "/homebrew/") || strings.Contains(normalized, "/linuxbrew/") {
+		return installMethodHomebrew
+	}
+
+	if strings.Contains(normalized, "/scoop/apps/") {
+		return installMethodScoop
+	}
+
+	// go install places binaries under $GOBIN or $GOPATH/bin, and builds a
+	// binary that has no embedded release version.
 	if currentVersion == "dev" {
+		if gobin := os.Getenv("GOBIN"); gobin != "" && strings.HasPrefix(normalized, toSlashLower(gobin)) {
+			return installMethodGo
+		}
+		if gopath := os.Getenv("GOPATH"); gopath != "" && strings.HasPrefix(normalized, toSlashLower(filepath.Join(gopath, "bin"))) {
+			return installMethodGo
+		}
+		if home, err := os.UserHomeDir(); err == nil {
+			defaultGoBin := toSlashLower(filepath.Join(home, "go", "bin"))
+			if strings.HasPrefix(normalized, defaultGoBin) {
+				return installMethodGo
+			}
+		}
+	}
+
+	return installMethodManaged
+}
+
+// toSlashLower normalizes a filesystem path for cross-platform substring
+// matching: it lowercases the path and converts backslashes to slashes,
+// regardless of the OS the code is compiled for (unlike filepath.ToSlash,
+// which is a no-op on non-Windows platforms).
+func toSlashLower(path string) string {
+	return strings.ToLower(strings.ReplaceAll(path, `\`, "/"))
+}
+
+func runUpdate(ctx context.Context, currentVersion string, dryRun bool, force bool) error {
+	if currentVersion == "dev" && !force {
+		execPath, execErr := resolveExecutablePath()
+		if execErr == nil && detectInstallMethod(execPath, currentVersion) == installMethodGo {
+			return reportManagedInstall(installMethodGo, currentVersion)
+		}
 		return fmt.Errorf("cannot update a development build; install from a release")
 	}
 
@@ -84,13 +156,14 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
 	}
 
 	// Resolve current binary path
-	execPath, err := os.Executable()
+	execPath, err := resolveExecutablePath()
 	if err != nil {
 		return fmt.Errorf("resolving executable path: %w", err)
 	}
-	execPath, err = filepath.EvalSymlinks(execPath)
-	if err != nil {
-		return fmt.Errorf("resolving symlinks: %w", err)
+
+	method := detectInstallMethod(execPath, currentVersion)
+	if method != installMethodManaged && !force {
+		return reportManagedInstall(method, currentVersion)
 	}
 
 	archiveName := buildArchiveName()
@@ -140,6 +213,40 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
 			"status":           "updated",
 			"previous_version": currentVersion,
 			"new_version":      latest,
+		})
+		fmt.Println(string(out))
+	}
+	return nil
+}
+
+// resolveExecutablePath returns the fully resolved path to the running binary.
+func resolveExecutablePath() (string, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return "", fmt.Errorf("resolving symlinks: %w", err)
+	}
+	return resolved, nil
+}
+
+// reportManagedInstall prints (and exits successfully for) installs that are
+// owned by a package manager, directing the user to the appropriate update
+// command instead of overwriting the binary in place.
+func reportManagedInstall(method installMethod, currentVersion string) error {
+	updateCommand := updateCommandFor(method)
+	format := GetFormat()
+
+	if format == "pretty" {
+		fmt.Printf("langsmith was installed via %s; run `%s` to update instead (use --force to override)\n", method, updateCommand)
+	} else {
+		out, _ := json.Marshal(map[string]string{
+			"status":          "managed-externally",
+			"install_method":  string(method),
+			"update_command":  updateCommand,
+			"current_version": currentVersion,
 		})
 		fmt.Println(string(out))
 	}

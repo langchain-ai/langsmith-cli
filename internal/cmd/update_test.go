@@ -203,7 +203,7 @@ func TestRunUpdate_AlreadyUpToDate(t *testing.T) {
 	defer func() { flagOutputFormat = oldFmt }()
 
 	output := captureStdout(t, func() {
-		err := runUpdate(context.Background(), "0.1.7", false)
+		err := runUpdate(context.Background(), "0.1.7", false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -235,7 +235,7 @@ func TestRunUpdate_DryRun(t *testing.T) {
 	defer func() { flagOutputFormat = oldFmt }()
 
 	output := captureStdout(t, func() {
-		err := runUpdate(context.Background(), "0.1.7", true)
+		err := runUpdate(context.Background(), "0.1.7", true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -254,12 +254,143 @@ func TestRunUpdate_DryRun(t *testing.T) {
 }
 
 func TestRunUpdate_DevBuild(t *testing.T) {
-	err := runUpdate(context.Background(), "dev", false)
+	err := runUpdate(context.Background(), "dev", false, false)
 	if err == nil {
 		t.Error("expected error for dev build")
 	}
 	if err.Error() != "cannot update a development build; install from a release" {
 		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
+// ---------- detectInstallMethod ----------
+
+func TestDetectInstallMethod(t *testing.T) {
+	tests := []struct {
+		name           string
+		execPath       string
+		currentVersion string
+		env            map[string]string
+		want           installMethod
+	}{
+		{
+			name:           "homebrew cellar",
+			execPath:       "/opt/homebrew/Cellar/langsmith-cli/0.1.7/bin/langsmith",
+			currentVersion: "0.1.7",
+			want:           installMethodHomebrew,
+		},
+		{
+			name:           "linuxbrew",
+			execPath:       "/home/linuxbrew/.linuxbrew/Cellar/langsmith-cli/0.1.7/bin/langsmith",
+			currentVersion: "0.1.7",
+			want:           installMethodHomebrew,
+		},
+		{
+			name:           "scoop",
+			execPath:       `C:\Users\me\scoop\apps\langsmith-cli\0.1.7\langsmith.exe`,
+			currentVersion: "0.1.7",
+			want:           installMethodScoop,
+		},
+		{
+			name:           "go install via GOBIN",
+			execPath:       "/home/me/go-bin/langsmith",
+			currentVersion: "dev",
+			env:            map[string]string{"GOBIN": "/home/me/go-bin"},
+			want:           installMethodGo,
+		},
+		{
+			name:           "go install via GOPATH",
+			execPath:       "/home/me/go/bin/langsmith",
+			currentVersion: "dev",
+			env:            map[string]string{"GOPATH": "/home/me/go"},
+			want:           installMethodGo,
+		},
+		{
+			name:           "managed install.sh",
+			execPath:       "/home/me/.local/bin/langsmith",
+			currentVersion: "0.1.7",
+			want:           installMethodManaged,
+		},
+		{
+			name:           "dev build outside go bin is not misclassified",
+			execPath:       "/home/me/projects/langsmith-cli/langsmith",
+			currentVersion: "dev",
+			want:           installMethodManaged,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				old := os.Getenv(k)
+				os.Setenv(k, v)
+				defer os.Setenv(k, old)
+			}
+			for _, envKey := range []string{"GOBIN", "GOPATH"} {
+				if _, ok := tt.env[envKey]; !ok {
+					old := os.Getenv(envKey)
+					os.Unsetenv(envKey)
+					defer os.Setenv(envKey, old)
+				}
+			}
+
+			got := detectInstallMethod(tt.execPath, tt.currentVersion)
+			if got != tt.want {
+				t.Errorf("detectInstallMethod(%q, %q) = %q, want %q", tt.execPath, tt.currentVersion, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateCommandFor(t *testing.T) {
+	tests := []struct {
+		method installMethod
+		want   string
+	}{
+		{installMethodHomebrew, "brew upgrade langchain-ai/tap/langsmith-cli"},
+		{installMethodScoop, "scoop update langsmith-cli"},
+		{installMethodGo, "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+		{installMethodManaged, ""},
+	}
+	for _, tt := range tests {
+		if got := updateCommandFor(tt.method); got != tt.want {
+			t.Errorf("updateCommandFor(%q) = %q, want %q", tt.method, got, tt.want)
+		}
+	}
+}
+
+func TestRunUpdate_ManagedExternally_GoInstall(t *testing.T) {
+	oldGobin := os.Getenv("GOBIN")
+	tmpDir := t.TempDir()
+	os.Setenv("GOBIN", tmpDir)
+	defer os.Setenv("GOBIN", oldGobin)
+
+	oldFmt := flagOutputFormat
+	flagOutputFormat = "json"
+	defer func() { flagOutputFormat = oldFmt }()
+
+	// runUpdate resolves os.Executable(), which is the test binary itself and
+	// won't be under GOBIN, so we exercise detectInstallMethod + the
+	// reportManagedInstall path directly instead.
+	output := captureStdout(t, func() {
+		err := reportManagedInstall(installMethodGo, "dev")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var result map[string]string
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v, output: %q", err, output)
+	}
+	if result["status"] != "managed-externally" {
+		t.Errorf("expected status managed-externally, got %q", result["status"])
+	}
+	if result["install_method"] != "go" {
+		t.Errorf("expected install_method go, got %q", result["install_method"])
+	}
+	if result["update_command"] != "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest" {
+		t.Errorf("unexpected update_command: %q", result["update_command"])
 	}
 }
 
