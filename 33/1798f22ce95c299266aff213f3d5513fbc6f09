@@ -1,0 +1,35 @@
+internal/cmd/update.go
+  s_8770a26f3ed671::t_3479a083dd46da 31,38,43
+  s_8770a26f3ed671::t_76b0aec80e0dc8 71,161-177
+  s_8770a26f3ed671::t_c8fb7ccac5fc9e 48-63,67-70
+  s_8770a26f3ed671::t_b7363e0a280a11 72
+internal/cmd/install_method.go
+  s_8770a26f3ed671::t_0bd281c8fe3a62 1-35,39-134
+  s_8770a26f3ed671::t_08c96e70ac26f7 36-38
+internal/cmd/update_test.go
+  s_8770a26f3ed671::t_cbfc45df7be9d3 238
+  s_8770a26f3ed671::t_2fa80fb5fd1391 206
+  s_8770a26f3ed671::t_c5b7c5f6855ddd 257
+internal/cmd/install_method_test.go
+  s_8770a26f3ed671::t_1ba01bdb95330d 1-2,8-155,196-209
+  s_8770a26f3ed671::t_2a85f6290a00b4 156-195
+  s_8770a26f3ed671::t_5e6a0ce3430153 3-7
+README.md
+  s_8770a26f3ed671::t_f6ab25da7a8c1b 322-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "331798f22ce95c299266aff213f3d5513fbc6f09",
+  "prompts": {},
+  "sessions": {
+    "s_8770a26f3ed671": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "834f91b0-931b-4574-928c-85becfe2258d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Dariel Dato-on <293921406+darieldatoon@users.noreply.github.com>"
+    }
+  }
+}
