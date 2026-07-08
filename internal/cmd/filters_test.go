@@ -16,7 +16,7 @@ func TestBuildFilterDSL_Empty(t *testing.T) {
 func TestBuildFilterDSL_SingleName(t *testing.T) {
 	f := &FilterFlags{Name: "ChatOpenAI"}
 	result := buildFilterDSL(f)
-	expected := `search(name, "ChatOpenAI")`
+	expected := `eq(name, "ChatOpenAI")`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -92,7 +92,7 @@ func TestBuildFilterDSL_Combined(t *testing.T) {
 		Tags:       "prod",
 	}
 	result := buildFilterDSL(f)
-	expected := `and(search(name, "ChatOpenAI"), gte(latency, 2.5), has(tags, "prod"))`
+	expected := `and(eq(name, "ChatOpenAI"), gte(latency, 2.5), has(tags, "prod"))`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -265,7 +265,7 @@ func TestBuildRunQueryParams_FilterDSLWithName(t *testing.T) {
 	if !params.Filter.Present {
 		t.Fatal("expected Filter to be set")
 	}
-	expected := `search(name, "ChatOpenAI")`
+	expected := `eq(name, "ChatOpenAI")`
 	if params.Filter.Value != expected {
 		t.Errorf("expected %q, got %q", expected, params.Filter.Value)
 	}
