@@ -90,7 +90,7 @@ func TestSandboxCmd_FlatSubcommands(t *testing.T) {
 	expected := map[string]bool{
 		"create": false, "list": false, "get": false, "update": false,
 		"delete": false, "start": false, "stop": false,
-		"exec": false, "console": false, "service-url": false, "tunnel": false, "ssh-setup": false,
+		"exec": false, "remote-run": false, "console": false, "service-url": false, "tunnel": false, "ssh-setup": false,
 		"snapshot": false,
 	}
 	for _, sub := range cmd.Commands() {

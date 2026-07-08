@@ -309,6 +309,21 @@ Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's
 
 Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
 
+### `sandbox remote-run` — Run local repo commands in a sandbox
+
+```bash
+# Mirror the current git worktree into a deterministic sandbox and run a command
+langsmith sandbox rr -- make lint
+
+# Reuse a named sandbox, or choose a snapshot for first-time creation
+langsmith sandbox rr --sandbox dev-alice --snapshot-id <id> -- pnpm install
+
+# Forward ports from .env.ports.override while the remote command runs
+langsmith sandbox rr --tunnel -- make start
+```
+
+`remote-run` (alias `rr`) creates or starts a LangSmith sandbox, provisions SSH/rsync inside it, syncs committed and uncommitted local git changes, and runs the command from the mirrored checkout. It requires local `git`, `ssh`, `rsync`, and GitHub CLI auth or `GH_TOKEN`/`GITHUB_TOKEN` for private GitHub repositories. SSH agent forwarding is off by default; pass `--forward-agent` to expose your local agent inside the box (e.g. for SSH-authenticated git).
+
 ### `self-update` — Update langsmith to the latest version
 
 ```bash
