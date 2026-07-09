@@ -319,6 +319,19 @@ langsmith self-update --dry-run
 langsmith self-update
 ```
 
+If langsmith was installed through a package manager, `self-update` won't replace the
+binary in place — it points you at the right command instead:
+
+| Installed via | Update with |
+| --- | --- |
+| Homebrew | `brew upgrade langchain-ai/tap/langsmith-cli` |
+| Scoop | `scoop update langsmith-cli` |
+| `go install` | `go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest` |
+
+Installs from the `install.sh`/`install.ps1` scripts or a direct GitHub Releases download
+are updated in place as usual. Pass `--force` to update in place regardless of how
+langsmith was installed.
+
 ### `trace setup` — Trace coding agents to LangSmith
 
 Configure Claude Code or Codex to send full-content traces (prompts, responses, tool
