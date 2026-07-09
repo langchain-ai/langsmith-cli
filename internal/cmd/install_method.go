@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -23,6 +22,21 @@ const (
 	// methodDev means a local/development build with no release version.
 	methodDev
 )
+
+// externalManagers describes installs owned by a package manager: how to name
+// the manager in output and the command the user should run to update. Only the
+// methods self-update must defer to appear here — methodManaged and methodDev are
+// handled by self-update itself and intentionally have no entry, so membership in
+// this map is the single source of truth for "must defer to a package manager".
+var externalManagers = map[installMethod]struct {
+	label   string // machine-readable name, for JSON output
+	display string // human-readable name, for the pretty message
+	command string // the command the user should run to update
+}{
+	methodHomebrew: {"homebrew", "Homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
+	methodScoop:    {"scoop", "Scoop", "scoop update langsmith-cli"},
+	methodGo:       {"go", "`go install`", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+}
 
 // detectInstallMethod classifies the install method from the resolved executable
 // path, the build version, and the relevant environment values. It is pure: all
@@ -77,58 +91,11 @@ func goBinDirs(gobin, gopath, home string) []string {
 	return nil
 }
 
-// updateCommand returns the command a user should run to update an
-// externally-managed install. Returns "" for managed/dev methods.
-func (m installMethod) updateCommand() string {
-	switch m {
-	case methodHomebrew:
-		return "brew upgrade langchain-ai/tap/langsmith-cli"
-	case methodScoop:
-		return "scoop update langsmith-cli"
-	case methodGo:
-		return "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"
-	default:
-		return ""
-	}
-}
-
-// label returns a stable machine-readable name for the install method, used in
-// JSON output.
-func (m installMethod) label() string {
-	switch m {
-	case methodHomebrew:
-		return "homebrew"
-	case methodScoop:
-		return "scoop"
-	case methodGo:
-		return "go"
-	case methodDev:
-		return "dev"
-	default:
-		return "managed"
-	}
-}
-
-// displayName returns a human-readable name of the package manager for messages.
-func (m installMethod) displayName() string {
-	switch m {
-	case methodHomebrew:
-		return "Homebrew"
-	case methodScoop:
-		return "Scoop"
-	case methodGo:
-		return "`go install`"
-	default:
-		return ""
-	}
-}
-
-// managedExternallyMessage returns the pretty-format message shown when
-// self-update declines to replace a package-manager-owned binary.
-func (m installMethod) managedExternallyMessage() string {
-	return fmt.Sprintf(
-		"langsmith was installed with %s, which manages updates for you.\nTo update, run:\n\n    %s\n\n(Use --force to update in place anyway.)",
-		m.displayName(),
-		m.updateCommand(),
-	)
+// shouldDeferToManager reports whether self-update must defer to a package
+// manager instead of replacing the binary in place. --force overrides it.
+// Membership in externalManagers is the source of truth; methodManaged and
+// methodDev are not externally managed and so are never deferred.
+func shouldDeferToManager(method installMethod, force bool) bool {
+	_, external := externalManagers[method]
+	return external && !force
 }

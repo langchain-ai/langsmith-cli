@@ -138,17 +138,56 @@ func TestDetectInstallMethod(t *testing.T) {
 	}
 }
 
-func TestInstallMethodUpdateCommand(t *testing.T) {
-	tests := map[installMethod]string{
-		methodHomebrew: "brew upgrade langchain-ai/tap/langsmith-cli",
-		methodScoop:    "scoop update langsmith-cli",
-		methodGo:       "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest",
-		methodManaged:  "",
-		methodDev:      "",
+func TestExternalManagers(t *testing.T) {
+	want := map[installMethod]struct{ label, command string }{
+		methodHomebrew: {"homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
+		methodScoop:    {"scoop", "scoop update langsmith-cli"},
+		methodGo:       {"go", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
 	}
-	for method, want := range tests {
-		if got := method.updateCommand(); got != want {
-			t.Errorf("updateCommand(%v) = %q, want %q", method, got, want)
+	for method, exp := range want {
+		mgr, ok := externalManagers[method]
+		if !ok {
+			t.Errorf("externalManagers missing entry for %v", method)
+			continue
+		}
+		if mgr.label != exp.label {
+			t.Errorf("externalManagers[%v].label = %q, want %q", method, mgr.label, exp.label)
+		}
+		if mgr.command != exp.command {
+			t.Errorf("externalManagers[%v].command = %q, want %q", method, mgr.command, exp.command)
+		}
+		if mgr.display == "" {
+			t.Errorf("externalManagers[%v].display is empty", method)
+		}
+	}
+	// managed and dev are handled by self-update itself and must not be listed.
+	for _, method := range []installMethod{methodManaged, methodDev} {
+		if _, ok := externalManagers[method]; ok {
+			t.Errorf("externalManagers should not contain %v", method)
+		}
+	}
+}
+
+func TestShouldDeferToManager(t *testing.T) {
+	tests := []struct {
+		method installMethod
+		force  bool
+		want   bool
+	}{
+		{methodHomebrew, false, true},
+		{methodHomebrew, true, false}, // --force overrides the defer
+		{methodScoop, false, true},
+		{methodScoop, true, false},
+		{methodGo, false, true},
+		{methodGo, true, false},
+		{methodManaged, false, false},
+		{methodManaged, true, false},
+		{methodDev, false, false},
+		{methodDev, true, false},
+	}
+	for _, tt := range tests {
+		if got := shouldDeferToManager(tt.method, tt.force); got != tt.want {
+			t.Errorf("shouldDeferToManager(%v, force=%v) = %v, want %v", tt.method, tt.force, got, tt.want)
 		}
 	}
 }
@@ -190,20 +229,5 @@ func TestReportManagedExternally_Pretty(t *testing.T) {
 	}
 	if !strings.Contains(output, "--force") {
 		t.Errorf("expected pretty output to mention --force, got %q", output)
-	}
-}
-
-func TestInstallMethodLabel(t *testing.T) {
-	tests := map[installMethod]string{
-		methodHomebrew: "homebrew",
-		methodScoop:    "scoop",
-		methodGo:       "go",
-		methodDev:      "dev",
-		methodManaged:  "managed",
-	}
-	for method, want := range tests {
-		if got := method.label(); got != want {
-			t.Errorf("label(%v) = %q, want %q", method, got, want)
-		}
 	}
 }

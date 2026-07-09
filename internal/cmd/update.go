@@ -66,7 +66,7 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 
 	// For package-manager-owned installs, refuse to touch the binary and point
 	// the user at the right command instead. --force overrides this.
-	if method != methodManaged && !force {
+	if shouldDeferToManager(method, force) {
 		return reportManagedExternally(method, GetFormat())
 	}
 
@@ -162,13 +162,21 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 // package manager and prints the command to update it, without modifying the
 // binary. It returns nil (a successful, informational outcome).
 func reportManagedExternally(method installMethod, format string) error {
+	mgr, ok := externalManagers[method]
+	if !ok {
+		// Programming error: only externally-managed methods should reach here
+		// (methodManaged updates in place, methodDev errors out earlier).
+		return fmt.Errorf("internal error: install method %d is not externally managed", method)
+	}
+
 	if format == "pretty" {
-		fmt.Println(method.managedExternallyMessage())
+		fmt.Printf("langsmith was installed with %s, which manages updates for you.\n"+
+			"To update, run:\n\n    %s\n\n(Use --force to update in place anyway.)\n", mgr.display, mgr.command)
 	} else {
 		out, _ := json.Marshal(map[string]string{
 			"status":         "managed-externally",
-			"install_method": method.label(),
-			"update_command": method.updateCommand(),
+			"install_method": mgr.label,
+			"update_command": mgr.command,
 		})
 		fmt.Println(string(out))
 	}
