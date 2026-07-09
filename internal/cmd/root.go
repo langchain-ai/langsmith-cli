@@ -77,6 +77,7 @@ Quick start:
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newHubCmd())
+	rootCmd.AddCommand(newAppsCmd())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(authCommand.Cobra())
 	rootCmd.AddCommand(newProfileCmd())
