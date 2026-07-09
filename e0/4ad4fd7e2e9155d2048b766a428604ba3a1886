@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_054b120cb519d5::t_2f81d521425a3c 55-57
+scripts/install.sh
+  s_054b120cb519d5::t_b51b9d5039ef54 42-61,63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e04ad4fd7e2e9155d2048b766a428604ba3a1886",
+  "prompts": {},
+  "sessions": {
+    "s_054b120cb519d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b95ba55-b293-4245-ba1f-ed01381c5274",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Dariel Dato-on <293921406+darieldatoon@users.noreply.github.com>"
+    }
+  }
+}
