@@ -96,9 +96,6 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Errorf("expected the annotation-queue selector bar when showQueueSelector=true:\n%s", page)
 	}
 
-	// The banner text is allowed to mention "allow-same-origin" for the
-	// user's benefit — what must never happen is the sandbox *attribute*
-	// actually granting it.
 	if !strings.Contains(page, `sandbox="allow-scripts"`) {
 		t.Errorf("expected a real sandbox=\"allow-scripts\" iframe:\n%s", page)
 	}

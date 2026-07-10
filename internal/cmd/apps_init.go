@@ -66,13 +66,13 @@ func newAppsInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME --type standalone|annotation-queue",
+		Use:   "init --name NAME [--type standalone|annotation-queue]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
 --type picks both what gets scaffolded and what this app declares itself as
 (there's no independent template choice — each type has exactly one starter
-that matches it):
+that matches it). Defaults to "standalone" if omitted:
 
   standalone        A blank single-file starter (render(data, root) that
                      just dumps data) — no assumptions about shape. Good for
@@ -132,11 +132,10 @@ convenience, not a requirement — but you'll need to build manually before
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().StringVar(&appTypeFlag, "type", "", "App type: standalone or annotation-queue (required)")
+	cmd.Flags().StringVar(&appTypeFlag, "type", "standalone", "App type: standalone or annotation-queue")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	cmd.Flags().BoolVar(&skipInstall, "skip-install", false, "Skip running \"npm install && npm run build\" after scaffolding")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("type")
 	return cmd
 }
 

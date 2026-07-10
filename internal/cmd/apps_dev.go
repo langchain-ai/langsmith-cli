@@ -409,14 +409,12 @@ const devHostHTMLTemplate = `<!doctype html>
 <style>
   html, body { height: 100%; margin: 0; }
   body { display: flex; flex-direction: column; }
-  #ls-dev-banner { flex: none; background: #111827; color: #9ca3af; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
   #ls-dev-queue-bar { flex: none; display: flex; align-items: center; gap: 8px; background: #1f2937; color: #e5e7eb; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
   #ls-dev-queue-bar select { font-size: 12px; padding: 2px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #e5e7eb; max-width: 360px; }
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
 <body>
-<div id="ls-dev-banner">Sandboxed local preview (sandbox="allow-scripts", no allow-same-origin — same restrictions as production)</div>
 __QUEUE_BAR_HTML__<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
 <script>
 (function() {

@@ -230,7 +230,7 @@ func TestAppsInit_WritesContextSpecificAgentsMD(t *testing.T) {
 	}
 }
 
-func TestAppsInitCmd_HasRequiredTypeFlag(t *testing.T) {
+func TestAppsInitCmd_TypeDefaultsToStandalone(t *testing.T) {
 	cmd := newAppsCmd()
 	initCmd, _, err := cmd.Find([]string{"init"})
 	if err != nil {
@@ -240,12 +240,12 @@ func TestAppsInitCmd_HasRequiredTypeFlag(t *testing.T) {
 	if f == nil {
 		t.Fatal("expected --type flag to exist")
 	}
-	if f.DefValue != "" {
-		t.Errorf("expected --type to have no default (required), got %q", f.DefValue)
+	if f.DefValue != "standalone" {
+		t.Errorf("expected --type to default to \"standalone\", got %q", f.DefValue)
 	}
 	ann := f.Annotations
-	if ann == nil || ann["cobra_annotation_bash_completion_one_required_flag"] == nil {
-		t.Error("expected --type to be marked required")
+	if ann != nil && ann["cobra_annotation_bash_completion_one_required_flag"] != nil {
+		t.Error("expected --type to no longer be marked required")
 	}
 	// The old flag name/values must be gone, not just renamed silently.
 	if got := initCmd.Flags().Lookup("context-type"); got != nil {
@@ -253,13 +253,21 @@ func TestAppsInitCmd_HasRequiredTypeFlag(t *testing.T) {
 	}
 }
 
-func TestAppsInitCmd_RequiresType(t *testing.T) {
+func TestAppsInitCmd_DefaultsToStandaloneWhenTypeOmitted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "my-app"})
-	if err := cmd.Execute(); err == nil {
-		t.Error("expected error when --type is missing")
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--skip-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected init to succeed with --type omitted, got: %v", err)
+	}
+
+	link, err := readAppLink(dir)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.ContextType != "none" {
+		t.Errorf("expected omitted --type to scaffold a standalone (context_type none) app, got %+v", link)
 	}
 }
 
