@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -21,26 +25,28 @@ import (
 func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
-		dataPath   string
+		queueID    string
 		noOpen     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "dev",
-		Short: "Run the current directory's custom app locally in your browser",
-		Long: `Serve the current directory's custom app in a local HTML page and open it
-in your browser — entirely self-contained, no LangSmith involved.
+		Short: "Run the current directory's custom app locally in a real sandbox",
+		Long: `Serve the current directory's custom app inside a real sandboxed iframe
+(sandbox="allow-scripts", no allow-same-origin — identical restrictions to
+production) and open it in your browser. This is entirely self-contained:
+no LangSmith web app involved.
+
+The app's window.langsmith.call(operation, args) is proxied to the real
+LangSmith API using your local LANGSMITH_API_KEY — the same generic
+passthrough production uses (proxied through the injected platform token
+there instead). It is not a curated allowlist: operation is a
+"<METHOD> <path>" string (e.g. "GET /api/v1/annotation-queues/{id}/runs"),
+forwarded as-is.
 
 Pair this with your build's watch mode (e.g. "npm run watch") running in
-another terminal: the page polls for changes to the entrypoint file and
-reloads itself automatically after each rebuild.
-
-The page provides a stub window.langsmith bridge so render(data, root) can
-run without crashing: setData/data.updateInputs/updateOutputs update the
-local data in place and re-render, but call() (and anything routed through
-it, like feedback.create) is a no-op that only logs to the console — there's
-no LangSmith backend here to call. Pass --data to seed render() with sample
-inputs/outputs instead of an empty object.`,
+another terminal: the page polls for a rebuild and reloads itself
+automatically.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.Getwd()
 			if err != nil {
@@ -50,61 +56,40 @@ inputs/outputs instead of an empty object.`,
 			if err != nil {
 				return err
 			}
-
-			data := defaultDevData(link)
-			if dataPath != "" {
-				data, err = loadDevDataOverride(dataPath)
-				if err != nil {
-					return err
-				}
+			if link != nil && link.ContextType == contextTypeAnnotationQueue && queueID == "" {
+				fmt.Fprintln(os.Stderr, "note: this app is linked as context_type annotation_queue but no --queue-id was passed — it will get an empty queueId until you pass one")
 			}
 
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, data, noOpen)
+			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), noOpen)
 		},
 	}
 
-	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to serve and render")
-	cmd.Flags().StringVar(&dataPath, "data", "", "Path to a JSON file with sample data to pass to render() (default: {} or, for a linked annotation_queue app, {inputs:{},outputs:{}})")
+	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
+	cmd.Flags().StringVar(&queueID, "queue-id", "", "Annotation queue ID to use as context (only meaningful for context_type: annotation_queue apps)")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
 	return cmd
 }
 
-// defaultDevData picks a sample render() payload shape from the linked
-// app's context_type, when known — an annotation-queue app's entrypoint
-// expects {inputs, outputs}, everything else gets {}.
 const contextTypeAnnotationQueue = "annotation_queue"
 
-func defaultDevData(link *appLink) any {
+// devData mirrors what the real host hands a custom app at render time: an
+// annotation_queue app gets only the queue's ID (it fetches everything else
+// itself via window.langsmith.call); everything else gets {}.
+func devData(link *appLink, queueID string) map[string]any {
 	if link != nil && link.ContextType == contextTypeAnnotationQueue {
-		return map[string]any{"inputs": map[string]any{}, "outputs": map[string]any{}}
+		return map[string]any{"queueId": queueID}
 	}
 	return map[string]any{}
 }
 
-func loadDevDataOverride(path string) (any, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading --data %s: %w", path, err)
-	}
-	var data any
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return nil, fmt.Errorf("parsing --data %s: %w", path, err)
-	}
-	return data, nil
-}
-
-// runAppsDev starts the local preview server for entrypoint (relative to
-// dir), opens it in a browser, and blocks until ctx is cancelled (e.g. by
-// SIGINT) or the server fails.
-func runAppsDev(ctx context.Context, dir, entrypoint string, data any, noOpen bool) error {
-	if _, statErr := os.Stat(filepath.Join(dir, filepath.FromSlash(entrypoint))); statErr != nil {
-		fmt.Fprintf(os.Stderr, "note: entrypoint %q does not exist yet in %s — start your build/watch command (e.g. \"npm run watch\"); the preview will pick it up and reload automatically once it appears\n", entrypoint, dir)
-	}
-
-	srv, ln, previewURL, entrypointURL, err := prepareAppsDevServer(dir, entrypoint, data)
+// runAppsDev starts the local sandboxed-preview server for dir, opens it in
+// a browser, and blocks until ctx is cancelled (e.g. by SIGINT) or the
+// server fails.
+func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, noOpen bool) error {
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint, data)
 	if err != nil {
 		return err
 	}
@@ -116,11 +101,10 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data any, noOpen bo
 		_ = openBrowser(previewURL)
 	}
 	output.OutputJSON(map[string]any{
-		"status":         "serving",
-		"url":            previewURL,
-		"entrypoint_url": entrypointURL,
+		"status": "serving",
+		"url":    previewURL,
 	}, "")
-	fmt.Fprintf(os.Stderr, "Serving %s at %s — press Ctrl+C to stop\n", dir, previewURL)
+	fmt.Fprintf(os.Stderr, "Serving %s at %s (sandboxed) — press Ctrl+C to stop\n", dir, previewURL)
 
 	select {
 	case <-ctx.Done():
@@ -141,42 +125,20 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data any, noOpen bo
 // prepareAppsDevServer builds (but does not start) an HTTP server, bound to
 // an OS-assigned free port on 127.0.0.1, that serves:
 //
-//   - "/"                     — a self-contained HTML harness that fetches
-//     the entrypoint, evaluates it as a CJS module, and calls its
-//     render(data, root) export.
-//   - "/<entrypoint path>"    — the raw entrypoint file, re-read from disk
-//     on every request (no caching), so a rebuild is visible immediately.
-//   - "/__ls_dev/mtime"       — polled by the harness page to detect a
-//     rebuild (or the entrypoint appearing for the first time) and trigger
-//     an automatic reload.
+//   - "/"                — a host page embedding the app in a real
+//     sandbox="allow-scripts" iframe (no allow-same-origin), re-read from
+//     disk on every request so a rebuild is reflected on the next reload.
+//   - "/__ls_dev/mtime"  — polled by the host page to detect a rebuild (or
+//     the entrypoint appearing for the first time) and trigger a reload.
+//   - "/__ls_dev/call"   — the generic window.langsmith.call(...) proxy,
+//     forwarding to the real LangSmith API via the authenticated CLI client.
 //
-// It deliberately serves only the entrypoint file, not the rest of dir: a
-// directory-wide static server would expose .env, .git, node_modules, etc.
-// to any local process that guesses the port.
-func prepareAppsDevServer(dir, entrypoint string, data any) (srv *http.Server, ln net.Listener, previewURL, entrypointURL string, err error) {
-	entrypointAbs := filepath.Join(dir, filepath.FromSlash(entrypoint))
-	entrypointPath := "/" + strings.TrimPrefix(filepath.ToSlash(entrypoint), "/")
-
-	dataJSON, err := json.Marshal(data)
-	if err != nil {
-		return nil, nil, "", "", fmt.Errorf("marshaling sample data: %w", err)
-	}
-
+// The directory is read the same way "apps push" reads it
+// (readDirectoryAsAppFiles), so local dev sees exactly what would be
+// uploaded — including the same .env/.git/node_modules exclusions.
+func prepareAppsDevServer(dir, entrypoint string, data map[string]any) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	mux := http.NewServeMux()
-	mux.HandleFunc(entrypointPath, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		http.ServeFile(w, r, entrypointAbs)
-	})
-	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Type", "application/json")
-		info, statErr := os.Stat(entrypointAbs)
-		if statErr != nil {
-			_ = json.NewEncoder(w).Encode(map[string]any{"exists": false})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"exists": true, "mtime": info.ModTime().UnixNano()})
-	})
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -184,118 +146,248 @@ func prepareAppsDevServer(dir, entrypoint string, data any) (srv *http.Server, l
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(renderDevHTML(filepath.Base(dir), entrypoint, entrypointPath, dataJSON)))
+
+		files, readErr := readDirectoryAsAppFiles(dir)
+		if readErr != nil {
+			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("reading %s: %s", dir, readErr))))
+			return
+		}
+		if _, ok := files[entrypoint]; !ok {
+			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — start your build/watch command (e.g. \"npm run watch\")", entrypoint, dir))))
+			return
+		}
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, data)))
 	})
+
+	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		info, statErr := os.Stat(filepath.Join(dir, filepath.FromSlash(entrypoint)))
+		if statErr != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"exists": false})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"exists": true, "mtime": info.ModTime().UnixNano()})
+	})
+
+	mux.HandleFunc("/__ls_dev/call", handleLsDevCall)
 
 	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, nil, "", "", fmt.Errorf("starting local server: %w", err)
+		return nil, nil, "", fmt.Errorf("starting local server: %w", err)
+	}
+	return &http.Server{Handler: mux}, ln, "http://" + ln.Addr().String() + "/", nil
+}
+
+var allowedProxyMethods = map[string]bool{
+	"GET": true, "POST": true, "PATCH": true, "PUT": true, "DELETE": true,
+}
+
+type lsDevCallRequest struct {
+	Operation string        `json:"operation"`
+	Args      lsDevCallArgs `json:"args"`
+}
+
+type lsDevCallArgs struct {
+	Params map[string]any `json:"params,omitempty"`
+	Body   any            `json:"body,omitempty"`
+}
+
+// handleLsDevCall is the local-dev twin of smith-frontend's apiProxy.ts
+// createLangSmithApiProxy: a generic passthrough, not a curated allowlist.
+// It forwards operation ("<METHOD> <path>") to the real LangSmith API using
+// the CLI's authenticated client (the same one "langsmith api" uses), so a
+// standalone/annotation_queue app can exercise real endpoints while it's
+// being developed.
+func handleLsDevCall(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
-	origin := "http://" + ln.Addr().String()
-	return &http.Server{Handler: mux}, ln, origin + "/", origin + entrypointPath, nil
+	var req lsDevCallRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	spaceIdx := strings.IndexByte(req.Operation, ' ')
+	if spaceIdx == -1 {
+		http.Error(w, fmt.Sprintf("invalid operation %q — expected \"<METHOD> <path>\"", req.Operation), http.StatusBadRequest)
+		return
+	}
+	method := strings.ToUpper(req.Operation[:spaceIdx])
+	path := req.Operation[spaceIdx+1:]
+
+	if !allowedProxyMethods[method] {
+		http.Error(w, fmt.Sprintf("method %q is not permitted", method), http.StatusBadRequest)
+		return
+	}
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "://") {
+		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
+		return
+	}
+	if len(req.Args.Params) > 0 {
+		path += "?" + encodeProxyParams(req.Args.Params)
+	}
+
+	var bodyReader io.Reader
+	if req.Args.Body != nil {
+		b, marshalErr := json.Marshal(req.Args.Body)
+		if marshalErr != nil {
+			http.Error(w, "encoding body: "+marshalErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		bodyReader = bytes.NewReader(b)
+	}
+
+	c := MustGetClient()
+	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
+	if err != nil {
+		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	if ct := respHeaders.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(respBody)
+}
+
+func encodeProxyParams(params map[string]any) string {
+	values := url.Values{}
+	for k, v := range params {
+		switch val := v.(type) {
+		case []any:
+			for _, item := range val {
+				values.Add(k, fmt.Sprintf("%v", item))
+			}
+		default:
+			values.Set(k, fmt.Sprintf("%v", val))
+		}
+	}
+	return values.Encode()
 }
 
 var scriptCloseTagPattern = regexp.MustCompile(`(?i)</script>`)
 
-func renderDevHTML(appName, entrypointDisplay, entrypointPath string, dataJSON []byte) string {
-	safeDataJSON := scriptCloseTagPattern.ReplaceAllString(string(dataJSON), "<\\/script>")
-	entrypointPathJSON, _ := json.Marshal(entrypointPath)
-
-	return fmt.Sprintf(devHTMLTemplate, appName, entrypointDisplay, string(entrypointPathJSON), safeDataJSON)
+func escapeForScript(jsonBytes []byte) string {
+	return scriptCloseTagPattern.ReplaceAllString(string(jsonBytes), "<\\/script>")
 }
 
-const devHTMLTemplate = `<!doctype html>
+// devWaitingHTML is served at "/" when the entrypoint doesn't exist yet (or
+// the directory can't be read) — it polls the same mtime endpoint the real
+// host page does, so it reloads itself into the real preview the moment a
+// build produces the entrypoint.
+func devWaitingHTML(message string) string {
+	return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Waiting for build…</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:24px;color:#334155;">
+<p>` + html.EscapeString(message) + `</p>
+<script>
+var seen = false, lastKey = null;
+setInterval(function() {
+  fetch('/__ls_dev/mtime', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+    var key = j.exists ? String(j.mtime) : 'missing';
+    if (!seen) { seen = true; lastKey = key; return; }
+    if (key !== lastKey) { location.reload(); }
+  }).catch(function(){});
+}, 500);
+</script>
+</body></html>`
+}
+
+// renderDevHostHTML builds the top-level host page: it embeds the app in a
+// real sandboxed iframe (mirroring smith-frontend's sandbox.ts
+// buildSandboxSrcdoc as closely as possible, including the multi-file
+// require() loader, so local dev exercises the exact same module-loading
+// behavior as production) and implements the postMessage bridge from the
+// host side — LANGSMITH_READY/LANGSMITH_HEIGHT/LS_API/LS_MUTATION — with
+// LS_API forwarded to /__ls_dev/call, which is real network access the
+// iframe itself can never have.
+func renderDevHostHTML(files map[string]string, entrypoint string, data map[string]any) string {
+	filesJSON, _ := json.Marshal(files)
+	entrypointJSON, _ := json.Marshal(entrypoint)
+	dataJSON, _ := json.Marshal(data)
+
+	inner := strings.NewReplacer(
+		"__FILES_JSON__", escapeForScript(filesJSON),
+		"__ENTRYPOINT_JSON__", escapeForScript(entrypointJSON),
+	).Replace(sandboxInnerHTMLTemplate)
+
+	return strings.NewReplacer(
+		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
+		"__DATA_JSON__", escapeForScript(dataJSON),
+	).Replace(devHostHTMLTemplate)
+}
+
+const devHostHTMLTemplate = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>%s — local preview</title>
+<title>Local sandboxed preview</title>
 <style>
-  html, body { height: 100%%; margin: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #0f172a; }
-  #ls-dev-banner { background: #111827; color: #9ca3af; font-size: 12px; padding: 6px 12px; border-bottom: 1px solid #1f2937; }
-  #ls-dev-banner code { color: #e5e7eb; }
-  #root { padding: 16px; }
-  .ls-dev-error { background: #fef2f2; border: 1px solid #fda29b; border-radius: 8px; padding: 12px; color: #b91c1c; font-size: 13px; white-space: pre-wrap; }
+  html, body { height: 100%; margin: 0; }
+  #ls-dev-banner { background: #111827; color: #9ca3af; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  iframe { display: block; width: 100%; height: calc(100% - 29px); border: none; }
 </style>
 </head>
 <body>
-<div id="ls-dev-banner">Local preview of <code>%s</code> — save your code; this page reloads automatically after each rebuild.</div>
-<div id="root"></div>
+<div id="ls-dev-banner">Sandboxed local preview (sandbox="allow-scripts", no allow-same-origin — same restrictions as production)</div>
+<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
 <script>
 (function() {
-  var ENTRYPOINT_PATH = %s;
-  var data = %s;
-  var root = document.getElementById('root');
-  var renderFn = null;
+  var iframe = document.getElementById('ls-app');
+  var data = __DATA_JSON__;
 
-  function showError(label, err) {
-    root.innerHTML = '';
-    var pre = document.createElement('pre');
-    pre.className = 'ls-dev-error';
-    pre.textContent = label + ':\n' + String((err && err.stack) || err);
-    root.appendChild(pre);
+  function post(msg) {
+    iframe.contentWindow.postMessage(msg, '*');
   }
 
-  function renderApp() {
-    if (typeof renderFn !== 'function') {
-      root.innerHTML = '<p style="color:#94a3b8;font-style:italic;">Waiting for a render() export…</p>';
-      return;
-    }
-    root.innerHTML = '';
-    try {
-      renderFn(data, root);
-    } catch (err) {
-      showError('Renderer error', err);
-    }
-  }
+  window.addEventListener('message', function(event) {
+    if (event.source !== iframe.contentWindow) return;
+    var msg = event.data;
+    if (!msg || typeof msg.type !== 'string') return;
 
-  window.langsmith = {
-    call: function(method, args) {
-      console.warn('[langsmith apps dev] window.langsmith.call(' + method + ') is a local no-op — push the app and open it inside LangSmith to exercise real API calls.', args);
-      return Promise.resolve(null);
-    },
-    setData: function(patch) {
-      data = Object.assign({}, data, patch);
-      renderApp();
-    },
-    feedback: {
-      create: function(args) { return window.langsmith.call('feedback.create', args); }
-    },
-    data: {
-      updateInputs: function(v) { window.langsmith.setData({ inputs: v }); },
-      updateOutputs: function(v) { window.langsmith.setData({ outputs: v }); }
+    if (msg.type === 'LANGSMITH_READY') {
+      post({ type: 'LANGSMITH_THEME', cssText: ':root {}' });
+      post({ type: 'LANGSMITH_DATA', payload: data });
     }
-  };
 
-  function boot() {
-    fetch(ENTRYPOINT_PATH, { cache: 'no-store' })
-      .then(function(r) {
-        if (!r.ok) throw new Error('fetching ' + ENTRYPOINT_PATH + ' failed: HTTP ' + r.status);
-        return r.text();
+    if (msg.type === 'LANGSMITH_HEIGHT') {
+      // Local preview always fills the viewport; no resize needed.
+    }
+
+    if (msg.type === 'LS_MUTATION') {
+      console.log('[langsmith apps dev] setData (not persisted locally):', msg.patch);
+    }
+
+    if (msg.type === 'LS_API') {
+      fetch('/__ls_dev/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: msg.operation, args: msg.args || {} }),
       })
-      .then(function(src) {
-        var mod = { exports: {} };
-        try {
-          new Function('module', 'exports', 'require', src)(mod, mod.exports, function(id) {
-            throw new Error('require(' + JSON.stringify(id) + ') is not supported in local dev — bundle your dependencies first (the starter template does this with esbuild)');
+        .then(function(r) {
+          return r.text().then(function(text) {
+            var parsed;
+            try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = text; }
+            if (!r.ok) throw new Error(typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+            return parsed;
           });
-        } catch (evalErr) {
-          showError('Boot error', evalErr);
-          return;
-        }
-        renderFn = mod.exports.render || (mod.exports.default && mod.exports.default.render);
-        renderApp();
-      })
-      .catch(function(err) { showError('Load error', err); });
-  }
-
-  boot();
+        })
+        .then(function(result) {
+          post({ type: 'LS_API_RESPONSE', callId: msg.callId, result: result });
+        })
+        .catch(function(err) {
+          post({ type: 'LS_API_RESPONSE', callId: msg.callId, error: String((err && err.message) || err) });
+        });
+    }
+  });
 
   // Poll for the entrypoint changing (or appearing for the first time) and
-  // reload the whole page — simplest reliable way to pick up a rebuild.
-  var seen = false;
-  var lastKey = null;
+  // reload the whole page -- simplest reliable way to pick up a rebuild.
+  var seen = false, lastKey = null;
   setInterval(function() {
     fetch('/__ls_dev/mtime', { cache: 'no-store' })
       .then(function(r) { return r.json(); })
@@ -306,6 +398,165 @@ const devHTMLTemplate = `<!doctype html>
       })
       .catch(function() {});
   }, 500);
+})();
+</script>
+</body>
+</html>`
+
+// sandboxInnerHTMLTemplate is a close Go port of smith-frontend's
+// sandbox.ts buildSandboxSrcdoc — same virtual filesystem + require()
+// loader, same render(data, root) contract, same window.langsmith bridge
+// (call/setData/feedback.create). Kept in sync by hand; there is no shared
+// source between the two repos.
+const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style id="ls-theme">/* theme injected via postMessage */</style>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg-surface-level-1, #ffffff);
+  color: var(--text-primary, #0f172a);
+  font-size: 14px;
+  line-height: 1.5;
+}
+pre, code {
+  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function() {
+  var themeReady = false;
+  var currentData = null;
+
+  var FILES = __FILES_JSON__;
+
+  var moduleCache = {};
+
+  function makeRequire(fromPath) {
+    return function require(id) {
+      var resolved = id;
+      if (id.charAt(0) === '.') {
+        var parts = fromPath.split('/');
+        parts.pop();
+        id.split('/').forEach(function(seg) {
+          if (seg === '..') parts.pop();
+          else if (seg !== '.') parts.push(seg);
+        });
+        resolved = parts.join('/');
+      }
+      if (moduleCache[resolved]) return moduleCache[resolved].exports;
+      var src = FILES[resolved];
+      if (src === undefined) throw new Error('Module not found: ' + resolved);
+      var mod = { exports: {} };
+      moduleCache[resolved] = mod;
+      var fn = new Function('require', 'module', 'exports', src);
+      fn(makeRequire(resolved), mod, mod.exports);
+      return mod.exports;
+    };
+  }
+
+  function bootRenderer() {
+    moduleCache = {};
+    var entrypoint = __ENTRYPOINT_JSON__;
+    try {
+      var main = makeRequire(entrypoint)(entrypoint);
+      window.__render = main.render || (main.default && main.default.render);
+    } catch (bootErr) {
+      window.__render = null;
+      document.getElementById('root').innerHTML =
+        '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;">' +
+        '<strong>Boot error:</strong><br>' + escapeHtml(String(bootErr)) + '</div>';
+      reportHeight();
+    }
+  }
+
+  window.addEventListener('message', function(event) {
+    var msg = event.data;
+    if (!msg || typeof msg.type !== 'string') return;
+
+    if (msg.type === 'LANGSMITH_THEME') {
+      document.getElementById('ls-theme').textContent = msg.cssText;
+      themeReady = true;
+      if (currentData !== null) renderApp();
+    }
+    if (msg.type === 'LANGSMITH_DATA') {
+      if (JSON.stringify(msg.payload) !== JSON.stringify(currentData)) {
+        currentData = msg.payload;
+        if (themeReady) renderApp();
+      }
+    }
+  });
+
+  function renderApp() {
+    var root = document.getElementById('root');
+    root.innerHTML = '';
+    if (typeof window.__render !== 'function') {
+      root.innerHTML = '<div style="padding:16px;color:#94a3b8;font-style:italic;font-size:13px;">Renderer not ready.</div>';
+      reportHeight();
+      return;
+    }
+    try {
+      window.__render(currentData, root);
+    } catch (err) {
+      root.innerHTML =
+        '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;">' +
+        '<strong>Renderer error:</strong><br>' + escapeHtml(String(err.message ?? err)) + '</div>';
+    }
+    reportHeight();
+  }
+
+  function reportHeight() {
+    window.parent.postMessage({ type: 'LANGSMITH_HEIGHT', height: document.documentElement.scrollHeight }, '*');
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(reportHeight).observe(document.body);
+  }
+
+  function call(operation, args) {
+    return new Promise(function(resolve, reject) {
+      var callId = 'ls_' + String(Date.now()) + '_' + String((Math.random() * 1e9) | 0);
+      function handler(e) {
+        if (!e.data || e.data.type !== 'LS_API_RESPONSE' || e.data.callId !== callId) return;
+        window.removeEventListener('message', handler);
+        clearTimeout(timer);
+        if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.result);
+      }
+      window.addEventListener('message', handler);
+      var timer = setTimeout(function() {
+        window.removeEventListener('message', handler);
+        reject(new Error('LangSmith API call timed out'));
+      }, 10000);
+      window.parent.postMessage({ type: 'LS_API', operation: operation, callId: callId, args: args || {} }, '*');
+    });
+  }
+
+  function setData(patch) {
+    window.parent.postMessage({ type: 'LS_MUTATION', patch: patch }, '*');
+    reportHeight();
+  }
+
+  window.langsmith = {
+    call: call,
+    setData: setData,
+    feedback: {
+      create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
+    }
+  };
+
+  bootRenderer();
+  window.parent.postMessage({ type: 'LANGSMITH_READY' }, '*');
 })();
 </script>
 </body>

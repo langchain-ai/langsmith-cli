@@ -140,7 +140,7 @@ context_type cannot be changed after an app is created.`,
 
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
-	cmd.Flags().StringVar(&contextType, "context-type", "none", "Context type on creation: none, annotation_queue, or experiment")
+	cmd.Flags().StringVar(&contextType, "context-type", "none", "Context type on creation: none or annotation_queue")
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading (e.g. \"npm run build\")")
 	return cmd

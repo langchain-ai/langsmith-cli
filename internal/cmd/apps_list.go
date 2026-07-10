@@ -45,6 +45,6 @@ func newAppsListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&contextType, "context-type", "", "Filter by context type: none, annotation_queue, or experiment")
+	cmd.Flags().StringVar(&contextType, "context-type", "", "Filter by context type: none or annotation_queue")
 	return cmd
 }
