@@ -199,7 +199,7 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2Par
 
 // runV2ToSchema converts a v2 Run into the legacy v1 RunSchema shape so the
 // existing extract/output pipeline can consume it unchanged.
-func runV2ToSchema(r langsmith.QueryRunResponse) langsmith.RunSchema {
+func runV2ToSchema(r langsmith.Run) langsmith.RunSchema {
 	extra := asMap(r.Extra)
 	if md := asMap(r.Metadata); md != nil {
 		if extra == nil {
@@ -260,7 +260,7 @@ func asMap(v interface{}) map[string]interface{} {
 // convertFeedbackStats round-trips the generated feedback-stats shape into the
 // loosely-typed map the downstream pipeline expects. Returns nil on empty input
 // or any marshalling error.
-func convertFeedbackStats(stats map[string]langsmith.QueryRunResponseFeedbackStat) map[string]map[string]interface{} {
+func convertFeedbackStats(stats map[string]langsmith.RunFeedbackStat) map[string]map[string]interface{} {
 	if len(stats) == 0 {
 		return nil
 	}
