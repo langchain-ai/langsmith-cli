@@ -205,6 +205,44 @@ func TestResolveClientOptions_ProfileFlagSetsProfileName(t *testing.T) {
 	}
 }
 
+func TestResolveClientOptions_APIKeyProfileSetsProfileName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {
+      "api_key": "prod-api-key",
+      "workspace_id": "ws-prod"
+    },
+    "aws": {
+      "api_key": "aws-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("profile", "aws")
+	opts, err := ResolveClientOptions(cmd, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.APIKey != "aws-api-key" {
+		t.Fatalf("expected profile api key, got %q", opts.APIKey)
+	}
+	// An api-key profile must route through WithProfile too, so it replaces
+	// current_profile and clears the inherited tenant. This resolver (used by the
+	// api/sandbox/ssh subcommands) previously omitted ProfileName here.
+	if opts.ProfileName != "aws" {
+		t.Fatalf("expected ProfileName=aws, got %q", opts.ProfileName)
+	}
+}
+
 func TestResolveClientOptions_WorkspaceFlagOverridesEnvAndProfile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
