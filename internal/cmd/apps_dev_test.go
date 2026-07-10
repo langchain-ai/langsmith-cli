@@ -128,6 +128,43 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	}
 }
 
+// A regression test for a real bug: renderApp() used to unconditionally do
+// `root.innerHTML = ''` before calling window.__render(currentData, root).
+// The entrypoint caches its React root across calls (`if (!root) root =
+// createRoot(rootEl)`) specifically so repeat renders (e.g. selecting a
+// different queue in local dev, which re-posts LANGSMITH_DATA) reconcile
+// against the same tree. Wiping the DOM out from under React between calls
+// corrupts that reconciliation — harmless on the very first render (the
+// container starts empty anyway), but the app renders blank on every render
+// after that, which is exactly what a context_type=annotation_queue app
+// shows the moment you pick a queue after the initial empty-queueId render.
+func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.T) {
+	dir := t.TempDir()
+	seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'ok'; } }")
+
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	if err != nil {
+		t.Fatalf("prepareAppsDevServer: %v", err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	resp, err := http.Get(previewURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", previewURL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	page := string(body)
+
+	if strings.Contains(page, "root.innerHTML = '';") {
+		t.Errorf("renderApp() must not unconditionally clear #root before calling window.__render — it corrupts the entrypoint's cached React root on every render after the first:\n%s", page)
+	}
+}
+
 func TestPrepareAppsDevServer_OmitsQueueSelectorForStandaloneApps(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(){} }")

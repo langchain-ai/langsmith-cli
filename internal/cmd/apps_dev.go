@@ -577,7 +577,6 @@ pre, code {
 
   function renderApp() {
     var root = document.getElementById('root');
-    root.innerHTML = '';
     if (bootErrorMessage) {
       root.innerHTML =
         '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;white-space:pre-wrap;">' +
