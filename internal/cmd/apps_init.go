@@ -259,7 +259,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	// "apps dev" run before the first push has no way to know this is an
 	// annotation_queue app at all — the queue-selector bar and --queue-id
 	// both key off this file's context_type, not the app_id.
-	if err := writeAppLink(dir, appLink{ContextType: at.contextType}); err != nil {
+	if err := writeAppLink(dir, appLink{Name: name, ContextType: at.contextType}); err != nil {
 		return nil, fmt.Errorf("writing .langsmith/app.json: %w", err)
 	}
 	written = append(written, filepath.Join(appsLinkDir, appsLinkFile))

@@ -33,6 +33,9 @@ func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	if link.ContextType != "annotation_queue" {
 		t.Errorf("expected context_type annotation_queue from --type, got %q", link.ContextType)
 	}
+	if link.Name != "my-app" {
+		t.Errorf("expected --name to be recorded in the link file so a later \"apps push\" doesn't fall back to the directory basename, got %q", link.Name)
+	}
 }
 
 func TestAppsInit_StandaloneAlsoWritesPartialAppLink(t *testing.T) {
