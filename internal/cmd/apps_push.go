@@ -14,7 +14,6 @@ import (
 
 func newAppsPushCmd() *cobra.Command {
 	var (
-		dir         string
 		name        string
 		description string
 		contextType string
@@ -23,19 +22,24 @@ func newAppsPushCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "push --dir PATH",
-		Short: "Upload a local custom app directory",
-		Long: `Upload a local custom app directory.
+		Use:   "push",
+		Short: "Upload the current directory as a custom app",
+		Long: `Upload the current directory as a custom app.
 
-Uploads exactly what's in --dir, as-is — it does not run a build for you
-unless you pass --build. The first push creates the app and writes
-.langsmith/app.json into --dir recording its ID; every push after that
-reads that file and updates the same app in place. Commit .langsmith/app.json
-so teammates' pushes update the same app instead of creating new ones.
+Uploads exactly what's in the current directory, as-is — it does not run a
+build for you unless you pass --build. The first push creates the app and
+writes .langsmith/app.json recording its ID; every push after that reads
+that file and updates the same app in place. Commit .langsmith/app.json so
+teammates' pushes update the same app instead of creating new ones.
 
 --context-type and --name only take effect on the first push (creation);
 context_type cannot be changed after an app is created.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting current directory: %w", err)
+			}
+
 			if buildCmd != "" {
 				if err := runAppsBuildCmd(dir, buildCmd); err != nil {
 					return err
@@ -134,13 +138,11 @@ context_type cannot be changed after an app is created.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&dir, "dir", "", "Local directory to upload (required)")
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
 	cmd.Flags().StringVar(&contextType, "context-type", "none", "Context type on creation: none, annotation_queue, or experiment")
-	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to --dir) of the file to render")
-	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in --dir before uploading (e.g. \"npm run build\")")
-	_ = cmd.MarkFlagRequired("dir")
+	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
+	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading (e.g. \"npm run build\")")
 	return cmd
 }
 

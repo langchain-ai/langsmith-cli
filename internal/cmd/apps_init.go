@@ -29,22 +29,25 @@ type customAppStarterVars struct {
 
 func newAppsInitCmd() *cobra.Command {
 	var (
-		dir         string
 		name        string
 		description string
 		force       bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --dir PATH --name NAME",
-		Short: "Scaffold a starter custom app directory",
-		Long: `Scaffold a starter custom app directory.
+		Use:   "init --name NAME",
+		Short: "Scaffold a starter custom app in the current directory",
+		Long: `Scaffold a starter custom app in the current directory.
 
 Writes a small npm project with an esbuild build step, a render() entrypoint,
 and a README explaining the bridge contract. This only writes local files —
 it does not create anything remotely. Run "langsmith apps push" once you're
 ready to upload it.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting current directory: %w", err)
+			}
 			written, err := scaffoldCustomAppStarter(dir, name, description, force)
 			if err != nil {
 				return err
@@ -60,11 +63,9 @@ ready to upload it.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&dir, "dir", "", "Target directory to scaffold into (required)")
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().BoolVar(&force, "force", false, "Write even if the target directory is non-empty")
-	_ = cmd.MarkFlagRequired("dir")
+	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }

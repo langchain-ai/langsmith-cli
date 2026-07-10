@@ -22,11 +22,17 @@ dependencies freely — they all get inlined at build time.
 ```bash
 npm install
 npm run watch          # rebuilds dist/bundle.js on change
-langsmith apps dev --dir .
+langsmith apps dev      # in another terminal: opens dist/bundle.js in your browser
 ```
 
-`apps dev` opens a LangSmith preview pointed at `dist/bundle.js`, live-reloading
-as you edit.
+`apps dev` is entirely local — it serves `dist/bundle.js` from a small local
+HTTP server, opens it in your browser, and reloads the page automatically
+whenever the file changes (e.g. from `npm run watch` rebuilding it). It does
+not talk to LangSmith at all; `window.langsmith.call(...)` (and the
+`feedback`/`data` helpers built on it) are stubbed out to log to the console
+instead of making a real API call, since there's no LangSmith backend behind
+this preview. Pass `--data ./sample.json` to seed `render()` with sample
+inputs/outputs instead of an empty object.
 
 ## The bridge contract
 
@@ -57,7 +63,7 @@ export default {
 
 ```bash
 npm run build
-langsmith apps push --dir .
+langsmith apps push
 ```
 
 The first `push` creates the app and writes `.langsmith/app.json` (the app's

@@ -45,10 +45,11 @@ func TestAppsPush_CreatesAndWritesLink(t *testing.T) {
 
 	dir := t.TempDir()
 	seedAppDir(t, dir)
+	t.Chdir(dir)
 
 	out := captureStdout(t, func() {
 		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"push", "--dir", dir, "--name", "my-app"})
+		cmd.SetArgs([]string{"push", "--name", "my-app"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
@@ -102,10 +103,11 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 	if err := writeAppLink(dir, appLink{AppID: "app_existing", Name: "my-app", ContextType: "annotation_queue"}); err != nil {
 		t.Fatalf("seed link: %v", err)
 	}
+	t.Chdir(dir)
 
 	captureStdout(t, func() {
 		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"push", "--dir", dir})
+		cmd.SetArgs([]string{"push"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
@@ -132,9 +134,10 @@ func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "other.js"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
+	t.Chdir(dir)
 
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"push", "--dir", dir, "--name", "my-app"})
+	cmd.SetArgs([]string{"push", "--name", "my-app"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected error when default entrypoint dist/bundle.js is missing")
 	}

@@ -79,12 +79,15 @@ dependencies, bundle them locally (the scaffolded starter does this with
 esbuild) into the single dependency-free file the sandbox expects.
 
 Examples:
-  langsmith apps init --dir ./my-app
-  langsmith apps dev --dir ./my-app --url http://localhost:5173
-  langsmith apps push --dir ./my-app
+  langsmith apps init --name my-app
+  langsmith apps dev
+  langsmith apps push
   langsmith apps list
   langsmith apps get <app-id>
-  langsmith apps delete <app-id> --yes`,
+  langsmith apps delete <app-id> --yes
+
+All of the above (except list/get/delete, which take an app ID) act on the
+current directory — cd into your app's directory first.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
