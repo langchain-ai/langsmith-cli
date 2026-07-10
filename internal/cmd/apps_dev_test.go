@@ -74,7 +74,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Fatalf("seed .env: %v", err)
 	}
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{"queueId": "q_1"})
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{"queueId": "q_1"}, true)
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -91,6 +91,10 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Fatalf("read body: %v", err)
 	}
 	page := string(body)
+
+	if !strings.Contains(page, `id="ls-dev-queue-select"`) {
+		t.Errorf("expected the annotation-queue selector bar when showQueueSelector=true:\n%s", page)
+	}
 
 	// The banner text is allowed to mention "allow-same-origin" for the
 	// user's benefit — what must never happen is the sandbox *attribute*
@@ -127,9 +131,31 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	}
 }
 
+func TestPrepareAppsDevServer_OmitsQueueSelectorForStandaloneApps(t *testing.T) {
+	dir := t.TempDir()
+	seedDevApp(t, dir, "module.exports = { render: function(){} }")
+
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	if err != nil {
+		t.Fatalf("prepareAppsDevServer: %v", err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	resp, err := http.Get(previewURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", previewURL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), `id="ls-dev-queue-select"`) {
+		t.Errorf("standalone apps should not get a queue selector bar:\n%s", body)
+	}
+}
+
 func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{})
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -152,7 +178,7 @@ func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.
 
 func TestPrepareAppsDevServer_MtimeReflectsFileState(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{})
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -284,7 +310,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", map[string]any{}, true)
+		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", map[string]any{}, false, true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)

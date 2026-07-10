@@ -124,6 +124,73 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 	}
 }
 
+// This is the exact scenario "apps init --type annotation-queue" now
+// produces: a .langsmith/app.json with context_type recorded but no app_id
+// yet (the app doesn't exist remotely until the first push). Push must
+// still treat this as "not yet created" (POST), not try to PATCH an empty
+// app ID, and must use the link's context_type instead of --context-type's
+// hardcoded "none" default.
+func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
+	var sawPost bool
+	var postBody map[string]any
+
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
+			sawPost = true
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &postBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{
+				ID:          "app_new",
+				Name:        "my-aq-app",
+				ContextType: "annotation_queue",
+				Entrypoint:  "dist/bundle.js",
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	// Mirrors what "apps init --name my-aq-app --type annotation-queue" writes.
+	if err := writeAppLink(dir, appLink{Name: "my-aq-app", ContextType: "annotation_queue"}); err != nil {
+		t.Fatalf("seed partial link: %v", err)
+	}
+	t.Chdir(dir)
+
+	out := captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"push"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if !sawPost {
+		t.Fatal("expected POST to create the app (app_id was empty, so this isn't an update)")
+	}
+	if postBody["name"] != "my-aq-app" {
+		t.Errorf("expected name from the link file used as fallback, got %v", postBody)
+	}
+	if postBody["context_type"] != "annotation_queue" {
+		t.Errorf("expected context_type from the link file, not the --context-type flag's default, got %v", postBody)
+	}
+	if !strings.Contains(out, `"status": "created"`) {
+		t.Errorf("expected created status, got:\n%s", out)
+	}
+
+	link, err := readAppLink(dir)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.AppID != "app_new" {
+		t.Errorf("expected link file updated with the real app_id, got %+v", link)
+	}
+}
+
 func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)

@@ -6,6 +6,14 @@ import react from '@vitejs/plugin-react';
 // self-mounting SPA. See src/entry.tsx and AGENTS.md.
 export default defineConfig({
   plugins: [react()],
+  // Unlike Vite's normal app-mode build, library mode does NOT replace
+  // process.env.NODE_ENV on its own — React/ReactDOM's bundled source still
+  // references it internally. There's no `process` global in the sandboxed
+  // iframe (or any browser), so without this the bundle throws
+  // "ReferenceError: process is not defined" the moment it's required.
+  define: {
+    'process.env.NODE_ENV': '"production"',
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

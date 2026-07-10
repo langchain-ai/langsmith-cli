@@ -7,11 +7,56 @@ import (
 	"testing"
 )
 
-func TestAppsInit_ScaffoldsExpectedFiles(t *testing.T) {
+// Without this, "apps dev" run before the first "apps push" has no way to
+// know this is an annotation_queue app at all (the queue-selector bar and
+// --queue-id both key off .langsmith/app.json's context_type) — the file
+// only existing after a push meant a brand new annotation-queue app was
+// stuck showing "No queueId in context" until you pushed it first.
+func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "Does the thing", "annotation_queue", false)
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	link, err := readAppLink(target)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil {
+		t.Fatal("expected apps init to write .langsmith/app.json immediately")
+	}
+	if link.AppID != "" {
+		t.Errorf("expected no app_id yet (app doesn't exist remotely until the first push), got %q", link.AppID)
+	}
+	if link.ContextType != "annotation_queue" {
+		t.Errorf("expected context_type annotation_queue from --type, got %q", link.ContextType)
+	}
+}
+
+func TestAppsInit_StandaloneAlsoWritesPartialAppLink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["standalone"], false); err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	link, err := readAppLink(target)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.ContextType != "none" {
+		t.Errorf("expected a partial link with context_type none, got %+v", link)
+	}
+}
+
+func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "Does the thing", appTypes["annotation-queue"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -55,6 +100,30 @@ func TestAppsInit_ScaffoldsExpectedFiles(t *testing.T) {
 	}
 }
 
+func TestAppsInit_ScaffoldsStandaloneFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["standalone"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	for _, want := range []string{"package.json", "README.md", "AGENTS.md", ".gitignore", "src/index.js"} {
+		if !writtenSet[want] {
+			t.Errorf("expected %q to be written, got %v", want, written)
+		}
+	}
+	// The standalone type must never scaffold the annotation-queue app's files.
+	if writtenSet["src/App.tsx"] {
+		t.Error("standalone type should not scaffold the annotation-queue React app")
+	}
+}
+
 // Non-templated files (anything but README.md/package.json) must be copied
 // byte-for-byte — running them through text/template would choke on, or
 // silently mangle, any literal "{{"/"}}" they contain, e.g. React's
@@ -63,7 +132,7 @@ func TestAppsInit_CopiesNonTemplatedFilesVerbatim(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "annotation_queue", false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 
@@ -80,7 +149,7 @@ func TestAppsInit_DefaultsDescription(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "annotation_queue", false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 	readme, err := os.ReadFile(filepath.Join(target, "README.md"))
@@ -97,7 +166,7 @@ func TestAppsInit_RejectsNonEmptyDirWithoutForce(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	_, err := scaffoldCustomAppStarter(dir, "my-app", "", "annotation_queue", false)
+	_, err := scaffoldCustomAppStarter(dir, "my-app", "", appTypes["annotation-queue"], false)
 	if err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("expected not-empty error, got %v", err)
 	}
@@ -108,7 +177,7 @@ func TestAppsInit_ForceWritesOverNonEmpty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", "annotation_queue", true); err != nil {
+	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", appTypes["annotation-queue"], true); err != nil {
 		t.Fatalf("scaffold with force: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
@@ -118,29 +187,36 @@ func TestAppsInit_ForceWritesOverNonEmpty(t *testing.T) {
 
 func TestAppsInit_RequiresName(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := scaffoldCustomAppStarter(filepath.Join(dir, "app"), "", "", "annotation_queue", false); err == nil {
+	if _, err := scaffoldCustomAppStarter(filepath.Join(dir, "app"), "", "", appTypes["annotation-queue"], false); err == nil {
 		t.Fatal("expected error when --name is empty")
+	}
+}
+
+func TestAppsInit_RequiresValidType(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", appType{}, false); err == nil {
+		t.Fatal("expected error for a zero-value (invalid) app type")
 	}
 }
 
 func TestAppsInit_WritesContextSpecificAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
-	noneTarget := filepath.Join(dir, "none-app")
-	if _, err := scaffoldCustomAppStarter(noneTarget, "none-app", "", "none", false); err != nil {
-		t.Fatalf("scaffold none: %v", err)
+	standaloneTarget := filepath.Join(dir, "standalone-app")
+	if _, err := scaffoldCustomAppStarter(standaloneTarget, "standalone-app", "", appTypes["standalone"], false); err != nil {
+		t.Fatalf("scaffold standalone: %v", err)
 	}
-	noneAgents, err := os.ReadFile(filepath.Join(noneTarget, "AGENTS.md"))
+	standaloneAgents, err := os.ReadFile(filepath.Join(standaloneTarget, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(noneAgents), "standalone") {
-		t.Errorf("expected the none-context AGENTS.md, got:\n%s", noneAgents)
+	if !strings.Contains(string(standaloneAgents), "standalone") {
+		t.Errorf("expected the none-context AGENTS.md, got:\n%s", standaloneAgents)
 	}
 
 	aqTarget := filepath.Join(dir, "aq-app")
-	if _, err := scaffoldCustomAppStarter(aqTarget, "aq-app", "", "annotation_queue", false); err != nil {
-		t.Fatalf("scaffold annotation_queue: %v", err)
+	if _, err := scaffoldCustomAppStarter(aqTarget, "aq-app", "", appTypes["annotation-queue"], false); err != nil {
+		t.Fatalf("scaffold annotation-queue: %v", err)
 	}
 	aqAgents, err := os.ReadFile(filepath.Join(aqTarget, "AGENTS.md"))
 	if err != nil {
@@ -151,25 +227,46 @@ func TestAppsInit_WritesContextSpecificAgentsMD(t *testing.T) {
 	}
 }
 
-func TestAppsInit_RejectsInvalidContextType(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", "bogus", false); err == nil {
-		t.Fatal("expected error for an invalid --context-type")
-	}
-}
-
-func TestAppsInitCmd_HasContextTypeFlag(t *testing.T) {
+func TestAppsInitCmd_HasRequiredTypeFlag(t *testing.T) {
 	cmd := newAppsCmd()
 	initCmd, _, err := cmd.Find([]string{"init"})
 	if err != nil {
 		t.Fatalf("find init command: %v", err)
 	}
-	f := initCmd.Flags().Lookup("context-type")
+	f := initCmd.Flags().Lookup("type")
 	if f == nil {
-		t.Fatal("expected --context-type flag to exist")
+		t.Fatal("expected --type flag to exist")
 	}
-	if f.DefValue != "annotation_queue" {
-		t.Errorf("expected --context-type to default to annotation_queue, got %q", f.DefValue)
+	if f.DefValue != "" {
+		t.Errorf("expected --type to have no default (required), got %q", f.DefValue)
+	}
+	ann := f.Annotations
+	if ann == nil || ann["cobra_annotation_bash_completion_one_required_flag"] == nil {
+		t.Error("expected --type to be marked required")
+	}
+	// The old flag name/values must be gone, not just renamed silently.
+	if got := initCmd.Flags().Lookup("context-type"); got != nil {
+		t.Error("expected --context-type to be gone from apps init (renamed to --type)")
+	}
+}
+
+func TestAppsInitCmd_RequiresType(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "my-app"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error when --type is missing")
+	}
+}
+
+func TestAppsInitCmd_RejectsInvalidType(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--type", "bogus", "--skip-install"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for an invalid --type")
 	}
 }
 

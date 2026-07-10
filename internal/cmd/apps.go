@@ -71,15 +71,17 @@ func newAppsCmd() *cobra.Command {
 LangSmith API and run inside LangSmith, either standalone (Custom Apps tab)
 or embedded in a specific resource (e.g. an annotation queue).
 
-A custom app is a small set of plain-JS files rendered in a locked-down
-sandbox: no direct network access, no npm modules at runtime — only a
-postMessage bridge (window.langsmith.call/setData) proxied through the
-viewer's own LangSmith session. If you want to use React/JSX or npm
-dependencies, bundle them locally (the scaffolded starter does this with
-esbuild) into the single dependency-free file the sandbox expects.
+A custom app is a small set of files rendered in a locked-down sandbox: no
+direct network access, no npm modules at runtime — only a postMessage
+bridge (window.langsmith.call/setData) proxied through the viewer's own
+LangSmith session. Use React/JSX or npm dependencies freely; the scaffolded
+starter bundles them locally (esbuild for --type standalone, Vite for
+--type annotation-queue) into the single dependency-free file the sandbox
+expects.
 
 Examples:
-  langsmith apps init --name my-app
+  langsmith apps init --name my-app --type standalone
+  langsmith apps init --name my-queue-app --type annotation-queue
   langsmith apps dev
   langsmith apps push
   langsmith apps list

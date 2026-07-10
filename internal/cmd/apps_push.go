@@ -61,21 +61,33 @@ context_type cannot be changed after an app is created.`,
 			if err != nil {
 				return err
 			}
+			// "apps init" writes .langsmith/app.json immediately (recording
+			// --type's context_type) with no app_id yet — that's only known
+			// once an app is actually created. So a link file existing isn't
+			// enough to mean "already created"; app_id being set is.
+			notYetCreated := link == nil || link.AppID == ""
 
 			c := MustGetClient()
 			ctx := context.Background()
 
 			var app customApp
-			if link == nil {
+			if notYetCreated {
 				appName := name
+				if appName == "" && link != nil && link.Name != "" {
+					appName = link.Name
+				}
 				if appName == "" {
 					appName = filepath.Base(filepath.Clean(dir))
+				}
+				ctxType := contextType
+				if link != nil && link.ContextType != "" && !cmd.Flags().Changed("context-type") {
+					ctxType = link.ContextType
 				}
 				payload := map[string]any{
 					"name":         appName,
 					"files":        files,
 					"entrypoint":   entrypoint,
-					"context_type": contextType,
+					"context_type": ctxType,
 				}
 				if description != "" {
 					payload["description"] = description
@@ -91,7 +103,7 @@ context_type cannot be changed after an app is created.`,
 					return err
 				}
 			} else {
-				if contextType != "" && contextType != link.ContextType {
+				if cmd.Flags().Changed("context-type") && contextType != link.ContextType {
 					fmt.Fprintf(os.Stderr, "note: --context-type is ignored on update (context_type can't change after creation; this app is %q)\n", link.ContextType)
 				}
 				payload := map[string]any{
@@ -123,7 +135,7 @@ context_type cannot be changed after an app is created.`,
 			sort.Strings(paths)
 
 			status := "created"
-			if link != nil {
+			if !notYetCreated {
 				status = "updated"
 			}
 			output.OutputJSON(map[string]any{

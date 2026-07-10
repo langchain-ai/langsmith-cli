@@ -60,10 +60,12 @@ automatically.`,
 				fmt.Fprintln(os.Stderr, "note: this app is linked as context_type annotation_queue but no --queue-id was passed — it will get an empty queueId until you pass one")
 			}
 
+			showQueueSelector := link != nil && link.ContextType == contextTypeAnnotationQueue
+
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), noOpen)
+			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), showQueueSelector, noOpen)
 		},
 	}
 
@@ -88,8 +90,8 @@ func devData(link *appLink, queueID string) map[string]any {
 // runAppsDev starts the local sandboxed-preview server for dir, opens it in
 // a browser, and blocks until ctx is cancelled (e.g. by SIGINT) or the
 // server fails.
-func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, noOpen bool) error {
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint, data)
+func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, showQueueSelector, noOpen bool) error {
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint, data, showQueueSelector)
 	if err != nil {
 		return err
 	}
@@ -136,7 +138,7 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any
 // The directory is read the same way "apps push" reads it
 // (readDirectoryAsAppFiles), so local dev sees exactly what would be
 // uploaded — including the same .env/.git/node_modules exclusions.
-func prepareAppsDevServer(dir, entrypoint string, data map[string]any) (srv *http.Server, ln net.Listener, previewURL string, err error) {
+func prepareAppsDevServer(dir, entrypoint string, data map[string]any, showQueueSelector bool) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +158,7 @@ func prepareAppsDevServer(dir, entrypoint string, data map[string]any) (srv *htt
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — start your build/watch command (e.g. \"npm run watch\")", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, data)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, data, showQueueSelector)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -305,7 +307,14 @@ setInterval(function() {
 // host side — LANGSMITH_READY/LANGSMITH_HEIGHT/LS_API/LS_MUTATION — with
 // LS_API forwarded to /__ls_dev/call, which is real network access the
 // iframe itself can never have.
-func renderDevHostHTML(files map[string]string, entrypoint string, data map[string]any) string {
+//
+// When showQueueSelector is set (the app is linked as context_type
+// annotation_queue), the page also gets a queue-picker bar — fetched live
+// from the real API via the same /__ls_dev/call proxy — mirroring the
+// queue picker CustomAppPreviewPanel.tsx already shows when previewing a
+// contextual app from the Custom Apps tab. Standalone apps get no context
+// to pick, so no bar.
+func renderDevHostHTML(files map[string]string, entrypoint string, data map[string]any, showQueueSelector bool) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
 	dataJSON, _ := json.Marshal(data)
@@ -315,11 +324,82 @@ func renderDevHostHTML(files map[string]string, entrypoint string, data map[stri
 		"__ENTRYPOINT_JSON__", escapeForScript(entrypointJSON),
 	).Replace(sandboxInnerHTMLTemplate)
 
+	queueBarHTML := ""
+	queueBarScript := ""
+	if showQueueSelector {
+		queueBarHTML = queueSelectorBarHTML
+		queueBarScript = queueSelectorScript
+	}
+
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
 		"__DATA_JSON__", escapeForScript(dataJSON),
+		"__QUEUE_BAR_HTML__", queueBarHTML,
+		"__QUEUE_BAR_SCRIPT__", queueBarScript,
 	).Replace(devHostHTMLTemplate)
 }
+
+const queueSelectorBarHTML = `<div id="ls-dev-queue-bar">
+  <label for="ls-dev-queue-select">Annotation queue:</label>
+  <select id="ls-dev-queue-select"><option value="">Loading queues…</option></select>
+</div>
+`
+
+const queueSelectorScript = `
+  var queueSelect = document.getElementById('ls-dev-queue-select');
+
+  function callProxy(operation, args) {
+    return fetch('/__ls_dev/call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: operation, args: args || {} }),
+    }).then(function(r) {
+      return r.text().then(function(text) {
+        var parsed;
+        try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = text; }
+        if (!r.ok) throw new Error(typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
+        return parsed;
+      });
+    });
+  }
+
+  function loadQueues() {
+    callProxy('GET /api/v1/annotation-queues', { params: { limit: '50', offset: '0' } })
+      .then(function(queues) {
+        queueSelect.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select a queue…';
+        queueSelect.appendChild(placeholder);
+        var found = false;
+        (queues || []).forEach(function(q) {
+          var opt = document.createElement('option');
+          opt.value = q.id;
+          opt.textContent = q.name + ' (' + q.id.slice(0, 8) + ')';
+          if (q.id === data.queueId) { opt.selected = true; found = true; }
+          queueSelect.appendChild(opt);
+        });
+        if (!found && data.queueId) {
+          var custom = document.createElement('option');
+          custom.value = data.queueId;
+          custom.textContent = data.queueId + ' (from --queue-id, not in first 50)';
+          custom.selected = true;
+          queueSelect.appendChild(custom);
+        }
+      })
+      .catch(function(err) {
+        queueSelect.innerHTML = '<option value="">Failed to load queues</option>';
+        console.error('[langsmith apps dev] failed to load annotation queues:', err);
+      });
+  }
+
+  queueSelect.addEventListener('change', function() {
+    data = Object.assign({}, data, { queueId: queueSelect.value });
+    post({ type: 'LANGSMITH_DATA', payload: data });
+  });
+
+  loadQueues();
+`
 
 const devHostHTMLTemplate = `<!doctype html>
 <html lang="en">
@@ -328,13 +408,16 @@ const devHostHTMLTemplate = `<!doctype html>
 <title>Local sandboxed preview</title>
 <style>
   html, body { height: 100%; margin: 0; }
-  #ls-dev-banner { background: #111827; color: #9ca3af; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-  iframe { display: block; width: 100%; height: calc(100% - 29px); border: none; }
+  body { display: flex; flex-direction: column; }
+  #ls-dev-banner { flex: none; background: #111827; color: #9ca3af; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  #ls-dev-queue-bar { flex: none; display: flex; align-items: center; gap: 8px; background: #1f2937; color: #e5e7eb; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  #ls-dev-queue-bar select { font-size: 12px; padding: 2px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #e5e7eb; max-width: 360px; }
+  iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
 <body>
 <div id="ls-dev-banner">Sandboxed local preview (sandbox="allow-scripts", no allow-same-origin — same restrictions as production)</div>
-<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
+__QUEUE_BAR_HTML__<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
 <script>
 (function() {
   var iframe = document.getElementById('ls-app');
@@ -384,7 +467,7 @@ const devHostHTMLTemplate = `<!doctype html>
         });
     }
   });
-
+__QUEUE_BAR_SCRIPT__
   // Poll for the entrypoint changing (or appearing for the first time) and
   // reload the whole page -- simplest reliable way to pick up a rebuild.
   var seen = false, lastKey = null;
@@ -462,18 +545,18 @@ pre, code {
     };
   }
 
+  var bootErrorMessage = null;
+
   function bootRenderer() {
     moduleCache = {};
+    bootErrorMessage = null;
     var entrypoint = __ENTRYPOINT_JSON__;
     try {
       var main = makeRequire(entrypoint)(entrypoint);
       window.__render = main.render || (main.default && main.default.render);
     } catch (bootErr) {
       window.__render = null;
-      document.getElementById('root').innerHTML =
-        '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;">' +
-        '<strong>Boot error:</strong><br>' + escapeHtml(String(bootErr)) + '</div>';
-      reportHeight();
+      bootErrorMessage = String((bootErr && bootErr.stack) || bootErr);
     }
   }
 
@@ -497,6 +580,13 @@ pre, code {
   function renderApp() {
     var root = document.getElementById('root');
     root.innerHTML = '';
+    if (bootErrorMessage) {
+      root.innerHTML =
+        '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;white-space:pre-wrap;">' +
+        '<strong>Boot error:</strong><br>' + escapeHtml(bootErrorMessage) + '</div>';
+      reportHeight();
+      return;
+    }
     if (typeof window.__render !== 'function') {
       root.innerHTML = '<div style="padding:16px;color:#94a3b8;font-style:italic;font-size:13px;">Renderer not ready.</div>';
       reportHeight();
