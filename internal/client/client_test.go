@@ -181,6 +181,54 @@ func TestNewWithOptions_APIKeyProfileRoutesThroughSDK(t *testing.T) {
 	}
 }
 
+func TestNewWithOptions_ProfileNameTakesPrecedenceOverExplicitAPIKey(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "oauth": {
+        "access_token": "prod-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// resolveClientOptions never produces this combo, but NewWithOptions is
+	// exported: when a caller passes an explicit APIKey alongside a ProfileName,
+	// the profile wins (routes through WithProfile) and the explicit key is not
+	// sent for SDK calls.
+	c := NewWithOptions(Options{
+		APIKey:      "explicit-key",
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer prod-access-token" {
+		t.Fatalf("expected profile OAuth bearer to win, got %q", gotAuth)
+	}
+	if gotAPIKey != "" {
+		t.Fatalf("expected explicit API key not sent for SDK calls, got %q", gotAPIKey)
+	}
+}
+
 // ---------- RawGet ----------
 
 func TestRawGet_Success(t *testing.T) {
