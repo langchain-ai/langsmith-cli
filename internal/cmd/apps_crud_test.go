@@ -34,54 +34,6 @@ func TestAppsList_PassesContextTypeFilter(t *testing.T) {
 	}
 }
 
-func TestAppsGet_OmitsFilesByDefault(t *testing.T) {
-	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/platform/custom-apps/a1" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(customApp{
-			ID:    "a1",
-			Name:  "one",
-			Files: map[string]string{"index.js": "secret contents"},
-		})
-	})
-	defer setupTestEnv(t, srv.URL)()
-
-	out := captureStdout(t, func() {
-		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"get", "a1"})
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("execute: %v", err)
-		}
-	})
-	if strings.Contains(out, "secret contents") {
-		t.Errorf("expected file contents to be omitted without --files:\n%s", out)
-	}
-}
-
-func TestAppsGet_IncludesFilesWithFlag(t *testing.T) {
-	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(customApp{
-			ID:    "a1",
-			Files: map[string]string{"index.js": "secret contents"},
-		})
-	})
-	defer setupTestEnv(t, srv.URL)()
-
-	out := captureStdout(t, func() {
-		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"get", "a1", "--files"})
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("execute: %v", err)
-		}
-	})
-	if !strings.Contains(out, "secret contents") {
-		t.Errorf("expected file contents with --files:\n%s", out)
-	}
-}
-
 func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
 	var sawDelete bool
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {

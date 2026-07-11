@@ -85,17 +85,15 @@ Examples:
   langsmith apps dev
   langsmith apps push
   langsmith apps list
-  langsmith apps get <app-id>
   langsmith apps delete <app-id> --yes
 
-All of the above (except list/get/delete, which take an app ID) act on the
+All of the above (except list/delete, which take an app ID) act on the
 current directory — cd into your app's directory first.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
 	cmd.AddCommand(newAppsPushCmd())
 	cmd.AddCommand(newAppsListCmd())
-	cmd.AddCommand(newAppsGetCmd())
 	cmd.AddCommand(newAppsDeleteCmd())
 	return cmd
 }
