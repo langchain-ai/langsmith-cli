@@ -1,59 +1,49 @@
-import { useEffect, useState } from 'react';
-
-interface Project {
-  id: string;
-  name: string;
-  run_count?: number | null;
-  last_run_start_time?: string | null;
-}
-
-function fmtRelative(iso?: string | null): string {
-  if (!iso) return '—';
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
-  return `${Math.round(mins / 1440)}d ago`;
-}
-
-// A tiny, genuinely working starting point: list the workspace's most
-// recently active tracing projects. Delete this and build whatever you
-// want — see AGENTS.md for the full API surface.
+// A static starting point — no API calls, nothing to break. Edit this
+// file (or delete it) and build whatever you want; see AGENTS.md for the
+// full LangSmith API surface and README.md for the render(data, root)
+// bridge contract.
 export function App(_props: { data: unknown }) {
-  const [projects, setProjects] = useState<Project[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    window.langsmith
-      .call('GET /api/v1/sessions', { params: { limit: '10', include_stats: 'true' } })
-      .then((res) => setProjects(res as Project[]))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
-
   return (
-    <div className="min-h-screen bg-surface-level-1 p-6 text-primary">
-      <h1 className="text-lg font-semibold">Recent projects</h1>
+    <div className="flex min-h-screen items-center justify-center bg-surface-level-1 p-6">
+      <div className="w-full max-w-md rounded-xl border border-secondary bg-elevated p-8 text-center shadow-md">
+        <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-brand-subtle">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            className="size-5 text-brand-primary"
+            stroke="currentColor"
+            strokeWidth={1.75}
+          >
+            <path
+              d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
 
-      {error && <p className="mt-3 text-sm text-error-primary">{error}</p>}
+        <h1 className="mt-4 text-lg font-semibold text-primary">Your custom app starts here</h1>
+        <p className="mt-2 text-sm leading-relaxed text-tertiary">
+          A blank canvas — edit <code className="text-secondary">src/App.tsx</code> to build
+          whatever you want.
+        </p>
 
-      {!error && !projects && <p className="mt-3 text-sm text-tertiary">Loading…</p>}
+        <div className="mt-5 rounded-lg border border-secondary bg-secondary p-3 text-left">
+          <p className="text-xs font-medium uppercase tracking-wide text-quaternary">
+            Calling the API
+          </p>
+          <pre className="mt-1.5 overflow-x-auto text-xs leading-relaxed text-secondary">
+            {`await window.langsmith.call(
+  'GET /api/v1/sessions',
+  { params: { limit: '10' } }
+);`}
+          </pre>
+        </div>
 
-      {projects && projects.length === 0 && (
-        <p className="mt-3 text-sm text-tertiary">No tracing projects in this workspace yet.</p>
-      )}
-
-      {projects && projects.length > 0 && (
-        <ul className="mt-3 divide-y divide-secondary rounded-lg border border-secondary">
-          {projects.map((p) => (
-            <li key={p.id} className="flex items-center justify-between px-4 py-2 text-sm">
-              <span className="font-medium">{p.name}</span>
-              <span className="text-tertiary">
-                {p.run_count ?? 0} runs · {fmtRelative(p.last_run_start_time)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+        <p className="mt-4 text-xs text-quaternary">
+          See <code className="text-tertiary">AGENTS.md</code> for the full API surface.
+        </p>
+      </div>
     </div>
   );
 }
