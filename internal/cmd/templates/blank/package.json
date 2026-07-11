@@ -2,11 +2,23 @@
   "name": "{{.Name}}",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "esbuild src/index.js --bundle --format=cjs --outfile=dist/bundle.js",
-    "watch": "npm run build -- --watch"
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.0"
   }
 }

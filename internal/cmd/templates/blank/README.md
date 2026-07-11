@@ -2,23 +2,25 @@
 
 {{.Description}}
 
-A blank LangSmith custom app, scaffolded by `langsmith apps init --type standalone`.
-**Read `AGENTS.md` first** — it documents the LangSmith API surface this app
-can call.
+A standalone LangSmith custom app, scaffolded by `langsmith apps init --type
+standalone`. It starts as a small, genuinely working example — a list of
+your workspace's most recently active tracing projects — not a blank page.
+**Read `AGENTS.md` first** — it documents the LangSmith API surface this
+app can call.
 
 ## What this is
 
-A custom app is a small UI rendered inside LangSmith in a locked-down
-sandbox (`sandbox="allow-scripts"`, no `allow-same-origin`). It never gets
-direct network access or a real credential — everything goes through a
-`postMessage` bridge to the host page (`window.langsmith.call`), which
-proxies to the real LangSmith API under the viewer's own session (or your
-local `LANGSMITH_API_KEY` when running `langsmith apps dev`).
+A custom app is a small React/TS UI rendered inside LangSmith in a
+locked-down sandbox (`sandbox="allow-scripts"`, no `allow-same-origin`). It
+never gets direct network access or a real credential — everything goes
+through a `postMessage` bridge to the host page (`window.langsmith.call`),
+which proxies to the real LangSmith API under the viewer's own session (or
+your local `LANGSMITH_API_KEY` when running `langsmith apps dev`).
 
-Since the sandbox has no bundler or npm access at runtime, `src/index.js`
-is bundled locally with esbuild into a single dependency-free file
-(`dist/bundle.js`) before it's pushed. Use real JS and npm dependencies
-freely — they all get inlined at build time.
+Since the sandbox has no bundler or npm access at runtime, this app is built
+with Vite in **library mode**: `npm run build` bundles everything (React
+included) into a single dependency-free file (`dist/bundle.js`) before it's
+pushed. Use npm dependencies freely — they all get inlined at build time.
 
 ## Develop
 
@@ -33,29 +35,20 @@ langsmith apps dev # in another terminal
 
 `apps dev` runs the app inside a real sandboxed iframe, identical
 restrictions to production, and reloads automatically whenever
-`dist/bundle.js` changes. If this app is linked (via `.langsmith/app.json`,
-written by `apps push`) as `context_type: annotation_queue`, pass
-`--queue-id <a real queue ID>` so `data.queueId` is populated.
+`dist/bundle.js` changes.
 
 ## The bridge contract
 
-Your entrypoint must export (or `module.exports`) a `render(data, root)`
-function:
-
-```js
-module.exports = {
-  render(data, root) {
-    // data: {} for a standalone app, or { queueId } for an
-    // annotation-queue app. root: an empty <div> to render into.
-  },
-};
-```
+`src/entry.tsx` exports a `render(data, root)` function that the host calls
+once on load and again whenever `data` changes — for a standalone app,
+`data` is always `{}`. `src/App.tsx` is the actual UI; edit it freely, it's
+just a React component.
 
 `window.langsmith`, injected by the host page, gives you:
 
 - `window.langsmith.call(operation, args)` — `operation` is a
-  `"<METHOD> <path>"` string (e.g. `"GET /api/v1/annotation-queues/{id}/runs"`),
-  forwarded as-is to the real LangSmith API. Not a curated allowlist — see
+  `"<METHOD> <path>"` string (e.g. `"GET /api/v1/sessions"`), forwarded
+  as-is to the real LangSmith API. Not a curated allowlist — see
   `AGENTS.md` for the available surface. Returns a Promise.
 - `window.langsmith.setData(patch)` — push a data mutation out for the host
   to persist.

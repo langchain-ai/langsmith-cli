@@ -116,14 +116,23 @@ func TestAppsInit_ScaffoldsStandaloneFiles(t *testing.T) {
 	for _, w := range written {
 		writtenSet[w] = true
 	}
-	for _, want := range []string{"package.json", "README.md", "AGENTS.md", ".gitignore", "src/index.js"} {
+	for _, want := range []string{"package.json", "README.md", "AGENTS.md", ".gitignore", "src/App.tsx", "src/entry.tsx"} {
 		if !writtenSet[want] {
 			t.Errorf("expected %q to be written, got %v", want, written)
 		}
 	}
-	// The standalone type must never scaffold the annotation-queue app's files.
-	if writtenSet["src/App.tsx"] {
-		t.Error("standalone type should not scaffold the annotation-queue React app")
+	// The standalone type must never scaffold the annotation-queue app's own
+	// components — it has its own (much simpler) App.tsx.
+	if writtenSet["src/components/RunList.tsx"] {
+		t.Error("standalone type should not scaffold the annotation-queue app's components")
+	}
+
+	appTsx, err := os.ReadFile(filepath.Join(target, "src", "App.tsx"))
+	if err != nil {
+		t.Fatalf("read App.tsx: %v", err)
+	}
+	if strings.Contains(string(appTsx), "queueId") {
+		t.Errorf("expected the standalone App.tsx to have no queue-specific code, got:\n%s", appTsx)
 	}
 }
 
