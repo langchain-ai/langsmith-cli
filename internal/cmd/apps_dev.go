@@ -408,9 +408,57 @@ const devHostHTMLTemplate = `<!doctype html>
 <title>Local sandboxed preview</title>
 <style>
   html, body { height: 100%; margin: 0; }
-  body { display: flex; flex-direction: column; }
-  #ls-dev-queue-bar { flex: none; display: flex; align-items: center; gap: 8px; background: #1f2937; color: #e5e7eb; font-size: 12px; padding: 6px 12px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-  #ls-dev-queue-bar select { font-size: 12px; padding: 2px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #e5e7eb; max-width: 360px; }
+  body { display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif; }
+
+  /* Mirrors CustomAppPreviewPanel.tsx's queue picker: a level-2 surface bar
+     with a subtle divider, a secondary-text label, and a Select-style
+     bordered control (see smith-frontend/STYLES.md and
+     design-system/components/Select). Hand-ported since this page is a
+     standalone Go-templated HTML string with no access to Tailwind/CSS
+     variables. */
+  #ls-dev-queue-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f5f8fb;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+  #ls-dev-queue-bar label { font-weight: 500; color: #334155; }
+  #ls-dev-queue-bar select {
+    font-family: inherit;
+    font-size: 13px;
+    color: #0f172a;
+    padding: 5px 28px 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background-color: #ffffff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 14px;
+    -webkit-appearance: none;
+    appearance: none;
+    max-width: 360px;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+  #ls-dev-queue-bar select:hover { border-color: #94a3b8; }
+  #ls-dev-queue-bar select:focus-visible {
+    outline: none;
+    border-color: #006ddd;
+    box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
+  }
+
+  /* No prefers-color-scheme variant here on purpose: the sandboxed app
+     below never actually receives a real theme (renderDevHostHTML posts a
+     permanently empty LANGSMITH_THEME cssText), so it always renders with
+     its hardcoded light-mode fallback regardless of OS setting. A
+     dark-mode bar would mismatch that light content instead of matching
+     the real (currently light-only) rendered page. */
+
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
