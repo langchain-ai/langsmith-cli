@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -636,6 +637,110 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 
 	if receivedKey != "test-api-key" {
 		t.Errorf("expected x-api-key=test-api-key, got %q", receivedKey)
+	}
+}
+
+func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(
+		evaluatorFile,
+		[]byte("def check_accuracy(run, example):\n    return {\"score\": 1}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var sawDelete bool
+	var patchBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "project-1", "name": "my-project"},
+			})
+		case r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET":
+			_ = json.NewEncoder(w).Encode([]testRule{
+				{
+					ID:           "existing-rule",
+					DisplayName:  "accuracy",
+					SamplingRate: 0.25,
+					IsEnabled:    true,
+					SessionID:    "project-1",
+					CodeEvaluators: []testCodeEval{
+						{Code: "def perform_eval(run, example):\n    return {\"score\": 0}", Language: "python"},
+					},
+				},
+			})
+		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "PATCH":
+			if err := json.NewDecoder(r.Body).Decode(&patchBody); err != nil {
+				t.Fatalf("decoding patch body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":           "existing-rule",
+				"display_name": "accuracy",
+				"session_id":   "project-1",
+			})
+		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "DELETE":
+			sawDelete = true
+			http.Error(w, "delete should not be called", http.StatusInternalServerError)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorUploadCmd()
+		_ = cmd.Flags().Set("name", "accuracy")
+		_ = cmd.Flags().Set("function", "check_accuracy")
+		_ = cmd.Flags().Set("project", "my-project")
+		_ = cmd.Flags().Set("sampling-rate", "0.5")
+		_ = cmd.Flags().Set("replace", "true")
+		_ = cmd.Flags().Set("yes", "true")
+		cmd.Run(cmd, []string{evaluatorFile})
+	})
+
+	if sawDelete {
+		t.Fatal("upload --replace should patch the existing evaluator, not delete it")
+	}
+	if patchBody == nil {
+		t.Fatal("expected PATCH body")
+	}
+	if patchBody["display_name"] != "accuracy" {
+		t.Errorf("expected display_name=accuracy, got %v", patchBody["display_name"])
+	}
+	if patchBody["session_id"] != "project-1" {
+		t.Errorf("expected session_id=project-1, got %v", patchBody["session_id"])
+	}
+	if patchBody["sampling_rate"] != 0.5 {
+		t.Errorf("expected sampling_rate=0.5, got %v", patchBody["sampling_rate"])
+	}
+	evaluators, ok := patchBody["code_evaluators"].([]any)
+	if !ok || len(evaluators) != 1 {
+		t.Fatalf("expected one code evaluator, got %#v", patchBody["code_evaluators"])
+	}
+	codeEvaluator, ok := evaluators[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected code evaluator object, got %#v", evaluators[0])
+	}
+	if codeEvaluator["language"] != "python" {
+		t.Errorf("expected language=python, got %v", codeEvaluator["language"])
+	}
+	code, _ := codeEvaluator["code"].(string)
+	if !strings.Contains(code, "def perform_eval(") {
+		t.Errorf("expected uploaded code to be renamed to perform_eval, got:\n%s", code)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if result["id"] != "existing-rule" {
+		t.Errorf("expected output id=existing-rule, got %v", result["id"])
 	}
 }
 

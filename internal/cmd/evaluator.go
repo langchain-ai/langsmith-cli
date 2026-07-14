@@ -236,34 +236,6 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				projectID = sid
 			}
 
-			// Check for existing evaluator
-			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
-			if err != nil {
-				ExitErrorf("checking existing evaluators: %v", err)
-			}
-
-			existing := findEvaluator(*rules, name, datasetID, projectID)
-			if existing != nil {
-				if !replace {
-					output.OutputJSON(map[string]any{
-						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
-						"id":    existing.ID,
-					}, "")
-					return
-				}
-				if !yes {
-					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
-					var confirm string
-					_, _ = fmt.Scanln(&confirm)
-					if strings.ToLower(confirm) != "y" {
-						ExitError("aborted")
-					}
-				}
-				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), nil); err != nil {
-					ExitErrorf("deleting existing evaluator: %v", err)
-				}
-			}
-
 			// Read and prepare function source
 			source, err := os.ReadFile(evaluatorFile)
 			if err != nil {
@@ -310,8 +282,38 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				payload["session_id"] = projectID
 			}
 
+			// Check for existing evaluator after the replacement payload is known
+			// to be valid, so --replace never removes a working evaluator first.
+			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			if err != nil {
+				ExitErrorf("checking existing evaluators: %v", err)
+			}
+
+			existing := findEvaluator(*rules, name, datasetID, projectID)
+			if existing != nil {
+				if !replace {
+					output.OutputJSON(map[string]any{
+						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
+						"id":    existing.ID,
+					}, "")
+					return
+				}
+				if !yes {
+					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
+					var confirm string
+					_, _ = fmt.Scanln(&confirm)
+					if strings.ToLower(confirm) != "y" {
+						ExitError("aborted")
+					}
+				}
+			}
+
 			var result map[string]any
-			if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
+			if existing != nil {
+				if err := c.RawPatch(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), payload, &result); err != nil {
+					ExitErrorf("replacing evaluator: %v", err)
+				}
+			} else if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
 				ExitErrorf("uploading evaluator: %v", err)
 			}
 
