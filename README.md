@@ -268,6 +268,18 @@ langsmith evaluator upload evals.py \
 
 # Delete an evaluator
 langsmith evaluator delete accuracy --yes
+
+# Create an LLM-as-judge evaluator (--model-config is always required)
+# model.json: copy the structured.model block from an existing evaluator or the UI.
+langsmith evaluator create-llm \
+  --name relevance --project my-app \
+  --prompt prompt.json --schema schema.json --model-config model.json \
+  --variable-mapping '{"input":"input.question","output":"output.answer"}'
+
+# Or reference an existing Prompt Hub commit (--hub-ref replaces --prompt and --schema)
+langsmith evaluator create-llm \
+  --name relevance --project my-app \
+  --hub-ref my-org/relevance:latest --model-config model.json
 ```
 
 ### `experiment` — Query experiment results
