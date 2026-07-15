@@ -402,7 +402,9 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 	fakeNpmOnPath(t, marker)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	startWatchProcess(ctx, dir)
+	if started := startWatchProcess(ctx, dir); !started {
+		t.Fatal("expected startWatchProcess to report started=true")
+	}
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -427,7 +429,9 @@ func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	startWatchProcess(context.Background(), dir)
+	if started := startWatchProcess(context.Background(), dir); started {
+		t.Error("expected started=false when package.json has no \"watch\" script")
+	}
 	time.Sleep(100 * time.Millisecond)
 
 	if _, err := os.Stat(marker); err == nil {
@@ -440,11 +444,101 @@ func TestStartWatchProcess_NoPackageJSONDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	startWatchProcess(context.Background(), dir)
+	if started := startWatchProcess(context.Background(), dir); started {
+		t.Error("expected started=false when there's no package.json")
+	}
 	time.Sleep(100 * time.Millisecond)
 
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("expected no process to be spawned when there's no package.json")
+	}
+}
+
+func TestWaitForFreshEntrypoint_ReturnsOnceFileFirstAppears(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dist", "bundle.js")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = os.WriteFile(path, []byte("v1"), 0o644)
+	}()
+
+	start := time.Now()
+	waitForFreshEntrypoint(context.Background(), path, time.Time{}, 5*time.Second)
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Errorf("returned too early (%v) — should have waited for the file to appear", elapsed)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Error("expected the file to exist once waitForFreshEntrypoint returns")
+	}
+}
+
+func TestWaitForFreshEntrypoint_WaitsForNewerMTimeThanPrevBuild(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dist", "bundle.js")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("seed stale build: %v", err)
+	}
+	staleInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	prevBuildTime := staleInfo.ModTime()
+
+	// Simulate the watch tool's "empty outDir, then rebuild" sequence: the
+	// file briefly disappears, then reappears with a newer mtime.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Remove(path)
+		time.Sleep(100 * time.Millisecond)
+		_ = os.WriteFile(path, []byte("fresh"), 0o644)
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		waitForFreshEntrypoint(context.Background(), path, prevBuildTime, 5*time.Second)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("waitForFreshEntrypoint did not return once a fresh build appeared")
+	}
+
+	info, err := os.Stat(path)
+	if err != nil || !info.ModTime().After(prevBuildTime) {
+		t.Error("expected the entrypoint's mtime to be newer than prevBuildTime once returned")
+	}
+}
+
+func TestWaitForFreshEntrypoint_GivesUpAfterTimeout(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dist", "bundle.js") // never created
+
+	start := time.Now()
+	waitForFreshEntrypoint(context.Background(), path, time.Time{}, 200*time.Millisecond)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("expected to give up close to the timeout, took %v", elapsed)
+	}
+}
+
+func TestWaitForFreshEntrypoint_ReturnsOnContextCancel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dist", "bundle.js") // never created
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	waitForFreshEntrypoint(ctx, path, time.Time{}, 5*time.Second)
+	if elapsed := time.Since(start); elapsed > 1*time.Second {
+		t.Errorf("expected an already-cancelled context to return immediately, took %v", elapsed)
 	}
 }
 

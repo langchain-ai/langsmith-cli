@@ -104,7 +104,22 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any
 	}
 
 	if !noWatch {
-		startWatchProcess(ctx, dir)
+		entrypointPath := filepath.Join(dir, filepath.FromSlash(entrypoint))
+		var prevBuildTime time.Time
+		if info, statErr := os.Stat(entrypointPath); statErr == nil {
+			prevBuildTime = info.ModTime()
+		}
+		if startWatchProcess(ctx, dir) {
+			// Most build tools (including both starter templates' "vite
+			// build --watch") empty their output directory before their
+			// first rebuild. Without this, that would make an entrypoint we
+			// already had (e.g. from "apps init"'s one-time build) briefly
+			// disappear right as the browser opens, flashing the "waiting
+			// for build" page for no reason. Wait for a fresh build before
+			// continuing — the served page's own poll+reload is still
+			// there as a fallback if this build is slow.
+			waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
+		}
 	}
 
 	serveErrCh := make(chan error, 1)
@@ -140,23 +155,24 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any
 // templates) as a child process tied to ctx, so editing source files
 // rebuilds the entrypoint without a second terminal. It never fails
 // runAppsDev — if there's no package.json, no "watch" script, or no npm on
-// PATH, it just prints a note and returns, leaving the existing
-// run-your-own-build workflow intact.
-func startWatchProcess(ctx context.Context, dir string) {
+// PATH, it just prints a note and returns false, leaving the existing
+// run-your-own-build workflow intact. Returns true only if the process was
+// actually started.
+func startWatchProcess(ctx context.Context, dir string) bool {
 	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: couldn't read package.json to find a \"watch\" script: %v\n", err)
-		return
+		return false
 	}
 	if script == "" {
 		if pkgJSONExists {
 			fmt.Fprintln(os.Stderr, `note: no "watch" script in package.json — start your own build/watch process to see live updates`)
 		}
-		return
+		return false
 	}
 	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
 		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm run watch" yourself to see live updates`)
-		return
+		return false
 	}
 
 	fmt.Fprintln(os.Stderr, "Starting build watcher: npm run watch")
@@ -166,11 +182,30 @@ func startWatchProcess(ctx context.Context, dir string) {
 	watchCmd.Stderr = os.Stderr
 	if startErr := watchCmd.Start(); startErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
-		return
+		return false
 	}
 	// Reap the process (and honor ctx cancellation, which exec.CommandContext
 	// enforces via Wait) without blocking runAppsDev on it.
 	go func() { _ = watchCmd.Wait() }()
+	return true
+}
+
+// waitForFreshEntrypoint blocks until path's mtime is newer than after
+// (meaning a build completed since we started watching), ctx is cancelled,
+// or timeout elapses — whichever comes first. A zero-value after matches
+// the first time path ever appears (no prior build to compare against).
+func waitForFreshEntrypoint(ctx context.Context, path string, after time.Time, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(after) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 // packageJSONScript reads dir/package.json and returns the named script.
