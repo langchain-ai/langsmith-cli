@@ -191,6 +191,75 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	}
 }
 
+// If the linked app was deleted out-of-band (e.g. through the UI),
+// .langsmith/app.json still has its old app_id and push's PATCH 404s. Push
+// must recreate the app under the same name/context_type rather than
+// failing, and relink to the new app_id.
+func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
+	var sawPatch, sawPost bool
+	var postBody map[string]any
+
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PATCH" && r.URL.Path == "/v1/platform/custom-apps/app_deleted":
+			sawPatch = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "custom app not found"})
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
+			sawPost = true
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &postBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{
+				ID:          "app_recreated",
+				Name:        "my-app",
+				ContextType: "annotation_queue",
+				Entrypoint:  "dist/bundle.js",
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	if err := writeAppLink(dir, appLink{AppID: "app_deleted", Name: "my-app", ContextType: "annotation_queue"}); err != nil {
+		t.Fatalf("seed link: %v", err)
+	}
+	t.Chdir(dir)
+
+	out := captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"push"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if !sawPatch {
+		t.Fatal("expected push to try PATCH against the linked (now-deleted) app_id first")
+	}
+	if !sawPost {
+		t.Fatal("expected push to fall back to POST (create) after the PATCH 404s")
+	}
+	if postBody["name"] != "my-app" || postBody["context_type"] != "annotation_queue" {
+		t.Errorf("expected the recreated app to reuse the old app's name/context_type, got %v", postBody)
+	}
+	if !strings.Contains(out, `"status": "created"`) {
+		t.Errorf("expected created status, got:\n%s", out)
+	}
+
+	link, err := readAppLink(dir)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.AppID != "app_recreated" {
+		t.Errorf("expected link file relinked to the new app_id, got %+v", link)
+	}
+}
+
 func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)

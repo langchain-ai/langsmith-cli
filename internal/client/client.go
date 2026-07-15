@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -135,6 +136,26 @@ type httpResponse struct {
 	body       []byte
 }
 
+// HTTPError is returned by RawGet/RawPost/RawPatch/RawDelete when the server
+// responds with a 4xx/5xx status. Its Error() text matches the plain
+// "HTTP <code>: <message>" format these methods have always returned; the
+// StatusCode field lets callers detect specific codes (e.g. 404) via
+// errors.As instead of parsing the message.
+type HTTPError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, formatHTTPErrorBody(e.Body))
+}
+
+// IsNotFound reports whether err is an HTTPError with a 404 status.
+func IsNotFound(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
+}
+
 type httpErrorBody struct {
 	Error            string `json:"error"`
 	Message          string `json:"message"`
@@ -222,7 +243,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.statusCode, formatHTTPErrorBody(resp.body))
+		return &HTTPError{StatusCode: resp.statusCode, Body: resp.body}
 	}
 
 	if result != nil {

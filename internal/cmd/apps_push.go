@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -71,7 +72,45 @@ context_type cannot be changed after an app is created.`,
 			ctx := context.Background()
 
 			var app customApp
-			if notYetCreated {
+			updated := false
+			if !notYetCreated {
+				if cmd.Flags().Changed("context-type") && contextType != link.ContextType {
+					fmt.Fprintf(os.Stderr, "note: --context-type is ignored on update (context_type can't change after creation; this app is %q)\n", link.ContextType)
+				}
+				payload := map[string]any{
+					"files":      files,
+					"entrypoint": entrypoint,
+				}
+				if name != "" {
+					payload["name"] = name
+				}
+				if description != "" {
+					payload["description"] = description
+				}
+				err := c.RawPatch(ctx, "/v1/platform/custom-apps/"+link.AppID, payload, &app)
+				switch {
+				case err == nil:
+					updated = true
+				case client.IsNotFound(err):
+					// The linked app_id no longer exists server-side (e.g. it
+					// was deleted through the UI) — .langsmith/app.json is
+					// stale. Recreate under the same name/context_type rather
+					// than failing, and relink to the new app below.
+					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
+				default:
+					return fmt.Errorf("updating custom app %s: %w", link.AppID, err)
+				}
+			}
+
+			if updated {
+				if err := writeAppLink(dir, appLink{
+					AppID:       app.ID,
+					Name:        app.Name,
+					ContextType: app.ContextType,
+				}); err != nil {
+					return err
+				}
+			} else {
 				appName := name
 				if appName == "" && link != nil && link.Name != "" {
 					appName = link.Name
@@ -102,30 +141,6 @@ context_type cannot be changed after an app is created.`,
 				}); err != nil {
 					return err
 				}
-			} else {
-				if cmd.Flags().Changed("context-type") && contextType != link.ContextType {
-					fmt.Fprintf(os.Stderr, "note: --context-type is ignored on update (context_type can't change after creation; this app is %q)\n", link.ContextType)
-				}
-				payload := map[string]any{
-					"files":      files,
-					"entrypoint": entrypoint,
-				}
-				if name != "" {
-					payload["name"] = name
-				}
-				if description != "" {
-					payload["description"] = description
-				}
-				if err := c.RawPatch(ctx, "/v1/platform/custom-apps/"+link.AppID, payload, &app); err != nil {
-					return fmt.Errorf("updating custom app %s: %w", link.AppID, err)
-				}
-				if err := writeAppLink(dir, appLink{
-					AppID:       app.ID,
-					Name:        app.Name,
-					ContextType: app.ContextType,
-				}); err != nil {
-					return err
-				}
 			}
 
 			paths := make([]string, 0, len(files))
@@ -135,7 +150,7 @@ context_type cannot be changed after an app is created.`,
 			sort.Strings(paths)
 
 			status := "created"
-			if !notYetCreated {
+			if updated {
 				status = "updated"
 			}
 			output.OutputJSON(map[string]any{
