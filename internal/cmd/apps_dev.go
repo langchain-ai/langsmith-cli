@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,7 @@ func newAppsDevCmd() *cobra.Command {
 		entrypoint string
 		queueID    string
 		noOpen     bool
+		noWatch    bool
 	)
 
 	cmd := &cobra.Command{
@@ -44,9 +46,13 @@ there instead). It is not a curated allowlist: operation is a
 "<METHOD> <path>" string (e.g. "GET /api/v1/annotation-queues/{id}/runs"),
 forwarded as-is.
 
-Pair this with your build's watch mode (e.g. "npm run watch") running in
-another terminal: the page polls for a rebuild and reloads itself
-automatically.`,
+If the current directory has a package.json with a "watch" script (both
+starter templates do), this runs it for you automatically as a managed
+child process, so editing source files and saving is enough to see the
+change — no second terminal needed. The page itself polls for the
+entrypoint changing and reloads whenever the watcher rebuilds it. Pass
+--no-watch to skip this (e.g. you're already running your own build
+process, or want to use a different one).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.Getwd()
 			if err != nil {
@@ -65,13 +71,14 @@ automatically.`,
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), showQueueSelector, noOpen)
+			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), showQueueSelector, noOpen, noWatch)
 		},
 	}
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().StringVar(&queueID, "queue-id", "", "Annotation queue ID to use as context (only meaningful for context_type: annotation_queue apps)")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
+	cmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't automatically run the build's \"watch\" script (e.g. \"npm run watch\") — use this if you're already running your own build process")
 	return cmd
 }
 
@@ -90,10 +97,14 @@ func devData(link *appLink, queueID string) map[string]any {
 // runAppsDev starts the local sandboxed-preview server for dir, opens it in
 // a browser, and blocks until ctx is cancelled (e.g. by SIGINT) or the
 // server fails.
-func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, showQueueSelector, noOpen bool) error {
+func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, showQueueSelector, noOpen, noWatch bool) error {
 	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint, data, showQueueSelector)
 	if err != nil {
 		return err
+	}
+
+	if !noWatch {
+		startWatchProcess(ctx, dir)
 	}
 
 	serveErrCh := make(chan error, 1)
@@ -122,6 +133,65 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any
 		return fmt.Errorf("shutting down local server: %w", err)
 	}
 	return nil
+}
+
+// startWatchProcess runs dir/package.json's "watch" script (e.g.
+// "vite build --watch", aliased to "npm run watch" by both starter
+// templates) as a child process tied to ctx, so editing source files
+// rebuilds the entrypoint without a second terminal. It never fails
+// runAppsDev — if there's no package.json, no "watch" script, or no npm on
+// PATH, it just prints a note and returns, leaving the existing
+// run-your-own-build workflow intact.
+func startWatchProcess(ctx context.Context, dir string) {
+	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: couldn't read package.json to find a \"watch\" script: %v\n", err)
+		return
+	}
+	if script == "" {
+		if pkgJSONExists {
+			fmt.Fprintln(os.Stderr, `note: no "watch" script in package.json — start your own build/watch process to see live updates`)
+		}
+		return
+	}
+	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
+		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm run watch" yourself to see live updates`)
+		return
+	}
+
+	fmt.Fprintln(os.Stderr, "Starting build watcher: npm run watch")
+	watchCmd := exec.CommandContext(ctx, "npm", "run", "watch")
+	watchCmd.Dir = dir
+	watchCmd.Stdout = os.Stderr
+	watchCmd.Stderr = os.Stderr
+	if startErr := watchCmd.Start(); startErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
+		return
+	}
+	// Reap the process (and honor ctx cancellation, which exec.CommandContext
+	// enforces via Wait) without blocking runAppsDev on it.
+	go func() { _ = watchCmd.Wait() }()
+}
+
+// packageJSONScript reads dir/package.json and returns the named script.
+// pkgJSONExists distinguishes "no package.json at all" (nothing to warn
+// about — this may not be an npm project) from "package.json exists but has
+// no such script" (worth telling the user about).
+func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err error) {
+	raw, readErr := os.ReadFile(filepath.Join(dir, "package.json"))
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return "", false, nil
+		}
+		return "", false, readErr
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if jsonErr := json.Unmarshal(raw, &pkg); jsonErr != nil {
+		return "", true, jsonErr
+	}
+	return pkg.Scripts[name], true, nil
 }
 
 // prepareAppsDevServer builds (but does not start) an HTTP server, bound to
@@ -155,7 +225,7 @@ func prepareAppsDevServer(dir, entrypoint string, data map[string]any, showQueue
 			return
 		}
 		if _, ok := files[entrypoint]; !ok {
-			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — start your build/watch command (e.g. \"npm run watch\")", entrypoint, dir))))
+			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
 		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, data, showQueueSelector)))

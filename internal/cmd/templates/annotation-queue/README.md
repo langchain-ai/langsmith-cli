@@ -34,20 +34,20 @@ a run complete) this app fetches itself via `window.langsmith.call`. See
 ## Develop
 
 `langsmith apps init` already ran `npm install` and `npm run build` for you,
-so `dist/bundle.js` exists and `langsmith apps dev` works immediately. To
-keep iterating:
+so `dist/bundle.js` exists and `langsmith apps dev` works immediately:
 
 ```bash
-npm run watch                      # rebuilds dist/bundle.js on change
-langsmith apps dev --queue-id <id> # in another terminal
+langsmith apps dev --queue-id <id>
 ```
 
 `--queue-id` should be a real annotation queue ID from your workspace (the
 UUID in `smith.langchain.com/o/<org>/annotation-queues/<QUEUE_ID>`) — this
 app calls the real API for that queue's runs/feedback, so it needs a queue
 that actually exists. `apps dev` runs the app inside a real sandboxed
-iframe, identical restrictions to production, and reloads automatically
-whenever `dist/bundle.js` changes.
+iframe, identical restrictions to production, and automatically starts
+`npm run watch` for you (it detects the script in `package.json`) — edit
+the app, save, and the preview reloads on its own. Pass `--no-watch` if
+you'd rather drive the build yourself.
 
 ## The bridge contract
 

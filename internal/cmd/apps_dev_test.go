@@ -33,6 +33,9 @@ func TestAppsDevCmd_Flags(t *testing.T) {
 	if f := dev.Flags().Lookup("no-open"); f == nil {
 		t.Error("expected --no-open flag to exist")
 	}
+	if f := dev.Flags().Lookup("no-watch"); f == nil {
+		t.Error("expected --no-watch flag to exist")
+	}
 }
 
 func TestDevData_AnnotationQueueLinkUsesQueueID(t *testing.T) {
@@ -337,6 +340,114 @@ func TestHandleLsDevCall_RejectsPathEscapingOrigin(t *testing.T) {
 	}
 }
 
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+func TestPackageJSONScript_NoPackageJSON(t *testing.T) {
+	dir := t.TempDir()
+	script, exists, err := packageJSONScript(dir, "watch")
+	if err != nil || exists || script != "" {
+		t.Errorf("got script=%q exists=%v err=%v, want \"\", false, nil", script, exists, err)
+	}
+}
+
+func TestPackageJSONScript_ExistsWithoutTheScript(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"scripts":{"build":"vite build"}}`)
+	script, exists, err := packageJSONScript(dir, "watch")
+	if err != nil || !exists || script != "" {
+		t.Errorf("got script=%q exists=%v err=%v, want \"\", true, nil", script, exists, err)
+	}
+}
+
+func TestPackageJSONScript_ReturnsTheScript(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"scripts":{"watch":"vite build --watch"}}`)
+	script, exists, err := packageJSONScript(dir, "watch")
+	if err != nil || !exists || script != "vite build --watch" {
+		t.Errorf("got script=%q exists=%v err=%v, want \"vite build --watch\", true, nil", script, exists, err)
+	}
+}
+
+func TestPackageJSONScript_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{not json`)
+	if _, _, err := packageJSONScript(dir, "watch"); err == nil {
+		t.Error("expected an error for malformed package.json")
+	}
+}
+
+// fakeNpmOnPath puts a fake "npm" script on PATH (for the duration of the
+// test) that touches markerPath and then blocks, so tests can assert
+// startWatchProcess actually launched "npm run watch" without depending on
+// npm or a real bundler being installed in the test environment.
+func fakeNpmOnPath(t *testing.T, markerPath string) {
+	t.Helper()
+	fakeNpmDir := t.TempDir()
+	script := "#!/bin/sh\ntouch \"" + markerPath + "\"\nwhile true; do sleep 0.1; done\n"
+	if err := os.WriteFile(filepath.Join(fakeNpmDir, "npm"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake npm: %v", err)
+	}
+	t.Setenv("PATH", fakeNpmDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"scripts":{"watch":"anything"}}`)
+	marker := filepath.Join(dir, "watch-ran.marker")
+	fakeNpmOnPath(t, marker)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startWatchProcess(ctx, dir)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("watch script never ran (marker file not created)")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Cancelling ctx should kill the long-running fake npm process rather
+	// than leaving it (and the test process) hanging.
+	cancel()
+	time.Sleep(200 * time.Millisecond)
+}
+
+func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{"scripts":{"build":"vite build"}}`)
+	marker := filepath.Join(dir, "watch-ran.marker")
+	fakeNpmOnPath(t, marker)
+
+	startWatchProcess(context.Background(), dir)
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("expected no process to be spawned when package.json has no \"watch\" script")
+	}
+}
+
+func TestStartWatchProcess_NoPackageJSONDoesNotSpawn(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "watch-ran.marker")
+	fakeNpmOnPath(t, marker)
+
+	startWatchProcess(context.Background(), dir)
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("expected no process to be spawned when there's no package.json")
+	}
+}
+
 func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "hi")
@@ -344,7 +455,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", map[string]any{}, false, true)
+		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", map[string]any{}, false, true, true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
