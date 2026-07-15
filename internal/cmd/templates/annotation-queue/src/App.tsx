@@ -155,10 +155,7 @@ export function App({ queueId }: Props) {
   const contentLoading = runsLoading && !selectedRun;
 
   return (
-    <div className="flex h-screen flex-col gap-space-4 overflow-hidden bg-surface-level-1 p-space-4">
-      <h1 className="flex-none text-lg font-semibold text-primary">
-        {queue.name}
-      </h1>
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1 p-space-4">
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary">
         {/* Left: 280px run list */}
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
