@@ -348,7 +348,13 @@ func handleLsDevCall(w http.ResponseWriter, r *http.Request) {
 		bodyReader = bytes.NewReader(b)
 	}
 
-	c := MustGetClient()
+	c, err := getClient()
+	if err != nil {
+		// Not MustGetClient: that exits the process, so one unauthenticated
+		// app call would kill the whole dev server. Return 502 instead.
+		http.Error(w, "not authenticated: "+err.Error(), http.StatusBadGateway)
+		return
+	}
 	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
 	if err != nil {
 		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
@@ -413,12 +419,9 @@ setInterval(function() {
 // LS_API forwarded to /__ls_dev/call, which is real network access the
 // iframe itself can never have.
 //
-// When showQueueSelector is set (the app is linked as context_type
-// annotation_queue), the page also gets a queue-picker bar — fetched live
-// from the real API via the same /__ls_dev/call proxy — mirroring the
-// queue picker CustomAppPreviewPanel.tsx already shows when previewing a
-// contextual app from the Custom Apps tab. Standalone apps get no context
-// to pick, so no bar.
+// Every app gets a config toolbar; its first control is a Light/Dark mode
+// toggle (posting LANGSMITH_METADATA). The queue-picker item is added only
+// when showQueueSelector is set (context_type annotation_queue).
 func renderDevHostHTML(files map[string]string, entrypoint string, data map[string]any, showQueueSelector bool) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
@@ -444,7 +447,7 @@ func renderDevHostHTML(files map[string]string, entrypoint string, data map[stri
 	).Replace(devHostHTMLTemplate)
 }
 
-const queueSelectorBarHTML = `<div id="ls-dev-queue-bar">
+const queueSelectorBarHTML = `<div id="ls-dev-queue-bar" class="ls-dev-toolbar-item">
   <label for="ls-dev-queue-select">Annotation queue:</label>
   <select id="ls-dev-queue-select"><option value="">Loading queues…</option></select>
 </div>
@@ -515,32 +518,73 @@ const devHostHTMLTemplate = `<!doctype html>
   html, body { height: 100%; margin: 0; }
   body { display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif; }
 
-  /* Mirrors CustomAppPreviewPanel.tsx's queue picker: a level-2 surface bar
-     with a subtle divider, a secondary-text label, and a Select-style
-     bordered control (see smith-frontend/STYLES.md and
-     design-system/components/Select). Hand-ported since this page is a
-     standalone Go-templated HTML string with no access to Tailwind/CSS
-     variables. */
-  #ls-dev-queue-bar {
+  /* Toolbar renders for every app; queue selector only when contextual.
+     ls-dev-dark mirrors the sandbox's html.dark onto the host chrome. */
+  :root {
+    --ls-dev-bar-bg: #f5f8fb;
+    --ls-dev-bar-border: #e2e8f0;
+    --ls-dev-bar-label: #334155;
+    --ls-dev-control-bg: #ffffff;
+    --ls-dev-control-border: #cbd5e1;
+    --ls-dev-control-border-hover: #94a3b8;
+    --ls-dev-control-text: #0f172a;
+    --ls-dev-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+  html.ls-dev-dark {
+    --ls-dev-bar-bg: #111521;
+    --ls-dev-bar-border: #282e42;
+    --ls-dev-bar-label: #e2e8f0;
+    --ls-dev-control-bg: #1b2030;
+    --ls-dev-control-border: #393f55;
+    --ls-dev-control-border-hover: #555d78;
+    --ls-dev-control-text: #f5f8fb;
+    --ls-dev-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238790ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  }
+
+  #ls-dev-toolbar {
     flex: none;
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: #f5f8fb;
-    border-bottom: 1px solid #e2e8f0;
+    gap: 20px;
+    background: var(--ls-dev-bar-bg);
+    border-bottom: 1px solid var(--ls-dev-bar-border);
     padding: 8px 16px;
     font-size: 13px;
   }
-  #ls-dev-queue-bar label { font-weight: 500; color: #334155; }
+  .ls-dev-toolbar-item { display: flex; align-items: center; gap: 8px; }
+  .ls-dev-toolbar-item > label,
+  .ls-dev-toolbar-label { font-weight: 500; color: var(--ls-dev-bar-label); }
+
+  #ls-dev-mode-toggle {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ls-dev-control-text);
+    background-color: var(--ls-dev-control-bg);
+    border: 1px solid var(--ls-dev-control-border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+  #ls-dev-mode-toggle:hover { border-color: var(--ls-dev-control-border-hover); }
+  #ls-dev-mode-toggle:focus-visible {
+    outline: none;
+    border-color: #006ddd;
+    box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
+  }
+
   #ls-dev-queue-bar select {
     font-family: inherit;
     font-size: 13px;
-    color: #0f172a;
+    color: var(--ls-dev-control-text);
     padding: 5px 28px 5px 10px;
     border-radius: 6px;
-    border: 1px solid #cbd5e1;
-    background-color: #ffffff;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    border: 1px solid var(--ls-dev-control-border);
+    background-color: var(--ls-dev-control-bg);
+    background-image: var(--ls-dev-chevron);
     background-repeat: no-repeat;
     background-position: right 8px center;
     background-size: 14px;
@@ -550,25 +594,24 @@ const devHostHTMLTemplate = `<!doctype html>
     cursor: pointer;
     transition: border-color 120ms ease;
   }
-  #ls-dev-queue-bar select:hover { border-color: #94a3b8; }
+  #ls-dev-queue-bar select:hover { border-color: var(--ls-dev-control-border-hover); }
   #ls-dev-queue-bar select:focus-visible {
     outline: none;
     border-color: #006ddd;
     box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
   }
 
-  /* No prefers-color-scheme variant here on purpose: the sandboxed app
-     below never actually receives a real theme (renderDevHostHTML posts a
-     permanently empty LANGSMITH_THEME cssText), so it always renders with
-     its hardcoded light-mode fallback regardless of OS setting. A
-     dark-mode bar would mismatch that light content instead of matching
-     the real (currently light-only) rendered page. */
-
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
 <body>
-__QUEUE_BAR_HTML__<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
+<div id="ls-dev-toolbar">
+  <div class="ls-dev-toolbar-item">
+    <span class="ls-dev-toolbar-label">Appearance</span>
+    <button id="ls-dev-mode-toggle" type="button" aria-pressed="false"><span id="ls-dev-mode-label">Light</span></button>
+  </div>
+  __QUEUE_BAR_HTML__</div>
+<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
 <script>
 (function() {
   var iframe = document.getElementById('ls-app');
@@ -578,6 +621,41 @@ __QUEUE_BAR_HTML__<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_
     iframe.contentWindow.postMessage(msg, '*');
   }
 
+  // First config control. mode ("dark"|"light") defaults from the OS,
+  // persists to localStorage, and drives the sandbox (LANGSMITH_METADATA) and host chrome.
+  var MODE_STORAGE_KEY = 'langsmith:apps-dev:mode';
+  var modeToggle = document.getElementById('ls-dev-mode-toggle');
+  var modeLabel = document.getElementById('ls-dev-mode-label');
+
+  function initialMode() {
+    try {
+      var saved = localStorage.getItem(MODE_STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch (e) {}
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  var mode = initialMode();
+
+  function applyModeToHost() {
+    document.documentElement.classList.toggle('ls-dev-dark', mode === 'dark');
+    if (modeToggle) modeToggle.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
+    if (modeLabel) modeLabel.textContent = mode === 'dark' ? 'Dark' : 'Light';
+  }
+
+  function postMetadata() {
+    post({ type: 'LANGSMITH_METADATA', metadata: { mode: mode } });
+  }
+
+  applyModeToHost();
+  if (modeToggle) {
+    modeToggle.addEventListener('click', function() {
+      mode = mode === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (e) {}
+      applyModeToHost();
+      postMetadata();
+    });
+  }
+
   window.addEventListener('message', function(event) {
     if (event.source !== iframe.contentWindow) return;
     var msg = event.data;
@@ -585,6 +663,7 @@ __QUEUE_BAR_HTML__<iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_
 
     if (msg.type === 'LANGSMITH_READY') {
       post({ type: 'LANGSMITH_THEME', cssText: ':root {}' });
+      postMetadata();
       post({ type: 'LANGSMITH_DATA', payload: data });
     }
 
@@ -668,6 +747,7 @@ pre, code {
 (function() {
   var themeReady = false;
   var currentData = null;
+  var currentMetadata = null;
 
   var FILES = __FILES_JSON__;
 
@@ -718,15 +798,28 @@ pre, code {
     if (msg.type === 'LANGSMITH_THEME') {
       document.getElementById('ls-theme').textContent = msg.cssText;
       themeReady = true;
-      if (currentData !== null) renderApp();
+      maybeRender();
+    }
+    if (msg.type === 'LANGSMITH_METADATA') {
+      // Load-bearing: the host can't set html.dark on this no-same-origin
+      // sandbox, so we do it here from this message.
+      currentMetadata = msg.metadata;
+      document.documentElement.classList.toggle('dark', currentMetadata && currentMetadata.mode === 'dark');
+      maybeRender();
     }
     if (msg.type === 'LANGSMITH_DATA') {
       if (JSON.stringify(msg.payload) !== JSON.stringify(currentData)) {
         currentData = msg.payload;
-        if (themeReady) renderApp();
+        maybeRender();
       }
     }
   });
+
+  // First render needs theme, metadata, and data all present; after that,
+  // any of the three changing re-renders.
+  function maybeRender() {
+    if (themeReady && currentMetadata !== null && currentData !== null) renderApp();
+  }
 
   function renderApp() {
     var root = document.getElementById('root');
@@ -743,7 +836,7 @@ pre, code {
       return;
     }
     try {
-      window.__render(currentData, root);
+      window.__render(currentData, root, currentMetadata);
     } catch (err) {
       root.innerHTML =
         '<div style="background:#fef2f2;border:1px solid #fda29b;border-radius:8px;padding:12px;margin:16px;color:#b91c1c;font-size:13px;">' +

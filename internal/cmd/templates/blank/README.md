@@ -39,10 +39,12 @@ the build yourself.
 
 ## The bridge contract
 
-`src/entry.tsx` exports a `render(data, root)` function that the host calls
-once on load and again whenever `data` changes — for a standalone app,
-`data` is always `{}`. `src/App.tsx` is the actual UI; edit it freely, it's
-just a React component.
+`src/entry.tsx` exports a `render(data, root, metadata)` function that the
+host calls once on load and again whenever `data` or `metadata` changes — for
+a standalone app, `data` is always `{}`. `metadata.mode` is `"dark"` or
+`"light"`; the sandbox sets `html.dark` from it, so this token-based UI themes
+automatically (branch on `metadata.mode` only if you use inline styles).
+`src/App.tsx` is the actual UI; edit it freely, it's just a React component.
 
 `window.langsmith`, injected by the host page, gives you:
 

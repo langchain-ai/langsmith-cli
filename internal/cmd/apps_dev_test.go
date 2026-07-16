@@ -132,7 +132,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 }
 
 // A regression test for a real bug: renderApp() used to unconditionally do
-// `root.innerHTML = ''` before calling window.__render(currentData, root).
+// `root.innerHTML = ”` before calling window.__render(currentData, root).
 // The entrypoint caches its React root across calls (`if (!root) root =
 // createRoot(rootEl)`) specifically so repeat renders (e.g. selecting a
 // different queue in local dev, which re-posts LANGSMITH_DATA) reconcile
@@ -187,6 +187,65 @@ func TestPrepareAppsDevServer_OmitsQueueSelectorForStandaloneApps(t *testing.T) 
 	body, _ := io.ReadAll(resp.Body)
 	if strings.Contains(string(body), `id="ls-dev-queue-select"`) {
 		t.Errorf("standalone apps should not get a queue selector bar:\n%s", body)
+	}
+}
+
+// The config toolbar (and its Light/Dark mode toggle) renders for EVERY app,
+// standalone included — unlike the queue selector, which stays contextual.
+func TestPrepareAppsDevServer_ServesModeToggleForStandaloneApps(t *testing.T) {
+	dir := t.TempDir()
+	seedDevApp(t, dir, "module.exports = { render: function(){} }")
+
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	if err != nil {
+		t.Fatalf("prepareAppsDevServer: %v", err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	resp, err := http.Get(previewURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", previewURL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	page := string(body)
+
+	if !strings.Contains(page, `id="ls-dev-mode-toggle"`) {
+		t.Errorf("standalone apps should still get the Light/Dark mode toggle:\n%s", page)
+	}
+	// The mode toggle must have a distinct id from the queue selector so a
+	// standalone app can have the toggle without the (contextual) queue picker.
+	if strings.Contains(page, `id="ls-dev-queue-select"`) {
+		t.Errorf("standalone apps should not get a queue selector:\n%s", page)
+	}
+	// On READY the host posts LANGSMITH_METADATA, and the toggle re-posts it.
+	if !strings.Contains(page, "LANGSMITH_METADATA") {
+		t.Errorf("expected the host page to post LANGSMITH_METADATA:\n%s", page)
+	}
+	// The served page embeds the sandbox srcdoc; the 3-arg render call has no
+	// characters html.EscapeString would touch, so it appears verbatim.
+	if !strings.Contains(page, "window.__render(currentData, root, currentMetadata)") {
+		t.Errorf("expected the sandbox srcdoc to call render with (data, root, metadata):\n%s", page)
+	}
+}
+
+// The sandbox side must implement the pinned theme/metadata contract: handle
+// LANGSMITH_METADATA, set html.dark from mode, and pass metadata as render's
+// 3rd arg. Asserting on the template constant avoids fighting the HTML-escaping
+// the srcdoc goes through when embedded in the host page.
+func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
+	for _, want := range []string{
+		"LANGSMITH_METADATA",
+		"currentMetadata = msg.metadata",
+		"classList.toggle('dark', currentMetadata && currentMetadata.mode === 'dark')",
+		"window.__render(currentData, root, currentMetadata)",
+		// First render gates on all three of theme, metadata, and data.
+		"themeReady && currentMetadata !== null && currentData !== null",
+	} {
+		if !strings.Contains(sandboxInnerHTMLTemplate, want) {
+			t.Errorf("sandboxInnerHTMLTemplate missing %q", want)
+		}
 	}
 }
 

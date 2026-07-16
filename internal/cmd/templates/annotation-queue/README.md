@@ -51,12 +51,15 @@ you'd rather drive the build yourself.
 
 ## The bridge contract
 
-`src/entry.tsx` exports a `render(data, root)` function — the sandbox calls
-it once when `data` (`{ queueId }`) arrives, and again if it changes:
+`src/entry.tsx` exports a `render(data, root, metadata)` function — the
+sandbox calls it once when `data` (`{ queueId }`) arrives, and again if `data`
+or `metadata` changes. `metadata.mode` is `"dark"` or `"light"`; the sandbox
+sets `html.dark` from it, so this Tailwind/token UI themes automatically
+(branch on `metadata.mode` only if you use inline styles):
 
 ```ts
 export default {
-  render(data: { queueId?: string }, root: HTMLElement) {
+  render(data: { queueId?: string }, root: HTMLElement, metadata: { mode: 'dark' | 'light' }) {
     // mount your app into root
   },
 };

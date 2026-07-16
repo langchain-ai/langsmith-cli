@@ -119,14 +119,24 @@ func GetFormat() string {
 
 // MustGetClient creates a LangSmith client or exits with an error.
 func MustGetClient() *client.Client {
-	opts, err := resolveClientOptions(true)
+	c, err := getClient()
 	if err != nil {
 		ExitError(err.Error())
 	}
-	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
-		ExitError("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
+	return c
+}
+
+// getClient is the non-exiting sibling of MustGetClient: it returns an error
+// instead of calling os.Exit, so request handlers can't crash.
+func getClient() (*client.Client, error) {
+	opts, err := resolveClientOptions(true)
+	if err != nil {
+		return nil, err
 	}
-	return client.NewWithOptions(opts)
+	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
+		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
+	}
+	return client.NewWithOptions(opts), nil
 }
 
 func resolveClientOptions(refreshOAuth bool) (client.Options, error) {

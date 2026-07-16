@@ -14,12 +14,14 @@ function ensureStyles() {
   styleInjected = true;
 }
 
-export function render(data: unknown, container: HTMLElement) {
+export function render(data: unknown, container: HTMLElement, metadata: RenderMetadata) {
   ensureStyles();
   if (!root) {
     root = createRoot(container);
   }
-  root.render(createElement(App, { data }));
+  // metadata.mode is "dark"|"light". The sandbox sets html.dark from it, so
+  // this token UI themes without branching; passed to App.
+  root.render(createElement(App, { data, metadata }));
 }
 
 // Some sandbox hosts call a bare default export; support both shapes.
