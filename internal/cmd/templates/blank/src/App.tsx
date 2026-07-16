@@ -1,8 +1,8 @@
 // A static starting point — no API calls, nothing to break. Edit this
 // file (or delete it) and build whatever you want; see AGENTS.md for the
-// full LangSmith API surface and README.md for the render(data, root)
+// full LangSmith API surface and README.md for the render(data, root, metadata)
 // bridge contract.
-export function App(_props: { data: unknown }) {
+export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-level-1 p-6">
       <div className="w-full max-w-md rounded-xl border border-secondary bg-elevated p-8 text-center shadow-md">

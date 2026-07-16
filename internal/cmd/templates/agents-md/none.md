@@ -1,9 +1,19 @@
 # AGENTS.md — LangSmith API surface for this app
 
 This is a **standalone** custom app (`context_type: none`) — genuinely
-open-ended. `render(data, root)` receives `data = {}` (or whatever you push
-yourself via `window.langsmith.setData(patch)`); there's no bound context.
-What to show and what data to fetch is entirely up to you.
+open-ended. `render(data, root, metadata)` receives `data = {}` (or whatever
+you push yourself via `window.langsmith.setData(patch)`); there's no bound
+context. What to show and what data to fetch is entirely up to you.
+
+## Theme (`metadata`)
+
+`render`'s third argument is `metadata`, an open/extensible object; v1 has
+exactly one key, `metadata.mode` (`"dark"` | `"light"`). The sandbox sets
+`document.documentElement.classList` `dark` from `mode` before every render,
+so Tailwind/token-based apps (like this starter's `index.css`) get dark mode
+for **free** — no branching needed. Only apps that use **inline styles** need
+to branch on `metadata.mode` themselves. `mode` is re-sent (and `render`
+re-called) whenever it changes, so react to it on each render, not just once.
 
 ## Calling the API
 

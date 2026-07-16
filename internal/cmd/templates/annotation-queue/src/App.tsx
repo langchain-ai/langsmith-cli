@@ -10,6 +10,9 @@ interface Props {
   /** The only context this app receives — everything else (run list, run
    * detail, feedback, ...) is fetched itself via window.langsmith.call. */
   queueId: string;
+  /** Host render metadata; `metadata.mode` is "dark"|"light". The sandbox sets
+   * html.dark from it, so this UI needs no branching. */
+  metadata?: RenderMetadata;
 }
 
 export function App({ queueId }: Props) {

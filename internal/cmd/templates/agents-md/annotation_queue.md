@@ -1,10 +1,17 @@
 # AGENTS.md — LangSmith API surface for this app
 
-This is an **annotation_queue** custom app. `render(data, root)` receives
-`data = { queueId }` — that's the *only* context the host gives you. You
-fetch everything else (run list, run detail, feedback, ...) yourself via
+This is an **annotation_queue** custom app. `render(data, root, metadata)`
+receives `data = { queueId }` — that's the *only* context the host gives you.
+You fetch everything else (run list, run detail, feedback, ...) yourself via
 `window.langsmith.call`. `src/api.ts` already wraps every operation below —
 read it before adding new API calls, you likely don't need to.
+
+`render`'s third argument is `metadata`, an open/extensible object; v1 has
+exactly one key, `metadata.mode` (`"dark"` | `"light"`). The sandbox sets
+`html.dark` from `mode` before every render, so this Tailwind/token-based app
+gets dark mode for **free** — no branching needed. Only apps that use **inline
+styles** need to branch on `metadata.mode`. `mode` is re-sent (and `render`
+re-called) whenever it changes.
 
 ## Calling the API
 
