@@ -183,12 +183,14 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2Par
 		langsmith.RunQueryV2ParamsSelectTotalCost,
 		langsmith.RunQueryV2ParamsSelectLatencySeconds,
 		langsmith.RunQueryV2ParamsSelectAppPath,
+		langsmith.RunQueryV2ParamsSelectFirstTokenTime,
 	}
 	if includeIO {
 		fields = append(fields,
 			langsmith.RunQueryV2ParamsSelectInputs,
 			langsmith.RunQueryV2ParamsSelectOutputs,
 			langsmith.RunQueryV2ParamsSelectError,
+			langsmith.RunQueryV2ParamsSelectEvents,
 		)
 	}
 	if includeFeedback {
@@ -240,6 +242,7 @@ func runV2ToSchema(r langsmith.Run) langsmith.RunSchema {
 		Outputs:            asMap(r.Outputs),
 		Extra:              extra,
 		FeedbackStats:      convertFeedbackStats(r.FeedbackStats),
+		Events:             convertEvents(r.Events),
 	}
 	if len(r.ParentRunIDs) > 0 {
 		out.ParentRunIDs = r.ParentRunIDs
@@ -275,6 +278,24 @@ func convertFeedbackStats(stats map[string]langsmith.RunFeedbackStat) map[string
 	return m
 }
 
+// convertEvents round-trips the generated v2 event shape into the
+// loosely-typed maps the legacy RunSchema.Events field expects. Returns nil on
+// empty input or any marshalling error.
+func convertEvents(events []langsmith.RunEvent) []map[string]interface{} {
+	if len(events) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(events)
+	if err != nil {
+		return nil
+	}
+	var m []map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	return m
+}
+
 // buildRunSelect returns the Select fields needed for the given include flags.
 // Returns nil when neither IO nor feedback is requested, letting the API use its defaults.
 // When set, includes all base/metadata fields so they aren't stripped from the response.
@@ -295,6 +316,7 @@ func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsS
 		langsmith.RunQueryParamsSelectStatus,
 		// Metadata fields
 		langsmith.RunQueryParamsSelectExtra,
+		langsmith.RunQueryParamsSelectFirstTokenTime,
 		langsmith.RunQueryParamsSelectPromptTokens,
 		langsmith.RunQueryParamsSelectCompletionTokens,
 		langsmith.RunQueryParamsSelectTotalTokens,
@@ -309,6 +331,7 @@ func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsS
 			langsmith.RunQueryParamsSelectInputs,
 			langsmith.RunQueryParamsSelectOutputs,
 			langsmith.RunQueryParamsSelectError,
+			langsmith.RunQueryParamsSelectEvents,
 		)
 	}
 
