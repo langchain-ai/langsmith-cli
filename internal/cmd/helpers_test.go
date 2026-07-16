@@ -404,6 +404,19 @@ func TestBuildRunSelect_IncludesMetadataFields(t *testing.T) {
 	}
 }
 
+func TestBuildRunSelect_IncludesFirstTokenTimeAndEvents(t *testing.T) {
+	// first_token_time and events are native Run fields that --full is
+	// documented to return; a prior version of this select list silently
+	// dropped both even when --include-io/--include-metadata were requested.
+	has := selectSet(buildRunSelect(true, true))
+	if !has[langsmith.RunQueryParamsSelectFirstTokenTime] {
+		t.Error("missing first_token_time field")
+	}
+	if !has[langsmith.RunQueryParamsSelectEvents] {
+		t.Error("missing events field (should be requested alongside inputs/outputs/error)")
+	}
+}
+
 // selectSet converts a slice to a set for easy lookup.
 func selectSet(sel []langsmith.RunQueryParamsSelect) map[langsmith.RunQueryParamsSelect]bool {
 	m := make(map[langsmith.RunQueryParamsSelect]bool, len(sel))
@@ -482,5 +495,58 @@ func TestRunTreeData_AllFields(t *testing.T) {
 	if td.ID != "id" || td.ParentRunID != "pid" || td.Name != "name" ||
 		td.RunType != "chain" || *td.DurationMs != 100 || !td.HasError {
 		t.Error("unexpected RunTreeData field values")
+	}
+}
+
+// ---------- buildRunSelectV2 ----------
+
+func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
+	// Mirrors TestBuildRunSelect_IncludesFirstTokenTimeAndEvents for the v2
+	// select builder: first_token_time is a base field always requested,
+	// events is requested alongside inputs/outputs/error under --include-io.
+	base := buildRunSelectV2(false, false)
+	baseHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	for _, f := range base {
+		baseHas[f] = true
+	}
+	if !baseHas[langsmith.RunQueryV2ParamsSelectFirstTokenTime] {
+		t.Error("missing first_token_time field in base v2 select set")
+	}
+	if baseHas[langsmith.RunQueryV2ParamsSelectEvents] {
+		t.Error("events should not be requested without --include-io")
+	}
+
+	withIO := buildRunSelectV2(true, false)
+	ioHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	for _, f := range withIO {
+		ioHas[f] = true
+	}
+	if !ioHas[langsmith.RunQueryV2ParamsSelectEvents] {
+		t.Error("missing events field when --include-io requested")
+	}
+}
+
+// ---------- runV2ToSchema ----------
+
+func TestRunV2ToSchema_MapsFirstTokenTimeAndEvents(t *testing.T) {
+	firstToken := time.Date(2026, 1, 15, 10, 30, 1, 0, time.UTC)
+	v2 := langsmith.Run{
+		ID:             "run-123",
+		FirstTokenTime: firstToken,
+		Events: []langsmith.RunEvent{
+			{Name: "new_token", Kwargs: map[string]interface{}{"token": "hi"}},
+		},
+	}
+
+	out := runV2ToSchema(v2)
+
+	if !out.FirstTokenTime.Equal(firstToken) {
+		t.Errorf("expected FirstTokenTime=%v, got %v", firstToken, out.FirstTokenTime)
+	}
+	if len(out.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(out.Events))
+	}
+	if out.Events[0]["name"] != "new_token" {
+		t.Errorf("expected event name=new_token, got %v", out.Events[0]["name"])
 	}
 }

@@ -39,9 +39,29 @@ fi
 
 # Get version
 if [ -z "$VERSION" ]; then
-  VERSION="$(curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+  API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+  fetch_latest() {
+    if [ -n "$GITHUB_TOKEN" ]; then
+      curl -fsSL -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL"
+    else
+      curl -fsSL -H "Accept: application/vnd.github+json" "$API_URL"
+    fi
+  }
+
+  VERSION=""
+  i=1
+  while [ "$i" -le 3 ]; do
+    VERSION="$(fetch_latest | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+    [ -n "$VERSION" ] && break
+    [ "$i" -lt 3 ] && sleep "$i"
+    i=$((i + 1))
+  done
+
   if [ -z "$VERSION" ]; then
-    echo "Failed to determine latest version" >&2
+    echo "Failed to determine latest version (GitHub API unreachable or rate-limited)." >&2
+    echo "Set GITHUB_TOKEN to raise the rate limit, or set VERSION to install a specific release." >&2
     exit 1
   fi
 fi

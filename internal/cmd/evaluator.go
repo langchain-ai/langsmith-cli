@@ -20,10 +20,9 @@ func newEvaluatorCmd() *cobra.Command {
 		Long: `Manage online and offline evaluator rules.
 
 Evaluators automatically score runs against a dataset (offline) or a project
-(online). Supported evaluator types:
+(online). Two evaluator types are supported:
 
-  upload      Code evaluator from a Python or JavaScript/TypeScript file
-  create-llm  LLM-as-judge evaluator (--model-config required; prompt via files or --hub-ref)
+  upload   Code evaluator from a Python or JavaScript/TypeScript file
 
 Examples:
   langsmith evaluator list
@@ -32,14 +31,12 @@ Examples:
   langsmith evaluator get accuracy --session-id <session-id>
   langsmith evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
   langsmith evaluator upload eval.ts --name accuracy --function checkAccuracy --dataset my-eval-set
-  langsmith evaluator create-llm --name relevance --project my-app --prompt prompt.json --schema schema.json --model-config model.json
   langsmith evaluator delete accuracy --yes`,
 	}
 
 	cmd.AddCommand(newEvaluatorGetCmd())
 	cmd.AddCommand(newEvaluatorListCmd())
 	cmd.AddCommand(newEvaluatorUploadCmd())
-	cmd.AddCommand(newEvaluatorCreateLLMCmd())
 	cmd.AddCommand(newEvaluatorDeleteCmd())
 	return cmd
 }
@@ -199,7 +196,6 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		targetDataset string
 		targetProject string
 		samplingRate  float64
-		traceFilter   string
 		replace       bool
 		yes           bool
 	)
@@ -211,15 +207,19 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			evaluatorFile := args[0]
 
-			if err := validateEvaluatorTargetFlags(targetDataset, targetProject); err != nil {
-				output.OutputJSON(map[string]any{"error": err.Error()}, "")
+			if targetDataset == "" && targetProject == "" {
+				output.OutputJSON(map[string]any{
+					"error": "Must specify --dataset or --project (global evaluators not supported)",
+				}, "")
 				return
 			}
 
 			c := MustGetClient()
 			ctx := context.Background()
 
+			// Resolve targets
 			var datasetID, projectID string
+
 			if targetDataset != "" {
 				ds, err := resolveDataset(ctx, c, targetDataset)
 				if err != nil {
@@ -227,12 +227,41 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				}
 				datasetID = ds.ID
 			}
+
 			if targetProject != "" {
 				sid, err := c.ResolveSessionID(ctx, targetProject)
 				if err != nil {
 					ExitErrorf("%v", err)
 				}
 				projectID = sid
+			}
+
+			// Check for existing evaluator
+			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			if err != nil {
+				ExitErrorf("checking existing evaluators: %v", err)
+			}
+
+			existing := findEvaluator(*rules, name, datasetID, projectID)
+			if existing != nil {
+				if !replace {
+					output.OutputJSON(map[string]any{
+						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
+						"id":    existing.ID,
+					}, "")
+					return
+				}
+				if !yes {
+					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
+					var confirm string
+					_, _ = fmt.Scanln(&confirm)
+					if strings.ToLower(confirm) != "y" {
+						ExitError("aborted")
+					}
+				}
+				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), nil); err != nil {
+					ExitErrorf("deleting existing evaluator: %v", err)
+				}
 			}
 
 			// Read and prepare function source
@@ -263,6 +292,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				sourceStr = renameJSFunction(sourceStr, funcName)
 			}
 
+			// Build payload
 			payload := map[string]any{
 				"display_name":           name,
 				"sampling_rate":          samplingRate,
@@ -272,60 +302,29 @@ func newEvaluatorUploadCmd() *cobra.Command {
 					{"code": sourceStr, "language": language},
 				},
 			}
+
 			if datasetID != "" {
 				payload["dataset_id"] = datasetID
 			}
 			if projectID != "" {
 				payload["session_id"] = projectID
 			}
-			if traceFilter != "" {
-				payload["trace_filter"] = traceFilter
-			}
-
-			// Prepare the new evaluator before touching any existing one. If this is
-			// a replacement, the old evaluator stays in place until the new version is ready.
-			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
-			if err != nil {
-				ExitErrorf("checking existing evaluators: %v", err)
-			}
-
-			existing := findEvaluator(*rules, name, datasetID, projectID)
-			if existing != nil {
-				if !replace {
-					output.OutputJSON(map[string]any{
-						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
-						"id":    existing.ID,
-					}, "")
-					return
-				}
-				if !yes {
-					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
-					var confirm string
-					_, _ = fmt.Scanln(&confirm)
-					if strings.ToLower(confirm) != "y" {
-						ExitError("aborted")
-					}
-				}
-			}
 
 			var result map[string]any
-			if existing != nil {
-				if err := c.RawPatch(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), payload, &result); err != nil {
-					ExitErrorf("replacing evaluator: %v", err)
-				}
-			} else if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
+			if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
 				ExitErrorf("uploading evaluator: %v", err)
 			}
 
-			targetLabel := "project"
+			target := "project"
 			if datasetID != "" {
-				targetLabel = "dataset"
+				target = "dataset"
 			}
+
 			output.OutputJSON(map[string]any{
 				"status": "uploaded",
 				"id":     result["id"],
 				"name":   name,
-				"target": targetLabel,
+				"target": target,
 			}, "")
 		},
 	}
@@ -335,109 +334,10 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
-	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
 	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt when replacing")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("function")
-
-	return cmd
-}
-
-// Registers create-llm for LLM-as-judge evaluators.
-func newEvaluatorCreateLLMCmd() *cobra.Command {
-	var (
-		name            string
-		targetDataset   string
-		targetProject   string
-		samplingRate    float64
-		traceFilter     string
-		hubRef          string
-		promptPath      string
-		schemaPath      string
-		modelConfigPath string
-		variableMapping string
-		replace         bool
-		yes             bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "create-llm",
-		Short: "Create an LLM-as-judge evaluator rule",
-		Long: `Create an LLM-as-judge run rule. --model-config is always required.
-
-Provide the judge prompt inline with --prompt and --schema, or point at Prompt Hub
-with --hub-ref (which replaces --prompt and --schema). The model is configured separately.
-
-Examples:
-  langsmith evaluator create-llm --name relevance --project my-app \
-    --prompt prompt.json --schema schema.json --model-config model.json
-  langsmith evaluator create-llm --name relevance --project my-app \
-    --hub-ref my-org/relevance:latest --model-config model.json`,
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
-			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject)
-			if err != nil {
-				ExitErrorf("%v", err)
-			}
-			mapping, err := parseVariableMapping(variableMapping)
-			if err != nil {
-				ExitErrorf("%v", err)
-			}
-			payload, err := buildLLMEvaluatorPayload(
-				name, target, samplingRate, traceFilter, hubRef,
-				promptPath, schemaPath, modelConfigPath, mapping,
-			)
-			if err != nil {
-				ExitErrorf("%v", err)
-			}
-			existing, err := findLLMEvaluatorForCreate(ctx, c, name, target, replace, yes)
-			if err != nil {
-				if err.Error() == "aborted" {
-					ExitError("aborted")
-				}
-				if existing != nil {
-					output.OutputJSON(map[string]any{"error": err.Error(), "id": existing.ID}, "")
-					return
-				}
-				ExitErrorf("%v", err)
-			}
-
-			var result map[string]any
-			if existing != nil {
-				if err := c.RawPatch(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), payload, &result); err != nil {
-					ExitErrorf("replacing LLM evaluator: %v", err)
-				}
-			} else if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
-				ExitErrorf("creating LLM evaluator: %v", err)
-			}
-			targetLabel := "project"
-			if target.datasetID != "" {
-				targetLabel = "dataset"
-			}
-			output.OutputJSON(map[string]any{
-				"status": "created", "type": "llm",
-				"id": result["id"], "name": name, "target": targetLabel,
-			}, "")
-		},
-	}
-
-	cmd.Flags().StringVar(&name, "name", "", "Display name (required)")
-	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name")
-	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name")
-	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
-	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
-	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "Prompt Hub reference; replaces --prompt and --schema (e.g. my-org/prompt:latest)")
-	cmd.Flags().StringVar(&promptPath, "prompt", "", "Prompt JSON file ([[role,content],...] or [{role,content},...]); omit if --hub-ref is set")
-	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")
-	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON (required; copy from UI or GET /runs/rules)")
-	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths (JSON or @file.json)`)
-	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation when replacing")
-	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("model-config")
 
 	return cmd
 }

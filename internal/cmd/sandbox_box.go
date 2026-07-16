@@ -16,7 +16,7 @@ import (
 
 const defaultBoxPollInterval = 2 * time.Second
 
-func waitForBoxReady(ctx context.Context, c *client.Client, name string) (*langsmith.SandboxBoxGetStatusResponse, error) {
+func waitForBoxReady(ctx context.Context, c *client.Client, name string) (*langsmith.SandboxStatusResponse, error) {
 	for {
 		resp, err := c.SDK.Sandboxes.Boxes.GetStatus(ctx, name)
 		if err != nil {

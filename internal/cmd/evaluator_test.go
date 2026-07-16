@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
@@ -367,100 +366,11 @@ func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
 	}
 }
 
-func TestValidateEvaluatorTargetFlags(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		dataset string
-		project string
-		wantErr string
-	}{
-		{name: "requires one target", wantErr: "must specify"},
-		{name: "rejects both targets", dataset: "ds", project: "proj", wantErr: "cannot specify both"},
-		{name: "dataset only", dataset: "ds"},
-		{name: "project only", project: "proj"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := validateEvaluatorTargetFlags(tt.dataset, tt.project)
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("expected %q error, got %v", tt.wantErr, err)
-			}
-		})
-	}
-}
-
-func TestLoadPromptMessagesFromJSON(t *testing.T) {
-	t.Parallel()
-
-	t.Run("pair format", func(t *testing.T) {
-		t.Parallel()
-		msgs, err := loadPromptMessagesFromJSON("prompt.json", []byte(
-			`[["system","You are a judge."],["user","Q: {{input}}"]]`,
-		))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 2 || msgs[0][0] != "system" {
-			t.Fatalf("unexpected messages: %#v", msgs)
-		}
-	})
-
-	t.Run("role content objects", func(t *testing.T) {
-		t.Parallel()
-		msgs, err := loadPromptMessagesFromJSON("prompt.json", []byte(
-			`[{"role":"system","content":"You are a judge."},{"role":"user","content":"Q: {{input}}"}]`,
-		))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 2 || msgs[1][1] != "Q: {{input}}" {
-			t.Fatalf("unexpected messages: %#v", msgs)
-		}
-	})
-
-	t.Run("invalid format", func(t *testing.T) {
-		t.Parallel()
-		_, err := loadPromptMessagesFromJSON("prompt.json", []byte(`{"messages":[]}`))
-		if err == nil || !strings.Contains(err.Error(), "expected [[role,content]") {
-			t.Fatalf("expected format hint, got %v", err)
-		}
-	})
-
-	t.Run("rejects single-element pair", func(t *testing.T) {
-		t.Parallel()
-		_, err := loadPromptMessagesFromJSON("prompt.json", []byte(`[["system"]]`))
-		if err == nil || !strings.Contains(err.Error(), "must be [role, content]") {
-			t.Fatalf("expected length error, got %v", err)
-		}
-	})
-}
-
-func TestBuildLLMEvaluatorPayload_requiresModelConfig(t *testing.T) {
-	t.Parallel()
-
-	_, err := buildLLMEvaluatorPayload(
-		"relevance", llmEvaluatorTarget{projectID: "proj-1"},
-		1.0, "", "", "prompt.json", "schema.json", "", nil,
-	)
-	if err == nil || !strings.Contains(err.Error(), "--model-config is required") {
-		t.Fatalf("expected model-config error, got %v", err)
-	}
-}
-
 // ==================== Command structure tests ====================
 
 func TestEvaluatorCmd_Subcommands(t *testing.T) {
 	cmd := newEvaluatorCmd()
-	expected := map[string]bool{"get": false, "list": false, "upload": false, "create-llm": false, "delete": false}
+	expected := map[string]bool{"get": false, "list": false, "upload": false, "delete": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
@@ -534,7 +444,6 @@ func TestEvaluatorUploadCmd_Flags(t *testing.T) {
 		"dataset":       "",
 		"project":       "",
 		"sampling-rate": "1",
-		"trace-filter":  "",
 		"replace":       "false",
 		"yes":           "false",
 	}
@@ -727,194 +636,6 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 
 	if receivedKey != "test-api-key" {
 		t.Errorf("expected x-api-key=test-api-key, got %q", receivedKey)
-	}
-}
-
-func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
-	evaluatorFile := t.TempDir() + "/eval.py"
-	if err := os.WriteFile(
-		evaluatorFile,
-		[]byte("def check_accuracy(run, example):\n    return {\"score\": 1}\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	var sawDelete bool
-	var patchBody map[string]any
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "project-1", "name": "my-project"},
-			})
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]testRule{
-				{
-					ID:           "existing-rule",
-					DisplayName:  "accuracy",
-					SamplingRate: 0.25,
-					IsEnabled:    true,
-					SessionID:    "project-1",
-					CodeEvaluators: []testCodeEval{
-						{Code: "def perform_eval(run, example):\n    return {\"score\": 0}", Language: "python"},
-					},
-				},
-			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "PATCH":
-			if err := json.NewDecoder(r.Body).Decode(&patchBody); err != nil {
-				t.Fatalf("decoding patch body: %v", err)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":           "existing-rule",
-				"display_name": "accuracy",
-				"session_id":   "project-1",
-			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "DELETE":
-			sawDelete = true
-			http.Error(w, "delete should not be called", http.StatusInternalServerError)
-		default:
-			http.Error(w, "not found", http.StatusNotFound)
-		}
-	})
-
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-	flagOutputFormat = "json"
-
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorUploadCmd()
-		_ = cmd.Flags().Set("name", "accuracy")
-		_ = cmd.Flags().Set("function", "check_accuracy")
-		_ = cmd.Flags().Set("project", "my-project")
-		_ = cmd.Flags().Set("sampling-rate", "0.5")
-		_ = cmd.Flags().Set("replace", "true")
-		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, []string{evaluatorFile})
-	})
-
-	if sawDelete {
-		t.Fatal("upload --replace should patch the existing evaluator, not delete it")
-	}
-	if patchBody == nil {
-		t.Fatal("expected PATCH body")
-	}
-	if patchBody["display_name"] != "accuracy" {
-		t.Errorf("expected display_name=accuracy, got %v", patchBody["display_name"])
-	}
-	if patchBody["session_id"] != "project-1" {
-		t.Errorf("expected session_id=project-1, got %v", patchBody["session_id"])
-	}
-	if patchBody["sampling_rate"] != 0.5 {
-		t.Errorf("expected sampling_rate=0.5, got %v", patchBody["sampling_rate"])
-	}
-	evaluators, ok := patchBody["code_evaluators"].([]any)
-	if !ok || len(evaluators) != 1 {
-		t.Fatalf("expected one code evaluator, got %#v", patchBody["code_evaluators"])
-	}
-	codeEvaluator, ok := evaluators[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected code evaluator object, got %#v", evaluators[0])
-	}
-	if codeEvaluator["language"] != "python" {
-		t.Errorf("expected language=python, got %v", codeEvaluator["language"])
-	}
-	code, _ := codeEvaluator["code"].(string)
-	if !strings.Contains(code, "def perform_eval(") {
-		t.Errorf("expected uploaded code to be renamed to perform_eval, got:\n%s", code)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["id"] != "existing-rule" {
-		t.Errorf("expected output id=existing-rule, got %v", result["id"])
-	}
-}
-
-func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
-	modelConfigPath := t.TempDir() + "/model.json"
-	if err := os.WriteFile(
-		modelConfigPath,
-		[]byte(`{"type":"chat","config":{"model":"test-model"}}`),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	var sawDelete bool
-	var patchBody map[string]any
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/api/v1/sessions" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "project-1", "name": "my-project"},
-			})
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]testRule{
-				{
-					ID:           "existing-rule",
-					DisplayName:  "relevance",
-					SamplingRate: 0.25,
-					IsEnabled:    true,
-					SessionID:    "project-1",
-					Evaluators: []testLLMEval{
-						{Structured: testLLMStructured{HubRef: "my-org/old:latest"}},
-					},
-				},
-			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "PATCH":
-			if err := json.NewDecoder(r.Body).Decode(&patchBody); err != nil {
-				t.Fatalf("decoding patch body: %v", err)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":           "existing-rule",
-				"display_name": "relevance",
-				"session_id":   "project-1",
-			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "DELETE":
-			sawDelete = true
-			http.Error(w, "delete should not be called", http.StatusInternalServerError)
-		default:
-			http.Error(w, "not found", http.StatusNotFound)
-		}
-	})
-
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-	flagOutputFormat = "json"
-
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorCreateLLMCmd()
-		_ = cmd.Flags().Set("name", "relevance")
-		_ = cmd.Flags().Set("project", "my-project")
-		_ = cmd.Flags().Set("hub-ref", "my-org/relevance:latest")
-		_ = cmd.Flags().Set("model-config", modelConfigPath)
-		_ = cmd.Flags().Set("sampling-rate", "0.5")
-		_ = cmd.Flags().Set("replace", "true")
-		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, nil)
-	})
-
-	if sawDelete {
-		t.Fatal("create-llm --replace should patch the existing evaluator, not delete it")
-	}
-	if patchBody == nil {
-		t.Fatal("expected PATCH body")
-	}
-	if patchBody["display_name"] != "relevance" || patchBody["evaluators"] == nil {
-		t.Fatalf("expected LLM evaluator replacement payload, got %#v", patchBody)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["id"] != "existing-rule" {
-		t.Errorf("expected output id=existing-rule, got %v", result["id"])
 	}
 }
 

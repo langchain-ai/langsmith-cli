@@ -198,6 +198,10 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		opts.OAuthAccessToken = profile.AccessToken()
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey
+		// Route the resolved profile through the SDK (WithProfile) so an explicit
+		// selection replaces the config's current_profile instead of inheriting
+		// its tenant/base URL. APIKey is kept for the raw-HTTP helpers.
+		opts.ProfileName = profileName
 	}
 	if cfgErr != nil && opts.APIKey == "" {
 		return opts, cfgErr

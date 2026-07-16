@@ -136,7 +136,52 @@ func TestNewWithOptions_ProfileNameDelegatesAuthToSDK(t *testing.T) {
 	}
 }
 
-func TestNewWithOptions_APIKeyOverridesProfileName(t *testing.T) {
+func TestNewWithOptions_APIKeyProfileRoutesThroughSDK(t *testing.T) {
+	var gotAPIKey string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.Header.Get("X-API-Key")
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "api_key": "prod-api-key"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// An api-key profile carries both ProfileName and its own APIKey (as
+	// resolveClientOptions produces). It routes through WithProfile: the profile's
+	// key is sent, no bearer.
+	c := NewWithOptions(Options{
+		APIKey:      "prod-api-key",
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAPIKey != "prod-api-key" {
+		t.Fatalf("expected profile api key, got %q", gotAPIKey)
+	}
+	if gotAuth != "" {
+		t.Fatalf("expected no bearer for an api-key profile, got %q", gotAuth)
+	}
+}
+
+func TestNewWithOptions_ProfileNameTakesPrecedenceOverExplicitAPIKey(t *testing.T) {
 	var gotAPIKey string
 	var gotAuth string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +209,10 @@ func TestNewWithOptions_APIKeyOverridesProfileName(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// resolveClientOptions never produces this combo, but NewWithOptions is
+	// exported: when a caller passes an explicit APIKey alongside a ProfileName,
+	// the profile wins (routes through WithProfile) and the explicit key is not
+	// sent for SDK calls.
 	c := NewWithOptions(Options{
 		APIKey:      "explicit-key",
 		ProfileName: "prod",
@@ -172,11 +221,11 @@ func TestNewWithOptions_APIKeyOverridesProfileName(t *testing.T) {
 	if _, err := c.SDK.Info.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if gotAPIKey != "explicit-key" {
-		t.Fatalf("expected explicit API key, got %q", gotAPIKey)
+	if gotAuth != "Bearer prod-access-token" {
+		t.Fatalf("expected profile OAuth bearer to win, got %q", gotAuth)
 	}
-	if gotAuth != "" {
-		t.Fatalf("expected no profile bearer auth when API key wins, got %q", gotAuth)
+	if gotAPIKey != "" {
+		t.Fatalf("expected explicit API key not sent for SDK calls, got %q", gotAPIKey)
 	}
 }
 

@@ -70,6 +70,7 @@ func ExtractRun(run langsmith.RunSchema, includeMetadata, includeIO, includeFeed
 
 		result["status"] = run.Status
 		result["duration_ms"] = durationMs
+		result["first_token_time"] = formatTimeNullable(run.FirstTokenTime)
 		result["custom_metadata"] = customMetadata
 		result["token_usage"] = tokenUsage
 		result["costs"] = costs
@@ -80,6 +81,7 @@ func ExtractRun(run langsmith.RunSchema, includeMetadata, includeIO, includeFeed
 		result["inputs"] = nilIfEmptyMap(run.Inputs)
 		result["outputs"] = nilIfEmptyMap(run.Outputs)
 		result["error"] = nilIfEmpty(run.Error)
+		result["events"] = nilIfEmptyEvents(run.Events)
 	}
 
 	if includeFeedback {
@@ -127,6 +129,13 @@ func nilIfEmptyMap(m map[string]any) any {
 		return nil
 	}
 	return m
+}
+
+func nilIfEmptyEvents(events []map[string]any) any {
+	if len(events) == 0 {
+		return nil
+	}
+	return events
 }
 
 // FormatDurationHuman formats milliseconds as human-readable string.
