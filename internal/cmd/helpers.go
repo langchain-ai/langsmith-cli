@@ -183,14 +183,12 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2Par
 		langsmith.RunQueryV2ParamsSelectTotalCost,
 		langsmith.RunQueryV2ParamsSelectLatencySeconds,
 		langsmith.RunQueryV2ParamsSelectAppPath,
-		langsmith.RunQueryV2ParamsSelectFirstTokenTime,
 	}
 	if includeIO {
 		fields = append(fields,
 			langsmith.RunQueryV2ParamsSelectInputs,
 			langsmith.RunQueryV2ParamsSelectOutputs,
 			langsmith.RunQueryV2ParamsSelectError,
-			langsmith.RunQueryV2ParamsSelectEvents,
 		)
 	}
 	if includeFeedback {
@@ -201,7 +199,7 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2Par
 
 // runV2ToSchema converts a v2 Run into the legacy v1 RunSchema shape so the
 // existing extract/output pipeline can consume it unchanged.
-func runV2ToSchema(r langsmith.Run) langsmith.RunSchema {
+func runV2ToSchema(r langsmith.QueryRunResponse) langsmith.RunSchema {
 	extra := asMap(r.Extra)
 	if md := asMap(r.Metadata); md != nil {
 		if extra == nil {
@@ -242,7 +240,6 @@ func runV2ToSchema(r langsmith.Run) langsmith.RunSchema {
 		Outputs:            asMap(r.Outputs),
 		Extra:              extra,
 		FeedbackStats:      convertFeedbackStats(r.FeedbackStats),
-		Events:             convertEvents(r.Events),
 	}
 	if len(r.ParentRunIDs) > 0 {
 		out.ParentRunIDs = r.ParentRunIDs
@@ -263,7 +260,7 @@ func asMap(v interface{}) map[string]interface{} {
 // convertFeedbackStats round-trips the generated feedback-stats shape into the
 // loosely-typed map the downstream pipeline expects. Returns nil on empty input
 // or any marshalling error.
-func convertFeedbackStats(stats map[string]langsmith.RunFeedbackStat) map[string]map[string]interface{} {
+func convertFeedbackStats(stats map[string]langsmith.QueryRunResponseFeedbackStat) map[string]map[string]interface{} {
 	if len(stats) == 0 {
 		return nil
 	}
@@ -272,24 +269,6 @@ func convertFeedbackStats(stats map[string]langsmith.RunFeedbackStat) map[string
 		return nil
 	}
 	var m map[string]map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil
-	}
-	return m
-}
-
-// convertEvents round-trips the generated v2 event shape into the
-// loosely-typed maps the legacy RunSchema.Events field expects. Returns nil on
-// empty input or any marshalling error.
-func convertEvents(events []langsmith.RunEvent) []map[string]interface{} {
-	if len(events) == 0 {
-		return nil
-	}
-	raw, err := json.Marshal(events)
-	if err != nil {
-		return nil
-	}
-	var m []map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil
 	}
@@ -316,7 +295,6 @@ func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsS
 		langsmith.RunQueryParamsSelectStatus,
 		// Metadata fields
 		langsmith.RunQueryParamsSelectExtra,
-		langsmith.RunQueryParamsSelectFirstTokenTime,
 		langsmith.RunQueryParamsSelectPromptTokens,
 		langsmith.RunQueryParamsSelectCompletionTokens,
 		langsmith.RunQueryParamsSelectTotalTokens,
@@ -331,7 +309,6 @@ func buildRunSelect(includeIO, includeFeedback bool) []langsmith.RunQueryParamsS
 			langsmith.RunQueryParamsSelectInputs,
 			langsmith.RunQueryParamsSelectOutputs,
 			langsmith.RunQueryParamsSelectError,
-			langsmith.RunQueryParamsSelectEvents,
 		)
 	}
 

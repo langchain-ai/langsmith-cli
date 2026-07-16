@@ -288,7 +288,7 @@ func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
 	}{
 		{
 			name: "new response",
-			model: langsmith.SandboxResponse{
+			model: langsmith.SandboxBoxNewResponse{
 				ID:              "box-new",
 				Name:            "new-vm",
 				Status:          "running",
@@ -305,7 +305,7 @@ func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
 		},
 		{
 			name: "get response",
-			model: langsmith.SandboxResponse{
+			model: langsmith.SandboxBoxGetResponse{
 				ID:              "box-get",
 				Name:            "get-vm",
 				Status:          "running",
@@ -322,7 +322,7 @@ func TestSandboxBoxDetailRenderSupportsSDKResponseTypes(t *testing.T) {
 		},
 		{
 			name: "update response",
-			model: langsmith.SandboxResponse{
+			model: langsmith.SandboxBoxUpdateResponse{
 				ID:              "box-update",
 				Name:            "update-vm",
 				Status:          "stopped",

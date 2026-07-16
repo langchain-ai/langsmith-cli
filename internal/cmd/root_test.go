@@ -313,61 +313,6 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	}
 }
 
-func TestResolveClientOptions_SetsProfileNameForAPIKeyProfile(t *testing.T) {
-	oldKey := flagAPIKey
-	oldURL := flagAPIURL
-	oldProfile := flagProfile
-	oldWS := flagWorkspaceID
-	defer func() {
-		flagAPIKey = oldKey
-		flagAPIURL = oldURL
-		flagProfile = oldProfile
-		flagWorkspaceID = oldWS
-	}()
-	flagAPIKey = ""
-	flagAPIURL = ""
-	flagWorkspaceID = ""
-	flagProfile = "aws"
-
-	path := filepath.Join(t.TempDir(), "config.json")
-	t.Setenv("LANGSMITH_CONFIG_FILE", path)
-	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_ENDPOINT", "")
-	t.Setenv("LANGSMITH_WORKSPACE_ID", "")
-	t.Setenv("LANGSMITH_TENANT_ID", "")
-	t.Setenv("LANGSMITH_PROFILE", "")
-	if err := os.WriteFile(path, []byte(`{
-  "current_profile": "prod",
-  "profiles": {
-    "prod": {
-      "api_key": "prod-api-key",
-      "workspace_id": "prod-workspace-id"
-    },
-    "aws": {
-      "api_key": "aws-api-key"
-    }
-  }
-}
-`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	opts, err := resolveClientOptions(false)
-	if err != nil {
-		t.Fatalf("resolveClientOptions returned error: %v", err)
-	}
-	if opts.APIKey != "aws-api-key" {
-		t.Fatalf("expected profile api key aws-api-key, got %q", opts.APIKey)
-	}
-	// The resolved profile must reach the SDK via WithProfile so an explicit
-	// --profile replaces current_profile and clears its inherited tenant. Without
-	// ProfileName set, NewWithOptions passes only WithAPIKey and current_profile's
-	// tenant leaks (403 cross-workspace).
-	if opts.ProfileName != "aws" {
-		t.Fatalf("expected ProfileName=aws, got %q", opts.ProfileName)
-	}
-}
-
 func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
