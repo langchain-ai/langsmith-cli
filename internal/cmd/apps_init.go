@@ -27,6 +27,9 @@ var annotationQueueStarterFS embed.FS
 //go:embed all:templates/annotation-queue-grid
 var annotationQueueGridStarterFS embed.FS
 
+//go:embed all:templates/coding-agent-dashboard
+var codingAgentDashboardStarterFS embed.FS
+
 //go:embed templates/agents-md
 var agentsMDFS embed.FS
 
@@ -53,6 +56,11 @@ var appTypes = map[string]appType{
 		templateFS:   annotationQueueGridStarterFS,
 		templateRoot: "templates/annotation-queue-grid",
 		agentsMD:     "annotation_queue_grid",
+	},
+	"coding-agent-dashboard": {
+		templateFS:   codingAgentDashboardStarterFS,
+		templateRoot: "templates/coding-agent-dashboard",
+		agentsMD:     "coding_agent_dashboard",
 	},
 }
 
@@ -82,7 +90,7 @@ func newAppsInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid]",
+		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid|coding-agent-dashboard]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
@@ -101,6 +109,10 @@ uploaded and rendered the same way.
                      Same queue-review workflow as annotation-queue, but
                      rendered as a spreadsheet: rows are queue runs, columns
                      are rubric keys, cells edited inline, Done per row.
+  coding-agent-dashboard
+                     A charts dashboard over coding-agent runs: pick a
+                     project, see integration share (pie) and a per-model
+                     breakdown with run counts and error rates.
 
 This also writes an AGENTS.md describing the LangSmith API
 surface available to this app, and a README explaining the bridge contract.

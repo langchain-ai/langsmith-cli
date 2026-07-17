@@ -102,6 +102,54 @@ func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
 	}
 }
 
+// The coding-agent dashboard is a standalone charts app; it scaffolds its own
+// components and gets its own AGENTS.md.
+func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["coding-agent-dashboard"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	for _, want := range []string{
+		"package.json",
+		"README.md",
+		"AGENTS.md",
+		".gitignore",
+		"vite.config.ts",
+		"tsconfig.json",
+		"src/entry.tsx",
+		"src/App.tsx",
+		"src/api.ts",
+		"src/types.ts",
+		"src/components/ProjectBar.tsx",
+		"src/components/PieChart.tsx",
+		"src/components/IntegrationBreakdown.tsx",
+	} {
+		if !writtenSet[want] {
+			t.Errorf("expected %q to be written, got %v", want, written)
+		}
+	}
+	// It must not carry the annotation-queue templates' components.
+	if writtenSet["src/components/QueueBar.tsx"] || writtenSet["src/components/DataGrid.tsx"] {
+		t.Error("coding-agent dashboard should not scaffold annotation-queue components")
+	}
+
+	agents, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(agents), "ls_agent_purpose") || !strings.Contains(string(agents), "runs/query") {
+		t.Errorf("expected the coding-agent dashboard's AGENTS.md, got:\n%s", agents)
+	}
+}
+
 // The two AQ templates must get distinct AGENTS.md files — guards the per-template agentsMD selection against regression.
 func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	dir := t.TempDir()
@@ -383,6 +431,19 @@ func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 	}
 	if link == nil || link.Name != "grid-app" {
 		t.Errorf("expected a partial link recording the name, got %+v", link)
+	}
+}
+
+func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "dash", "--template", "coding-agent-dashboard", "--skip-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected init to succeed for --template coding-agent-dashboard, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "src", "components", "PieChart.tsx")); err != nil {
+		t.Errorf("expected the dashboard's PieChart.tsx to be scaffolded: %v", err)
 	}
 }
 
