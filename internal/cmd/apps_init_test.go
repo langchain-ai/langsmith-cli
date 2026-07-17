@@ -150,6 +150,55 @@ func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
 	}
 }
 
+// The experiment-comparison dashboard is a standalone app with its own
+// components and AGENTS.md.
+func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["experiment-comparison"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	for _, want := range []string{
+		"package.json",
+		"README.md",
+		"AGENTS.md",
+		".gitignore",
+		"vite.config.ts",
+		"tsconfig.json",
+		"src/entry.tsx",
+		"src/App.tsx",
+		"src/api.ts",
+		"src/types.ts",
+		"src/lib/delta.ts",
+		"src/components/Pickers.tsx",
+		"src/components/SummaryPanel.tsx",
+		"src/components/ExampleTable.tsx",
+	} {
+		if !writtenSet[want] {
+			t.Errorf("expected %q to be written, got %v", want, written)
+		}
+	}
+	// It must not carry other templates' components.
+	if writtenSet["src/components/QueueBar.tsx"] || writtenSet["src/components/PieChart.tsx"] {
+		t.Error("experiment-comparison should not scaffold other templates' components")
+	}
+
+	agents, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(agents), "datasets/{dataset_id}/runs") || !strings.Contains(string(agents), "is_lower_score_better") {
+		t.Errorf("expected the experiment-comparison AGENTS.md, got:\n%s", agents)
+	}
+}
+
 // The two AQ templates must get distinct AGENTS.md files — guards the per-template agentsMD selection against regression.
 func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	dir := t.TempDir()
@@ -444,6 +493,19 @@ func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "src", "components", "PieChart.tsx")); err != nil {
 		t.Errorf("expected the dashboard's PieChart.tsx to be scaffolded: %v", err)
+	}
+}
+
+func TestAppsInitCmd_AcceptsExperimentComparisonTemplate(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "cmp", "--template", "experiment-comparison", "--skip-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected init to succeed for --template experiment-comparison, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "src", "components", "SummaryPanel.tsx")); err != nil {
+		t.Errorf("expected the SummaryPanel.tsx to be scaffolded: %v", err)
 	}
 }
 

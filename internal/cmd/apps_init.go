@@ -30,6 +30,9 @@ var annotationQueueGridStarterFS embed.FS
 //go:embed all:templates/coding-agent-dashboard
 var codingAgentDashboardStarterFS embed.FS
 
+//go:embed all:templates/experiment-comparison
+var experimentComparisonStarterFS embed.FS
+
 //go:embed templates/agents-md
 var agentsMDFS embed.FS
 
@@ -62,6 +65,11 @@ var appTypes = map[string]appType{
 		templateRoot: "templates/coding-agent-dashboard",
 		agentsMD:     "coding_agent_dashboard",
 	},
+	"experiment-comparison": {
+		templateFS:   experimentComparisonStarterFS,
+		templateRoot: "templates/experiment-comparison",
+		agentsMD:     "experiment_comparison",
+	},
 }
 
 // appTypeNames returns the valid --template values, sorted, keeping error text
@@ -90,7 +98,7 @@ func newAppsInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid|coding-agent-dashboard]",
+		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
@@ -113,6 +121,10 @@ uploaded and rendered the same way.
                      A charts dashboard over coding-agent runs: pick a
                      project, see integration share (pie) and a per-model
                      breakdown with run counts and error rates.
+  experiment-comparison
+                     Compare evaluation experiments: pick a dataset, a
+                     baseline, and comparisons; see aggregates and a
+                     per-example table colored vs the baseline.
 
 This also writes an AGENTS.md describing the LangSmith API
 surface available to this app, and a README explaining the bridge contract.
