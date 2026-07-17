@@ -72,11 +72,14 @@ var appTypes = map[string]appType{
 	},
 }
 
-// appTypeNames returns the valid --template values, sorted, keeping error text
-// and help in sync with the map.
+// appTypeNames returns the valid --template values, sorted, keeping error
+// text and help in sync with the map.
 func appTypeNames() []string {
 	names := make([]string, 0, len(appTypes))
 	for name := range appTypes {
+		if name == "blank" {
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -98,17 +101,14 @@ func newAppsInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
+		Use:   "init --name NAME [--template annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
---template picks which starter gets scaffolded. Defaults to "blank" if
-omitted. The choice only affects the UI you start from — every app is
-uploaded and rendered the same way.
+--template picks which starter gets scaffolded; omit it for a blank
+single-file starter. Every app is uploaded and rendered the same way
+regardless of choice.
 
-  blank              A blank single-file starter (render(data, root) that
-                     just dumps data) — no assumptions about shape. Good for
-                     a genuinely open-ended app you build up from scratch.
   annotation-queue   A real, working queue-review UI (run list,
                      inputs/outputs viewer, feedback rubric, reviewer
                      notes). It picks a queue itself and fetches everything
@@ -138,7 +138,13 @@ write the files. A failed install/build doesn't fail the command — it's a
 convenience, not a requirement — but you'll need to build manually before
 "apps dev" or "apps push" will work.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			at, ok := appTypes[templateFlag]
+			templateName := templateFlag
+			if templateName == "" {
+				templateName = "blank"
+			} else if templateName == "blank" {
+				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
+			}
+			at, ok := appTypes[templateName]
 			if !ok {
 				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
@@ -165,7 +171,7 @@ convenience, not a requirement — but you'll need to build manually before
 				"status":   "scaffolded",
 				"dir":      dir,
 				"name":     name,
-				"template": templateFlag,
+				"template": templateName,
 				"files":    written,
 				"built":    built,
 			}, "")
@@ -175,7 +181,7 @@ convenience, not a requirement — but you'll need to build manually before
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().StringVar(&templateFlag, "template", "blank", "Starter template: "+strings.Join(appTypeNames(), ", "))
+	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template: "+strings.Join(appTypeNames(), ", ")+" (omit for a blank starter)")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	cmd.Flags().BoolVar(&skipInstall, "skip-install", false, "Skip running \"npm install && npm run build\" after scaffolding")
 	_ = cmd.MarkFlagRequired("name")

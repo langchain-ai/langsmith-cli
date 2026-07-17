@@ -415,7 +415,7 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	}
 }
 
-func TestAppsInitCmd_TemplateDefaultsToBlank(t *testing.T) {
+func TestAppsInitCmd_TemplateFlagDefaultsEmpty(t *testing.T) {
 	cmd := newAppsCmd()
 	initCmd, _, err := cmd.Find([]string{"init"})
 	if err != nil {
@@ -425,12 +425,22 @@ func TestAppsInitCmd_TemplateDefaultsToBlank(t *testing.T) {
 	if f == nil {
 		t.Fatal("expected --template flag to exist")
 	}
-	if f.DefValue != "blank" {
-		t.Errorf("expected --template to default to \"blank\", got %q", f.DefValue)
+	if f.DefValue != "" {
+		t.Errorf("expected --template to default to \"\", got %q", f.DefValue)
 	}
 	// The old --type flag must be gone, not just aliased.
 	if got := initCmd.Flags().Lookup("type"); got != nil {
 		t.Error("expected --type to be gone from apps init (renamed to --template)")
+	}
+}
+
+func TestAppsInitCmd_RejectsExplicitTemplateBlank(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "blank", "--skip-install"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected --template blank to be rejected; omit --template instead")
 	}
 }
 
