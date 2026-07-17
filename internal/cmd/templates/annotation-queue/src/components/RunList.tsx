@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CheckCircleIcon,
   ChevronDownIcon,
@@ -8,6 +8,7 @@ import {
   Lock01Icon,
 } from '@langchain/untitled-ui-icons';
 import type { AnnotationQueueRun } from '../types';
+import type { RunSection as RunSectionData } from '../hooks/useRunSection';
 import { getCollapsedPreview } from '../lib/messages';
 import { cn } from '../lib/utils';
 import { Spinner } from './Spinner';
@@ -101,12 +102,10 @@ function RunListItem({ run, isSelected, onClick, numReviewersPerItem }: RunListI
 }
 
 interface SectionProps {
-  status: string;
   label: string;
   icon: React.ElementType;
-  runs: AnnotationQueueRun[];
+  section: RunSectionData;
   selectedQueueRunId: string | undefined;
-  loading: boolean;
   defaultOpen: boolean;
   isLast?: boolean;
   numReviewersPerItem?: number | null;
@@ -116,15 +115,35 @@ interface SectionProps {
 function RunSection({
   label,
   icon: Icon,
-  runs,
+  section,
   selectedQueueRunId,
-  loading,
   defaultOpen,
   isLast,
   numReviewersPerItem,
   onSelectRun,
 }: SectionProps) {
+  const { runs, loading, loadingMore, hasMore, loadMore } = section;
   const [open, setOpen] = useState(defaultOpen);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch the next page once the sentinel at the bottom of this section's
+  // scroll container comes into view. hasMore comes from a separate /size
+  // call (see useRunSection), not from this page's response.
+  useEffect(() => {
+    if (!open || !hasMore) return;
+    const root = scrollRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root, rootMargin: '150px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [open, hasMore, loadMore]);
 
   return (
     <div className={cn('flex flex-col', open && 'min-h-0 flex-1')}>
@@ -146,12 +165,15 @@ function RunSection({
         <span className="text-sm font-medium text-secondary">{label}</span>
         <div className="ml-auto flex items-center gap-1.5">
           {loading && <Spinner size="sm" />}
-          <span className="text-xs text-tertiary">{runs.length}</span>
+          <span className="text-xs text-tertiary">
+            {runs.length}
+            {hasMore ? '+' : ''}
+          </span>
         </div>
       </button>
 
       {open && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
             <RunListSkeletons />
           ) : runs.length === 0 ? (
@@ -159,15 +181,22 @@ function RunSection({
               <span className="text-xs text-tertiary">No runs</span>
             </div>
           ) : (
-            runs.map((run) => (
-              <RunListItem
-                key={run.queue_run_id}
-                run={run}
-                isSelected={run.queue_run_id === selectedQueueRunId}
-                onClick={() => onSelectRun(run.queue_run_id)}
-                numReviewersPerItem={numReviewersPerItem}
-              />
-            ))
+            <>
+              {runs.map((run) => (
+                <RunListItem
+                  key={run.queue_run_id}
+                  run={run}
+                  isSelected={run.queue_run_id === selectedQueueRunId}
+                  onClick={() => onSelectRun(run.queue_run_id)}
+                  numReviewersPerItem={numReviewersPerItem}
+                />
+              ))}
+              {hasMore && (
+                <div ref={sentinelRef} className="flex items-center justify-center py-3">
+                  {loadingMore && <Spinner size="sm" />}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -176,21 +205,19 @@ function RunSection({
 }
 
 interface Props {
-  needsReviewRuns: AnnotationQueueRun[];
-  needsOthersReviewRuns: AnnotationQueueRun[];
-  completedRuns: AnnotationQueueRun[];
+  needsReview: RunSectionData;
+  needsOthersReview: RunSectionData;
+  completed: RunSectionData;
   selectedQueueRunId: string | undefined;
-  loading: boolean;
   numReviewersPerItem?: number | null;
   onSelectRun: (queueRunId: string) => void;
 }
 
 export function RunList({
-  needsReviewRuns,
-  needsOthersReviewRuns,
-  completedRuns,
+  needsReview,
+  needsOthersReview,
+  completed,
   selectedQueueRunId,
-  loading,
   numReviewersPerItem,
   onSelectRun,
 }: Props) {
@@ -199,36 +226,30 @@ export function RunList({
   return (
     <div className="flex h-full flex-col divide-y divide-secondary overflow-hidden border-r border-secondary">
       <RunSection
-        status="needs_my_review"
         label="Needs Review"
         icon={LayersTwo01Icon}
-        runs={needsReviewRuns}
+        section={needsReview}
         selectedQueueRunId={selectedQueueRunId}
-        loading={loading}
         defaultOpen={true}
         numReviewersPerItem={numReviewersPerItem}
         onSelectRun={onSelectRun}
       />
       {showNeedsOthersReview && (
         <RunSection
-          status="needs_others_review"
           label="Needs Others' Review"
           icon={ClockIcon}
-          runs={needsOthersReviewRuns}
+          section={needsOthersReview}
           selectedQueueRunId={selectedQueueRunId}
-          loading={loading}
           defaultOpen={false}
           numReviewersPerItem={numReviewersPerItem}
           onSelectRun={onSelectRun}
         />
       )}
       <RunSection
-        status="completed"
         label="Completed"
         icon={CheckCircleIcon}
-        runs={completedRuns}
+        section={completed}
         selectedQueueRunId={selectedQueueRunId}
-        loading={loading}
         defaultOpen={false}
         isLast={true}
         onSelectRun={onSelectRun}

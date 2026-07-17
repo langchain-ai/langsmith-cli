@@ -22,16 +22,36 @@ export async function fetchQueue(queueId: string): Promise<AnnotationQueue> {
   ) as Promise<AnnotationQueue>;
 }
 
+export type AnnotationQueueRunSectionStatus =
+  | 'needs_my_review'
+  | 'needs_others_review'
+  | 'completed';
+
 export async function fetchQueueRuns(
   queueId: string,
-  status: 'needs_my_review' | 'needs_others_review' | 'completed' | null = null,
-  limit = 50
+  status: AnnotationQueueRunSectionStatus | null = null,
+  limit = 50,
+  offset = 0
 ): Promise<AnnotationQueueRun[]> {
-  const params: Record<string, string> = { limit: String(limit), offset: '0' };
+  const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
   if (status) params.status = status;
   return window.langsmith.call(`GET /api/v1/annotation-queues/${queueId}/runs`, {
     params,
   }) as Promise<AnnotationQueueRun[]>;
+}
+
+// The /runs endpoint's X-Pagination-Total header isn't reachable through the
+// window.langsmith.call bridge (it only returns the parsed body), so we ask
+// this endpoint separately to learn how many runs exist for a status.
+export async function fetchQueueRunsSize(
+  queueId: string,
+  status: AnnotationQueueRunSectionStatus
+): Promise<number> {
+  const result = (await window.langsmith.call(
+    `GET /api/v1/annotation-queues/${queueId}/size`,
+    { params: { status } }
+  )) as { size: number };
+  return result.size;
 }
 
 export async function fetchFeedbackConfigs(keys: string[]): Promise<FeedbackConfigSchema[]> {
