@@ -1,20 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid } from './components/DataGrid';
 import { QueueBar } from './components/QueueBar';
-import {
-  fetchFeedbackConfigs,
-  fetchFeedbacks,
-  fetchQueue,
-  fetchQueueRuns,
-  markRunComplete,
-} from './api';
-import type {
-  AnnotationQueue,
-  AnnotationQueueRun,
-  FeedbackConfig,
-  FeedbackItem,
-  RubricItem,
-} from './types';
+import { fetchFeedbackConfigs, fetchFeedbacks, fetchQueue, markRunComplete } from './api';
+import { useRunSection } from './hooks/useRunSection';
+import type { AnnotationQueue, FeedbackConfig, FeedbackItem } from './types';
 
 interface Props {
   /** Optional starting queue. Apps are uniform now and normally receive {}, so
@@ -30,44 +19,34 @@ export type FeedbackByRun = Record<string, Record<string, FeedbackItem>>;
 export function App({ queueId: initialQueueId }: Props) {
   const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
-  const [rows, setRows] = useState<AnnotationQueueRun[]>([]);
-  const [rowsLoading, setRowsLoading] = useState(false);
   const [configs, setConfigs] = useState<Record<string, FeedbackConfig>>({});
   const [feedbackByRun, setFeedbackByRun] = useState<FeedbackByRun>({});
   const [activeRow, setActiveRow] = useState(0);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+
+  const section = useRunSection(queueId || undefined, 'needs_my_review');
+  const rows = section.runs;
 
   // Refs so the window keydown listener always calls the latest handlers
   // (same trick as the 3-pane App.tsx).
   const completeRef = useRef<(index: number) => void>(() => {});
   const moveRef = useRef<(direction: 'up' | 'down') => void>(() => {});
 
-  // Columns are the rubric's feedback keys; assertion-flagged items aren't
-  // scored, so they're excluded (assertionCount lets the header note them).
-  const columns: RubricItem[] = useMemo(
-    () => (queue?.rubric_items ?? []).filter((item) => !item.is_assertion),
-    [queue?.rubric_items]
-  );
-  const assertionCount = useMemo(
-    () => (queue?.rubric_items ?? []).filter((item) => item.is_assertion).length,
-    [queue?.rubric_items]
-  );
+  // Columns are the rubric's feedback keys.
+  const columns = useMemo(() => queue?.rubric_items ?? [], [queue?.rubric_items]);
 
-  // The runs needing this reviewer — the editable rows. A run leaves once marked Done.
+  // Reset per-queue UI state when the queue changes (run loading itself is
+  // owned by useRunSection, keyed on the same queueId).
   useEffect(() => {
-    // Clear the previous queue's data first so switching queues doesn't flash
-    // stale rows/rubric from the one before.
     setQueue(null);
-    setRows([]);
     setActiveRow(0);
+    setExpandedRunId(null);
+    setCompleteError(null);
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
       .catch((e) => console.error('Failed to load queue', e));
-    setRowsLoading(true);
-    fetchQueueRuns(queueId, 'needs_my_review')
-      .then(setRows)
-      .catch((e) => console.error('Failed to load runs', e))
-      .finally(() => setRowsLoading(false));
   }, [queueId]);
 
   // Fetch each key's type/min/max/categories config — the rubric item carries none (see RubricItem).
@@ -86,36 +65,38 @@ export function App({ queueId: initialQueueId }: Props) {
       .catch((e) => console.error('Failed to load feedback configs', e));
   }, [columnKeys.join(',')]);
 
-  // Load existing feedback for every row so already-scored cells are prefilled.
+  // Load existing feedback for every loaded row so already-scored cells are
+  // prefilled — re-runs as loadMore brings in new rows, only fetching the
+  // ones we don't already have.
   useEffect(() => {
-    if (rows.length === 0) {
-      setFeedbackByRun({});
-      return;
-    }
+    const idsToFetch = rows.map((r) => r.id).filter((id) => !(id in feedbackByRun));
+    if (idsToFetch.length === 0) return;
     let cancelled = false;
     Promise.all(
-      rows.map((r) =>
-        fetchFeedbacks(r.id)
-          .then((items) => [r.id, items] as const)
+      idsToFetch.map((id) =>
+        fetchFeedbacks(id)
+          .then((items) => [id, items] as const)
           .catch((e) => {
-            console.error('Failed to load feedback for run', r.id, e);
-            return [r.id, [] as FeedbackItem[]] as const;
+            console.error('Failed to load feedback for run', id, e);
+            return [id, [] as FeedbackItem[]] as const;
           })
       )
     ).then((entries) => {
       if (cancelled) return;
-      const next: FeedbackByRun = {};
-      for (const [runId, items] of entries) {
-        const byKey: Record<string, FeedbackItem> = {};
-        for (const item of items) byKey[item.key] = item;
-        next[runId] = byKey;
-      }
-      setFeedbackByRun(next);
+      setFeedbackByRun((prev) => {
+        const next = { ...prev };
+        for (const [runId, items] of entries) {
+          const byKey: Record<string, FeedbackItem> = {};
+          for (const item of items) byKey[item.key] = item;
+          next[runId] = byKey;
+        }
+        return next;
+      });
     });
     return () => {
       cancelled = true;
     };
-    // Re-run only when the set of row ids changes, not on every cell edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.map((r) => r.id).join(',')]);
 
   function handleCellSaved(runId: string, feedback: FeedbackItem) {
@@ -133,23 +114,19 @@ export function App({ queueId: initialQueueId }: Props) {
     });
   }
 
-  // Optimistically remove a completed row (mirrors markRunComplete usage in the
-  // 3-pane App.tsx) and keep the active row within bounds.
+  // Optimistically remove a completed row and keep the active row within
+  // bounds; restore it (and surface the error) if the server rejects it.
   function handleComplete(index: number) {
     const run = rows[index];
     if (!run) return;
     const queueRunId = run.queue_run_id;
-    setRows((prev) => prev.filter((r) => r.queue_run_id !== queueRunId));
+    setCompleteError(null);
+    section.removeRun(queueRunId);
     setActiveRow((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
     markRunComplete(queueRunId).catch((e) => {
       console.error('Failed to mark complete — restoring row', e);
-      // Put it back if the server rejected the completion.
-      setRows((prev) => {
-        if (prev.some((r) => r.queue_run_id === queueRunId)) return prev;
-        const restored = [...prev];
-        restored.splice(Math.min(index, restored.length), 0, run);
-        return restored;
-      });
+      section.restoreRun(run, index);
+      setCompleteError(e instanceof Error ? e.message : String(e));
     });
   }
   useEffect(() => {
@@ -212,10 +189,15 @@ export function App({ queueId: initialQueueId }: Props) {
           columns={columns}
           configs={configs}
           rows={rows}
-          rowsLoading={rowsLoading}
+          rowsLoading={section.loading}
+          loadingMore={section.loadingMore}
+          hasMore={section.hasMore}
+          onLoadMore={section.loadMore}
           feedbackByRun={feedbackByRun}
           activeRow={activeRow}
-          assertionCount={assertionCount}
+          expandedRunId={expandedRunId}
+          onToggleExpand={(runId) => setExpandedRunId((prev) => (prev === runId ? null : runId))}
+          completeError={completeError}
           onActivateRow={setActiveRow}
           onCellSaved={handleCellSaved}
           onCellDeleted={handleCellDeleted}

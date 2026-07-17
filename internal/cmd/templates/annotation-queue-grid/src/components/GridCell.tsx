@@ -7,16 +7,30 @@ interface Props {
   item: RubricItem;
   config: FeedbackConfig | undefined;
   runId: string;
+  traceId: string | undefined;
+  sessionId: string | undefined;
+  startTime: string | undefined;
   existingFeedback: FeedbackItem | undefined;
   onSaved: (feedback: FeedbackItem) => void;
   onDeleted: (feedbackKey: string) => void;
 }
 
 // One editable cell. Saves as-you-go via the same submit/patch/delete calls the 3-pane FeedbackPanel uses.
-export function GridCell({ item, config, runId, existingFeedback, onSaved, onDeleted }: Props) {
+export function GridCell({
+  item,
+  config,
+  runId,
+  traceId,
+  sessionId,
+  startTime,
+  existingFeedback,
+  onSaved,
+  onDeleted,
+}: Props) {
   const [score, setScore] = useState<number | null>(existingFeedback?.score ?? null);
   const [comment, setComment] = useState<string>(existingFeedback?.comment ?? '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Resync when the underlying feedback identity changes (row reload / edit
   // elsewhere), mirroring RubricCard's prevFeedbackId guard.
@@ -26,6 +40,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
       prevFeedbackId.current = existingFeedback?.id;
       setScore(existingFeedback?.score ?? null);
       setComment(existingFeedback?.comment ?? '');
+      setError(null);
     }
   });
 
@@ -37,6 +52,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
 
   async function save(newScore: number | null, newValue: string | null, newComment?: string) {
     setSaving(true);
+    setError(null);
     try {
       const commentVal = newComment !== undefined ? newComment : comment;
       let saved: FeedbackItem;
@@ -53,11 +69,15 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
           score: newScore,
           value: newValue ?? undefined,
           comment: commentVal || undefined,
+          trace_id: traceId,
+          session_id: sessionId,
+          start_time: startTime,
         });
       }
       onSaved(saved);
     } catch (e) {
       console.error('Failed to save feedback', e);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -66,6 +86,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
   async function handleDelete() {
     if (!existingFeedback) return;
     setSaving(true);
+    setError(null);
     try {
       await deleteFeedback(existingFeedback.id);
       setScore(null);
@@ -73,13 +94,16 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
       onDeleted(item.feedback_key);
     } catch (e) {
       console.error('Failed to delete feedback', e);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
-  const cellInput =
-    'w-full rounded border border-transparent bg-transparent px-2 py-1 text-sm text-primary hover:border-secondary focus:border-brand focus:bg-primary focus:outline-none';
+  const cellInput = cn(
+    'w-full rounded border border-transparent bg-transparent px-2 py-1 text-sm text-primary hover:border-secondary focus:border-brand focus:bg-primary focus:outline-none',
+    error && 'border-error-strong'
+  );
 
   if (isCategorical) {
     return (
@@ -97,6 +121,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
           setScore(val);
           save(val, cat?.label ?? String(val));
         }}
+        title={error ?? undefined}
         className={cn(cellInput, 'cursor-pointer', saving && 'opacity-50')}
       >
         <option value="">—</option>
@@ -127,6 +152,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
         placeholder="—"
+        title={error ?? undefined}
         className={cn(cellInput, saving && 'opacity-50')}
       />
     );
@@ -147,6 +173,7 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
       placeholder="—"
+      title={error ?? undefined}
       className={cn(cellInput, saving && 'opacity-50')}
     />
   );

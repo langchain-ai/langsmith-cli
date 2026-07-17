@@ -33,31 +33,32 @@ const runs = await window.langsmith.call(
 
 ## How the grid is built from these
 
-- `src/api.ts` — thin wrappers over every operation above (identical to the 3-pane annotation-queue template; reuse these, don't invent new calls)
+- `src/api.ts` — thin wrappers over every operation above (identical to the 3-pane annotation-queue template; reuse these, don't invent new calls), plus `fetchQueueRunsSize` for pagination.
+- `src/hooks/useRunSection.ts` — pages through `needs_my_review` runs a page at a time (`GET /runs` + `GET /size`, since the bridge can't see the `/runs` response's total-count header), exposing `loadMore`/`hasMore`/`loadingMore` and dedupe-by-`queue_run_id`.
 - `src/components/QueueBar.tsx` — lists the workspace's queues and drives the selection
-- `src/App.tsx` — owns the selected queue, fetches the queue + its `needs_my_review` runs, derives the
+- `src/App.tsx` — owns the selected queue, the paginated run list, derives the
   columns from `queue.rubric_items`, fetches each column key's config with
-  `GET /feedback-configs`, and prefetches every row's existing feedback with
-  `GET /feedback?run=...`. Owns ArrowUp/ArrowDown row navigation and the
-  optimistic row removal on Done (`POST /annotation-queues/status/{id}`).
-- `src/components/DataGrid.tsx` — the table: sticky header of rubric keys, one
-  row per run, a `Done` button per row gated on the row's required columns.
+  `GET /feedback-configs`, and prefetches each newly-loaded row's existing
+  feedback with `GET /feedback?run=...`. Owns ArrowUp/ArrowDown row
+  navigation, row expand/collapse, and the optimistic row removal on Mark
+  Completed (`POST /annotation-queues/status/{id}`).
+- `src/components/DataGrid.tsx` — the table: sticky header, columns in order
+  **Run Name | Inputs | Outputs | one per rubric key | Mark Completed**.
+  Inputs/Outputs show a truncated one-line JSON preview by default; clicking
+  a row's name expands a panel below it with the full pretty-printed
+  inputs/outputs. An `IntersectionObserver` sentinel at the bottom of the
+  scroll container triggers `loadMore` for infinite scroll.
 - `src/components/GridCell.tsx` — one editable cell. The rubric item carries no
   type; the cell's editor (categorical `<select>` / continuous number input /
   freeform text) comes from that key's `feedback_config`, defaulting to
   freeform when unconfigured. Each cell saves as-you-go via
-  `POST`/`PATCH`/`DELETE /feedback`, so feedback persists before the row is
-  marked Done.
+  `POST`/`PATCH`/`DELETE /feedback`, always passing the row's `trace_id`/
+  `session_id`/`start_time` alongside `run_id` (without them the backend has
+  to look the run up, which can silently miss instead of writing inline), so
+  feedback persists before the row is marked Completed.
 
 ## Rubric flags this app honors
 
-- **`is_required`** — required columns are marked with `*` and a row's `Done`
-  button stays disabled until every required column has feedback (mirrors the
-  3-pane app's "all required filled" gate).
-- **`is_assertion`** — assertion-flagged rubric items are *not* feedback-scored
-  keys. The 3-pane template surfaces them in a separate, unpersisted
-  "Assertions" drafts panel (the annotation-queues API has no endpoint to save
-  them to). A grid of persisted feedback has nowhere to put those drafts, so
-  they're excluded from the columns and the header notes how many exist rather
-  than dropping them silently. If you add assertion handling, do it as its own
-  UI affordance, not a scored column.
+- **`is_required`** — required columns are marked with `*` and a row's `Mark
+  Completed` button stays disabled until every required column has feedback
+  (mirrors the 3-pane app's "all required filled" gate).

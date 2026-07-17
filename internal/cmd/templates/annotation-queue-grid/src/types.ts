@@ -4,6 +4,8 @@ export interface AnnotationQueueRun {
   id: string;
   queue_run_id: string;
   session_id: string;
+  trace_id: string;
+  start_time: string;
   name: string | null;
   inputs: Record<string, unknown> | null;
   outputs: Record<string, unknown> | null;
@@ -23,7 +25,6 @@ export interface RubricItem {
   value_descriptions: Record<string, string> | null;
   score_descriptions: Record<string, string> | null;
   is_required?: boolean | null;
-  is_assertion?: boolean | null;
 }
 
 export interface AnnotationQueue {
@@ -66,6 +67,13 @@ export interface FeedbackSubmission {
   score?: number | null;
   value?: string | null;
   comment?: string | null;
+  // Without these, the backend has to look the run up by run_id alone —
+  // which can miss (falls into an async/best-effort path that may never
+  // land) instead of writing the feedback inline. Always pass them when
+  // known, same as the real annotation queue UI does.
+  trace_id?: string;
+  session_id?: string;
+  start_time?: string;
 }
 
 export interface FeedbackItem {

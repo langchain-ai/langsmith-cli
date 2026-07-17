@@ -5,7 +5,7 @@
 A LangSmith custom app, scaffolded by `langsmith apps init` — a real,
 working annotation-queue review UI rendered as a **spreadsheet**: one row per
 queue run, one column per rubric key, cells edited inline and saved as you go,
-`Done` to complete a row. Meant to vibe-code from here, not a toy example.
+`Mark Completed` to complete a row. Meant to vibe-code from here, not a toy example.
 **Read `AGENTS.md` first** — it documents the LangSmith API surface this app
 can call.
 
