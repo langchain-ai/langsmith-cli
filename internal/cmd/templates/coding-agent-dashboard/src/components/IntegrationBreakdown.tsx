@@ -5,7 +5,7 @@ interface Props {
   colorOf: (integration: string) => string;
 }
 
-// Per-integration model breakdown: one card per ls_integration, with run
+// Per-integration model breakdown: one card per ls_integration, with LLM-call
 // count, error rate, and a mini bar per ls_model_name.
 export function IntegrationBreakdown({ stats, colorOf }: Props) {
   return (
@@ -19,7 +19,7 @@ export function IntegrationBreakdown({ stats, colorOf }: Props) {
               <span className="size-3 shrink-0 rounded-sm" style={{ backgroundColor: colorOf(s.integration) }} />
               <span className="min-w-0 flex-1 truncate font-medium text-primary">{s.integration}</span>
               <span className="shrink-0 text-xs text-tertiary">
-                {s.count} run{s.count === 1 ? '' : 's'} · {errorRate}% err
+                {s.count} call{s.count === 1 ? '' : 's'} · {errorRate}% err
               </span>
             </div>
 

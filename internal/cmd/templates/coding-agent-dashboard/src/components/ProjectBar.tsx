@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchProjects } from '../api';
-import type { Project } from '../types';
+import { ALL_PROJECTS, type Project } from '../types';
 
 interface Props {
   selectedProjectId: string;
@@ -45,6 +45,7 @@ export function ProjectBar({ selectedProjectId, onSelect }: Props) {
         className="min-w-0 max-w-[420px] flex-1 rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-60"
       >
         <option value="">{placeholder}</option>
+        {projects.length > 0 && <option value={ALL_PROJECTS}>All projects (coding-agent scan)</option>}
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}

@@ -1,22 +1,53 @@
+// Sentinel project id for the cross-project scan tab (see ProjectBar/App).
+export const ALL_PROJECTS = '__all__';
+
 export interface Project {
   id: string;
   name: string;
 }
 
-// A root run from POST /api/v1/runs/query. Custom metadata lives under
-// extra.metadata (see LangSmith run schema).
+// Fields selected from POST /api/v1/runs/query. Custom metadata lives at
+// extra.metadata; token/cost totals roll up onto root runs.
 export interface Run {
   id: string;
   name: string | null;
+  run_type: string | null;
+  parent_run_id: string | null;
+  trace_id: string | null;
   error: string | null;
-  extra: { metadata?: Record<string, unknown> } | null;
+  start_time: string | null;
+  end_time: string | null;
+  total_tokens: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_cost: number | null;
+  prompt_token_details: { cache_read?: number; cache_creation?: number } | null;
+  extra: { metadata?: Record<string, unknown>; runtime?: Record<string, unknown> } | null;
 }
 
 export interface RunsQueryResponse {
   runs: Run[];
+  cursor?: string | null;
 }
 
-// Aggregated counts for one ls_integration value.
+// The four scoped result sets one project view is built from.
+export interface ProjectRuns {
+  roots: Run[];
+  llm: Run[];
+  tool: Run[];
+  subagents: Run[];
+}
+
+// One project's coding-vs-other counts, sampled from recent root runs.
+export interface ProjectSummary {
+  project: Project;
+  coding: number;
+  other: number;
+  sampled: number;
+  capped: boolean;
+}
+
+// Per-integration model counts for the model×integration breakdown.
 export interface IntegrationStat {
   integration: string;
   count: number;

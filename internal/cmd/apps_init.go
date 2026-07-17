@@ -119,8 +119,10 @@ regardless of choice.
                      are rubric keys, cells edited inline, Done per row.
   coding-agent-dashboard
                      A charts dashboard over coding-agent runs: pick a
-                     project, see integration share (pie) and a per-model
-                     breakdown with run counts and error rates.
+                     project (or scan all projects), see integration/model
+                     share, token/cost/cache economics, tool and subagent
+                     usage, errors, activity over time, and per-thread
+                     breakdowns.
   experiment-comparison
                      Compare evaluation experiments: pick a dataset, a
                      baseline, and comparisons; see aggregates and a
