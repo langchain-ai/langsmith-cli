@@ -157,8 +157,8 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	page := string(body)
 
-	if !strings.Contains(page, `id="ls-dev-mode-toggle"`) {
-		t.Errorf("every app should get the Light/Dark mode toggle:\n%s", page)
+	if !strings.Contains(page, `id="ls-dev-mode-light"`) || !strings.Contains(page, `id="ls-dev-mode-dark"`) {
+		t.Errorf("every app should get always-visible Light/Dark buttons:\n%s", page)
 	}
 	// The queue selector is gone entirely now.
 	if strings.Contains(page, `id="ls-dev-queue-select"`) {
