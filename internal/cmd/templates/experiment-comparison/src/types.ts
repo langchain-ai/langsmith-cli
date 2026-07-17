@@ -35,6 +35,15 @@ export interface FeedbackConfigSchema {
   is_lower_score_better: boolean | null;
 }
 
+// An ordered experiment with its display letter and series color (baseline first).
+export interface ExperimentView {
+  id: string;
+  name: string;
+  letter: string;
+  color: string;
+  isBaseline: boolean;
+}
+
 // Per-experiment aggregates derived client-side over the fetched examples.
 export interface Aggregate {
   experimentId: string;

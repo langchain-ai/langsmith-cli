@@ -31,7 +31,7 @@ experiment via `run.session_id`, and carries:
 - `start_time`, `end_time` — latency is `end_time - start_time` (computed here;
   there is no latency field)
 - `total_tokens`, `total_cost` (cost is a numeric string)
-- `error`, `status`
+- `error`
 - `feedback_stats` — an **untyped nested map** `{ [key]: { avg, n, ... } }`.
   Read `feedback_stats[key].avg`, coerce to a number, and guard missing keys
   (see `scoreFor` in `src/lib/delta.ts`) — a missing score must yield null, not
@@ -46,9 +46,19 @@ the UI notes when it shows only the first N.
 
 ## What this app already does
 
+Read-only by design: it visualizes and aggregates, and compares a baseline
+against any number of comparison experiments. It never creates or deletes
+datasets/experiments — add that yourself if you want it.
+
 - `src/api.ts` — the four calls above
 - `src/components/Pickers.tsx` — dataset → baseline → comparison selection
 - `src/lib/delta.ts` — safe score/latency/cost accessors + baseline verdict/colors
+- `src/lib/metrics.ts` — shared metric descriptors, formats, series letters/colors
 - `src/components/SummaryPanel.tsx` — per-experiment aggregates, colored vs baseline
-- `src/components/ExampleTable.tsx` — per-example outputs, latency, and score
+- `src/components/Scorecard.tsx` — per-comparison win/loss/tie counts vs baseline
+- `src/components/ScatterPlot.tsx` — baseline vs comparison per metric (first four series)
+- `src/components/ExampleTable.tsx` — per-example outputs and a sortable, selectable metric
 - `src/App.tsx` — fetches, derives aggregates and feedback keys, wires state
+
+Series colors come from `--series-1..4` in `index.css` (validated CVD-safe,
+stepped separately for the dark surface) so charts theme without branching.

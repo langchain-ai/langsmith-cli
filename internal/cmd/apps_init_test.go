@@ -177,9 +177,12 @@ func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 		"src/api.ts",
 		"src/types.ts",
 		"src/lib/delta.ts",
+		"src/lib/metrics.ts",
 		"src/components/Pickers.tsx",
 		"src/components/SummaryPanel.tsx",
 		"src/components/ExampleTable.tsx",
+		"src/components/Scorecard.tsx",
+		"src/components/ScatterPlot.tsx",
 	} {
 		if !writtenSet[want] {
 			t.Errorf("expected %q to be written, got %v", want, written)

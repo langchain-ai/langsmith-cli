@@ -116,6 +116,12 @@
     --green-900: #084d31;
     --green-950: #053321;
 
+    /* series (categorical chart slots, validated CVD-safe light) */
+    --series-1: #2a78d6;
+    --series-2: #008300;
+    --series-3: #e87ba4;
+    --series-4: #eda100;
+
     /* acid */
     --acid-10: #fafee8;
     --acid-25: #f2fcc8;
@@ -373,6 +379,12 @@
     --green-800: #dcfae6;
     --green-900: #ecfdf3;
     --green-950: #f5fef9;
+
+    /* series stepped for the dark surface, validated as a set */
+    --series-1: #3987e5;
+    --series-2: #008300;
+    --series-3: #d55181;
+    --series-4: #c98500;
   }
 }
 

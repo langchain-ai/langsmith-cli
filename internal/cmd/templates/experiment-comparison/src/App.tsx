@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pickers } from './components/Pickers';
 import { SummaryPanel } from './components/SummaryPanel';
 import { ExampleTable } from './components/ExampleTable';
+import { Scorecard } from './components/Scorecard';
+import { ScatterPlot } from './components/ScatterPlot';
 import { fetchComparison, fetchDatasets, fetchExperiments, fetchFeedbackConfigs } from './api';
 import { costOf, latencyMs, scoreFor } from './lib/delta';
-import type { Aggregate, Dataset, ExampleWithRuns, Experiment } from './types';
+import { buildMetrics, comparisonColor, letterFor } from './lib/metrics';
+import type { Aggregate, Dataset, ExampleWithRuns, ExperimentView, Experiment } from './types';
 
 const EXAMPLE_LIMIT = 25;
 
@@ -26,6 +29,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [examplesLoading, setExamplesLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [lowerIsBetter, setLowerIsBetter] = useState<Record<string, boolean>>({});
+  const [metricId, setMetricId] = useState('');
 
   useEffect(() => {
     fetchDatasets()
@@ -98,6 +102,31 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     [selectedIds, experiments]
   );
 
+  // Ordered experiments with a display letter and series color (baseline first).
+  const expViews = useMemo<ExperimentView[]>(
+    () =>
+      orderedExperiments.map((x, i) => ({
+        id: x.id,
+        name: x.name,
+        letter: letterFor(i),
+        isBaseline: i === 0,
+        color: i === 0 ? 'var(--text-tertiary)' : comparisonColor(i - 1),
+      })),
+    [orderedExperiments]
+  );
+
+  const metrics = useMemo(() => buildMetrics(feedbackKeys, lowerIsBetter), [feedbackKeys, lowerIsBetter]);
+
+  // Keep the shared metric selection valid as feedback keys load.
+  useEffect(() => {
+    setMetricId((prev) => (metrics.some((m) => m.id === prev) ? prev : (metrics[0]?.id ?? '')));
+  }, [metrics]);
+
+  const selectedMetric = useMemo(
+    () => metrics.find((m) => m.id === metricId) ?? metrics[0],
+    [metrics, metricId]
+  );
+
   // Per-experiment aggregates derived over the fetched examples.
   const aggregates = useMemo(() => {
     const out: Record<string, Aggregate> = {};
@@ -156,12 +185,14 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     if (examples.length === 0) return centered('No examples found for this selection.');
 
     const capped = examples.length >= EXAMPLE_LIMIT;
+    const hasComparisons = expViews.length > 1;
+
     return (
       <div className="mx-auto flex max-w-6xl flex-col gap-8">
         <section className="flex flex-col gap-3">
           <h2 className="text-base font-semibold text-primary">Summary</h2>
           <SummaryPanel
-            experiments={orderedExperiments}
+            experiments={expViews}
             aggregates={aggregates}
             feedbackKeys={feedbackKeys}
             lowerIsBetter={lowerIsBetter}
@@ -172,19 +203,54 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
           </p>
         </section>
 
+        {hasComparisons && (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-base font-semibold text-primary">Regression scorecard</h2>
+            <Scorecard examples={examples} experiments={expViews} metrics={metrics} />
+            <p className="text-xs text-tertiary">
+              Per comparison, examples that beat (↑), lost to (↓), or tied (=) the baseline.
+            </p>
+          </section>
+        )}
+
+        {hasComparisons && selectedMetric && (
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-primary">Baseline vs comparison</h2>
+              {metricSelect()}
+            </div>
+            <ScatterPlot examples={examples} experiments={expViews} metric={selectedMetric} />
+          </section>
+        )}
+
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-primary">Per-example</h2>
-          <ExampleTable
-            examples={examples}
-            experiments={orderedExperiments}
-            primaryKey={feedbackKeys[0]}
-            lowerIsBetter={lowerIsBetter[feedbackKeys[0]] ?? false}
-          />
-          {capped && (
-            <p className="text-xs text-tertiary">Showing first {EXAMPLE_LIMIT} examples.</p>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-primary">Per-example</h2>
+            {!hasComparisons && metricSelect()}
+          </div>
+          <ExampleTable examples={examples} experiments={expViews} metric={selectedMetric} />
+          {capped && <p className="text-xs text-tertiary">Showing first {EXAMPLE_LIMIT} examples.</p>}
         </section>
       </div>
+    );
+  }
+
+  function metricSelect() {
+    return (
+      <label className="flex items-center gap-2 text-xs text-tertiary">
+        Metric
+        <select
+          value={metricId}
+          onChange={(e) => setMetricId(e.target.value)}
+          className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
+        >
+          {metrics.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
     );
   }
 }
