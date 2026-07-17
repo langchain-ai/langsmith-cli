@@ -116,9 +116,6 @@ teammates' pushes update the same app instead of creating new ones.
 					"name":       appName,
 					"files":      files,
 					"entrypoint": entrypoint,
-					// Backend still requires context_type; the CLI no longer
-					// exposes it, so send a constant. Unverified against a live API.
-					"context_type": "none",
 				}
 				if description != "" {
 					payload["description"] = description

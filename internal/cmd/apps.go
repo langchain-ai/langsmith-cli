@@ -40,7 +40,6 @@ type customApp struct {
 	TenantID    string            `json:"tenant_id,omitempty"`
 	Name        string            `json:"name"`
 	Description *string           `json:"description,omitempty"`
-	ContextType string            `json:"context_type"`
 	Files       map[string]string `json:"files,omitempty"`
 	Entrypoint  string            `json:"entrypoint"`
 	IsEnabled   bool              `json:"is_enabled"`

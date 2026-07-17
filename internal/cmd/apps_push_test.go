@@ -32,10 +32,9 @@ func TestAppsPush_CreatesAndWritesLink(t *testing.T) {
 			_ = json.Unmarshal(body, &postBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{
-				ID:          "app_new",
-				Name:        "my-app",
-				ContextType: "none",
-				Entrypoint:  "dist/bundle.js",
+				ID:         "app_new",
+				Name:       "my-app",
+				Entrypoint: "dist/bundle.js",
 			})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -87,10 +86,9 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 			patchPath = r.URL.Path
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{
-				ID:          "app_existing",
-				Name:        "my-app",
-				ContextType: "annotation_queue",
-				Entrypoint:  "dist/bundle.js",
+				ID:         "app_existing",
+				Name:       "my-app",
+				Entrypoint: "dist/bundle.js",
 			})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -138,10 +136,9 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 			_ = json.Unmarshal(body, &postBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{
-				ID:          "app_new",
-				Name:        "my-aq-app",
-				ContextType: "annotation_queue",
-				Entrypoint:  "dist/bundle.js",
+				ID:         "app_new",
+				Name:       "my-aq-app",
+				Entrypoint: "dist/bundle.js",
 			})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -170,10 +167,6 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	}
 	if postBody["name"] != "my-aq-app" {
 		t.Errorf("expected name from the link file used as fallback, got %v", postBody)
-	}
-	// The CLI no longer exposes context_type; create sends a constant "none".
-	if postBody["context_type"] != "none" {
-		t.Errorf("expected the constant context_type \"none\" in the create payload, got %v", postBody)
 	}
 	if !strings.Contains(out, `"status": "created"`) {
 		t.Errorf("expected created status, got:\n%s", out)
@@ -209,10 +202,9 @@ func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 			_ = json.Unmarshal(body, &postBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{
-				ID:          "app_recreated",
-				Name:        "my-app",
-				ContextType: "annotation_queue",
-				Entrypoint:  "dist/bundle.js",
+				ID:         "app_recreated",
+				Name:       "my-app",
+				Entrypoint: "dist/bundle.js",
 			})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -243,9 +235,6 @@ func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 	}
 	if postBody["name"] != "my-app" {
 		t.Errorf("expected the recreated app to reuse the old app's name, got %v", postBody)
-	}
-	if postBody["context_type"] != "none" {
-		t.Errorf("expected the constant context_type \"none\" in the recreate payload, got %v", postBody)
 	}
 	if !strings.Contains(out, `"status": "created"`) {
 		t.Errorf("expected created status, got:\n%s", out)

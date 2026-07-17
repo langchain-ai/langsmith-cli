@@ -18,8 +18,8 @@ interface Props {
 const selectClass =
   'min-w-0 max-w-[360px] flex-1 rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-60';
 
-// Dataset → baseline → one or more comparison experiments. Contextual apps are
-// gone, so the app picks everything itself.
+// Dataset → baseline → one or more comparison experiments, picked entirely
+// within the app.
 export function Pickers({
   datasets,
   datasetsLoading,
