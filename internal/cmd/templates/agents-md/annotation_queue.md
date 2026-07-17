@@ -1,21 +1,10 @@
-# AGENTS.md — LangSmith API surface for this app
+## This app: annotation-queue review
 
-This is an annotation-queue review app. Apps are uniform — the host gives you
-no bound context, so `render(data, root, metadata)` receives `data = {}`. The
-app picks its own queue: `src/components/QueueBar.tsx` lists the workspace's
-queues via `GET /api/v1/annotation-queues` and the user selects one. From
-there you fetch everything else (run list, run detail, feedback, ...) yourself
-via `window.langsmith.call`. `src/api.ts` already wraps every operation below —
-read it before adding new API calls, you likely don't need to.
-
-`render`'s third argument is `metadata`, an open/extensible object; v1 has
-exactly one key, `metadata.mode` (`"dark"` | `"light"`). The sandbox sets
-`html.dark` from `mode` before every render, so this Tailwind/token-based app
-gets dark mode for **free** — no branching needed. Only apps that use **inline
-styles** need to branch on `metadata.mode`. `mode` is re-sent (and `render`
-re-called) whenever it changes.
-
-## Calling the API
+A queue-review UI (run list, inputs/outputs viewer, feedback rubric, reviewer
+notes). It picks its own queue — `src/components/QueueBar.tsx` lists the
+workspace's queues via `GET /api/v1/annotation-queues` and the user selects one
+— then fetches everything else via `window.langsmith.call`. `src/api.ts` wraps
+every operation below; read it before adding calls, you likely don't need to.
 
 ```ts
 const runs = await window.langsmith.call(
@@ -23,12 +12,6 @@ const runs = await window.langsmith.call(
   { params: { status: 'needs_my_review' } }
 );
 ```
-
-Generic passthrough, not a curated allowlist — any operation your API key
-already permits can be called. The list below is the practically-relevant
-subset for a queue-review UI; the full LangSmith API is also reachable if
-you need more of it (see `AGENTS.md` for standalone apps, or the docs:
-https://docs.langchain.com/langsmith/home).
 
 ## Annotation queues
 

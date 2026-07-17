@@ -1,31 +1,21 @@
-# AGENTS.md — LangSmith API surface for this app
+## This app: experiment-comparison dashboard
 
-This is an **experiment-comparison dashboard**. Apps are uniform — the host
-gives you no bound context, so `render(data, root, metadata)` receives
-`data = {}`. The app picks its own dataset and experiments (`src/components/
-Pickers.tsx`) and fetches everything via `window.langsmith.call`. `src/api.ts`
-already wraps every call below.
-
-## The value this adds
+Compares evaluation experiments for one dataset. It picks its own dataset and
+experiments (`src/components/Pickers.tsx`) and fetches everything via
+`window.langsmith.call`; `src/api.ts` wraps every call below.
 
 LangSmith's built-in comparison view colors regressions for **feedback scores
 only**. This template also colors **latency, cost, and token** regressions vs
 the chosen baseline — all computed client-side in `src/lib/delta.ts` from the
-same response. No SSE/delta endpoint (`/runs/delta`) is used; deltas are
-computed here.
-
-## Theme
-
-`metadata.mode` (`"dark"` | `"light"`) is applied by the sandbox as `html.dark`,
-so this token UI themes with no branching. Delta colors use `--green-*` /
-`--red-*` tokens (`text-success-primary` / `text-error-primary`) that flip under
-`html.dark`, legible in both themes.
+same response. No SSE/delta endpoint is used. Delta colors use `--green-*` /
+`--red-*` tokens (`text-success-primary` / `text-error-primary`), legible in
+both themes.
 
 ## Endpoints this app uses
 
 - `GET /api/v1/datasets` — list datasets (top-level array of `{ id, name }`)
 - `GET /api/v1/sessions?reference_dataset=<id>&reference_free=false` — list the
-  experiments (tracer sessions) for a dataset (top-level array of `{ id, name }`)
+  experiments (tracer sessions) for a dataset (array of `{ id, name }`)
 - `POST /api/v1/datasets/{dataset_id}/runs` — per-example rows joined across
   experiments; body `{ session_ids: [...], limit, offset }`
 - `GET /api/v1/feedback-configs?key=<k>` — `is_lower_score_better` per feedback

@@ -15,8 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// all: is required so embed.FS includes dotfiles (.gitignore) — by default
-// go:embed silently drops any path segment starting with "." or "_".
+// The all: prefix makes embed.FS include dotfiles (.gitignore) and _-prefixed
+// files; plain embed drops any path segment starting with "." or "_".
 //
 //go:embed all:templates/blank
 var blankStarterFS embed.FS
@@ -33,7 +33,7 @@ var codingAgentDashboardStarterFS embed.FS
 //go:embed all:templates/experiment-comparison
 var experimentComparisonStarterFS embed.FS
 
-//go:embed templates/agents-md
+//go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
 // appType is one --template choice: which starter to scaffold and which
@@ -41,14 +41,14 @@ var agentsMDFS embed.FS
 type appType struct {
 	templateFS   embed.FS
 	templateRoot string
-	agentsMD     string // selects templates/agents-md/<agentsMD>.md
+	agentsMD     string // template-specific AGENTS.md fragment; "" = none (generic base only)
 }
 
 var appTypes = map[string]appType{
 	"blank": {
 		templateFS:   blankStarterFS,
 		templateRoot: "templates/blank",
-		agentsMD:     "none",
+		agentsMD:     "",
 	},
 	"annotation-queue": {
 		templateFS:   annotationQueueStarterFS,
@@ -295,9 +295,9 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, err
 	}
 
-	agentsMD, err := agentsMDFS.ReadFile("templates/agents-md/" + at.agentsMD + ".md")
+	agentsMD, err := assembleAgentsMD(at.agentsMD)
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded AGENTS.md %q: %w", at.agentsMD, err)
+		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), agentsMD, 0o644); err != nil {
 		return nil, fmt.Errorf("writing AGENTS.md: %w", err)
@@ -316,4 +316,28 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 var templatedStarterFiles = map[string]bool{
 	"README.md":    true,
 	"package.json": true,
+}
+
+// assembleAgentsMD builds an app's AGENTS.md from the generic base
+// (_common.md) with the template-specific fragment injected at the marker.
+// A blank template (agentsMD == "") yields the base alone.
+func assembleAgentsMD(agentsMD string) ([]byte, error) {
+	const marker = "<!-- TEMPLATE-SPECIFIC -->"
+	common, err := agentsMDFS.ReadFile("templates/agents-md/_common.md")
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded _common.md: %w", err)
+	}
+	fragment := ""
+	if agentsMD != "" {
+		b, err := agentsMDFS.ReadFile("templates/agents-md/" + agentsMD + ".md")
+		if err != nil {
+			return nil, fmt.Errorf("reading embedded AGENTS.md fragment %q: %w", agentsMD, err)
+		}
+		fragment = strings.TrimSpace(string(b))
+	}
+	out := strings.Replace(string(common), marker, fragment, 1)
+	for strings.Contains(out, "\n\n\n") {
+		out = strings.ReplaceAll(out, "\n\n\n", "\n\n")
+	}
+	return []byte(strings.TrimSpace(out) + "\n"), nil
 }
