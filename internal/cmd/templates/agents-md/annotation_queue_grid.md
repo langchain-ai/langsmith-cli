@@ -1,0 +1,76 @@
+# AGENTS.md — LangSmith API surface for this app
+
+This is an **annotation_queue** custom app rendered as a **spreadsheet grid**
+(rows = queue runs, columns = rubric keys). `render(data, root, metadata)`
+receives `data = { queueId }` — that's the *only* context the host gives you.
+You fetch everything else (run list, existing feedback, rubric configs, ...)
+yourself via `window.langsmith.call`. `src/api.ts` already wraps every
+operation below — read it before adding new API calls, you likely don't need to.
+
+`render`'s third argument is `metadata`, an open/extensible object; v1 has
+exactly one key, `metadata.mode` (`"dark"` | `"light"`). The sandbox sets
+`html.dark` from `mode` before every render, so this Tailwind/token-based app
+gets dark mode for **free** — no branching needed. Only apps that use **inline
+styles** need to branch on `metadata.mode`. `mode` is re-sent (and `render`
+re-called) whenever it changes.
+
+## Calling the API
+
+```ts
+const runs = await window.langsmith.call(
+  `GET /api/v1/annotation-queues/${queueId}/runs`,
+  { params: { status: 'needs_my_review' } }
+);
+```
+
+Generic passthrough, not a curated allowlist — any operation your API key
+already permits can be called. The list below is the practically-relevant
+subset for a queue-review UI; the full LangSmith API is also reachable if
+you need more of it (see the docs: https://docs.langchain.com/langsmith/home).
+
+## Annotation queues
+
+- `GET /api/v1/annotation-queues/{queue_id}` — queue detail (rubric items, instructions, num_reviewers_per_item)
+- `GET /api/v1/annotation-queues/{queue_id}/runs` — list runs in the queue (filter by `status`: `needs_my_review` | `needs_others_review` | `completed`)
+- `PATCH /api/v1/annotation-queues/{queue_id}/runs/{queue_run_id}` — update a queue run (status/notes)
+- `POST /api/v1/annotation-queues/status/{queue_run_id}` — set a queue run's review status (this app uses `{status: 'completed'}` to mark a row done)
+- `GET /api/v1/annotation-queues/{queue_id}/runs/resolve/{queue_run_id}` — resolve a queue-run ID to its section (for deep links)
+- `GET /api/v1/annotation-queues/{queue_id}/total_size` / `/total_archived` / `/size` — size counters (accept a `status` filter)
+
+## Feedback
+
+- `POST /api/v1/feedback` — submit feedback (`{key, run_id, score?, value?, comment?}`)
+- `GET /api/v1/feedback?run={run_id}` — list feedback for a run
+- `PATCH /api/v1/feedback/{feedback_id}` — update feedback
+- `DELETE /api/v1/feedback/{feedback_id}` — delete feedback
+- `GET /api/v1/feedback-configs?key={key}` — fetch the type/min/max/categories for one or more feedback keys (repeat the `key` param for multiple)
+
+## How the grid is built from these
+
+- `src/api.ts` — thin wrappers over every operation above (identical to the 3-pane annotation-queue template; reuse these, don't invent new calls)
+- `src/App.tsx` — fetches the queue + its `needs_my_review` runs, derives the
+  columns from `queue.rubric_items`, fetches each column key's config with
+  `GET /feedback-configs`, and prefetches every row's existing feedback with
+  `GET /feedback?run=...`. Owns ArrowUp/ArrowDown row navigation and the
+  optimistic row removal on Done (`POST /annotation-queues/status/{id}`).
+- `src/components/DataGrid.tsx` — the table: sticky header of rubric keys, one
+  row per run, a `Done` button per row gated on the row's required columns.
+- `src/components/GridCell.tsx` — one editable cell. The rubric item carries no
+  type; the cell's editor (categorical `<select>` / continuous number input /
+  freeform text) comes from that key's `feedback_config`, defaulting to
+  freeform when unconfigured. Each cell saves as-you-go via
+  `POST`/`PATCH`/`DELETE /feedback`, so feedback persists before the row is
+  marked Done.
+
+## Rubric flags this app honors
+
+- **`is_required`** — required columns are marked with `*` and a row's `Done`
+  button stays disabled until every required column has feedback (mirrors the
+  3-pane app's "all required filled" gate).
+- **`is_assertion`** — assertion-flagged rubric items are *not* feedback-scored
+  keys. The 3-pane template surfaces them in a separate, unpersisted
+  "Assertions" drafts panel (the annotation-queues API has no endpoint to save
+  them to). A grid of persisted feedback has nowhere to put those drafts, so
+  they're excluded from the columns and the header notes how many exist rather
+  than dropping them silently. If you add assertion handling, do it as its own
+  UI affordance, not a scored column.

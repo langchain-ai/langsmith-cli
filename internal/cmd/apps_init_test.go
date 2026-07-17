@@ -55,6 +55,91 @@ func TestAppsInit_StandaloneAlsoWritesPartialAppLink(t *testing.T) {
 	}
 }
 
+// Grid variant shares context_type "annotation_queue" but scaffolds its own spreadsheet UI, not the 3-pane components.
+func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue-grid"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	for _, want := range []string{
+		"package.json",
+		"README.md",
+		"AGENTS.md",
+		".gitignore",
+		"vite.config.ts",
+		"tsconfig.json",
+		"src/entry.tsx",
+		"src/App.tsx",
+		"src/api.ts",
+		"src/types.ts",
+		"src/components/DataGrid.tsx",
+		"src/components/GridCell.tsx",
+	} {
+		if !writtenSet[want] {
+			t.Errorf("expected %q to be written, got %v", want, written)
+		}
+	}
+	// The grid variant must not carry the 3-pane app's components.
+	for _, unwanted := range []string{
+		"src/components/RunList.tsx",
+		"src/components/RunViewer.tsx",
+		"src/components/FeedbackPanel.tsx",
+	} {
+		if writtenSet[unwanted] {
+			t.Errorf("grid variant should not scaffold the 3-pane component %q", unwanted)
+		}
+	}
+
+	// Recorded context_type matches the 3-pane template — the host gates --queue-id on it, so both variants behave alike.
+	link, err := readAppLink(target)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.ContextType != "annotation_queue" {
+		t.Errorf("expected context_type annotation_queue, got %+v", link)
+	}
+}
+
+// Two templates sharing a context_type must still get distinct AGENTS.md — guards the agentsMD decoupling against regression.
+func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
+	dir := t.TempDir()
+
+	gridTarget := filepath.Join(dir, "grid-app")
+	if _, err := scaffoldCustomAppStarter(gridTarget, "grid-app", "", appTypes["annotation-queue-grid"], false); err != nil {
+		t.Fatalf("scaffold grid: %v", err)
+	}
+	gridAgents, err := os.ReadFile(filepath.Join(gridTarget, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read grid AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(gridAgents), "spreadsheet") || !strings.Contains(string(gridAgents), "DataGrid.tsx") {
+		t.Errorf("expected the grid-specific AGENTS.md, got:\n%s", gridAgents)
+	}
+
+	paneTarget := filepath.Join(dir, "pane-app")
+	if _, err := scaffoldCustomAppStarter(paneTarget, "pane-app", "", appTypes["annotation-queue"], false); err != nil {
+		t.Fatalf("scaffold 3-pane: %v", err)
+	}
+	paneAgents, err := os.ReadFile(filepath.Join(paneTarget, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read 3-pane AGENTS.md: %v", err)
+	}
+	if string(gridAgents) == string(paneAgents) {
+		t.Error("expected the grid variant to get a different AGENTS.md than the 3-pane template")
+	}
+	if strings.Contains(string(paneAgents), "DataGrid.tsx") {
+		t.Error("the 3-pane AGENTS.md should not mention the grid's DataGrid component")
+	}
+}
+
 func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -277,6 +362,24 @@ func TestAppsInitCmd_DefaultsToStandaloneWhenTypeOmitted(t *testing.T) {
 	}
 	if link == nil || link.ContextType != "none" {
 		t.Errorf("expected omitted --type to scaffold a standalone (context_type none) app, got %+v", link)
+	}
+}
+
+func TestAppsInitCmd_AcceptsAnnotationQueueGridType(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "grid-app", "--type", "annotation-queue-grid", "--skip-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected init to succeed for --type annotation-queue-grid, got: %v", err)
+	}
+
+	link, err := readAppLink(dir)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.ContextType != "annotation_queue" {
+		t.Errorf("expected context_type annotation_queue for the grid type, got %+v", link)
 	}
 }
 

@@ -24,6 +24,9 @@ var blankStarterFS embed.FS
 //go:embed all:templates/annotation-queue
 var annotationQueueStarterFS embed.FS
 
+//go:embed all:templates/annotation-queue-grid
+var annotationQueueGridStarterFS embed.FS
+
 //go:embed templates/agents-md
 var agentsMDFS embed.FS
 
@@ -32,10 +35,14 @@ var agentsMDFS embed.FS
 // AGENTS.md) the app declares. They're not independent — the
 // annotation-queue starter hard-requires a queueId, so there's no valid
 // combination where it pairs with contextType "none".
+//
+// context_type is NOT 1:1 with the template — two starters can share one.
+// agentsMD decouples AGENTS.md from it (empty → use contextType).
 type appType struct {
 	templateFS   embed.FS
 	templateRoot string
-	contextType  string // selects templates/agents-md/<contextType>.md
+	contextType  string // what the app declares itself as (.langsmith/app.json)
+	agentsMD     string // selects templates/agents-md/<agentsMD>.md; defaults to contextType
 }
 
 var appTypes = map[string]appType{
@@ -49,6 +56,30 @@ var appTypes = map[string]appType{
 		templateRoot: "templates/annotation-queue",
 		contextType:  "annotation_queue",
 	},
+	"annotation-queue-grid": {
+		templateFS:   annotationQueueGridStarterFS,
+		templateRoot: "templates/annotation-queue-grid",
+		contextType:  "annotation_queue",
+		agentsMD:     "annotation_queue_grid",
+	},
+}
+
+// agentsMDName is the AGENTS.md basename — its own if set, else the context_type.
+func (at appType) agentsMDName() string {
+	if at.agentsMD != "" {
+		return at.agentsMD
+	}
+	return at.contextType
+}
+
+// appTypeNames returns the valid --type values, sorted, keeping error text and help in sync with the map.
+func appTypeNames() []string {
+	names := make([]string, 0, len(appTypes))
+	for name := range appTypes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 type customAppStarterVars struct {
@@ -66,7 +97,7 @@ func newAppsInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--type standalone|annotation-queue]",
+		Use:   "init --name NAME [--type standalone|annotation-queue|annotation-queue-grid]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
@@ -81,6 +112,10 @@ that matches it). Defaults to "standalone" if omitted:
                      inputs/outputs viewer, feedback rubric, reviewer
                      notes) — this app receives only { queueId } as context
                      and fetches everything else itself.
+  annotation-queue-grid
+                     Same annotation_queue context as annotation-queue, but
+                     rendered as a spreadsheet: rows are queue runs, columns
+                     are rubric keys, cells edited inline, Done per row.
 
 Either way this also writes an AGENTS.md describing the LangSmith API
 surface available to this app, and a README explaining the bridge contract.
@@ -96,7 +131,7 @@ convenience, not a requirement — but you'll need to build manually before
 		RunE: func(cmd *cobra.Command, args []string) error {
 			at, ok := appTypes[appTypeFlag]
 			if !ok {
-				return fmt.Errorf("--type must be one of: standalone, annotation-queue")
+				return fmt.Errorf("--type must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
 			dir, err := os.Getwd()
 			if err != nil {
@@ -132,7 +167,7 @@ convenience, not a requirement — but you'll need to build manually before
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().StringVar(&appTypeFlag, "type", "standalone", "App type: standalone or annotation-queue")
+	cmd.Flags().StringVar(&appTypeFlag, "type", "standalone", "App type: "+strings.Join(appTypeNames(), ", "))
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	cmd.Flags().BoolVar(&skipInstall, "skip-install", false, "Skip running \"npm install && npm run build\" after scaffolding")
 	_ = cmd.MarkFlagRequired("name")
@@ -168,7 +203,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, fmt.Errorf("--name is required")
 	}
 	if at.templateRoot == "" {
-		return nil, fmt.Errorf("--type must be one of: standalone, annotation-queue")
+		return nil, fmt.Errorf("--type must be one of: %s", strings.Join(appTypeNames(), ", "))
 	}
 
 	if info, err := os.Stat(dir); err == nil {
@@ -244,9 +279,9 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, err
 	}
 
-	agentsMD, err := agentsMDFS.ReadFile("templates/agents-md/" + at.contextType + ".md")
+	agentsMD, err := agentsMDFS.ReadFile("templates/agents-md/" + at.agentsMDName() + ".md")
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded AGENTS.md for context type %q: %w", at.contextType, err)
+		return nil, fmt.Errorf("reading embedded AGENTS.md %q: %w", at.agentsMDName(), err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), agentsMD, 0o644); err != nil {
 		return nil, fmt.Errorf("writing AGENTS.md: %w", err)
