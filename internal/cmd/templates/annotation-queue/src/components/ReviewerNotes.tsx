@@ -2,24 +2,34 @@ import { Trash02Icon } from '@langchain/untitled-ui-icons';
 import { useEffect, useState } from 'react';
 import { deleteFeedback, fetchFeedbacks, submitFeedback } from '../api';
 import type { FeedbackItem } from '../types';
+import { ErrorBanner } from './ErrorBanner';
 import { Spinner } from './Spinner';
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 interface Props {
   runId: string | undefined;
+  traceId: string | undefined;
+  sessionId: string | undefined;
+  startTime: string | undefined;
 }
 
 // Mirrors LangSmith's RunNotesCrud: a per-run comment thread built on the
 // regular feedback API under the reserved "note" key (comment-only, no score).
 const NOTE_KEY = 'note';
 
-export function ReviewerNotes({ runId }: Props) {
+export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
   const [notes, setNotes] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft('');
+    setError(null);
     if (!runId) {
       setNotes([]);
       return;
@@ -40,27 +50,35 @@ export function ReviewerNotes({ runId }: Props) {
   async function handleAddNote() {
     if (!runId || !draft.trim()) return;
     setSubmitting(true);
+    setError(null);
     try {
       const saved = await submitFeedback({
         key: NOTE_KEY,
         run_id: runId,
         comment: draft.trim(),
+        feedback_config: { type: 'freeform' },
+        trace_id: traceId,
+        session_id: sessionId,
+        start_time: startTime,
       });
       setNotes((prev) => [saved, ...prev]);
       setDraft('');
     } catch (e) {
       console.error('Failed to add reviewer note', e);
+      setError(errorMessage(e));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDeleteNote(note: FeedbackItem) {
+    setError(null);
     try {
       await deleteFeedback(note.id);
       setNotes((prev) => prev.filter((n) => n.id !== note.id));
     } catch (e) {
       console.error('Failed to delete reviewer note', e);
+      setError(errorMessage(e));
     }
   }
 
@@ -92,6 +110,8 @@ export function ReviewerNotes({ runId }: Props) {
           {submitting ? 'Adding…' : 'Add note'}
         </button>
       </div>
+
+      {error && <ErrorBanner error={error} />}
 
       {loading ? (
         <div className="flex items-center justify-center py-4">

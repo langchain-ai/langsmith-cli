@@ -21,6 +21,8 @@ export function App({ queueId: initialQueueId }: Props) {
   const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
   const [selectedQueueRunId, setSelectedQueueRunId] = useState<string | undefined>(undefined);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   const isMultiReviewer = !!queue?.num_reviewers_per_item && queue.num_reviewers_per_item > 1;
   const needsReview = useRunSection(queueId || undefined, 'needs_my_review');
@@ -28,7 +30,7 @@ export function App({ queueId: initialQueueId }: Props) {
   const completed = useRunSection(queueId || undefined, 'completed');
 
   // Keep a ref to the complete handler so hotkey always calls the latest version
-  const completeRef = useRef<(() => Promise<void>) | null>(null);
+  const completeRef = useRef<() => void>(() => {});
   // Same trick for h/l navigation, which needs the latest run list + selection
   const goToAdjacentRunRef = useRef<(direction: 'prev' | 'next') => void>(() => {});
 
@@ -81,6 +83,7 @@ export function App({ queueId: initialQueueId }: Props) {
 
   function handleSelectRun(queueRunId: string) {
     setSelectedQueueRunId(queueRunId);
+    setCompleteError(null);
   }
 
   // h/l step through the "Needs Review" list. No-op at a list boundary.
@@ -101,18 +104,27 @@ export function App({ queueId: initialQueueId }: Props) {
     goToAdjacentRunRef.current = goToAdjacentRun;
   });
 
-  async function handleComplete() {
-    if (!selectedRun) return;
+  // Synchronous trigger (so both the footer button and the Cmd/Ctrl+Enter
+  // hotkey can call it the same way) that runs the async complete flow and
+  // surfaces any failure via completeError instead of swallowing it — a
+  // failed call used to look identical to a successful one.
+  function handleComplete() {
+    if (!selectedRun || completing) return;
     const queueRunId = selectedRun.queue_run_id;
-    try {
-      await markRunComplete(queueRunId);
-      const remainingNeedsReview = needsReview.runs.filter((r) => r.queue_run_id !== queueRunId);
-      needsReview.removeRun(queueRunId);
-      completed.prependRun({ ...selectedRun, last_reviewed_time: new Date().toISOString() });
-      setSelectedQueueRunId(remainingNeedsReview[0]?.queue_run_id);
-    } catch (e) {
-      console.error('Failed to mark complete', e);
-    }
+    setCompleting(true);
+    setCompleteError(null);
+    markRunComplete(queueRunId)
+      .then(() => {
+        const remainingNeedsReview = needsReview.runs.filter((r) => r.queue_run_id !== queueRunId);
+        needsReview.removeRun(queueRunId);
+        completed.prependRun({ ...selectedRun, last_reviewed_time: new Date().toISOString() });
+        setSelectedQueueRunId(remainingNeedsReview[0]?.queue_run_id);
+      })
+      .catch((e) => {
+        console.error('Failed to mark complete', e);
+        setCompleteError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => setCompleting(false));
   }
 
   useEffect(() => {
@@ -178,8 +190,13 @@ export function App({ queueId: initialQueueId }: Props) {
           <FeedbackPanel
             queue={queue}
             runId={selectedRun?.id}
+            traceId={selectedRun?.trace_id}
+            sessionId={selectedRun?.session_id}
+            startTime={selectedRun?.start_time}
             queueRunId={selectedRun?.queue_run_id}
             onComplete={handleComplete}
+            completing={completing}
+            completeError={completeError}
             totalNeedsReview={needsReview.runs.length}
           />
         </div>

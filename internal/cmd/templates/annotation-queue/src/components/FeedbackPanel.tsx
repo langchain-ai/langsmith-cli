@@ -8,8 +8,8 @@ import {
   XIcon,
 } from '@langchain/untitled-ui-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ErrorBanner } from './ErrorBanner';
 import { FeedbackChip } from './FeedbackChip';
-import { AssertionsSection, type AdhocAssertion } from './AssertionsSection';
 import { ReviewerNotes } from './ReviewerNotes';
 import { Spinner } from './Spinner';
 import type { AnnotationQueue, FeedbackConfig, FeedbackItem, RubricItem } from '../types';
@@ -22,11 +22,20 @@ import {
 } from '../api';
 import { cn } from '../lib/utils';
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 interface Props {
   queue: AnnotationQueue | null;
   runId: string | undefined;
+  traceId: string | undefined;
+  sessionId: string | undefined;
+  startTime: string | undefined;
   queueRunId: string | undefined;
-  onComplete: () => Promise<void>;
+  onComplete: () => void;
+  completing: boolean;
+  completeError: string | null;
   totalNeedsReview: number;
 }
 
@@ -37,6 +46,9 @@ interface RubricCardProps {
   config: FeedbackConfig | undefined;
   existingFeedback: FeedbackItem | undefined;
   runId: string;
+  traceId: string | undefined;
+  sessionId: string | undefined;
+  startTime: string | undefined;
   expanded: boolean;
   onToggleExpand: () => void;
   onFeedbackSaved: (feedback: FeedbackItem) => void;
@@ -48,6 +60,9 @@ function RubricCard({
   config,
   existingFeedback,
   runId,
+  traceId,
+  sessionId,
+  startTime,
   expanded,
   onToggleExpand,
   onFeedbackSaved,
@@ -56,6 +71,7 @@ function RubricCard({
   const [score, setScore] = useState<number | null>(existingFeedback?.score ?? null);
   const [comment, setComment] = useState<string>(existingFeedback?.comment ?? '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Sync when run changes (existingFeedback.id changes)
   const prevFeedbackId = useRef<string | undefined>(existingFeedback?.id);
@@ -64,6 +80,7 @@ function RubricCard({
       prevFeedbackId.current = existingFeedback?.id;
       setScore(existingFeedback?.score ?? null);
       setComment(existingFeedback?.comment ?? '');
+      setError(null);
     }
   });
 
@@ -77,6 +94,7 @@ function RubricCard({
 
   async function save(newScore: number | null, newValue: string | null, newComment?: string) {
     setSaving(true);
+    setError(null);
     try {
       const commentVal = newComment !== undefined ? newComment : comment;
       let saved: FeedbackItem;
@@ -93,11 +111,15 @@ function RubricCard({
           score: newScore,
           value: newValue ?? undefined,
           comment: commentVal || undefined,
+          trace_id: traceId,
+          session_id: sessionId,
+          start_time: startTime,
         });
       }
       onFeedbackSaved(saved);
     } catch (e) {
       console.error('Failed to save feedback', e);
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -106,6 +128,7 @@ function RubricCard({
   async function handleDelete() {
     if (!existingFeedback) return;
     setSaving(true);
+    setError(null);
     try {
       await deleteFeedback(existingFeedback.id);
       setScore(null);
@@ -113,6 +136,7 @@ function RubricCard({
       onFeedbackDeleted(item.feedback_key);
     } catch (e) {
       console.error('Failed to delete feedback', e);
+      setError(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -158,6 +182,8 @@ function RubricCard({
           {item.description && (
             <p className="text-sm text-quaternary">{item.description}</p>
           )}
+
+          {error && <ErrorBanner error={error} />}
 
           {/* Category options */}
           {isCategorical && (
@@ -292,20 +318,23 @@ function RubricCard({
 export function FeedbackPanel({
   queue,
   runId,
+  traceId,
+  sessionId,
+  startTime,
   queueRunId,
   onComplete,
+  completing,
+  completeError,
   totalNeedsReview,
 }: Props) {
   const [feedbackMap, setFeedbackMap] = useState<Record<string, FeedbackItem>>({});
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackConfigs, setFeedbackConfigs] = useState<Record<string, FeedbackConfig>>({});
-  const [completing, setCompleting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<boolean[]>([]);
   // Ad-hoc feedback keys added via the "+ Add" button, on top of the queue's rubric
   const [adhocKeys, setAdhocKeys] = useState<string[]>([]);
   const [addingKey, setAddingKey] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
-  const [assertions, setAssertions] = useState<AdhocAssertion[]>([]);
 
   const allRubricItems: RubricItem[] = [
     ...(queue?.rubric_items ?? []),
@@ -332,11 +361,6 @@ export function FeedbackPanel({
       setAdhocKeys([]);
     }
   }, [queue?.id, queue?.rubric_items]);
-
-  // Assertions are per-run drafts (e.g. for curating a dataset example)
-  useEffect(() => {
-    setAssertions([]);
-  }, [queueRunId]);
 
   // Fetch the type/min/max/categories config for each visible key — the
   // rubric item itself carries no type info (see RubricItem in types.ts).
@@ -414,16 +438,6 @@ export function FeedbackPanel({
       return next;
     });
   }, []);
-
-  async function handleComplete() {
-    if (!queueRunId) return;
-    setCompleting(true);
-    try {
-      await onComplete();
-    } finally {
-      setCompleting(false);
-    }
-  }
 
   const hasRubricItems = visibleRubricItems.length > 0;
   const allRequiredFilled = visibleRubricItems
@@ -517,6 +531,9 @@ export function FeedbackPanel({
                     config={feedbackConfigs[item.feedback_key]}
                     existingFeedback={feedbackMap[item.feedback_key]}
                     runId={runId ?? ''}
+                    traceId={traceId}
+                    sessionId={sessionId}
+                    startTime={startTime}
                     expanded={expandedItems[idx] ?? true}
                     onToggleExpand={() =>
                       setExpandedItems((prev) => {
@@ -533,21 +550,19 @@ export function FeedbackPanel({
             )}
           </div>
 
-          {/* Assertions section */}
-          <AssertionsSection assertions={assertions} onChange={setAssertions} />
-
           {/* Reviewer notes */}
-          <ReviewerNotes runId={runId} />
+          <ReviewerNotes runId={runId} traceId={traceId} sessionId={sessionId} startTime={startTime} />
         </div>
       </div>
 
       {/* Sticky footer */}
       {runId && queueRunId && (
         <div className="sticky bottom-0 border-t border-secondary bg-primary px-4 pb-20 pt-4">
+          {completeError && <ErrorBanner error={completeError} />}
           <button
             type="button"
             className="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
-            onClick={handleComplete}
+            onClick={onComplete}
             disabled={completing || !allRequiredFilled}
             title={!allRequiredFilled ? 'Fill in all required rubric items' : undefined}
           >

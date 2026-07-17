@@ -34,7 +34,7 @@ export function QueueBar({ selectedQueueId, onSelect }: Props) {
         : 'Select a queue…';
 
   return (
-    <div className="flex items-center gap-2 border-b border-secondary bg-surface-level-1 px-4 py-2">
+    <div className="flex items-center gap-2 bg-surface-level-1 px-4 py-2">
       <label htmlFor="ls-queue-select" className="shrink-0 text-sm font-medium text-secondary">
         Annotation queue
       </label>

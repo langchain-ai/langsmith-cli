@@ -33,7 +33,7 @@ export function ProjectBar({ selectedProjectId, onSelect }: Props) {
         : 'Select a project…';
 
   return (
-    <div className="flex items-center gap-2 border-b border-secondary bg-surface-level-1 px-4 py-2">
+    <div className="flex items-center gap-2 bg-surface-level-1 px-4 py-2">
       <label htmlFor="ls-project-select" className="shrink-0 text-sm font-medium text-secondary">
         Project
       </label>

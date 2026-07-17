@@ -35,7 +35,7 @@ export function Pickers({
   const others = experiments.filter((e) => e.id !== baselineId);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-secondary bg-surface-level-1 px-4 py-3">
+    <div className="flex flex-col gap-3 bg-surface-level-1 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <label htmlFor="ec-dataset" className="text-sm font-medium text-secondary">
           Dataset

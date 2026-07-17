@@ -2,6 +2,12 @@
 // global.d.ts for the bridge's type, and AGENTS.md for the operation format
 // and available endpoints. No fetch()/XMLHttpRequest here: the sandbox this
 // app runs in has no network access of its own.
+//
+// Every path is under /api/v1 — this is the documented public API surface
+// (see smith-backend/static/openapi.json), the contract this app's API-key
+// auth actually talks to. The frontend's own bundle skips this prefix in
+// SaaS mode, but that's specific to how its own session-authenticated calls
+// route internally — not the public contract external API-key clients use.
 import type {
   AnnotationQueue,
   AnnotationQueueRun,
@@ -63,7 +69,14 @@ export async function fetchFeedbackConfigs(keys: string[]): Promise<FeedbackConf
 
 export async function submitFeedback(feedback: FeedbackSubmission): Promise<FeedbackItem> {
   return window.langsmith.call('POST /api/v1/feedback', {
-    body: feedback,
+    body: {
+      ...feedback,
+      feedback_source: { type: 'app' },
+      // The /feedback schema defaults this to true; explicitly opt out like
+      // the real annotation queue UI does — a review action shouldn't have
+      // the side effect of extending the underlying trace's retention.
+      extend_trace_retention: false,
+    },
   }) as Promise<FeedbackItem>;
 }
 

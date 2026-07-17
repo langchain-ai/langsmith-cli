@@ -583,3 +583,52 @@ func TestAPIURL(t *testing.T) {
 		t.Errorf("expected http://localhost:1234, got %q", c.APIURL())
 	}
 }
+
+// ---------- Redirect handling ----------
+
+func TestRawDo_RejectsMethodChangingRedirect(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/feedback" {
+			http.Redirect(w, r, "/feedback-redirected", http.StatusFound) // 302
+			return
+		}
+		t.Errorf("redirect target should never be reached for a rejected redirect, got %s %s", r.Method, r.URL.Path)
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	_, _, _, _, err := c.RawDo(context.Background(), "POST", "/feedback", strings.NewReader(`{"key":"note"}`), nil)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "would change") {
+		t.Errorf("expected error to mention the method change, got: %v", err)
+	}
+}
+
+func TestRawDo_FollowsSameMethodRedirect(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/runs" {
+			http.Redirect(w, r, "/runs-redirected", http.StatusFound) // 302
+			return
+		}
+		if r.Method != "GET" {
+			t.Errorf("expected GET on redirect target, got %s", r.Method)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	status, _, _, body, err := c.RawDo(context.Background(), "GET", "/runs", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != 200 {
+		t.Errorf("expected 200, got %d", status)
+	}
+	if string(body) != `{"ok":true}` {
+		t.Errorf("unexpected body: %s", body)
+	}
+}
