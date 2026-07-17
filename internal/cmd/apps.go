@@ -29,9 +29,8 @@ const (
 // record of "what this app is" that `apps push` reads on every run to decide
 // whether to create a new custom app or update the one it created last time.
 type appLink struct {
-	AppID       string `json:"app_id"`
-	Name        string `json:"name"`
-	ContextType string `json:"context_type,omitempty"`
+	AppID string `json:"app_id"`
+	Name  string `json:"name"`
 }
 
 // customApp mirrors the JSON shape returned by smith-go's
@@ -68,20 +67,22 @@ func newAppsCmd() *cobra.Command {
 		Use:   "apps",
 		Short: "Build, upload, and manage Custom Apps",
 		Long: `Build, upload, and manage Custom Apps — UIs you build locally against the
-LangSmith API and run inside LangSmith, either standalone (Custom Apps tab)
-or embedded in a specific resource (e.g. an annotation queue).
+LangSmith API and run inside LangSmith.
 
 A custom app is a small set of files rendered in a locked-down sandbox: no
 direct network access, no npm modules at runtime — only a postMessage
 bridge (window.langsmith.call/setData) proxied through the viewer's own
 LangSmith session. Use React/JSX or npm dependencies freely; the scaffolded
-starter bundles them locally (esbuild for --type standalone, Vite for
---type annotation-queue) into the single dependency-free file the sandbox
-expects.
+starter bundles them locally (Vite) into the single dependency-free file the
+sandbox expects.
+
+Pick a starter with --template (blank, annotation-queue,
+annotation-queue-grid); they differ only in the UI they scaffold — every app
+is uploaded and rendered the same way.
 
 Examples:
-  langsmith apps init --name my-app --type standalone
-  langsmith apps init --name my-queue-app --type annotation-queue
+  langsmith apps init --name my-app
+  langsmith apps init --name my-queue-app --template annotation-queue
   langsmith apps dev
   langsmith apps push
   langsmith apps list

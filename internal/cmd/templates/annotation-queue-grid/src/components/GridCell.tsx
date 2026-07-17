@@ -29,10 +29,8 @@ export function GridCell({ item, config, runId, existingFeedback, onSaved, onDel
     }
   });
 
-  // Type comes from the feedback config, not the rubric item. A key with no
-  // config yet defaults to freeform — same as LangSmith's own behavior.
-  // Anything that isn't categorical-with-categories or continuous falls through
-  // to the freeform text editor below (the default return).
+  // Editor type comes from the feedback config (freeform when unconfigured,
+  // like LangSmith). Non-categorical, non-continuous keys fall through to freeform.
   const configType = config?.type ?? 'freeform';
   const isCategorical = configType === 'categorical' && !!config?.categories?.length;
   const isContinuous = configType === 'continuous';

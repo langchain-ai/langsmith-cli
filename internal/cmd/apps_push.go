@@ -17,7 +17,6 @@ func newAppsPushCmd() *cobra.Command {
 	var (
 		name        string
 		description string
-		contextType string
 		entrypoint  string
 		buildCmd    string
 	)
@@ -33,8 +32,7 @@ writes .langsmith/app.json recording its ID; every push after that reads
 that file and updates the same app in place. Commit .langsmith/app.json so
 teammates' pushes update the same app instead of creating new ones.
 
---context-type and --name only take effect on the first push (creation);
-context_type cannot be changed after an app is created.`,
+--name only takes effect on the first push (creation).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.Getwd()
 			if err != nil {
@@ -62,10 +60,10 @@ context_type cannot be changed after an app is created.`,
 			if err != nil {
 				return err
 			}
-			// "apps init" writes .langsmith/app.json immediately (recording
-			// --type's context_type) with no app_id yet — that's only known
-			// once an app is actually created. So a link file existing isn't
-			// enough to mean "already created"; app_id being set is.
+			// "apps init" writes .langsmith/app.json immediately (recording the
+			// name) with no app_id yet — that's only known once an app is
+			// actually created. So a link file existing isn't enough to mean
+			// "already created"; app_id being set is.
 			notYetCreated := link == nil || link.AppID == ""
 
 			c := MustGetClient()
@@ -74,9 +72,6 @@ context_type cannot be changed after an app is created.`,
 			var app customApp
 			updated := false
 			if !notYetCreated {
-				if cmd.Flags().Changed("context-type") && contextType != link.ContextType {
-					fmt.Fprintf(os.Stderr, "note: --context-type is ignored on update (context_type can't change after creation; this app is %q)\n", link.ContextType)
-				}
 				payload := map[string]any{
 					"files":      files,
 					"entrypoint": entrypoint,
@@ -94,8 +89,8 @@ context_type cannot be changed after an app is created.`,
 				case client.IsNotFound(err):
 					// The linked app_id no longer exists server-side (e.g. it
 					// was deleted through the UI) — .langsmith/app.json is
-					// stale. Recreate under the same name/context_type rather
-					// than failing, and relink to the new app below.
+					// stale. Recreate under the same name rather than failing,
+					// and relink to the new app below.
 					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
 				default:
 					return fmt.Errorf("updating custom app %s: %w", link.AppID, err)
@@ -104,9 +99,8 @@ context_type cannot be changed after an app is created.`,
 
 			if updated {
 				if err := writeAppLink(dir, appLink{
-					AppID:       app.ID,
-					Name:        app.Name,
-					ContextType: app.ContextType,
+					AppID: app.ID,
+					Name:  app.Name,
 				}); err != nil {
 					return err
 				}
@@ -118,15 +112,13 @@ context_type cannot be changed after an app is created.`,
 				if appName == "" {
 					appName = filepath.Base(filepath.Clean(dir))
 				}
-				ctxType := contextType
-				if link != nil && link.ContextType != "" && !cmd.Flags().Changed("context-type") {
-					ctxType = link.ContextType
-				}
 				payload := map[string]any{
-					"name":         appName,
-					"files":        files,
-					"entrypoint":   entrypoint,
-					"context_type": ctxType,
+					"name":       appName,
+					"files":      files,
+					"entrypoint": entrypoint,
+					// Backend still requires context_type; the CLI no longer
+					// exposes it, so send a constant. Unverified against a live API.
+					"context_type": "none",
 				}
 				if description != "" {
 					payload["description"] = description
@@ -135,9 +127,8 @@ context_type cannot be changed after an app is created.`,
 					return fmt.Errorf("creating custom app: %w", err)
 				}
 				if err := writeAppLink(dir, appLink{
-					AppID:       app.ID,
-					Name:        app.Name,
-					ContextType: app.ContextType,
+					AppID: app.ID,
+					Name:  app.Name,
 				}); err != nil {
 					return err
 				}
@@ -154,12 +145,11 @@ context_type cannot be changed after an app is created.`,
 				status = "updated"
 			}
 			output.OutputJSON(map[string]any{
-				"status":       status,
-				"app_id":       app.ID,
-				"name":         app.Name,
-				"context_type": app.ContextType,
-				"entrypoint":   app.Entrypoint,
-				"files":        paths,
+				"status":     status,
+				"app_id":     app.ID,
+				"name":       app.Name,
+				"entrypoint": app.Entrypoint,
+				"files":      paths,
 			}, "")
 			return nil
 		},
@@ -167,7 +157,6 @@ context_type cannot be changed after an app is created.`,
 
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
-	cmd.Flags().StringVar(&contextType, "context-type", "none", "Context type on creation: none or annotation_queue")
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading (e.g. \"npm run build\")")
 	return cmd

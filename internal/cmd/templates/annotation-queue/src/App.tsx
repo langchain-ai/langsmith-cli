@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { FeedbackPanel } from './components/FeedbackPanel';
 import { LinearProgress } from './components/LinearProgress';
+import { QueueBar } from './components/QueueBar';
 import { RunList } from './components/RunList';
 import { RunViewer } from './components/RunViewer';
 import { fetchQueue, fetchQueueRuns, markRunComplete } from './api';
 import type { AnnotationQueue, AnnotationQueueRun } from './types';
 
 interface Props {
-  /** The only context this app receives — everything else (run list, run
-   * detail, feedback, ...) is fetched itself via window.langsmith.call. */
-  queueId: string;
+  /** Optional starting queue. Apps are uniform now and normally receive {},
+   * so this is usually empty and the user picks a queue via the QueueBar. */
+  queueId?: string;
   /** Host render metadata; `metadata.mode` is "dark"|"light". The sandbox sets
    * html.dark from it, so this UI needs no branching. */
   metadata?: RenderMetadata;
 }
 
-export function App({ queueId }: Props) {
+export function App({ queueId: initialQueueId }: Props) {
+  const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
   const [needsReviewRuns, setNeedsReviewRuns] = useState<AnnotationQueueRun[]>([]);
   const [needsOthersReviewRuns, setNeedsOthersReviewRuns] = useState<AnnotationQueueRun[]>([]);
@@ -30,6 +32,13 @@ export function App({ queueId }: Props) {
 
   // Load queue metadata and runs whenever the queue changes
   useEffect(() => {
+    // Clear the previous queue's data first so switching queues doesn't flash
+    // stale runs/rubric from the one before.
+    setQueue(null);
+    setNeedsReviewRuns([]);
+    setNeedsOthersReviewRuns([]);
+    setCompletedRuns([]);
+    setSelectedQueueRunId(undefined);
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
@@ -138,10 +147,9 @@ export function App({ queueId }: Props) {
   if (!queueId) {
     return (
       <div className="flex h-screen flex-col bg-surface-level-1">
+        <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">
-            No queueId in context — this app must be set as an annotation queue's active layout, or run with --queue-id locally.
-          </span>
+          <span className="text-sm text-tertiary">Select an annotation queue to start reviewing.</span>
         </div>
       </div>
     );
@@ -150,6 +158,7 @@ export function App({ queueId }: Props) {
   if (!queue) {
     return (
       <div className="flex h-screen flex-col bg-surface-level-1">
+        <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <LinearProgress />
       </div>
     );
@@ -158,8 +167,9 @@ export function App({ queueId }: Props) {
   const contentLoading = runsLoading && !selectedRun;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1 p-space-4">
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary">
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
+      <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary m-space-4 mt-space-3">
         {/* Left: 280px run list */}
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
           <RunList

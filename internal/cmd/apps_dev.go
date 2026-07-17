@@ -26,7 +26,6 @@ import (
 func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
-		queueID    string
 		noOpen     bool
 		noWatch    bool
 	)
@@ -58,47 +57,25 @@ process, or want to use a different one).`,
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
 			}
-			link, err := readAppLink(dir)
-			if err != nil {
-				return err
-			}
-			if link != nil && link.ContextType == contextTypeAnnotationQueue && queueID == "" {
-				fmt.Fprintln(os.Stderr, "note: this app is linked as context_type annotation_queue but no --queue-id was passed — it will get an empty queueId until you pass one")
-			}
-
-			showQueueSelector := link != nil && link.ContextType == contextTypeAnnotationQueue
 
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, devData(link, queueID), showQueueSelector, noOpen, noWatch)
+			return runAppsDev(ctx, dir, entrypoint, noOpen, noWatch)
 		},
 	}
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
-	cmd.Flags().StringVar(&queueID, "queue-id", "", "Annotation queue ID to use as context (only meaningful for context_type: annotation_queue apps)")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
 	cmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't automatically run the build's \"watch\" script (e.g. \"npm run watch\") — use this if you're already running your own build process")
 	return cmd
 }
 
-const contextTypeAnnotationQueue = "annotation_queue"
-
-// devData mirrors what the real host hands a custom app at render time: an
-// annotation_queue app gets only the queue's ID (it fetches everything else
-// itself via window.langsmith.call); everything else gets {}.
-func devData(link *appLink, queueID string) map[string]any {
-	if link != nil && link.ContextType == contextTypeAnnotationQueue {
-		return map[string]any{"queueId": queueID}
-	}
-	return map[string]any{}
-}
-
 // runAppsDev starts the local sandboxed-preview server for dir, opens it in
 // a browser, and blocks until ctx is cancelled (e.g. by SIGINT) or the
 // server fails.
-func runAppsDev(ctx context.Context, dir, entrypoint string, data map[string]any, showQueueSelector, noOpen, noWatch bool) error {
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint, data, showQueueSelector)
+func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen, noWatch bool) error {
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint)
 	if err != nil {
 		return err
 	}
@@ -243,7 +220,7 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 // The directory is read the same way "apps push" reads it
 // (readDirectoryAsAppFiles), so local dev sees exactly what would be
 // uploaded — including the same .env/.git/node_modules exclusions.
-func prepareAppsDevServer(dir, entrypoint string, data map[string]any, showQueueSelector bool) (srv *http.Server, ln net.Listener, previewURL string, err error) {
+func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +240,7 @@ func prepareAppsDevServer(dir, entrypoint string, data map[string]any, showQueue
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, data, showQueueSelector)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -303,9 +280,8 @@ type lsDevCallArgs struct {
 // handleLsDevCall is the local-dev twin of smith-frontend's apiProxy.ts
 // createLangSmithApiProxy: a generic passthrough, not a curated allowlist.
 // It forwards operation ("<METHOD> <path>") to the real LangSmith API using
-// the CLI's authenticated client (the same one "langsmith api" uses), so a
-// standalone/annotation_queue app can exercise real endpoints while it's
-// being developed.
+// the CLI's authenticated client (the same one "langsmith api" uses), so an
+// app can exercise real endpoints while it's being developed.
 func handleLsDevCall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -419,95 +395,21 @@ setInterval(function() {
 // LS_API forwarded to /__ls_dev/call, which is real network access the
 // iframe itself can never have.
 //
-// Every app gets a config toolbar; its first control is a Light/Dark mode
-// toggle (posting LANGSMITH_METADATA). The queue-picker item is added only
-// when showQueueSelector is set (context_type annotation_queue).
-func renderDevHostHTML(files map[string]string, entrypoint string, data map[string]any, showQueueSelector bool) string {
+// Every app gets a config toolbar; its first (and only) control is a
+// Light/Dark mode toggle (posting LANGSMITH_METADATA).
+func renderDevHostHTML(files map[string]string, entrypoint string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
-	dataJSON, _ := json.Marshal(data)
 
 	inner := strings.NewReplacer(
 		"__FILES_JSON__", escapeForScript(filesJSON),
 		"__ENTRYPOINT_JSON__", escapeForScript(entrypointJSON),
 	).Replace(sandboxInnerHTMLTemplate)
 
-	queueBarHTML := ""
-	queueBarScript := ""
-	if showQueueSelector {
-		queueBarHTML = queueSelectorBarHTML
-		queueBarScript = queueSelectorScript
-	}
-
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
-		"__DATA_JSON__", escapeForScript(dataJSON),
-		"__QUEUE_BAR_HTML__", queueBarHTML,
-		"__QUEUE_BAR_SCRIPT__", queueBarScript,
 	).Replace(devHostHTMLTemplate)
 }
-
-const queueSelectorBarHTML = `<div id="ls-dev-queue-bar" class="ls-dev-toolbar-item">
-  <label for="ls-dev-queue-select">Annotation queue:</label>
-  <select id="ls-dev-queue-select"><option value="">Loading queues…</option></select>
-</div>
-`
-
-const queueSelectorScript = `
-  var queueSelect = document.getElementById('ls-dev-queue-select');
-
-  function callProxy(operation, args) {
-    return fetch('/__ls_dev/call', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operation: operation, args: args || {} }),
-    }).then(function(r) {
-      return r.text().then(function(text) {
-        var parsed;
-        try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = text; }
-        if (!r.ok) throw new Error(typeof parsed === 'string' ? parsed : JSON.stringify(parsed));
-        return parsed;
-      });
-    });
-  }
-
-  function loadQueues() {
-    callProxy('GET /api/v1/annotation-queues', { params: { limit: '50', offset: '0' } })
-      .then(function(queues) {
-        queueSelect.innerHTML = '';
-        var placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'Select a queue…';
-        queueSelect.appendChild(placeholder);
-        var found = false;
-        (queues || []).forEach(function(q) {
-          var opt = document.createElement('option');
-          opt.value = q.id;
-          opt.textContent = q.name + ' (' + q.id.slice(0, 8) + ')';
-          if (q.id === data.queueId) { opt.selected = true; found = true; }
-          queueSelect.appendChild(opt);
-        });
-        if (!found && data.queueId) {
-          var custom = document.createElement('option');
-          custom.value = data.queueId;
-          custom.textContent = data.queueId + ' (from --queue-id, not in first 50)';
-          custom.selected = true;
-          queueSelect.appendChild(custom);
-        }
-      })
-      .catch(function(err) {
-        queueSelect.innerHTML = '<option value="">Failed to load queues</option>';
-        console.error('[langsmith apps dev] failed to load annotation queues:', err);
-      });
-  }
-
-  queueSelect.addEventListener('change', function() {
-    data = Object.assign({}, data, { queueId: queueSelect.value });
-    post({ type: 'LANGSMITH_DATA', payload: data });
-  });
-
-  loadQueues();
-`
 
 const devHostHTMLTemplate = `<!doctype html>
 <html lang="en">
@@ -518,7 +420,7 @@ const devHostHTMLTemplate = `<!doctype html>
   html, body { height: 100%; margin: 0; }
   body { display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif; }
 
-  /* Toolbar renders for every app; queue selector only when contextual.
+  /* Toolbar renders for every app.
      ls-dev-dark mirrors the sandbox's html.dark onto the host chrome. */
   :root {
     --ls-dev-bar-bg: #f5f8fb;
@@ -576,31 +478,6 @@ const devHostHTMLTemplate = `<!doctype html>
     box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
   }
 
-  #ls-dev-queue-bar select {
-    font-family: inherit;
-    font-size: 13px;
-    color: var(--ls-dev-control-text);
-    padding: 5px 28px 5px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--ls-dev-control-border);
-    background-color: var(--ls-dev-control-bg);
-    background-image: var(--ls-dev-chevron);
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    background-size: 14px;
-    -webkit-appearance: none;
-    appearance: none;
-    max-width: 360px;
-    cursor: pointer;
-    transition: border-color 120ms ease;
-  }
-  #ls-dev-queue-bar select:hover { border-color: var(--ls-dev-control-border-hover); }
-  #ls-dev-queue-bar select:focus-visible {
-    outline: none;
-    border-color: #006ddd;
-    box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
-  }
-
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
@@ -610,12 +487,13 @@ const devHostHTMLTemplate = `<!doctype html>
     <span class="ls-dev-toolbar-label">Appearance</span>
     <button id="ls-dev-mode-toggle" type="button" aria-pressed="false"><span id="ls-dev-mode-label">Light</span></button>
   </div>
-  __QUEUE_BAR_HTML__</div>
+</div>
 <iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
 <script>
 (function() {
   var iframe = document.getElementById('ls-app');
-  var data = __DATA_JSON__;
+  // Apps get no host context: the sandbox always receives {} as render data.
+  var data = {};
 
   function post(msg) {
     iframe.contentWindow.postMessage(msg, '*');
@@ -697,7 +575,7 @@ const devHostHTMLTemplate = `<!doctype html>
         });
     }
   });
-__QUEUE_BAR_SCRIPT__
+
   // Poll for the entrypoint changing (or appearing for the first time) and
   // reload the whole page -- simplest reliable way to pick up a rebuild.
   var seen = false, lastKey = null;

@@ -7,30 +7,41 @@ import (
 	"testing"
 )
 
-func TestAppsList_PassesContextTypeFilter(t *testing.T) {
+// Apps are uniform now — list takes no context_type filter and hits the
+// endpoint with no query string.
+func TestAppsList_ListsAllApps(t *testing.T) {
 	var sawQuery string
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		sawQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]customApp{
-			{ID: "a1", Name: "one", ContextType: "annotation_queue"},
+			{ID: "a1", Name: "one"},
 		})
 	})
 	defer setupTestEnv(t, srv.URL)()
 
 	out := captureStdout(t, func() {
 		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"list", "--context-type", "annotation_queue"})
+		cmd.SetArgs([]string{"list"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 	})
 
-	if sawQuery != "context_type=annotation_queue" {
-		t.Errorf("unexpected query: %q", sawQuery)
+	if sawQuery != "" {
+		t.Errorf("expected no query string (no context_type filter), got %q", sawQuery)
 	}
 	if !strings.Contains(out, `"id": "a1"`) {
 		t.Errorf("expected app in output:\n%s", out)
+	}
+
+	// The context_type filter flag must be gone.
+	listCmd, _, err := newAppsCmd().Find([]string{"list"})
+	if err != nil {
+		t.Fatalf("find list: %v", err)
+	}
+	if f := listCmd.Flags().Lookup("context-type"); f != nil {
+		t.Error("expected --context-type flag to be gone from apps list")
 	}
 }
 

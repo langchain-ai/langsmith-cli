@@ -1,9 +1,11 @@
 # AGENTS.md — LangSmith API surface for this app
 
-This is an **annotation_queue** custom app. `render(data, root, metadata)`
-receives `data = { queueId }` — that's the *only* context the host gives you.
-You fetch everything else (run list, run detail, feedback, ...) yourself via
-`window.langsmith.call`. `src/api.ts` already wraps every operation below —
+This is an annotation-queue review app. Apps are uniform — the host gives you
+no bound context, so `render(data, root, metadata)` receives `data = {}`. The
+app picks its own queue: `src/components/QueueBar.tsx` lists the workspace's
+queues via `GET /api/v1/annotation-queues` and the user selects one. From
+there you fetch everything else (run list, run detail, feedback, ...) yourself
+via `window.langsmith.call`. `src/api.ts` already wraps every operation below —
 read it before adding new API calls, you likely don't need to.
 
 `render`'s third argument is `metadata`, an open/extensible object; v1 has
@@ -47,7 +49,8 @@ https://docs.langchain.com/langsmith/home).
 
 ## What this app already does with these
 
-- `src/api.ts` — thin wrappers over every operation above
-- `src/App.tsx` — fetches the queue + its runs, tracks the selected run, h/l keyboard navigation, Cmd/Ctrl+Enter to complete
+- `src/api.ts` — thin wrappers over every operation above (incl. `fetchQueues` for the picker)
+- `src/components/QueueBar.tsx` — lists the workspace's queues and drives the selection
+- `src/App.tsx` — owns the selected queue, fetches the queue + its runs, tracks the selected run, h/l keyboard navigation, Cmd/Ctrl+Enter to complete
 - `src/components/FeedbackPanel.tsx` — renders the rubric, saves/deletes feedback per key
 - `src/components/ReviewerNotes.tsx` — a per-run comment thread built on the feedback API's reserved `"note"` key

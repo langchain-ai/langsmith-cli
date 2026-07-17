@@ -1,9 +1,9 @@
 # AGENTS.md — LangSmith API surface for this app
 
-This is a **standalone** custom app (`context_type: none`) — genuinely
-open-ended. `render(data, root, metadata)` receives `data = {}` (or whatever
-you push yourself via `window.langsmith.setData(patch)`); there's no bound
-context. What to show and what data to fetch is entirely up to you.
+This is a **standalone** custom app — genuinely open-ended.
+`render(data, root, metadata)` receives `data = {}` (or whatever you push
+yourself via `window.langsmith.setData(patch)`); there's no bound context.
+What to show and what data to fetch is entirely up to you.
 
 ## Theme (`metadata`)
 

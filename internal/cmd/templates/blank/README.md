@@ -2,8 +2,8 @@
 
 {{.Description}}
 
-A standalone LangSmith custom app, scaffolded by `langsmith apps init --type
-standalone`. It starts as a small, genuinely working example — a list of
+A LangSmith custom app, scaffolded by `langsmith apps init` (the default
+`blank` template). It starts as a small, genuinely working example — a list of
 your workspace's most recently active tracing projects — not a blank page.
 **Read `AGENTS.md` first** — it documents the LangSmith API surface this
 app can call.
@@ -40,8 +40,9 @@ the build yourself.
 ## The bridge contract
 
 `src/entry.tsx` exports a `render(data, root, metadata)` function that the
-host calls once on load and again whenever `data` or `metadata` changes — for
-a standalone app, `data` is always `{}`. `metadata.mode` is `"dark"` or
+host calls once on load and again whenever `data` or `metadata` changes —
+`data` is always `{}` (apps fetch whatever they need themselves).
+`metadata.mode` is `"dark"` or
 `"light"`; the sandbox sets `html.dark` from it, so this token-based UI themes
 automatically (branch on `metadata.mode` only if you use inline styles).
 `src/App.tsx` is the actual UI; edit it freely, it's just a React component.

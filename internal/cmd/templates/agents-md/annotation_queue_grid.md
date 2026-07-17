@@ -1,11 +1,14 @@
 # AGENTS.md — LangSmith API surface for this app
 
-This is an **annotation_queue** custom app rendered as a **spreadsheet grid**
-(rows = queue runs, columns = rubric keys). `render(data, root, metadata)`
-receives `data = { queueId }` — that's the *only* context the host gives you.
-You fetch everything else (run list, existing feedback, rubric configs, ...)
-yourself via `window.langsmith.call`. `src/api.ts` already wraps every
-operation below — read it before adding new API calls, you likely don't need to.
+This is an annotation-queue review app rendered as a **spreadsheet grid**
+(rows = queue runs, columns = rubric keys). Apps are uniform — the host gives
+you no bound context, so `render(data, root, metadata)` receives `data = {}`.
+The app picks its own queue: `src/components/QueueBar.tsx` lists the
+workspace's queues via `GET /api/v1/annotation-queues` and the user selects
+one. From there you fetch everything else (run list, existing feedback, rubric
+configs, ...) yourself via `window.langsmith.call`. `src/api.ts` already wraps
+every operation below — read it before adding new API calls, you likely don't
+need to.
 
 `render`'s third argument is `metadata`, an open/extensible object; v1 has
 exactly one key, `metadata.mode` (`"dark"` | `"light"`). The sandbox sets
@@ -48,7 +51,8 @@ you need more of it (see the docs: https://docs.langchain.com/langsmith/home).
 ## How the grid is built from these
 
 - `src/api.ts` — thin wrappers over every operation above (identical to the 3-pane annotation-queue template; reuse these, don't invent new calls)
-- `src/App.tsx` — fetches the queue + its `needs_my_review` runs, derives the
+- `src/components/QueueBar.tsx` — lists the workspace's queues and drives the selection
+- `src/App.tsx` — owns the selected queue, fetches the queue + its `needs_my_review` runs, derives the
   columns from `queue.rubric_items`, fetches each column key's config with
   `GET /feedback-configs`, and prefetches every row's existing feedback with
   `GET /feedback?run=...`. Owns ArrowUp/ArrowDown row navigation and the

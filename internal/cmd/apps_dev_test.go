@@ -19,7 +19,8 @@ func TestAppsDevCmd_Flags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find dev command: %v", err)
 	}
-	for _, gone := range []string{"url", "web-url", "data"} {
+	// --queue-id is gone: apps are uniform now and the sandbox always gets {}.
+	for _, gone := range []string{"url", "web-url", "data", "queue-id"} {
 		if f := dev.Flags().Lookup(gone); f != nil {
 			t.Errorf("expected --%s flag to be gone from apps dev", gone)
 		}
@@ -27,34 +28,11 @@ func TestAppsDevCmd_Flags(t *testing.T) {
 	if f := dev.Flags().Lookup("entrypoint"); f == nil || f.DefValue != "dist/bundle.js" {
 		t.Errorf("expected --entrypoint flag defaulting to dist/bundle.js, got %+v", f)
 	}
-	if f := dev.Flags().Lookup("queue-id"); f == nil {
-		t.Error("expected --queue-id flag to exist")
-	}
 	if f := dev.Flags().Lookup("no-open"); f == nil {
 		t.Error("expected --no-open flag to exist")
 	}
 	if f := dev.Flags().Lookup("no-watch"); f == nil {
 		t.Error("expected --no-watch flag to exist")
-	}
-}
-
-func TestDevData_AnnotationQueueLinkUsesQueueID(t *testing.T) {
-	got := devData(&appLink{ContextType: "annotation_queue"}, "q_123")
-	want := map[string]any{"queueId": "q_123"}
-	gotJSON, _ := json.Marshal(got)
-	wantJSON, _ := json.Marshal(want)
-	if string(gotJSON) != string(wantJSON) {
-		t.Errorf("got %s, want %s", gotJSON, wantJSON)
-	}
-}
-
-func TestDevData_NoneOrUnlinkedGetsEmptyObject(t *testing.T) {
-	for _, link := range []*appLink{nil, {ContextType: "none"}} {
-		got := devData(link, "q_123")
-		gotJSON, _ := json.Marshal(got)
-		if string(gotJSON) != "{}" {
-			t.Errorf("link %+v: got %s, want {}", link, gotJSON)
-		}
 	}
 }
 
@@ -77,7 +55,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Fatalf("seed .env: %v", err)
 	}
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{"queueId": "q_1"}, true)
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -95,10 +73,6 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	}
 	page := string(body)
 
-	if !strings.Contains(page, `id="ls-dev-queue-select"`) {
-		t.Errorf("expected the annotation-queue selector bar when showQueueSelector=true:\n%s", page)
-	}
-
 	if !strings.Contains(page, `sandbox="allow-scripts"`) {
 		t.Errorf("expected a real sandbox=\"allow-scripts\" iframe:\n%s", page)
 	}
@@ -108,9 +82,6 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	}
 	if !strings.Contains(page, "v1") {
 		t.Errorf("expected entrypoint content to be embedded in the sandboxed srcdoc:\n%s", page)
-	}
-	if !strings.Contains(page, `queueId`) || !strings.Contains(page, `q_1`) {
-		t.Errorf("expected sample data to be embedded:\n%s", page)
 	}
 	if strings.Contains(page, "SUPER_SECRET_VALUE") {
 		t.Errorf(".env content leaked into the served page:\n%s", page)
@@ -134,18 +105,16 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 // A regression test for a real bug: renderApp() used to unconditionally do
 // `root.innerHTML = ”` before calling window.__render(currentData, root).
 // The entrypoint caches its React root across calls (`if (!root) root =
-// createRoot(rootEl)`) specifically so repeat renders (e.g. selecting a
-// different queue in local dev, which re-posts LANGSMITH_DATA) reconcile
-// against the same tree. Wiping the DOM out from under React between calls
-// corrupts that reconciliation — harmless on the very first render (the
-// container starts empty anyway), but the app renders blank on every render
-// after that, which is exactly what a context_type=annotation_queue app
-// shows the moment you pick a queue after the initial empty-queueId render.
+// createRoot(rootEl)`) specifically so repeat renders (e.g. a theme toggle
+// re-posting LANGSMITH_METADATA) reconcile against the same tree. Wiping the
+// DOM out from under React between calls corrupts that reconciliation —
+// harmless on the very first render (the container starts empty anyway), but
+// the app renders blank on every render after that.
 func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'ok'; } }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -168,35 +137,12 @@ func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.
 	}
 }
 
-func TestPrepareAppsDevServer_OmitsQueueSelectorForStandaloneApps(t *testing.T) {
+// The config toolbar (and its Light/Dark mode toggle) renders for every app.
+func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(){} }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
-	if err != nil {
-		t.Fatalf("prepareAppsDevServer: %v", err)
-	}
-	go func() { _ = srv.Serve(ln) }()
-	defer func() { _ = srv.Close() }()
-
-	resp, err := http.Get(previewURL)
-	if err != nil {
-		t.Fatalf("GET %s: %v", previewURL, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(body), `id="ls-dev-queue-select"`) {
-		t.Errorf("standalone apps should not get a queue selector bar:\n%s", body)
-	}
-}
-
-// The config toolbar (and its Light/Dark mode toggle) renders for EVERY app,
-// standalone included — unlike the queue selector, which stays contextual.
-func TestPrepareAppsDevServer_ServesModeToggleForStandaloneApps(t *testing.T) {
-	dir := t.TempDir()
-	seedDevApp(t, dir, "module.exports = { render: function(){} }")
-
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -212,12 +158,11 @@ func TestPrepareAppsDevServer_ServesModeToggleForStandaloneApps(t *testing.T) {
 	page := string(body)
 
 	if !strings.Contains(page, `id="ls-dev-mode-toggle"`) {
-		t.Errorf("standalone apps should still get the Light/Dark mode toggle:\n%s", page)
+		t.Errorf("every app should get the Light/Dark mode toggle:\n%s", page)
 	}
-	// The mode toggle must have a distinct id from the queue selector so a
-	// standalone app can have the toggle without the (contextual) queue picker.
+	// The queue selector is gone entirely now.
 	if strings.Contains(page, `id="ls-dev-queue-select"`) {
-		t.Errorf("standalone apps should not get a queue selector:\n%s", page)
+		t.Errorf("the queue selector should no longer be served:\n%s", page)
 	}
 	// On READY the host posts LANGSMITH_METADATA, and the toggle re-posts it.
 	if !strings.Contains(page, "LANGSMITH_METADATA") {
@@ -251,7 +196,7 @@ func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
 
 func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -274,7 +219,7 @@ func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.
 
 func TestPrepareAppsDevServer_MtimeReflectsFileState(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js", map[string]any{}, false)
+	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -608,7 +553,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", map[string]any{}, false, true, true)
+		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", true, true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)

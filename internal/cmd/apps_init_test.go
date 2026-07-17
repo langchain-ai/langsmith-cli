@@ -7,11 +7,8 @@ import (
 	"testing"
 )
 
-// Without this, "apps dev" run before the first "apps push" has no way to
-// know this is an annotation_queue app at all (the queue-selector bar and
-// --queue-id both key off .langsmith/app.json's context_type) — the file
-// only existing after a push meant a brand new annotation-queue app was
-// stuck showing "No queueId in context" until you pushed it first.
+// "apps init" records the name in .langsmith/app.json so a later push reuses
+// it instead of the directory basename.
 func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -30,19 +27,16 @@ func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	if link.AppID != "" {
 		t.Errorf("expected no app_id yet (app doesn't exist remotely until the first push), got %q", link.AppID)
 	}
-	if link.ContextType != "annotation_queue" {
-		t.Errorf("expected context_type annotation_queue from --type, got %q", link.ContextType)
-	}
 	if link.Name != "my-app" {
 		t.Errorf("expected --name to be recorded in the link file so a later \"apps push\" doesn't fall back to the directory basename, got %q", link.Name)
 	}
 }
 
-func TestAppsInit_StandaloneAlsoWritesPartialAppLink(t *testing.T) {
+func TestAppsInit_BlankAlsoWritesPartialAppLink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["standalone"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["blank"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 
@@ -50,12 +44,12 @@ func TestAppsInit_StandaloneAlsoWritesPartialAppLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
-	if link == nil || link.ContextType != "none" {
-		t.Errorf("expected a partial link with context_type none, got %+v", link)
+	if link == nil || link.Name != "my-app" || link.AppID != "" {
+		t.Errorf("expected a partial link recording the name with no app_id, got %+v", link)
 	}
 }
 
-// Grid variant shares context_type "annotation_queue" but scaffolds its own spreadsheet UI, not the 3-pane components.
+// The grid variant scaffolds its own spreadsheet UI, not the 3-pane components.
 func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -98,17 +92,17 @@ func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
 		}
 	}
 
-	// Recorded context_type matches the 3-pane template — the host gates --queue-id on it, so both variants behave alike.
+	// A partial link is written recording the name (no app_id until push).
 	link, err := readAppLink(target)
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
-	if link == nil || link.ContextType != "annotation_queue" {
-		t.Errorf("expected context_type annotation_queue, got %+v", link)
+	if link == nil || link.Name != "my-app" {
+		t.Errorf("expected a partial link recording the name, got %+v", link)
 	}
 }
 
-// Two templates sharing a context_type must still get distinct AGENTS.md — guards the agentsMD decoupling against regression.
+// The two AQ templates must get distinct AGENTS.md files — guards the per-template agentsMD selection against regression.
 func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
@@ -188,11 +182,11 @@ func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
 	}
 }
 
-func TestAppsInit_ScaffoldsStandaloneFiles(t *testing.T) {
+func TestAppsInit_ScaffoldsBlankFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["standalone"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["blank"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -206,10 +200,10 @@ func TestAppsInit_ScaffoldsStandaloneFiles(t *testing.T) {
 			t.Errorf("expected %q to be written, got %v", want, written)
 		}
 	}
-	// The standalone type must never scaffold the annotation-queue app's own
+	// The blank template must never scaffold the annotation-queue app's own
 	// components — it has its own (much simpler) App.tsx.
 	if writtenSet["src/components/RunList.tsx"] {
-		t.Error("standalone type should not scaffold the annotation-queue app's components")
+		t.Error("blank template should not scaffold the annotation-queue app's components")
 	}
 
 	appTsx, err := os.ReadFile(filepath.Join(target, "src", "App.tsx"))
@@ -217,7 +211,7 @@ func TestAppsInit_ScaffoldsStandaloneFiles(t *testing.T) {
 		t.Fatalf("read App.tsx: %v", err)
 	}
 	if strings.Contains(string(appTsx), "queueId") {
-		t.Errorf("expected the standalone App.tsx to have no queue-specific code, got:\n%s", appTsx)
+		t.Errorf("expected the blank App.tsx to have no queue-specific code, got:\n%s", appTsx)
 	}
 }
 
@@ -296,19 +290,19 @@ func TestAppsInit_RequiresValidType(t *testing.T) {
 	}
 }
 
-func TestAppsInit_WritesContextSpecificAgentsMD(t *testing.T) {
+func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
-	standaloneTarget := filepath.Join(dir, "standalone-app")
-	if _, err := scaffoldCustomAppStarter(standaloneTarget, "standalone-app", "", appTypes["standalone"], false); err != nil {
-		t.Fatalf("scaffold standalone: %v", err)
+	blankTarget := filepath.Join(dir, "blank-app")
+	if _, err := scaffoldCustomAppStarter(blankTarget, "blank-app", "", appTypes["blank"], false); err != nil {
+		t.Fatalf("scaffold blank: %v", err)
 	}
-	standaloneAgents, err := os.ReadFile(filepath.Join(standaloneTarget, "AGENTS.md"))
+	blankAgents, err := os.ReadFile(filepath.Join(blankTarget, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(standaloneAgents), "standalone") {
-		t.Errorf("expected the none-context AGENTS.md, got:\n%s", standaloneAgents)
+	if !strings.Contains(string(blankAgents), "standalone") {
+		t.Errorf("expected the blank template's AGENTS.md, got:\n%s", blankAgents)
 	}
 
 	aqTarget := filepath.Join(dir, "aq-app")
@@ -320,76 +314,85 @@ func TestAppsInit_WritesContextSpecificAgentsMD(t *testing.T) {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
 	if !strings.Contains(string(aqAgents), "queueId") {
-		t.Errorf("expected the annotation_queue-context AGENTS.md, got:\n%s", aqAgents)
+		t.Errorf("expected the annotation-queue template's AGENTS.md, got:\n%s", aqAgents)
 	}
 }
 
-func TestAppsInitCmd_TypeDefaultsToStandalone(t *testing.T) {
+func TestAppsInitCmd_TemplateDefaultsToBlank(t *testing.T) {
 	cmd := newAppsCmd()
 	initCmd, _, err := cmd.Find([]string{"init"})
 	if err != nil {
 		t.Fatalf("find init command: %v", err)
 	}
-	f := initCmd.Flags().Lookup("type")
+	f := initCmd.Flags().Lookup("template")
 	if f == nil {
-		t.Fatal("expected --type flag to exist")
+		t.Fatal("expected --template flag to exist")
 	}
-	if f.DefValue != "standalone" {
-		t.Errorf("expected --type to default to \"standalone\", got %q", f.DefValue)
+	if f.DefValue != "blank" {
+		t.Errorf("expected --template to default to \"blank\", got %q", f.DefValue)
 	}
-	ann := f.Annotations
-	if ann != nil && ann["cobra_annotation_bash_completion_one_required_flag"] != nil {
-		t.Error("expected --type to no longer be marked required")
-	}
-	// The old flag name/values must be gone, not just renamed silently.
-	if got := initCmd.Flags().Lookup("context-type"); got != nil {
-		t.Error("expected --context-type to be gone from apps init (renamed to --type)")
+	// The old --type flag must be gone, not just aliased.
+	if got := initCmd.Flags().Lookup("type"); got != nil {
+		t.Error("expected --type to be gone from apps init (renamed to --template)")
 	}
 }
 
-func TestAppsInitCmd_DefaultsToStandaloneWhenTypeOmitted(t *testing.T) {
+func TestAppsInitCmd_DefaultsToBlankWhenTemplateOmitted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "my-app", "--skip-install"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("expected init to succeed with --type omitted, got: %v", err)
+		t.Fatalf("expected init to succeed with --template omitted, got: %v", err)
 	}
 
+	// Omitting --template scaffolds the blank starter: a partial link and a
+	// queue-free App.tsx.
 	link, err := readAppLink(dir)
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
-	if link == nil || link.ContextType != "none" {
-		t.Errorf("expected omitted --type to scaffold a standalone (context_type none) app, got %+v", link)
+	if link == nil || link.Name != "my-app" {
+		t.Errorf("expected a partial link recording the name, got %+v", link)
+	}
+	appTsx, err := os.ReadFile(filepath.Join(dir, "src", "App.tsx"))
+	if err != nil {
+		t.Fatalf("read App.tsx: %v", err)
+	}
+	if strings.Contains(string(appTsx), "queueId") {
+		t.Errorf("expected the blank App.tsx (no queue code) when --template is omitted, got:\n%s", appTsx)
 	}
 }
 
-func TestAppsInitCmd_AcceptsAnnotationQueueGridType(t *testing.T) {
+func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "grid-app", "--type", "annotation-queue-grid", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "grid-app", "--template", "annotation-queue-grid", "--skip-install"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("expected init to succeed for --type annotation-queue-grid, got: %v", err)
+		t.Fatalf("expected init to succeed for --template annotation-queue-grid, got: %v", err)
 	}
 
+	// The grid variant's own component is scaffolded.
+	if _, err := os.Stat(filepath.Join(dir, "src", "components", "DataGrid.tsx")); err != nil {
+		t.Errorf("expected the grid template's DataGrid.tsx to be scaffolded: %v", err)
+	}
 	link, err := readAppLink(dir)
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
-	if link == nil || link.ContextType != "annotation_queue" {
-		t.Errorf("expected context_type annotation_queue for the grid type, got %+v", link)
+	if link == nil || link.Name != "grid-app" {
+		t.Errorf("expected a partial link recording the name, got %+v", link)
 	}
 }
 
-func TestAppsInitCmd_RejectsInvalidType(t *testing.T) {
+func TestAppsInitCmd_RejectsInvalidTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "my-app", "--type", "bogus", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "bogus", "--skip-install"})
 	if err := cmd.Execute(); err == nil {
-		t.Error("expected error for an invalid --type")
+		t.Error("expected error for an invalid --template")
 	}
 }
 

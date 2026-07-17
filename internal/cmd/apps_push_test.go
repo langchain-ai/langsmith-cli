@@ -100,7 +100,7 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 
 	dir := t.TempDir()
 	seedAppDir(t, dir)
-	if err := writeAppLink(dir, appLink{AppID: "app_existing", Name: "my-app", ContextType: "annotation_queue"}); err != nil {
+	if err := writeAppLink(dir, appLink{AppID: "app_existing", Name: "my-app"}); err != nil {
 		t.Fatalf("seed link: %v", err)
 	}
 	t.Chdir(dir)
@@ -124,12 +124,8 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 	}
 }
 
-// This is the exact scenario "apps init --type annotation-queue" now
-// produces: a .langsmith/app.json with context_type recorded but no app_id
-// yet (the app doesn't exist remotely until the first push). Push must
-// still treat this as "not yet created" (POST), not try to PATCH an empty
-// app ID, and must use the link's context_type instead of --context-type's
-// hardcoded "none" default.
+// A link with a name but no app_id (what "apps init" writes) must POST, not
+// PATCH an empty ID.
 func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	var sawPost bool
 	var postBody map[string]any
@@ -155,8 +151,8 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 
 	dir := t.TempDir()
 	seedAppDir(t, dir)
-	// Mirrors what "apps init --name my-aq-app --type annotation-queue" writes.
-	if err := writeAppLink(dir, appLink{Name: "my-aq-app", ContextType: "annotation_queue"}); err != nil {
+	// Mirrors what "apps init --name my-aq-app --template annotation-queue" writes.
+	if err := writeAppLink(dir, appLink{Name: "my-aq-app"}); err != nil {
 		t.Fatalf("seed partial link: %v", err)
 	}
 	t.Chdir(dir)
@@ -175,8 +171,9 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	if postBody["name"] != "my-aq-app" {
 		t.Errorf("expected name from the link file used as fallback, got %v", postBody)
 	}
-	if postBody["context_type"] != "annotation_queue" {
-		t.Errorf("expected context_type from the link file, not the --context-type flag's default, got %v", postBody)
+	// The CLI no longer exposes context_type; create sends a constant "none".
+	if postBody["context_type"] != "none" {
+		t.Errorf("expected the constant context_type \"none\" in the create payload, got %v", postBody)
 	}
 	if !strings.Contains(out, `"status": "created"`) {
 		t.Errorf("expected created status, got:\n%s", out)
@@ -193,8 +190,8 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 
 // If the linked app was deleted out-of-band (e.g. through the UI),
 // .langsmith/app.json still has its old app_id and push's PATCH 404s. Push
-// must recreate the app under the same name/context_type rather than
-// failing, and relink to the new app_id.
+// must recreate the app under the same name rather than failing, and relink
+// to the new app_id.
 func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 	var sawPatch, sawPost bool
 	var postBody map[string]any
@@ -225,7 +222,7 @@ func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 
 	dir := t.TempDir()
 	seedAppDir(t, dir)
-	if err := writeAppLink(dir, appLink{AppID: "app_deleted", Name: "my-app", ContextType: "annotation_queue"}); err != nil {
+	if err := writeAppLink(dir, appLink{AppID: "app_deleted", Name: "my-app"}); err != nil {
 		t.Fatalf("seed link: %v", err)
 	}
 	t.Chdir(dir)
@@ -244,8 +241,11 @@ func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 	if !sawPost {
 		t.Fatal("expected push to fall back to POST (create) after the PATCH 404s")
 	}
-	if postBody["name"] != "my-app" || postBody["context_type"] != "annotation_queue" {
-		t.Errorf("expected the recreated app to reuse the old app's name/context_type, got %v", postBody)
+	if postBody["name"] != "my-app" {
+		t.Errorf("expected the recreated app to reuse the old app's name, got %v", postBody)
+	}
+	if postBody["context_type"] != "none" {
+		t.Errorf("expected the constant context_type \"none\" in the recreate payload, got %v", postBody)
 	}
 	if !strings.Contains(out, `"status": "created"`) {
 		t.Errorf("expected created status, got:\n%s", out)

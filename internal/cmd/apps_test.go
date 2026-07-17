@@ -14,7 +14,7 @@ func TestAppLink_RoundTrip(t *testing.T) {
 		t.Fatalf("expected (nil, nil) for missing link file, got (%v, %v)", link, err)
 	}
 
-	want := appLink{AppID: "app_1", Name: "my-app", ContextType: "annotation_queue"}
+	want := appLink{AppID: "app_1", Name: "my-app"}
 	if err := writeAppLink(dir, want); err != nil {
 		t.Fatalf("writeAppLink: %v", err)
 	}

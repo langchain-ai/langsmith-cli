@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid } from './components/DataGrid';
+import { QueueBar } from './components/QueueBar';
 import {
   fetchFeedbackConfigs,
   fetchFeedbacks,
@@ -16,8 +17,9 @@ import type {
 } from './types';
 
 interface Props {
-  /** The only context this app receives — everything else is fetched via window.langsmith.call. */
-  queueId: string;
+  /** Optional starting queue. Apps are uniform now and normally receive {}, so
+   * this is usually empty and the user picks a queue via the QueueBar. */
+  queueId?: string;
   /** Host render metadata; `metadata.mode` is "dark"|"light", applied by the sandbox — no branching needed. */
   metadata?: RenderMetadata;
 }
@@ -25,7 +27,8 @@ interface Props {
 // feedbackByRun[runId][feedbackKey] → the latest saved feedback for that cell.
 export type FeedbackByRun = Record<string, Record<string, FeedbackItem>>;
 
-export function App({ queueId }: Props) {
+export function App({ queueId: initialQueueId }: Props) {
+  const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
   const [rows, setRows] = useState<AnnotationQueueRun[]>([]);
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -51,6 +54,11 @@ export function App({ queueId }: Props) {
 
   // The runs needing this reviewer — the editable rows. A run leaves once marked Done.
   useEffect(() => {
+    // Clear the previous queue's data first so switching queues doesn't flash
+    // stale rows/rubric from the one before.
+    setQueue(null);
+    setRows([]);
+    setActiveRow(0);
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
@@ -186,30 +194,34 @@ export function App({ queueId }: Props) {
 
   if (!queueId) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-surface-level-1">
-        <span className="text-sm text-tertiary">
-          No queueId in context — this app must be set as an annotation queue's active layout, or run with --queue-id locally.
-        </span>
+      <div className="flex h-screen flex-col bg-surface-level-1">
+        <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
+        <div className="flex flex-1 items-center justify-center">
+          <span className="text-sm text-tertiary">Select an annotation queue to start reviewing.</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1 p-space-4">
-      <DataGrid
-        queue={queue}
-        columns={columns}
-        configs={configs}
-        rows={rows}
-        rowsLoading={rowsLoading}
-        feedbackByRun={feedbackByRun}
-        activeRow={activeRow}
-        assertionCount={assertionCount}
-        onActivateRow={setActiveRow}
-        onCellSaved={handleCellSaved}
-        onCellDeleted={handleCellDeleted}
-        onComplete={(index) => completeRef.current(index)}
-      />
+    <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
+      <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
+      <div className="flex min-h-0 flex-1 flex-col p-space-4">
+        <DataGrid
+          queue={queue}
+          columns={columns}
+          configs={configs}
+          rows={rows}
+          rowsLoading={rowsLoading}
+          feedbackByRun={feedbackByRun}
+          activeRow={activeRow}
+          assertionCount={assertionCount}
+          onActivateRow={setActiveRow}
+          onCellSaved={handleCellSaved}
+          onCellDeleted={handleCellDeleted}
+          onComplete={(index) => completeRef.current(index)}
+        />
+      </div>
     </div>
   );
 }

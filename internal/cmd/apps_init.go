@@ -30,49 +30,34 @@ var annotationQueueGridStarterFS embed.FS
 //go:embed templates/agents-md
 var agentsMDFS embed.FS
 
-// appType ties together the two things "--type" actually decides: which
-// starter code gets scaffolded, and which context_type (and therefore which
-// AGENTS.md) the app declares. They're not independent — the
-// annotation-queue starter hard-requires a queueId, so there's no valid
-// combination where it pairs with contextType "none".
-//
-// context_type is NOT 1:1 with the template — two starters can share one.
-// agentsMD decouples AGENTS.md from it (empty → use contextType).
+// appType is one --template choice: which starter to scaffold and which
+// AGENTS.md ships with it. Map key = the --template value.
 type appType struct {
 	templateFS   embed.FS
 	templateRoot string
-	contextType  string // what the app declares itself as (.langsmith/app.json)
-	agentsMD     string // selects templates/agents-md/<agentsMD>.md; defaults to contextType
+	agentsMD     string // selects templates/agents-md/<agentsMD>.md
 }
 
 var appTypes = map[string]appType{
-	"standalone": {
+	"blank": {
 		templateFS:   blankStarterFS,
 		templateRoot: "templates/blank",
-		contextType:  "none",
+		agentsMD:     "none",
 	},
 	"annotation-queue": {
 		templateFS:   annotationQueueStarterFS,
 		templateRoot: "templates/annotation-queue",
-		contextType:  "annotation_queue",
+		agentsMD:     "annotation_queue",
 	},
 	"annotation-queue-grid": {
 		templateFS:   annotationQueueGridStarterFS,
 		templateRoot: "templates/annotation-queue-grid",
-		contextType:  "annotation_queue",
 		agentsMD:     "annotation_queue_grid",
 	},
 }
 
-// agentsMDName is the AGENTS.md basename — its own if set, else the context_type.
-func (at appType) agentsMDName() string {
-	if at.agentsMD != "" {
-		return at.agentsMD
-	}
-	return at.contextType
-}
-
-// appTypeNames returns the valid --type values, sorted, keeping error text and help in sync with the map.
+// appTypeNames returns the valid --template values, sorted, keeping error text
+// and help in sync with the map.
 func appTypeNames() []string {
 	names := make([]string, 0, len(appTypes))
 	for name := range appTypes {
@@ -89,35 +74,35 @@ type customAppStarterVars struct {
 
 func newAppsInitCmd() *cobra.Command {
 	var (
-		name        string
-		description string
-		appTypeFlag string
-		force       bool
-		skipInstall bool
+		name         string
+		description  string
+		templateFlag string
+		force        bool
+		skipInstall  bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--type standalone|annotation-queue|annotation-queue-grid]",
+		Use:   "init --name NAME [--template blank|annotation-queue|annotation-queue-grid]",
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
---type picks both what gets scaffolded and what this app declares itself as
-(there's no independent template choice — each type has exactly one starter
-that matches it). Defaults to "standalone" if omitted:
+--template picks which starter gets scaffolded. Defaults to "blank" if
+omitted. The choice only affects the UI you start from — every app is
+uploaded and rendered the same way.
 
-  standalone        A blank single-file starter (render(data, root) that
+  blank              A blank single-file starter (render(data, root) that
                      just dumps data) — no assumptions about shape. Good for
                      a genuinely open-ended app you build up from scratch.
   annotation-queue   A real, working queue-review UI (run list,
                      inputs/outputs viewer, feedback rubric, reviewer
-                     notes) — this app receives only { queueId } as context
-                     and fetches everything else itself.
+                     notes). It picks a queue itself and fetches everything
+                     from the LangSmith API.
   annotation-queue-grid
-                     Same annotation_queue context as annotation-queue, but
+                     Same queue-review workflow as annotation-queue, but
                      rendered as a spreadsheet: rows are queue runs, columns
                      are rubric keys, cells edited inline, Done per row.
 
-Either way this also writes an AGENTS.md describing the LangSmith API
+This also writes an AGENTS.md describing the LangSmith API
 surface available to this app, and a README explaining the bridge contract.
 This only writes local files — it does not create anything remotely. Run
 "langsmith apps push" once you're ready to upload it.
@@ -129,9 +114,9 @@ write the files. A failed install/build doesn't fail the command — it's a
 convenience, not a requirement — but you'll need to build manually before
 "apps dev" or "apps push" will work.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			at, ok := appTypes[appTypeFlag]
+			at, ok := appTypes[templateFlag]
 			if !ok {
-				return fmt.Errorf("--type must be one of: %s", strings.Join(appTypeNames(), ", "))
+				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
 			dir, err := os.Getwd()
 			if err != nil {
@@ -153,13 +138,12 @@ convenience, not a requirement — but you'll need to build manually before
 			}
 
 			output.OutputJSON(map[string]any{
-				"status":       "scaffolded",
-				"dir":          dir,
-				"name":         name,
-				"type":         appTypeFlag,
-				"context_type": at.contextType,
-				"files":        written,
-				"built":        built,
+				"status":   "scaffolded",
+				"dir":      dir,
+				"name":     name,
+				"template": templateFlag,
+				"files":    written,
+				"built":    built,
 			}, "")
 			return nil
 		},
@@ -167,7 +151,7 @@ convenience, not a requirement — but you'll need to build manually before
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().StringVar(&appTypeFlag, "type", "standalone", "App type: "+strings.Join(appTypeNames(), ", "))
+	cmd.Flags().StringVar(&templateFlag, "template", "blank", "Starter template: "+strings.Join(appTypeNames(), ", "))
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	cmd.Flags().BoolVar(&skipInstall, "skip-install", false, "Skip running \"npm install && npm run build\" after scaffolding")
 	_ = cmd.MarkFlagRequired("name")
@@ -203,7 +187,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, fmt.Errorf("--name is required")
 	}
 	if at.templateRoot == "" {
-		return nil, fmt.Errorf("--type must be one of: %s", strings.Join(appTypeNames(), ", "))
+		return nil, fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 	}
 
 	if info, err := os.Stat(dir); err == nil {
@@ -279,21 +263,17 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, err
 	}
 
-	agentsMD, err := agentsMDFS.ReadFile("templates/agents-md/" + at.agentsMDName() + ".md")
+	agentsMD, err := agentsMDFS.ReadFile("templates/agents-md/" + at.agentsMD + ".md")
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded AGENTS.md %q: %w", at.agentsMDName(), err)
+		return nil, fmt.Errorf("reading embedded AGENTS.md %q: %w", at.agentsMD, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), agentsMD, 0o644); err != nil {
 		return nil, fmt.Errorf("writing AGENTS.md: %w", err)
 	}
 	written = append(written, "AGENTS.md")
 
-	// Record --type's context_type immediately, with no app_id yet (that's
-	// only known once "apps push" actually creates the app). Without this,
-	// "apps dev" run before the first push has no way to know this is an
-	// annotation_queue app at all — the queue-selector bar and --queue-id
-	// both key off this file's context_type, not the app_id.
-	if err := writeAppLink(dir, appLink{Name: name, ContextType: at.contextType}); err != nil {
+	// Record the name now so a later push reuses it, not the directory basename.
+	if err := writeAppLink(dir, appLink{Name: name}); err != nil {
 		return nil, fmt.Errorf("writing .langsmith/app.json: %w", err)
 	}
 	written = append(written, filepath.Join(appsLinkDir, appsLinkFile))
