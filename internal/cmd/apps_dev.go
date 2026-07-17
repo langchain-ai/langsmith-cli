@@ -395,8 +395,9 @@ setInterval(function() {
 // LS_API forwarded to /__ls_dev/call, which is real network access the
 // iframe itself can never have.
 //
-// Every app gets a config toolbar; its first (and only) control is a
-// Light/Dark mode toggle (posting LANGSMITH_METADATA).
+// Every app gets a config toolbar, labeled so it reads clearly as the dev
+// tool's own chrome rather than part of the app below it; its first (and
+// only) control is a Light/Dark mode toggle (posting LANGSMITH_METADATA).
 func renderDevHostHTML(files map[string]string, entrypoint string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
@@ -447,35 +448,46 @@ const devHostHTMLTemplate = `<!doctype html>
     flex: none;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 20px;
     background: var(--ls-dev-bar-bg);
     border-bottom: 1px solid var(--ls-dev-bar-border);
     padding: 8px 16px;
     font-size: 13px;
   }
-  .ls-dev-toolbar-item { display: flex; align-items: center; gap: 8px; }
-  .ls-dev-toolbar-item > label,
-  .ls-dev-toolbar-label { font-weight: 500; color: var(--ls-dev-bar-label); }
+  #ls-dev-toolbar-title {
+    font-weight: 600;
+    color: var(--ls-dev-control-text);
+  }
+  .ls-dev-toolbar-controls { display: flex; align-items: center; gap: 20px; }
 
-  #ls-dev-mode-toggle {
+  #ls-dev-mode-group {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--ls-dev-bar-border);
+    border-radius: 7px;
+    padding: 2px;
+  }
+  .ls-dev-mode-btn {
     font-family: inherit;
     font-size: 13px;
-    color: var(--ls-dev-control-text);
-    background-color: var(--ls-dev-control-bg);
-    border: 1px solid var(--ls-dev-control-border);
-    border-radius: 6px;
-    padding: 5px 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    color: var(--ls-dev-bar-label);
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 12px;
     cursor: pointer;
-    transition: border-color 120ms ease;
+    transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
   }
-  #ls-dev-mode-toggle:hover { border-color: var(--ls-dev-control-border-hover); }
-  #ls-dev-mode-toggle:focus-visible {
+  .ls-dev-mode-btn:hover { color: var(--ls-dev-control-text); }
+  .ls-dev-mode-btn[aria-pressed="true"] {
+    background-color: var(--ls-dev-control-bg);
+    color: var(--ls-dev-control-text);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+  }
+  .ls-dev-mode-btn:focus-visible {
     outline: none;
-    border-color: #006ddd;
-    box-shadow: 0 0 0 2px rgba(0, 109, 221, 0.15);
+    box-shadow: 0 0 0 2px #006ddd;
   }
 
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
@@ -483,9 +495,12 @@ const devHostHTMLTemplate = `<!doctype html>
 </head>
 <body>
 <div id="ls-dev-toolbar">
-  <div class="ls-dev-toolbar-item">
-    <span class="ls-dev-toolbar-label">Appearance</span>
-    <button id="ls-dev-mode-toggle" type="button" aria-pressed="false"><span id="ls-dev-mode-label">Light</span></button>
+  <span id="ls-dev-toolbar-title">LangSmith Custom Apps — local preview below</span>
+  <div class="ls-dev-toolbar-controls">
+    <div id="ls-dev-mode-group" role="group" aria-label="Appearance">
+      <button id="ls-dev-mode-light" type="button" class="ls-dev-mode-btn" aria-pressed="false">Light</button>
+      <button id="ls-dev-mode-dark" type="button" class="ls-dev-mode-btn" aria-pressed="false">Dark</button>
+    </div>
   </div>
 </div>
 <iframe id="ls-app" sandbox="allow-scripts" srcdoc="__SANDBOX_SRCDOC__"></iframe>
@@ -499,11 +514,12 @@ const devHostHTMLTemplate = `<!doctype html>
     iframe.contentWindow.postMessage(msg, '*');
   }
 
-  // First config control. mode ("dark"|"light") defaults from the OS,
-  // persists to localStorage, and drives the sandbox (LANGSMITH_METADATA) and host chrome.
+  // First config control: two always-visible Light/Dark buttons, not a
+  // single toggle. mode ("dark"|"light") defaults from the OS, persists to
+  // localStorage, and drives the sandbox (LANGSMITH_METADATA) and host chrome.
   var MODE_STORAGE_KEY = 'langsmith:apps-dev:mode';
-  var modeToggle = document.getElementById('ls-dev-mode-toggle');
-  var modeLabel = document.getElementById('ls-dev-mode-label');
+  var lightBtn = document.getElementById('ls-dev-mode-light');
+  var darkBtn = document.getElementById('ls-dev-mode-dark');
 
   function initialMode() {
     try {
@@ -516,23 +532,25 @@ const devHostHTMLTemplate = `<!doctype html>
 
   function applyModeToHost() {
     document.documentElement.classList.toggle('ls-dev-dark', mode === 'dark');
-    if (modeToggle) modeToggle.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
-    if (modeLabel) modeLabel.textContent = mode === 'dark' ? 'Dark' : 'Light';
+    if (lightBtn) lightBtn.setAttribute('aria-pressed', mode === 'light' ? 'true' : 'false');
+    if (darkBtn) darkBtn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
   }
 
   function postMetadata() {
     post({ type: 'LANGSMITH_METADATA', metadata: { mode: mode } });
   }
 
-  applyModeToHost();
-  if (modeToggle) {
-    modeToggle.addEventListener('click', function() {
-      mode = mode === 'dark' ? 'light' : 'dark';
-      try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (e) {}
-      applyModeToHost();
-      postMetadata();
-    });
+  function setMode(next) {
+    if (next === mode) return;
+    mode = next;
+    try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (e) {}
+    applyModeToHost();
+    postMetadata();
   }
+
+  applyModeToHost();
+  if (lightBtn) lightBtn.addEventListener('click', function() { setMode('light'); });
+  if (darkBtn) darkBtn.addEventListener('click', function() { setMode('dark'); });
 
   window.addEventListener('message', function(event) {
     if (event.source !== iframe.contentWindow) return;
