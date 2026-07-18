@@ -20,6 +20,12 @@ honored server-side, so child runs come from a flat query — no per-trace walk:
 | tool  | `run_type: "tool"` | tool-usage breakdown |
 | chain | `run_type: "chain"` | subagents (filtered client-side to `ls_agent_type == "subagent"`) |
 
+Each is staggered by 150ms and wrapped in `callWithRetry` (3 attempts,
+exponential backoff). `window.langsmith.call` drops the HTTP status of a
+failure before it reaches the app — a 429 from firing four queries at once is
+indistinguishable from any other error — so retry blindly on failure rather
+than string-matching "rate limit" out of an error message.
+
 ### The 100-run cap
 
 Every query here returns **at most the 100 most-recent matching runs**; the

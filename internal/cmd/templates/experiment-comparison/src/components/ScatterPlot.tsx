@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ExampleWithRuns, ExperimentView } from '../types';
-import { SCATTER_SERIES_CAP, type RunMetric } from '../lib/metrics';
+import { SERIES_CAP, type RunMetric } from '../lib/metrics';
+import { Empty } from './primitives';
 
 interface Props {
   examples: ExampleWithRuns[];
@@ -28,7 +29,7 @@ const PH = H - M.top - M.bottom;
 export function ScatterPlot({ examples, experiments, metric }: Props) {
   const [hover, setHover] = useState<Point | null>(null);
   const baseline = experiments[0];
-  const shown = experiments.slice(1, 1 + SCATTER_SERIES_CAP);
+  const shown = experiments.slice(1, 1 + SERIES_CAP);
   const hidden = experiments.length - 1 - shown.length;
 
   const { points, lo, hi } = useMemo(() => {
@@ -55,11 +56,7 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
 
   if (!baseline) return null;
   if (points.length === 0) {
-    return (
-      <div className="rounded-lg border border-secondary p-6 text-sm text-tertiary">
-        No paired values for {metric.label} in this selection.
-      </div>
-    );
+    return <Empty label={`No paired values for ${metric.label} in this selection.`} />;
   }
 
   const ticks = [lo, (lo + hi) / 2, hi];
@@ -68,7 +65,7 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
     : 'points above the line beat the baseline';
 
   return (
-    <div className="rounded-lg border border-secondary p-4">
+    <div className="flex flex-col gap-2">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Baseline vs comparison ${metric.label}`}>
         {ticks.map((t) => (
           <g key={`gx-${t}`}>

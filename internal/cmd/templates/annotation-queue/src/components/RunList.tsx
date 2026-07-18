@@ -122,7 +122,7 @@ function RunSection({
   numReviewersPerItem,
   onSelectRun,
 }: SectionProps) {
-  const { runs, loading, loadingMore, hasMore, loadMore } = section;
+  const { runs, total, loading, loadingMore, hasMore, loadMore } = section;
   const [open, setOpen] = useState(defaultOpen);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -165,10 +165,7 @@ function RunSection({
         <span className="text-sm font-medium text-secondary">{label}</span>
         <div className="ml-auto flex items-center gap-1.5">
           {loading && <Spinner size="sm" />}
-          <span className="text-xs text-tertiary">
-            {runs.length}
-            {hasMore ? '+' : ''}
-          </span>
+          <span className="text-xs text-tertiary">{Math.max(total, runs.length)}</span>
         </div>
       </button>
 

@@ -7,6 +7,9 @@ const PAGE_SIZE = 50;
 
 export interface RunSection {
   runs: AnnotationQueueRun[];
+  /** Exact count for this status, from fetchQueueRunsSize — not an estimate,
+   * so callers can display it directly instead of deriving from runs.length. */
+  total: number;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -93,6 +96,7 @@ export function useRunSection(
 
   return {
     runs,
+    total,
     loading,
     loadingMore,
     hasMore: runs.length < total,

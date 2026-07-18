@@ -16,6 +16,9 @@ interface Props {
   columns: RubricItem[];
   configs: Record<string, FeedbackConfig>;
   rows: AnnotationQueueRun[];
+  /** Exact total for this section (see useRunSection) — shown in the header
+   * bar instead of deriving a count from the loaded page. */
+  total: number;
   rowsLoading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -64,6 +67,7 @@ export function DataGrid({
   columns,
   configs,
   rows,
+  total,
   rowsLoading,
   loadingMore,
   hasMore,
@@ -181,8 +185,7 @@ export function DataGrid({
         <div className="flex items-baseline gap-2">
           <span className="text-base font-medium text-primary">{queue.name}</span>
           <span className="text-sm text-tertiary">
-            {rows.length}
-            {hasMore ? '+' : ''} to review · ↑/↓/←/→ to move between cells
+            {Math.max(total, rows.length)} to review · ↑/↓/←/→ to move between cells
           </span>
         </div>
         {selectedRunIds.size > 0 && (

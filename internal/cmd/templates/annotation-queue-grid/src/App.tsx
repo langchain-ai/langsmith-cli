@@ -237,6 +237,7 @@ export function App({ queueId: initialQueueId }: Props) {
           columns={columns}
           configs={configs}
           rows={rows}
+          total={section.total}
           rowsLoading={section.loading}
           loadingMore={section.loadingMore}
           hasMore={section.hasMore}

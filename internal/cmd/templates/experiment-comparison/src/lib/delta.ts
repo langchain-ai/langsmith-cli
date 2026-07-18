@@ -21,6 +21,18 @@ export function costOf(run: ExperimentRun | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Signed improvement of `value` over `baseline` (positive = better), honoring
+// direction; null if either side is missing so callers never mistake a gap
+// for a real zero delta.
+export function improvementDelta(
+  baseline: number | null,
+  value: number | null,
+  lowerIsBetter: boolean
+): number | null {
+  if (baseline == null || value == null) return null;
+  return lowerIsBetter ? baseline - value : value - baseline;
+}
+
 // Compare value against baseline; 'neutral' when either is missing or they
 // tie, so missing data never miscolors.
 export function verdict(
@@ -28,9 +40,9 @@ export function verdict(
   value: number | null,
   lowerIsBetter: boolean
 ): Verdict {
-  if (baseline == null || value == null || value === baseline) return 'neutral';
-  const valueIsBetter = lowerIsBetter ? value < baseline : value > baseline;
-  return valueIsBetter ? 'better' : 'worse';
+  const d = improvementDelta(baseline, value, lowerIsBetter);
+  if (d == null || d === 0) return 'neutral';
+  return d > 0 ? 'better' : 'worse';
 }
 
 // Token-based text colors that flip under html.dark, so deltas read in both themes.
