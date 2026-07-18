@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ExampleWithRuns, ExperimentRun, ExperimentView } from '../types';
-import { verdict, verdictClass } from '../lib/delta';
+import { improvementDelta, verdict, verdictClass } from '../lib/delta';
 import type { RunMetric } from '../lib/metrics';
 
 interface Props {
@@ -131,13 +131,11 @@ function worstDelta(
   metric: RunMetric
 ): number | null {
   const base = metric.value(runFor(ex, baselineId));
-  if (base == null) return null;
   let worst: number | null = null;
   for (const c of comparisons) {
-    const val = metric.value(runFor(ex, c.id));
-    if (val == null) continue;
-    const improvement = metric.lowerIsBetter ? base - val : val - base;
-    worst = worst == null ? improvement : Math.min(worst, improvement);
+    const d = improvementDelta(base, metric.value(runFor(ex, c.id)), metric.lowerIsBetter);
+    if (d == null) continue;
+    worst = worst == null ? d : Math.min(worst, d);
   }
   return worst;
 }

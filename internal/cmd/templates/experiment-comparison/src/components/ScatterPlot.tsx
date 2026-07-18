@@ -115,19 +115,21 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
         />
 
         {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.cx}
-            cy={p.cy}
-            r={hover === p ? 6 : 4}
-            fill={p.color}
-            stroke="var(--bg-surface-level-1)"
-            strokeWidth={1.5}
-            onMouseEnter={() => setHover(p)}
-            onMouseLeave={() => setHover(null)}
-          >
-            <title>{`${p.letter} · ${p.name}\nbaseline ${metric.format(p.xv)} → ${metric.format(p.yv)}`}</title>
-          </circle>
+          <g key={i} onMouseEnter={() => setHover(p)} onMouseLeave={() => setHover(null)} className="cursor-pointer">
+            {/* transparent hit area — bigger than the visible dot so hover doesn't require pinpoint aim */}
+            <circle cx={p.cx} cy={p.cy} r={12} fill="transparent" />
+            <circle
+              cx={p.cx}
+              cy={p.cy}
+              r={hover === p ? 6 : 4}
+              fill={p.color}
+              stroke="var(--bg-surface-level-1)"
+              strokeWidth={1.5}
+              className="motion-safe:transition-[r] motion-safe:duration-fast"
+            >
+              <title>{`${p.letter} · ${p.name}\nbaseline ${metric.format(p.xv)} → ${metric.format(p.yv)}`}</title>
+            </circle>
+          </g>
         ))}
 
         <text
