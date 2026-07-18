@@ -589,3 +589,108 @@ func TestInstallAndBuildCustomAppStarter_ErrorsWhenBuildFails(t *testing.T) {
 		t.Error("expected error when the build step fails")
 	}
 }
+
+// Shared files (templates/_shared/) aren't tracked per template — a
+// template gets one by actually importing it, discovered by scanning its
+// own source. These tests pin down that inference so it can't silently
+// regress into either a maintained list or a "copy everything" fallback.
+func TestSharedFileImportSpecifiers_MatchesTemplateConventions(t *testing.T) {
+	tests := []struct {
+		sharedRelPath string
+		want          []string
+	}{
+		{
+			sharedRelPath: "components/SearchableSelect.tsx",
+			want: []string{
+				"./SearchableSelect",
+				"./components/SearchableSelect",
+				"../components/SearchableSelect",
+			},
+		},
+		{
+			sharedRelPath: "lib/utils.ts",
+			want: []string{
+				"./utils",
+				"./lib/utils",
+				"../lib/utils",
+			},
+		},
+	}
+	for _, tt := range tests {
+		got := sharedFileImportSpecifiers(tt.sharedRelPath)
+		gotSet := map[string]bool{}
+		for _, g := range got {
+			gotSet[g] = true
+		}
+		for _, want := range tt.want {
+			if !gotSet[want] {
+				t.Errorf("sharedFileImportSpecifiers(%q) = %v, missing %q", tt.sharedRelPath, got, want)
+			}
+		}
+	}
+}
+
+// annotation-queue-grid imports SearchableSelect, Spinner, and the cn()
+// helper from lib/utils — all three should be pulled in, byte-identical to
+// the canonical _shared/ source.
+func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue-grid"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	for _, sharedRelPath := range []string{
+		"src/components/SearchableSelect.tsx",
+		"src/components/Spinner.tsx",
+		"src/lib/utils.ts",
+	} {
+		if !writtenSet[sharedRelPath] {
+			t.Errorf("expected %q to be pulled in from _shared/, got %v", sharedRelPath, written)
+			continue
+		}
+		got, err := os.ReadFile(filepath.Join(target, sharedRelPath))
+		if err != nil {
+			t.Fatalf("reading scaffolded %s: %v", sharedRelPath, err)
+		}
+		want, err := sharedFS.ReadFile(sharedRoot + "/" + strings.TrimPrefix(sharedRelPath, "src/"))
+		if err != nil {
+			t.Fatalf("reading embedded shared %s: %v", sharedRelPath, err)
+		}
+		if string(got) != string(want) {
+			t.Errorf("scaffolded %s does not match the canonical _shared/ source", sharedRelPath)
+		}
+	}
+}
+
+// experiment-comparison only imports SearchableSelect — it has no Spinner
+// and never had a lib/utils.ts, so those must not appear even though
+// they're valid _shared/ files another template uses.
+func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "my-app")
+
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["experiment-comparison"], false)
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+
+	writtenSet := map[string]bool{}
+	for _, w := range written {
+		writtenSet[w] = true
+	}
+	if !writtenSet["src/components/SearchableSelect.tsx"] {
+		t.Errorf("expected SearchableSelect.tsx to be pulled in, got %v", written)
+	}
+	for _, unwanted := range []string{"src/components/Spinner.tsx", "src/lib/utils.ts"} {
+		if writtenSet[unwanted] {
+			t.Errorf("experiment-comparison doesn't import %q, it should not be scaffolded", unwanted)
+		}
+	}
+}
