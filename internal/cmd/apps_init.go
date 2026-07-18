@@ -36,6 +36,20 @@ var experimentComparisonStarterFS embed.FS
 //go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
+// Canonical copies of small files reused across templates (SearchableSelect,
+// Spinner, the cn() helper, ...). Templates don't carry their own copies —
+// scaffoldCustomAppStarter infers which ones a given template needs by
+// scanning its own source for the import statements that would reference
+// them (see sharedFilesUsedBy), so there's no per-template list to maintain.
+// This keeps the *source* single-copy while every scaffolded app still ends
+// up with its own real, standalone file — nothing in the generated output
+// depends on this repo or on other templates at runtime.
+//
+//go:embed all:templates/_shared
+var sharedFS embed.FS
+
+const sharedRoot = "templates/_shared"
+
 // appType is one --template choice: which starter to scaffold and which
 // AGENTS.md ships with it. Map key = the --template value.
 type appType struct {
@@ -295,6 +309,12 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, err
 	}
 
+	sharedWritten, err := writeUsedSharedFiles(dir, at)
+	if err != nil {
+		return nil, err
+	}
+	written = append(written, sharedWritten...)
+
 	agentsMD, err := assembleAgentsMD(at.agentsMD)
 	if err != nil {
 		return nil, err
@@ -311,6 +331,125 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	written = append(written, filepath.Join(appsLinkDir, appsLinkFile))
 
 	return written, nil
+}
+
+// writeUsedSharedFiles copies whichever templates/_shared/ files this
+// template's own source actually imports into dir/src/, so the scaffolded
+// app ends up with a real, standalone file — the shared/ source stays the
+// only physical copy in this repo. "Actually imports" is determined by
+// scanning the template's own .ts/.tsx source for the relative-import
+// specifier a file at that shared path would be referenced by (see
+// sharedFileImportSpecifiers), not by a maintained per-template list.
+func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
+	sharedPaths, err := allSharedFilePaths()
+	if err != nil {
+		return nil, err
+	}
+	if len(sharedPaths) == 0 {
+		return nil, nil
+	}
+
+	src, err := concatenatedTemplateSource(at)
+	if err != nil {
+		return nil, err
+	}
+
+	var written []string
+	for _, relPath := range sharedPaths {
+		used := false
+		for _, spec := range sharedFileImportSpecifiers(relPath) {
+			if strings.Contains(src, "'"+spec+"'") || strings.Contains(src, "\""+spec+"\"") {
+				used = true
+				break
+			}
+		}
+		if !used {
+			continue
+		}
+
+		raw, err := sharedFS.ReadFile(sharedRoot + "/" + relPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading embedded shared file %s: %w", relPath, err)
+		}
+		destRel := filepath.Join("src", relPath)
+		dest := filepath.Join(dir, destRel)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return nil, fmt.Errorf("creating directory for %s: %w", destRel, err)
+		}
+		if err := os.WriteFile(dest, raw, 0o644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", destRel, err)
+		}
+		written = append(written, destRel)
+	}
+	return written, nil
+}
+
+// allSharedFilePaths lists every file under templates/_shared/, relative to
+// that root (e.g. "components/SearchableSelect.tsx", "lib/utils.ts").
+func allSharedFilePaths() ([]string, error) {
+	var paths []string
+	err := fs.WalkDir(sharedFS, sharedRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		paths = append(paths, strings.TrimPrefix(path, sharedRoot+"/"))
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking embedded shared files: %w", err)
+	}
+	return paths, nil
+}
+
+// concatenatedTemplateSource returns every .ts/.tsx file in this template
+// concatenated together, for a simple substring scan — cheap and sufficient
+// at this repo's scale (a handful of small, flat template directories).
+func concatenatedTemplateSource(at appType) (string, error) {
+	var out strings.Builder
+	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !(strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx")) {
+			return nil
+		}
+		b, err := at.templateFS.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", path, err)
+		}
+		out.Write(b)
+		out.WriteByte('\n')
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
+// sharedFileImportSpecifiers returns the plausible relative-import
+// specifiers a template file could use to reference the shared file at
+// sharedRelPath (relative to templates/_shared/), depending on which
+// directory within the template's src/ the importing file lives in. Matches
+// this repo's template convention: everything lives directly under src/,
+// src/components/, or src/lib/, one level deep — e.g. a file at
+// "components/SearchableSelect.tsx" is imported as "./SearchableSelect" by
+// sibling files under src/components/, or "./components/SearchableSelect"
+// by a top-level file like src/App.tsx.
+func sharedFileImportSpecifiers(sharedRelPath string) []string {
+	base := strings.TrimSuffix(filepath.Base(sharedRelPath), filepath.Ext(sharedRelPath))
+	dir := filepath.Dir(sharedRelPath) // "components", "lib", or "." for a top-level shared file
+	specifiers := []string{"./" + base}
+	if dir != "." {
+		specifiers = append(specifiers,
+			"./"+dir+"/"+base, // top-level src/*.tsx importing src/<dir>/<base>
+			"../"+dir+"/"+base, // a different src/<other>/ file importing src/<dir>/<base>
+		)
+	}
+	return specifiers
 }
 
 var templatedStarterFiles = map[string]bool{

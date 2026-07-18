@@ -4,15 +4,12 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build clean test test-integration lint vet fmt install sync-templates
+.PHONY: build clean test test-integration lint vet fmt install
 
-sync-templates:
-	./scripts/sync-template-shared.sh
-
-build: sync-templates
+build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/langsmith
 
-install: sync-templates
+install:
 	CGO_ENABLED=0 go install $(LDFLAGS) ./cmd/langsmith
 
 clean:
