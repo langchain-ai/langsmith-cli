@@ -50,15 +50,41 @@ Read-only by design: it visualizes and aggregates, and compares a baseline
 against any number of comparison experiments. It never creates or deletes
 datasets/experiments — add that yourself if you want it.
 
+One shared metric — the "Focus metric" dropdown in `src/App.tsx` — drives
+every metric-scoped section (Scoreboard, Regression scorecard, Delta
+distribution, Baseline vs comparison, and the per-example sort). It's a
+single control row above those sections, not repeated per chart.
+
 - `src/api.ts` — the four calls above
 - `src/components/Pickers.tsx` — dataset → baseline → comparison selection
-- `src/lib/delta.ts` — safe score/latency/cost accessors + baseline verdict/colors
-- `src/lib/metrics.ts` — shared metric descriptors, formats, series letters/colors
-- `src/components/SummaryPanel.tsx` — per-experiment aggregates, colored vs baseline
-- `src/components/Scorecard.tsx` — per-comparison win/loss/tie counts vs baseline
+- `src/lib/delta.ts` — safe score/latency/cost accessors, `improvementDelta`
+  (signed, direction-aware), and baseline verdict/colors built on top of it
+- `src/lib/metrics.ts` — shared metric descriptors, formats, series
+  letters/colors, `aggregateValue` (reads a `RunMetric`'s value off an
+  `Aggregate`), and `histogram` (fixed-bin bucketing for the delta
+  distribution)
+- `src/components/primitives.tsx` — the small chart/layout building blocks
+  every section below is made of: `Section`, `StatTile` (with an optional
+  colored delta pill), `BarList` (grouped mini bar chart), `StackedBar`
+  (win/tie/loss proportion bars), `Legend`, `Empty`
+- `src/components/Scoreboard.tsx` — hero stat tiles: the focus metric's value
+  per experiment, with a colored delta vs baseline
+- `src/components/SummaryPanel.tsx` — every metric as a mini bar chart across
+  experiments (falls back to plain stat tiles when only the baseline is
+  picked, so it's never a one-bar chart)
+- `src/components/Scorecard.tsx` — per-comparison win/tie/loss proportions vs
+  baseline, one stacked bar per metric
+- `src/components/DeltaHistogram.tsx` — per comparison, the distribution of
+  each example's signed improvement on the focus metric (green bars = wins,
+  red = regressions)
 - `src/components/ScatterPlot.tsx` — baseline vs comparison per metric (first four series)
 - `src/components/ExampleTable.tsx` — per-example outputs and a sortable, selectable metric
-- `src/App.tsx` — fetches, derives aggregates and feedback keys, wires state
+- `src/App.tsx` — fetches, derives aggregates and feedback keys, wires state;
+  holds the previous render (dimmed) while a new selection loads instead of
+  flashing back to a bare loading screen
 
 Series colors come from `--series-1..4` in `index.css` (validated CVD-safe,
 stepped separately for the dark surface) so charts theme without branching.
+Win/loss/tie states use the semantic `--bg-success-strong` / `--border-strong`
+/ `--bg-error-strong` tokens instead, since those encode a status (good/bad),
+not a series.
