@@ -24,7 +24,11 @@ interface Props {
   activeRow: number;
   expandedRunId: string | null;
   completeError: string | null;
+  selectedRunIds: Set<string>;
   onToggleExpand: (runId: string) => void;
+  onToggleRowSelected: (queueRunId: string) => void;
+  onToggleSelectAll: () => void;
+  onBulkComplete: () => void;
   onActivateRow: (index: number) => void;
   onCellSaved: (runId: string, feedback: FeedbackItem) => void;
   onCellDeleted: (runId: string, feedbackKey: string) => void;
@@ -49,6 +53,12 @@ function prettyIO(value: Record<string, unknown> | null): string {
   }
 }
 
+// Clickable, always-visibly-interactive treatment shared by the Run
+// Name/Inputs/Outputs cells — the whole column, not just its text, opens
+// the expanded row.
+const expandableCellClass =
+  'max-w-[220px] cursor-pointer truncate px-3 py-1.5 align-middle hover:bg-surface-level-2';
+
 export function DataGrid({
   queue,
   columns,
@@ -62,7 +72,11 @@ export function DataGrid({
   activeRow,
   expandedRunId,
   completeError,
+  selectedRunIds,
   onToggleExpand,
+  onToggleRowSelected,
+  onToggleSelectAll,
+  onBulkComplete,
   onActivateRow,
   onCellSaved,
   onCellDeleted,
@@ -70,6 +84,7 @@ export function DataGrid({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   // Infinite scroll: fetch the next page once the sentinel at the bottom of
   // the scroll container comes into view.
@@ -88,6 +103,13 @@ export function DataGrid({
     return () => observer.disconnect();
   }, [hasMore, onLoadMore]);
 
+  // Reflect partial selection as the native indeterminate visual — plain
+  // HTML has no attribute for this, it's set imperatively on the node.
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = selectedRunIds.size > 0 && selectedRunIds.size < rows.length;
+  }, [selectedRunIds.size, rows.length]);
+
   if (!queue) {
     return (
       <div className="flex flex-1 items-center justify-center rounded-lg border border-secondary">
@@ -103,7 +125,42 @@ export function DataGrid({
     return columns.filter((c) => c.is_required).every((c) => rowFeedback[c.feedback_key] != null);
   }
 
-  const colSpan = 3 + columns.length + 1;
+  const colSpan = 1 + 3 + columns.length + 1;
+
+  // Arrow keys move focus between feedback cells (identified by the
+  // data-row-index/data-col-index GridCell stamps onto its input/select) —
+  // this is what makes the grid navigable like an actual spreadsheet
+  // instead of just editable one field at a time. Deliberately unconditional
+  // (not just at text boundaries): values here are short scores/categories/
+  // comments, so trading away in-text left/right cursor movement for fast
+  // cell-to-cell movement is the right default for a review workflow.
+  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    const target = e.target as HTMLElement;
+    const rowAttr = target.getAttribute('data-row-index');
+    const colAttr = target.getAttribute('data-col-index');
+    if (rowAttr == null || colAttr == null) return;
+    const row = Number(rowAttr);
+    const col = Number(colAttr);
+
+    let nextRow = row;
+    let nextCol = col;
+    if (e.key === 'ArrowUp') nextRow -= 1;
+    else if (e.key === 'ArrowDown') nextRow += 1;
+    else if (e.key === 'ArrowLeft') nextCol -= 1;
+    else nextCol += 1;
+
+    if (nextRow < 0 || nextRow >= rows.length || nextCol < 0 || nextCol >= columns.length) return;
+
+    e.preventDefault();
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-row-index="${nextRow}"][data-col-index="${nextCol}"]`
+    );
+    if (!el) return;
+    el.focus();
+    if (el instanceof HTMLInputElement) el.select();
+    onActivateRow(nextRow);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-secondary">
@@ -113,9 +170,18 @@ export function DataGrid({
           <span className="text-base font-medium text-primary">{queue.name}</span>
           <span className="text-sm text-tertiary">
             {rows.length}
-            {hasMore ? '+' : ''} to review · ↑/↓ to move between rows
+            {hasMore ? '+' : ''} to review · ↑/↓/←/→ to move between cells
           </span>
         </div>
+        {selectedRunIds.size > 0 && (
+          <button
+            type="button"
+            onClick={onBulkComplete}
+            className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover"
+          >
+            Mark {selectedRunIds.size} Completed
+          </button>
+        )}
       </div>
 
       {completeError && (
@@ -125,7 +191,7 @@ export function DataGrid({
       )}
 
       {/* Grid */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} onKeyDown={handleGridKeyDown} className="min-h-0 flex-1 overflow-auto">
         {columns.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-sm text-tertiary">This queue has no rubric items to score.</span>
@@ -140,6 +206,16 @@ export function DataGrid({
           <table className="w-full border-collapse text-left">
             <thead className="sticky top-0 z-10 bg-surface-level-2">
               <tr>
+                <th className="w-10 border-b border-secondary px-3 py-2">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={rows.length > 0 && selectedRunIds.size === rows.length}
+                    onChange={onToggleSelectAll}
+                    aria-label="Select all rows"
+                    className="cursor-pointer accent-[var(--bg-brand)]"
+                  />
+                </th>
                 <th className="w-[220px] min-w-[220px] border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
                   Run Name
                 </th>
@@ -170,6 +246,7 @@ export function DataGrid({
               {rows.map((run, index) => {
                 const isActive = index === activeRow;
                 const isExpanded = expandedRunId === run.id;
+                const isSelected = selectedRunIds.has(run.queue_run_id);
                 const rowFeedback = feedbackByRun[run.id] ?? {};
                 const inputsPreview = stringifyIO(run.inputs);
                 const outputsPreview = stringifyIO(run.outputs);
@@ -187,15 +264,23 @@ export function DataGrid({
                             : 'hover:bg-surface-level-1-hover'
                       )}
                     >
-                      <td className="max-w-[220px] px-3 py-1.5 align-middle text-sm text-secondary">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleExpand(run.id);
-                          }}
-                          className="flex w-full min-w-0 items-center gap-1.5 rounded text-left hover:text-primary"
-                        >
+                      <td className="px-3 py-1.5 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => onToggleRowSelected(run.queue_run_id)}
+                          aria-label={`Select ${run.name ?? run.id}`}
+                          className="cursor-pointer accent-[var(--bg-brand)]"
+                        />
+                      </td>
+                      <td
+                        className={cn(expandableCellClass, 'text-sm text-secondary')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExpand(run.id);
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-1.5">
                           {isExpanded ? (
                             <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-tertiary" />
                           ) : (
@@ -204,10 +289,10 @@ export function DataGrid({
                           <span className="min-w-0 truncate" title={run.name ?? run.id}>
                             {run.name ?? run.id.slice(0, 8)}
                           </span>
-                        </button>
+                        </div>
                       </td>
                       <td
-                        className="max-w-[220px] cursor-pointer truncate border-l border-secondary px-3 py-1.5 align-middle font-mono text-xs text-tertiary hover:text-secondary"
+                        className={cn(expandableCellClass, 'border-l border-secondary font-mono text-xs text-tertiary')}
                         title={inputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -217,7 +302,7 @@ export function DataGrid({
                         {inputsPreview || '—'}
                       </td>
                       <td
-                        className="max-w-[220px] cursor-pointer truncate border-l border-secondary px-3 py-1.5 align-middle font-mono text-xs text-tertiary hover:text-secondary"
+                        className={cn(expandableCellClass, 'border-l border-secondary font-mono text-xs text-tertiary')}
                         title={outputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -226,8 +311,12 @@ export function DataGrid({
                       >
                         {outputsPreview || '—'}
                       </td>
-                      {columns.map((col) => (
-                        <td key={col.feedback_key} className="border-l border-secondary px-1 py-1 align-middle">
+                      {columns.map((col, colIndex) => (
+                        <td
+                          key={col.feedback_key}
+                          className="border-l border-secondary px-1 py-1 align-middle"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <GridCell
                             item={col}
                             config={configs[col.feedback_key]}
@@ -236,6 +325,8 @@ export function DataGrid({
                             sessionId={run.session_id}
                             startTime={run.start_time}
                             existingFeedback={rowFeedback[col.feedback_key]}
+                            rowIndex={index}
+                            colIndex={colIndex}
                             onSaved={(fb) => onCellSaved(run.id, fb)}
                             onDeleted={(key) => onCellDeleted(run.id, key)}
                           />

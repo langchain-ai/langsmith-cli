@@ -10,9 +10,15 @@ import type {
   FeedbackSubmission,
 } from './types';
 
-export async function fetchQueues(limit = 50): Promise<AnnotationQueue[]> {
+export async function fetchQueues(
+  search = '',
+  offset = 0,
+  limit = 25
+): Promise<AnnotationQueue[]> {
+  const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
+  if (search) params.name_contains = search;
   return window.langsmith.call('GET /api/v1/annotation-queues', {
-    params: { limit: String(limit), offset: '0' },
+    params,
   }) as Promise<AnnotationQueue[]>;
 }
 

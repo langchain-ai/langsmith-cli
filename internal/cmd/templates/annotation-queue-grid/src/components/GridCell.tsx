@@ -12,6 +12,11 @@ interface Props {
   sessionId: string | undefined;
   startTime: string | undefined;
   existingFeedback: FeedbackItem | undefined;
+  /** Grid coordinates, stamped onto the focusable element as data
+   * attributes so DataGrid's arrow-key handler can find neighboring cells
+   * via the DOM without every cell needing to know about its siblings. */
+  rowIndex: number;
+  colIndex: number;
   onSaved: (feedback: FeedbackItem) => void;
   onDeleted: (feedbackKey: string) => void;
 }
@@ -25,6 +30,8 @@ export function GridCell({
   sessionId,
   startTime,
   existingFeedback,
+  rowIndex,
+  colIndex,
   onSaved,
   onDeleted,
 }: Props) {
@@ -130,6 +137,8 @@ export function GridCell({
             save(val, cat?.label ?? String(val));
           }}
           title={error ?? undefined}
+          data-row-index={rowIndex}
+          data-col-index={colIndex}
           className={cn(cellInput, 'appearance-none pr-6', 'cursor-pointer', saving && 'opacity-50')}
         >
           <option value="">—</option>
@@ -163,6 +172,8 @@ export function GridCell({
         }}
         placeholder="—"
         title={error ?? undefined}
+        data-row-index={rowIndex}
+        data-col-index={colIndex}
         className={cn(cellInput, saving && 'opacity-50')}
       />
     );
@@ -184,6 +195,8 @@ export function GridCell({
       }}
       placeholder="—"
       title={error ?? undefined}
+      data-row-index={rowIndex}
+      data-col-index={colIndex}
       className={cn(cellInput, saving && 'opacity-50')}
     />
   );

@@ -20,9 +20,15 @@ function windowStart(days: number): string {
   return new Date(Date.now() - days * 86400000).toISOString();
 }
 
-export async function fetchProjects(limit = 100): Promise<Project[]> {
+export async function fetchProjects(
+  search = '',
+  offset = 0,
+  limit = 25
+): Promise<Project[]> {
+  const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
+  if (search) params.name_contains = search;
   return window.langsmith.call('GET /api/v1/sessions', {
-    params: { limit: String(limit) },
+    params,
   }) as Promise<Project[]>;
 }
 

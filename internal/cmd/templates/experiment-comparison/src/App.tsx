@@ -4,10 +4,10 @@ import { SummaryPanel } from './components/SummaryPanel';
 import { ExampleTable } from './components/ExampleTable';
 import { Scorecard } from './components/Scorecard';
 import { ScatterPlot } from './components/ScatterPlot';
-import { fetchComparison, fetchDatasets, fetchExperiments, fetchFeedbackConfigs } from './api';
+import { fetchComparison, fetchExperiments, fetchFeedbackConfigs } from './api';
 import { costOf, latencyMs, scoreFor } from './lib/delta';
 import { buildMetrics, comparisonColor, letterFor } from './lib/metrics';
-import type { Aggregate, Dataset, ExampleWithRuns, ExperimentView, Experiment } from './types';
+import type { Aggregate, ExampleWithRuns, ExperimentView, Experiment } from './types';
 
 const EXAMPLE_LIMIT = 25;
 
@@ -16,10 +16,11 @@ function mean(values: number[]): number | null {
 }
 
 export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [datasetId, setDatasetId] = useState('');
 
+  // The full list (not just what's paginated into the dataset/baseline
+  // pickers) — needed to look experiments up by id for the Compare
+  // checkboxes and the ordered/colored experiment views below.
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [experimentsLoading, setExperimentsLoading] = useState(false);
   const [baselineId, setBaselineId] = useState('');
@@ -30,13 +31,6 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [failed, setFailed] = useState(false);
   const [lowerIsBetter, setLowerIsBetter] = useState<Record<string, boolean>>({});
   const [metricId, setMetricId] = useState('');
-
-  useEffect(() => {
-    fetchDatasets()
-      .then((ds) => setDatasets(ds ?? []))
-      .catch((e) => console.error('Failed to load datasets', e))
-      .finally(() => setDatasetsLoading(false));
-  }, []);
 
   // Reset downstream selections and load this dataset's experiments.
   useEffect(() => {
@@ -158,8 +152,6 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   return (
     <div className="flex min-h-screen flex-col bg-surface-level-1">
       <Pickers
-        datasets={datasets}
-        datasetsLoading={datasetsLoading}
         datasetId={datasetId}
         onDataset={setDatasetId}
         experiments={experiments}

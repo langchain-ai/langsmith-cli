@@ -24,6 +24,7 @@ export function App({ queueId: initialQueueId }: Props) {
   const [activeRow, setActiveRow] = useState(0);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
+  const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
 
   const section = useRunSection(queueId || undefined, 'needs_my_review');
   const rows = section.runs;
@@ -43,6 +44,7 @@ export function App({ queueId: initialQueueId }: Props) {
     setActiveRow(0);
     setExpandedRunId(null);
     setCompleteError(null);
+    setSelectedRunIds(new Set());
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
@@ -133,6 +135,46 @@ export function App({ queueId: initialQueueId }: Props) {
     completeRef.current = handleComplete;
   });
 
+  function toggleRowSelected(queueRunId: string) {
+    setSelectedRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(queueRunId)) next.delete(queueRunId);
+      else next.add(queueRunId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedRunIds((prev) =>
+      prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.queue_run_id))
+    );
+  }
+
+  // Mark every selected row complete at once. Each optimistically removed up
+  // front; any that the server rejects are restored (at their original
+  // index) and rolled into a single error summary.
+  async function handleBulkComplete() {
+    const targets = rows
+      .map((run, index) => ({ run, index }))
+      .filter(({ run }) => selectedRunIds.has(run.queue_run_id));
+    if (targets.length === 0) return;
+
+    setCompleteError(null);
+    setSelectedRunIds(new Set());
+    for (const { run } of targets) section.removeRun(run.queue_run_id);
+
+    const results = await Promise.allSettled(
+      targets.map(({ run }) => markRunComplete(run.queue_run_id))
+    );
+    const failures = targets.filter((_, i) => results[i].status === 'rejected');
+    if (failures.length > 0) {
+      failures.forEach(({ run, index }) => section.restoreRun(run, index));
+      setCompleteError(
+        `Failed to mark ${failures.length} of ${targets.length} run${targets.length === 1 ? '' : 's'} complete`
+      );
+    }
+  }
+
   function moveActiveRow(direction: 'up' | 'down') {
     setActiveRow((prev) => {
       if (rows.length === 0) return 0;
@@ -198,6 +240,10 @@ export function App({ queueId: initialQueueId }: Props) {
           expandedRunId={expandedRunId}
           onToggleExpand={(runId) => setExpandedRunId((prev) => (prev === runId ? null : runId))}
           completeError={completeError}
+          selectedRunIds={selectedRunIds}
+          onToggleRowSelected={toggleRowSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onBulkComplete={handleBulkComplete}
           onActivateRow={setActiveRow}
           onCellSaved={handleCellSaved}
           onCellDeleted={handleCellDeleted}
