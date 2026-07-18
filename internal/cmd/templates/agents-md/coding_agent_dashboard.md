@@ -9,9 +9,9 @@ validated light + dark; status meaning uses semantic tokens, not the palette.
 
 ## The four-query architecture (`src/api.ts`)
 
-`fetchProjectRuns` runs four scoped `POST /api/v1/runs/query` calls in parallel,
-all with the coding filter (`ls_agent_purpose == "coding"`). `run_type` is
-honored server-side, so child runs come from a flat query — no per-trace walk:
+`fetchProjectRuns` runs four scoped `POST /api/v1/runs/query` calls, all with
+the coding filter (`ls_agent_purpose == "coding"`). `run_type` is honored
+server-side, so child runs come from a flat query — no per-trace walk:
 
 | Query | Scope | Powers |
 |-------|-------|--------|
@@ -20,11 +20,20 @@ honored server-side, so child runs come from a flat query — no per-trace walk:
 | tool  | `run_type: "tool"` | tool-usage breakdown |
 | chain | `run_type: "chain"` | subagents (filtered client-side to `ls_agent_type == "subagent"`) |
 
-Each is staggered by 150ms and wrapped in `callWithRetry` (3 attempts,
-exponential backoff). `window.langsmith.call` drops the HTTP status of a
-failure before it reaches the app — a 429 from firing four queries at once is
-indistinguishable from any other error — so retry blindly on failure rather
-than string-matching "rate limit" out of an error message.
+They run **one at a time** (with a 250ms gap between them), not in parallel —
+four requests fired together was enough on its own to trip a workspace's rate
+limit. Each also goes through `callWithRetry` (5 attempts, exponential
+backoff capped at 6s). `window.langsmith.call` drops the HTTP status of a
+failure before it reaches the app — a 429 is indistinguishable from any other
+error — so retry blindly on failure rather than string-matching "rate limit"
+out of an error message.
+
+If a scope is still failing once its retry budget is exhausted, its query
+is **not** allowed to fail the other three — `fetchProjectRuns` catches it,
+records the key in `ProjectRuns.failedScopes`, and returns empty data for
+that scope only. `App.tsx` renders whatever scopes did succeed and shows a
+banner naming the ones that didn't, instead of the whole view going blank
+because of one bad scope.
 
 ### The 100-run cap
 

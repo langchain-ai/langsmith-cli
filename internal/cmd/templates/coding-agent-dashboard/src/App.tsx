@@ -10,26 +10,36 @@ import { fetchProjectRuns } from './api';
 import { countBy } from './lib/aggregate';
 import { integrationOf } from './lib/normalize';
 import { colorAt, OTHER } from './lib/palette';
-import type { ProjectRuns } from './types';
+import type { ProjectRuns, ScopeKey } from './types';
 
-const EMPTY: ProjectRuns = { roots: [], llm: [], tool: [], subagents: [] };
+const EMPTY: ProjectRuns = { roots: [], llm: [], tool: [], subagents: [], failedScopes: [] };
+
+const SCOPE_LABEL: Record<ScopeKey, string> = {
+  roots: 'turns & economics',
+  llm: 'model usage',
+  tool: 'tool usage',
+  chain: 'subagents',
+};
 
 export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [projectId, setProjectId] = useState('');
   const [runs, setRuns] = useState<ProjectRuns>(EMPTY);
   const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Set only for a genuinely unexpected failure (e.g. a bug in this app) —
+  // fetchProjectRuns isolates per-scope failures into runs.failedScopes
+  // instead of rejecting, so a rate-limited scope doesn't land here.
+  const [crashed, setCrashed] = useState(false);
 
   useEffect(() => {
     setRuns(EMPTY);
-    setFailed(false);
+    setCrashed(false);
     if (!projectId) return;
     setLoading(true);
     fetchProjectRuns(projectId)
       .then(setRuns)
       .catch((e) => {
         console.error('Failed to load coding runs', e);
-        setFailed(true);
+        setCrashed(true);
       })
       .finally(() => setLoading(false));
   }, [projectId]);
@@ -45,7 +55,8 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     return (integ: string) => m.get(integ) ?? OTHER;
   }, [runs]);
 
-  const empty = runs.roots.length === 0 && runs.llm.length === 0 && runs.tool.length === 0;
+  const hasData = runs.roots.length > 0 || runs.llm.length > 0 || runs.tool.length > 0 || runs.subagents.length > 0;
+  const hasFailures = runs.failedScopes.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-level-1">
@@ -57,14 +68,25 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   function renderBody() {
     if (!projectId) return centered('Select a project to see its coding-agent runs.');
     if (loading) return centered('Loading coding runs…');
-    if (failed) return centered('Failed to load runs — check the console and your access.');
-    if (empty) return centered('No coding-agent runs found in this project (last 7 days).');
+    if (crashed) return centered('Failed to load runs — check the console and your access.');
+    if (!hasData && hasFailures) {
+      return centered(
+        `Still rate-limited after retries on ${runs.failedScopes.map((k) => SCOPE_LABEL[k]).join(', ')} — try reselecting the project in a moment.`
+      );
+    }
+    if (!hasData) return centered('No coding-agent runs found in this project (last 7 days).');
 
     return (
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <p className="text-xs text-tertiary">
           Last 7 days · each query returns the 100 most-recent matches (older runs are not counted).
         </p>
+        {hasFailures && (
+          <p className="rounded-md border border-secondary bg-surface-level-2 px-3 py-2 text-xs text-secondary">
+            Rate-limited after retries loading {runs.failedScopes.map((k) => SCOPE_LABEL[k]).join(', ')} — those
+            panels below are showing partial or no data. Reselect the project to retry.
+          </p>
+        )}
         <OverviewPanel roots={runs.roots} />
         <CompositionPanel roots={runs.roots} llm={runs.llm} colorOf={colorOf} />
         <EconomicsPanel roots={runs.roots} colorOf={colorOf} />

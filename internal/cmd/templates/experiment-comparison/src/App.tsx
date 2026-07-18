@@ -7,9 +7,11 @@ import { Scorecard } from './components/Scorecard';
 import { DeltaHistogram } from './components/DeltaHistogram';
 import { ScatterPlot } from './components/ScatterPlot';
 import { Section } from './components/primitives';
+import { Spinner } from './components/Spinner';
 import { fetchComparison, fetchExperiments, fetchFeedbackConfigs } from './api';
 import { costOf, latencyMs, scoreFor } from './lib/delta';
 import { buildMetrics, comparisonColor, letterFor } from './lib/metrics';
+import { cn } from './lib/utils';
 import type { Aggregate, ExampleWithRuns, ExperimentView, Experiment } from './types';
 
 const EXAMPLE_LIMIT = 25;
@@ -54,17 +56,23 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     [baselineId, comparisonIds]
   );
 
-  // Fetch the per-example comparison whenever the selection changes.
+  // Fetch the per-example comparison whenever the selection changes. The
+  // previous render is kept on screen (dimmed via examplesLoading) instead of
+  // being cleared up front, so re-picking a comparison doesn't flash back to
+  // a bare loading message.
   useEffect(() => {
-    setExamples([]);
     setFailed(false);
-    if (!datasetId || !baselineId) return;
+    if (!datasetId || !baselineId) {
+      setExamples([]);
+      return;
+    }
     setExamplesLoading(true);
     fetchComparison(datasetId, selectedIds, EXAMPLE_LIMIT)
       .then((rows) => setExamples(rows ?? []))
       .catch((e) => {
         console.error('Failed to load comparison', e);
         setFailed(true);
+        setExamples([]);
       })
       .finally(() => setExamplesLoading(false));
   }, [datasetId, baselineId, selectedIds.join(',')]);
@@ -173,59 +181,60 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   );
 
   function renderBody() {
-    if (!datasetId) return centered('Select a dataset to begin.');
-    if (!baselineId) return centered('Select a baseline experiment to compare against.');
-    if (examplesLoading) return centered('Loading comparison…');
-    if (failed) return centered('Failed to load comparison — check the console and your access.');
-    if (examples.length === 0) return centered('No examples found for this selection.');
+    if (!datasetId) return <StateMessage message="Select a dataset to begin." />;
+    if (!baselineId) return <StateMessage message="Select a baseline experiment to compare against." />;
+    if (examples.length === 0 && examplesLoading) {
+      return <StateMessage message="Loading comparison…" spinner />;
+    }
+    if (failed) return <StateMessage message="Failed to load comparison — check the console and your access." tone="error" />;
+    if (examples.length === 0) return <StateMessage message="No examples found for this selection." />;
 
     const capped = examples.length >= EXAMPLE_LIMIT;
     const hasComparisons = expViews.length > 1;
 
     return (
-      <div className="mx-auto flex max-w-6xl flex-col gap-8">
-        <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-primary">Summary</h2>
-          <SummaryPanel
-            experiments={expViews}
-            aggregates={aggregates}
-            feedbackKeys={feedbackKeys}
-            lowerIsBetter={lowerIsBetter}
-          />
-          <p className="text-xs text-tertiary">
-            Comparison columns are colored vs the baseline: lower latency/cost/tokens is better;
-            feedback honors is_lower_score_better.
-          </p>
-        </section>
-
-        {hasComparisons && (
-          <section className="flex flex-col gap-3">
-            <h2 className="text-base font-semibold text-primary">Regression scorecard</h2>
-            <Scorecard examples={examples} experiments={expViews} metrics={metrics} />
-            <p className="text-xs text-tertiary">
-              Per comparison, examples that beat (↑), lost to (↓), or tied (=) the baseline.
-            </p>
-          </section>
+      <div
+        className={cn(
+          'mx-auto flex max-w-6xl flex-col gap-8 motion-safe:transition-opacity motion-safe:duration-normal',
+          examplesLoading && 'pointer-events-none opacity-50'
         )}
+      >
+        <Section
+          title="Summary"
+          note="Comparison bars are colored vs the baseline: lower latency/cost/tokens is better; feedback honors is_lower_score_better."
+        >
+          <SummaryPanel experiments={expViews} aggregates={aggregates} metrics={metrics} />
+        </Section>
 
         {hasComparisons && selectedMetric && (
-          <section className="flex flex-col gap-3">
+          <>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold text-primary">Baseline vs comparison</h2>
+              <h2 className="text-base font-semibold text-primary">Focus metric</h2>
               {metricSelect()}
             </div>
-            <ScatterPlot examples={examples} experiments={expViews} metric={selectedMetric} />
-          </section>
+
+            <Section title="Scoreboard" note={`${selectedMetric.label} for each experiment, vs the baseline.`}>
+              <Scoreboard experiments={expViews} aggregates={aggregates} metric={selectedMetric} />
+            </Section>
+
+            <Section title="Regression scorecard" note="Per comparison, the share of examples that beat, tied, or lost to the baseline — across every metric.">
+              <Scorecard examples={examples} experiments={expViews} metrics={metrics} />
+            </Section>
+
+            <Section title="Delta distribution" note={`How ${selectedMetric.label} shifted per example — green bars are wins, red bars are regressions.`}>
+              <DeltaHistogram examples={examples} experiments={expViews} metric={selectedMetric} />
+            </Section>
+
+            <Section title="Baseline vs comparison" note="Each point is one example; the dashed line is parity.">
+              <ScatterPlot examples={examples} experiments={expViews} metric={selectedMetric} />
+            </Section>
+          </>
         )}
 
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-primary">Per-example</h2>
-            {!hasComparisons && metricSelect()}
-          </div>
+        <Section title="Per-example" note={capped ? `Showing first ${EXAMPLE_LIMIT} examples.` : undefined}>
+          {!hasComparisons && <div className="mb-1">{metricSelect()}</div>}
           <ExampleTable examples={examples} experiments={expViews} metric={selectedMetric} />
-          {capped && <p className="text-xs text-tertiary">Showing first {EXAMPLE_LIMIT} examples.</p>}
-        </section>
+        </Section>
       </div>
     );
   }
@@ -250,10 +259,11 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   }
 }
 
-function centered(message: string) {
+function StateMessage({ message, spinner, tone }: { message: string; spinner?: boolean; tone?: 'error' }) {
   return (
-    <div className="flex h-full items-center justify-center">
-      <span className="text-sm text-tertiary">{message}</span>
+    <div className="flex h-full items-center justify-center gap-2">
+      {spinner && <Spinner size="sm" />}
+      <span className={cn('text-sm', tone === 'error' ? 'text-error-primary' : 'text-tertiary')}>{message}</span>
     </div>
   );
 }

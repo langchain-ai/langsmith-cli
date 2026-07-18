@@ -27,13 +27,18 @@ export interface RunsQueryResponse {
   cursor?: string | null;
 }
 
-// The four scoped result sets one project view is built from.
+// The four scoped result sets one project view is built from. A scope that
+// never recovered after retries lands in failedScopes with empty runs rather
+// than failing the whole view — see fetchProjectRuns.
 export interface ProjectRuns {
   roots: Run[];
   llm: Run[];
   tool: Run[];
   subagents: Run[];
+  failedScopes: ScopeKey[];
 }
+
+export type ScopeKey = 'roots' | 'llm' | 'tool' | 'chain';
 
 // Per-integration model counts for the model×integration breakdown.
 export interface IntegrationStat {

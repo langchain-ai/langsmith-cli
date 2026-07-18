@@ -686,12 +686,9 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	for _, w := range written {
 		writtenSet[w] = true
 	}
-	if !writtenSet["src/components/SearchableSelect.tsx"] {
-		t.Errorf("expected SearchableSelect.tsx to be pulled in, got %v", written)
-	}
-	for _, unwanted := range []string{"src/components/Spinner.tsx", "src/lib/utils.ts"} {
-		if writtenSet[unwanted] {
-			t.Errorf("experiment-comparison doesn't import %q, it should not be scaffolded", unwanted)
+	for _, wanted := range []string{"src/components/SearchableSelect.tsx", "src/components/Spinner.tsx", "src/lib/utils.ts"} {
+		if !writtenSet[wanted] {
+			t.Errorf("expected %q to be pulled in, got %v", wanted, written)
 		}
 	}
 }

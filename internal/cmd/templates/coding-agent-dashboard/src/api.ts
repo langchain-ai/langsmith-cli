@@ -1,6 +1,6 @@
 // All LangSmith access goes through window.langsmith.call — the sandbox has
 // no network of its own. See AGENTS.md for the operation format and endpoints.
-import type { Project, ProjectRuns, Run, RunsQueryResponse } from './types';
+import type { Project, ProjectRuns, Run, RunsQueryResponse, ScopeKey } from './types';
 
 // Metadata equality is two paired clauses in the filter DSL, not
 // eq(metadata.key, ...).
@@ -28,17 +28,24 @@ function sleep(ms: number): Promise<void> {
 // from firing several queries at once) into a plain Error with no status
 // code attached — the sandbox bridge drops it before the app ever sees it.
 // So retry blindly on any failure rather than trying to sniff "rate limit"
-// out of message text that varies between local dev and production.
-const RETRY_ATTEMPTS = 3;
-const RETRY_BASE_DELAY_MS = 400;
+// out of message text that varies between local dev and production. A
+// workspace that's already saturated (busy shared project, several other
+// dev sessions hitting the same key) can stay over its limit for seconds at
+// a time, so this budget is generous: 5 attempts, backoff capped at 6s.
+const RETRY_ATTEMPTS = 5;
+const RETRY_BASE_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 6000;
 
-async function callWithRetry<T>(operation: string, args: unknown): Promise<T> {
+type CallArgs = Parameters<Window['langsmith']['call']>[1];
+
+async function callWithRetry<T>(operation: string, args: CallArgs): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return (await window.langsmith.call(operation, args)) as T;
     } catch (e) {
       if (attempt >= RETRY_ATTEMPTS) throw e;
-      await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.random() * 200);
+      const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
+      await sleep(delay + Math.random() * 300);
     }
   }
 }
@@ -58,11 +65,19 @@ interface Scope {
   runType?: string;
 }
 
-// staggerMs spaces out the four fetchProjectRuns queries below so they don't
-// all land on the API in the same instant — reduces the odds of a burst rate
-// limit tripping on any one of them.
-async function queryRuns(sessionId: string, startTime: string, scope: Scope, staggerMs = 0): Promise<Run[]> {
-  if (staggerMs) await sleep(staggerMs);
+const SCOPES: { key: ScopeKey; scope: Scope }[] = [
+  { key: 'roots', scope: { isRoot: true } },
+  { key: 'llm', scope: { runType: 'llm' } },
+  { key: 'tool', scope: { runType: 'tool' } },
+  { key: 'chain', scope: { runType: 'chain' } },
+];
+
+// Gap enforced between queries even when one resolves instantly (e.g. a
+// cached response) — on top of whatever the retries above already spent
+// waiting, this keeps the four queries from ever landing back-to-back.
+const INTER_QUERY_GAP_MS = 250;
+
+async function queryRuns(sessionId: string, startTime: string, scope: Scope): Promise<Run[]> {
   const body: Record<string, unknown> = {
     session: [sessionId],
     filter: CODING_FILTER,
@@ -76,16 +91,28 @@ async function queryRuns(sessionId: string, startTime: string, scope: Scope, sta
   return resp?.runs ?? [];
 }
 
-// Four scoped queries: roots (economics), llm (models), tool (tool usage),
-// chain (subagents). run_type is honored server-side, so no per-trace fan-out.
+// The four scoped queries (roots for economics, llm for models, tool for
+// tool usage, chain for subagents) run one at a time, not in parallel — a
+// single client firing several requests at once was enough to trip a
+// workspace's rate limit on its own. Each query gets its own retry budget
+// (callWithRetry), so a scope that's still failing after that budget is
+// reported in failedScopes with an empty array instead of failing the
+// other three scopes' data too.
 export async function fetchProjectRuns(sessionId: string, windowDays = 7): Promise<ProjectRuns> {
   const startTime = windowStart(windowDays);
-  const [roots, llm, tool, chains] = await Promise.all([
-    queryRuns(sessionId, startTime, { isRoot: true }, 0),
-    queryRuns(sessionId, startTime, { runType: 'llm' }, 150),
-    queryRuns(sessionId, startTime, { runType: 'tool' }, 300),
-    queryRuns(sessionId, startTime, { runType: 'chain' }, 450),
-  ]);
-  const subagents = chains.filter((r) => r.extra?.metadata?.ls_agent_type === 'subagent');
-  return { roots, llm, tool, subagents };
+  const byKey: Record<ScopeKey, Run[]> = { roots: [], llm: [], tool: [], chain: [] };
+  const failedScopes: ScopeKey[] = [];
+
+  for (const { key, scope } of SCOPES) {
+    try {
+      byKey[key] = await queryRuns(sessionId, startTime, scope);
+    } catch (e) {
+      console.error(`Failed to load "${key}" runs after retries`, e);
+      failedScopes.push(key);
+    }
+    await sleep(INTER_QUERY_GAP_MS);
+  }
+
+  const subagents = byKey.chain.filter((r) => r.extra?.metadata?.ls_agent_type === 'subagent');
+  return { roots: byKey.roots, llm: byKey.llm, tool: byKey.tool, subagents, failedScopes };
 }
