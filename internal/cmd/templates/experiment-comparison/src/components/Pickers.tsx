@@ -1,5 +1,13 @@
 import type { Dataset, Experiment } from '../types';
 
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 interface Props {
   datasets: Dataset[];
   datasetsLoading: boolean;
@@ -15,8 +23,9 @@ interface Props {
   onToggleComparison: (id: string) => void;
 }
 
+const selectWrapClass = 'relative min-w-0 max-w-[360px] flex-1';
 const selectClass =
-  'min-w-0 max-w-[360px] flex-1 rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-60';
+  'w-full appearance-none rounded-md border border-secondary bg-primary py-1.5 pl-3 pr-8 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-60';
 
 // Dataset → baseline → one or more comparison experiments, picked entirely
 // within the app.
@@ -40,40 +49,46 @@ export function Pickers({
         <label htmlFor="ec-dataset" className="text-sm font-medium text-secondary">
           Dataset
         </label>
-        <select
-          id="ec-dataset"
-          value={datasetId}
-          disabled={datasetsLoading}
-          onChange={(e) => onDataset(e.target.value)}
-          className={selectClass}
-        >
-          <option value="">{datasetsLoading ? 'Loading datasets…' : 'Select a dataset…'}</option>
-          {datasets.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        <div className={selectWrapClass}>
+          <select
+            id="ec-dataset"
+            value={datasetId}
+            disabled={datasetsLoading}
+            onChange={(e) => onDataset(e.target.value)}
+            className={selectClass}
+          >
+            <option value="">{datasetsLoading ? 'Loading datasets…' : 'Select a dataset…'}</option>
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
+        </div>
 
         <label htmlFor="ec-baseline" className="text-sm font-medium text-secondary">
           Baseline
         </label>
-        <select
-          id="ec-baseline"
-          value={baselineId}
-          disabled={!datasetId || experimentsLoading}
-          onChange={(e) => onBaseline(e.target.value)}
-          className={selectClass}
-        >
-          <option value="">
-            {experimentsLoading ? 'Loading experiments…' : 'Select a baseline…'}
-          </option>
-          {experiments.map((x) => (
-            <option key={x.id} value={x.id}>
-              {x.name}
+        <div className={selectWrapClass}>
+          <select
+            id="ec-baseline"
+            value={baselineId}
+            disabled={!datasetId || experimentsLoading}
+            onChange={(e) => onBaseline(e.target.value)}
+            className={selectClass}
+          >
+            <option value="">
+              {experimentsLoading ? 'Loading experiments…' : 'Select a baseline…'}
             </option>
-          ))}
-        </select>
+            {experiments.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
+        </div>
       </div>
 
       {baselineId && (

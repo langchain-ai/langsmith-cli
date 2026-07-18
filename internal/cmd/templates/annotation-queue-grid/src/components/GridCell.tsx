@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronDownIcon } from '@langchain/untitled-ui-icons';
 import { patchFeedback, submitFeedback, deleteFeedback } from '../api';
 import type { FeedbackConfig, FeedbackItem, RubricItem } from '../types';
 import { cn } from '../lib/utils';
@@ -107,30 +108,33 @@ export function GridCell({
 
   if (isCategorical) {
     return (
-      <select
-        value={score ?? ''}
-        disabled={saving}
-        onChange={(e) => {
-          if (e.target.value === '') {
-            setScore(null);
-            handleDelete();
-            return;
-          }
-          const val = Number(e.target.value);
-          const cat = config!.categories!.find((c) => c.value === val);
-          setScore(val);
-          save(val, cat?.label ?? String(val));
-        }}
-        title={error ?? undefined}
-        className={cn(cellInput, 'cursor-pointer', saving && 'opacity-50')}
-      >
-        <option value="">—</option>
-        {config!.categories!.map((cat) => (
-          <option key={cat.value} value={cat.value}>
-            {cat.label ?? String(cat.value)}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={score ?? ''}
+          disabled={saving}
+          onChange={(e) => {
+            if (e.target.value === '') {
+              setScore(null);
+              handleDelete();
+              return;
+            }
+            const val = Number(e.target.value);
+            const cat = config!.categories!.find((c) => c.value === val);
+            setScore(val);
+            save(val, cat?.label ?? String(val));
+          }}
+          title={error ?? undefined}
+          className={cn(cellInput, 'appearance-none pr-6', 'cursor-pointer', saving && 'opacity-50')}
+        >
+          <option value="">—</option>
+          {config!.categories!.map((cat) => (
+            <option key={cat.value} value={cat.value}>
+              {cat.label ?? String(cat.value)}
+            </option>
+          ))}
+        </select>
+        <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+      </div>
     );
   }
 
