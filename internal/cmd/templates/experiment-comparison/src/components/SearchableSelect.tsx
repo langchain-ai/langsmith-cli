@@ -1,3 +1,10 @@
+// Canonical source, synced into every template that has a file at this same
+// path by scripts/sync-template-shared.sh (run via `make sync-templates`,
+// and automatically before `make build`/`make install`). Edit this copy —
+// per-template copies get overwritten on next sync. Deliberately
+// self-contained (own cn()/chevron, no external icon package) so it drops
+// into any template unmodified regardless of what other dependencies that
+// template happens to have.
 import { useEffect, useRef, useState } from 'react';
 
 function cn(...classes: (string | false | null | undefined)[]): string {
