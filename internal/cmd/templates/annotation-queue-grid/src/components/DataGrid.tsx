@@ -178,8 +178,13 @@ export function DataGrid({
                     <tr
                       onClick={() => onActivateRow(index)}
                       className={cn(
+                        'cursor-pointer',
                         !isExpanded && 'border-b border-secondary',
-                        isActive ? 'bg-selected' : 'hover:bg-surface-level-1-hover'
+                        isActive
+                          ? 'bg-selected'
+                          : index % 2 === 1
+                            ? 'bg-secondary/30 hover:bg-surface-level-1-hover'
+                            : 'hover:bg-surface-level-1-hover'
                       )}
                     >
                       <td className="max-w-[220px] px-3 py-1.5 align-middle text-sm text-secondary">
@@ -189,7 +194,7 @@ export function DataGrid({
                             e.stopPropagation();
                             onToggleExpand(run.id);
                           }}
-                          className="flex w-full min-w-0 items-center gap-1.5 text-left"
+                          className="flex w-full min-w-0 items-center gap-1.5 rounded text-left hover:text-primary"
                         >
                           {isExpanded ? (
                             <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-tertiary" />
@@ -202,14 +207,22 @@ export function DataGrid({
                         </button>
                       </td>
                       <td
-                        className="max-w-[220px] truncate px-3 py-1.5 align-middle font-mono text-xs text-tertiary"
+                        className="max-w-[220px] cursor-pointer truncate border-l border-secondary px-3 py-1.5 align-middle font-mono text-xs text-tertiary hover:text-secondary"
                         title={inputsPreview}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExpand(run.id);
+                        }}
                       >
                         {inputsPreview || '—'}
                       </td>
                       <td
-                        className="max-w-[220px] truncate px-3 py-1.5 align-middle font-mono text-xs text-tertiary"
+                        className="max-w-[220px] cursor-pointer truncate border-l border-secondary px-3 py-1.5 align-middle font-mono text-xs text-tertiary hover:text-secondary"
                         title={outputsPreview}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExpand(run.id);
+                        }}
                       >
                         {outputsPreview || '—'}
                       </td>

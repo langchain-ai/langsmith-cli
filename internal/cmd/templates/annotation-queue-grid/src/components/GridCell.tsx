@@ -101,8 +101,14 @@ export function GridCell({
     }
   }
 
+  // Deliberately spreadsheet-like: a persistent visible box (not a
+  // hover-only/transparent border) so every fillable cell reads as
+  // "editable" at rest, with a bold same-color glow on focus mimicking a
+  // selected spreadsheet cell.
   const cellInput = cn(
-    'w-full rounded border border-transparent bg-transparent px-2 py-1 text-sm text-primary hover:border-secondary focus:border-brand focus:bg-primary focus:outline-none',
+    'w-full rounded-none border border-secondary bg-surface-level-1 px-2 py-1 text-sm text-primary transition-colors',
+    'hover:border-strong hover:bg-surface-level-1-hover',
+    'focus:border-brand focus:bg-primary focus:outline-none focus:shadow-[0_0_0_1px_var(--border-brand)]',
     error && 'border-error-strong'
   );
 
