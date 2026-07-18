@@ -1,6 +1,6 @@
 // All LangSmith access goes through window.langsmith.call — the sandbox has
 // no network of its own. See AGENTS.md for the operation format and endpoints.
-import type { Project, ProjectRuns, ProjectSummary, Run, RunsQueryResponse } from './types';
+import type { Project, ProjectRuns, Run, RunsQueryResponse } from './types';
 
 // Metadata equality is two paired clauses in the filter DSL, not
 // eq(metadata.key, ...).
@@ -63,33 +63,4 @@ export async function fetchProjectRuns(sessionId: string, windowDays = 7): Promi
   ]);
   const subagents = chains.filter((r) => r.extra?.metadata?.ls_agent_type === 'subagent');
   return { roots, llm, tool, subagents };
-}
-
-// Cross-project probe: sample recent root runs per project (no coding filter)
-// and split coding vs other. Each project is capped at 100 sampled roots.
-export async function fetchProjectsSummary(windowDays = 30): Promise<ProjectSummary[]> {
-  const projects = (await fetchProjects()) ?? [];
-  const startTime = windowStart(windowDays);
-  return Promise.all(
-    projects.map(async (project) => {
-      const resp = (await window.langsmith.call('POST /api/v1/runs/query', {
-        body: {
-          session: [project.id],
-          is_root: true,
-          start_time: startTime,
-          limit: LIMIT,
-          select: ['id', 'extra'],
-        },
-      })) as RunsQueryResponse;
-      const runs = resp?.runs ?? [];
-      const coding = runs.filter((r) => r.extra?.metadata?.ls_agent_purpose === 'coding').length;
-      return {
-        project,
-        coding,
-        other: runs.length - coding,
-        sampled: runs.length,
-        capped: runs.length >= LIMIT,
-      };
-    })
-  );
 }

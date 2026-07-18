@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -693,4 +694,44 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 			t.Errorf("experiment-comparison doesn't import %q, it should not be scaffolded", unwanted)
 		}
 	}
+}
+
+// go:embed has no concept of .gitignore — it embeds every file physically
+// present under a template's source directory at build time, node_modules
+// included. If a local `npm install`/`vite build` run in a template's source
+// tree isn't cleaned up before `go build`/`go install`, the *entire*
+// node_modules (and dist/) gets silently baked into the CLI binary and
+// scaffolded into every user's project — with a working package.json but no
+// working node_modules/.bin symlinks (embed can't preserve symlinks), so
+// "npm run watch" fails with "vite: command not found" despite the files
+// visibly being there. This walks the actual embedded FS content (not just
+// the source tree, which can look clean between commits) so a stray
+// node_modules/dist left behind before a build gets caught here instead of
+// shipping.
+func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
+	check := func(name string, embedded fs.FS) {
+		t.Helper()
+		err := fs.WalkDir(embedded, ".", func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			base := filepath.Base(path)
+			if d.IsDir() && (base == "node_modules" || base == "dist") {
+				t.Errorf("%s: embedded FS contains %q — a local build wasn't cleaned up before go build/go install", name, path)
+				return fs.SkipDir
+			}
+			if !d.IsDir() && (base == "package-lock.json" || base == "pnpm-lock.yaml") {
+				t.Errorf("%s: embedded FS contains %q — shouldn't be committed or embedded", name, path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("%s: walking embedded FS: %v", name, err)
+		}
+	}
+
+	for name, at := range appTypes {
+		check(name, at.templateFS)
+	}
+	check("_shared", sharedFS)
 }

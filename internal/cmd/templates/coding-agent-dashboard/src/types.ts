@@ -1,6 +1,3 @@
-// Sentinel project id for the cross-project scan tab (see ProjectBar/App).
-export const ALL_PROJECTS = '__all__';
-
 export interface Project {
   id: string;
   name: string;
@@ -36,15 +33,6 @@ export interface ProjectRuns {
   llm: Run[];
   tool: Run[];
   subagents: Run[];
-}
-
-// One project's coding-vs-other counts, sampled from recent root runs.
-export interface ProjectSummary {
-  project: Project;
-  coding: number;
-  other: number;
-  sampled: number;
-  capped: boolean;
 }
 
 // Per-integration model counts for the model×integration breakdown.

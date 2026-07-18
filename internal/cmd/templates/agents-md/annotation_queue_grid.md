@@ -62,3 +62,8 @@ const runs = await window.langsmith.call(
 - **`is_required`** — required columns are marked with `*` and a row's `Mark
   Completed` button stays disabled until every required column has feedback
   (mirrors the 3-pane app's "all required filled" gate).
+- **`is_assertion`** — assertion-flagged rubric items are pass/fail claims
+  managed elsewhere (the run review panel's own Assertions section), not
+  scored feedback keys — the real "Edit Annotation Queue" page excludes them
+  from its Feedback Rubrics list for the same reason. Filtered out of the
+  grid's columns entirely; this app has no other assertion-specific UI.

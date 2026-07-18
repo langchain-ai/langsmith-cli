@@ -1,8 +1,8 @@
 ## This app: coding-agent dashboard
 
-Charts runs whose metadata `ls_agent_purpose == "coding"` for one project (or
-scans every project), broken down by integration, model, tool, subagent, cost,
-cache, errors, and time. It picks its own project via `GET /api/v1/sessions`
+Charts runs whose metadata `ls_agent_purpose == "coding"` for one project,
+broken down by integration, model, tool, subagent, cost, cache, errors, and
+time. It picks its own project via `GET /api/v1/sessions`
 (`src/components/ProjectBar.tsx`) because the runs query is project-scoped.
 `src/api.ts` wraps every call. Chart colors use `src/lib/palette.ts` tokens,
 validated light + dark; status meaning uses semantic tokens, not the palette.
@@ -19,9 +19,6 @@ honored server-side, so child runs come from a flat query — no per-trace walk:
 | llm   | `run_type: "llm"` | model & provider breakdown, stop reasons |
 | tool  | `run_type: "tool"` | tool-usage breakdown |
 | chain | `run_type: "chain"` | subagents (filtered client-side to `ls_agent_type == "subagent"`) |
-
-`fetchProjectsSummary` powers the "All projects" scan: one `is_root` query per
-project (no coding filter), counting `ls_agent_purpose == "coding"` vs other.
 
 ### The 100-run cap
 
@@ -67,9 +64,8 @@ treat them as best-effort and fall back to `unknown`.
 
 ## What this app renders
 
-- `src/api.ts` — `fetchProjects`, `fetchProjectRuns`, `fetchProjectsSummary`
-- `src/components/ProjectBar.tsx` — project picker + "All projects" scan option
-- `src/components/AllProjectsView.tsx` — cross-project coding-vs-other scan
+- `src/api.ts` — `fetchProjects`, `fetchProjectRuns`
+- `src/components/ProjectBar.tsx` — project picker
 - `src/lib/normalize.ts` / `aggregate.ts` / `format.ts` — metadata reads,
   grouping, formatting
 - `src/lib/palette.ts` — categorical colors (light + dark validated)

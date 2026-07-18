@@ -35,7 +35,13 @@ export function App({ queueId: initialQueueId }: Props) {
   const moveRef = useRef<(direction: 'up' | 'down') => void>(() => {});
 
   // Columns are the rubric's feedback keys.
-  const columns = useMemo(() => queue?.rubric_items ?? [], [queue?.rubric_items]);
+  // Assertion-flagged items are pass/fail claims managed elsewhere, not
+  // scored feedback, so they're excluded (same as the real "Edit Annotation
+  // Queue" page's Feedback Rubrics list).
+  const columns = useMemo(
+    () => (queue?.rubric_items ?? []).filter((item) => !item.is_assertion),
+    [queue?.rubric_items]
+  );
 
   // Reset per-queue UI state when the queue changes (run loading itself is
   // owned by useRunSection, keyed on the same queueId).

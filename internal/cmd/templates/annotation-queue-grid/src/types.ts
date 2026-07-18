@@ -25,6 +25,12 @@ export interface RubricItem {
   value_descriptions: Record<string, string> | null;
   score_descriptions: Record<string, string> | null;
   is_required?: boolean | null;
+  // Assertion-flagged items are pass/fail claims managed elsewhere (the run
+  // review panel's own Assertions section), not scored feedback keys — the
+  // real "Edit Annotation Queue" page excludes them from its Feedback
+  // Rubrics list for the same reason. Filtered out of the grid's columns;
+  // this app has no other assertion-specific UI.
+  is_assertion?: boolean | null;
 }
 
 export interface AnnotationQueue {

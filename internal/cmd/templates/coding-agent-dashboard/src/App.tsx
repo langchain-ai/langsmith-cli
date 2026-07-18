@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ProjectBar } from './components/ProjectBar';
-import { AllProjectsView } from './components/AllProjectsView';
 import { OverviewPanel } from './components/OverviewPanel';
 import { CompositionPanel } from './components/CompositionPanel';
 import { EconomicsPanel } from './components/EconomicsPanel';
@@ -11,7 +10,7 @@ import { fetchProjectRuns } from './api';
 import { countBy } from './lib/aggregate';
 import { integrationOf } from './lib/normalize';
 import { colorAt, OTHER } from './lib/palette';
-import { ALL_PROJECTS, type ProjectRuns } from './types';
+import type { ProjectRuns } from './types';
 
 const EMPTY: ProjectRuns = { roots: [], llm: [], tool: [], subagents: [] };
 
@@ -21,12 +20,10 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const scan = projectId === ALL_PROJECTS;
-
   useEffect(() => {
     setRuns(EMPTY);
     setFailed(false);
-    if (!projectId || scan) return;
+    if (!projectId) return;
     setLoading(true);
     fetchProjectRuns(projectId)
       .then(setRuns)
@@ -35,7 +32,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
         setFailed(true);
       })
       .finally(() => setLoading(false));
-  }, [projectId, scan]);
+  }, [projectId]);
 
   // Stable integration→color map (by root frequency) shared across panels.
   const colorOf = useMemo(() => {
@@ -58,8 +55,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   );
 
   function renderBody() {
-    if (scan) return <AllProjectsView />;
-    if (!projectId) return centered('Select a project to see its coding-agent runs, or scan all projects.');
+    if (!projectId) return centered('Select a project to see its coding-agent runs.');
     if (loading) return centered('Loading coding runs…');
     if (failed) return centered('Failed to load runs — check the console and your access.');
     if (empty) return centered('No coding-agent runs found in this project (last 7 days).');

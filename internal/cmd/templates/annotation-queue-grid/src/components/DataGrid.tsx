@@ -103,6 +103,18 @@ export function DataGrid({
     return () => observer.disconnect();
   }, [hasMore, onLoadMore]);
 
+  // The sentinel above only helps once it's actually on screen — but when
+  // every loaded row gets marked complete (e.g. a bulk action clears the
+  // whole visible page), the table itself unmounts in favor of the empty
+  // state below, taking the sentinel with it. Nothing would ever trigger
+  // the next page again even though more rows exist server-side, so fetch
+  // proactively whenever the list runs dry while more is still available.
+  useEffect(() => {
+    if (rows.length === 0 && hasMore && !rowsLoading && !loadingMore) {
+      onLoadMore();
+    }
+  }, [rows.length, hasMore, rowsLoading, loadingMore, onLoadMore]);
+
   // Reflect partial selection as the native indeterminate visual — plain
   // HTML has no attribute for this, it's set imperatively on the node.
   useEffect(() => {
@@ -199,7 +211,10 @@ export function DataGrid({
         ) : rows.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-sm text-tertiary">
-              {rowsLoading ? 'Loading runs…' : 'Nothing left to review 🎉'}
+              {/* hasMore here means the auto-fetch effect above is already
+                  loading the next page — never flash "nothing left" when
+                  we know there's more coming. */}
+              {rowsLoading || loadingMore || hasMore ? 'Loading runs…' : 'Nothing left to review 🎉'}
             </span>
           </div>
         ) : (
@@ -213,7 +228,7 @@ export function DataGrid({
                     checked={rows.length > 0 && selectedRunIds.size === rows.length}
                     onChange={onToggleSelectAll}
                     aria-label="Select all rows"
-                    className="cursor-pointer accent-[var(--bg-brand)]"
+                    className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                   />
                 </th>
                 <th className="w-[220px] min-w-[220px] border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
@@ -270,7 +285,7 @@ export function DataGrid({
                           checked={isSelected}
                           onChange={() => onToggleRowSelected(run.queue_run_id)}
                           aria-label={`Select ${run.name ?? run.id}`}
-                          className="cursor-pointer accent-[var(--bg-brand)]"
+                          className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                         />
                       </td>
                       <td
@@ -333,18 +348,24 @@ export function DataGrid({
                         </td>
                       ))}
                       <td className="border-l border-secondary px-2 py-1 text-center align-middle">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onComplete(index);
-                          }}
-                          disabled={!requiredFilled(run.id)}
-                          title={!requiredFilled(run.id) ? 'Fill all required (*) columns first' : undefined}
-                          className="rounded-md bg-brand px-3 py-1 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
-                        >
-                          Mark Completed
-                        </button>
+                        {/* One or more rows selected: only the bulk action
+                            in the header bar applies — hide the per-row
+                            button instead of leaving a redundant, easy-to-
+                            misclick affordance next to the checkboxes. */}
+                        {selectedRunIds.size === 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onComplete(index);
+                            }}
+                            disabled={!requiredFilled(run.id)}
+                            title={!requiredFilled(run.id) ? 'Fill all required (*) columns first' : undefined}
+                            className="rounded-md bg-brand px-3 py-1 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
+                          >
+                            Mark Completed
+                          </button>
+                        )}
                       </td>
                     </tr>
                     {isExpanded && (

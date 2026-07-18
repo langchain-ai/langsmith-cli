@@ -1,22 +1,6 @@
 import { fetchProjects } from '../api';
-import { ALL_PROJECTS, type Project } from '../types';
+import type { Project } from '../types';
 import { SearchableSelect } from './SearchableSelect';
-
-const ALL_PROJECTS_ITEM: Project = { id: ALL_PROJECTS, name: 'All projects (coding-agent scan)' };
-
-// The synthetic "All projects" entry only makes sense on the first,
-// unsearched page — searching for a project by name means the user wants a
-// specific one. It occupies one slot of that page, so real projects are
-// fetched one short there and every later page's offset is shifted back by
-// one to compensate (see the offset math below).
-async function fetchProjectsPage(search: string, offset: number, limit: number): Promise<Project[]> {
-  if (search) return fetchProjects(search, offset, limit);
-  if (offset === 0) {
-    const real = await fetchProjects('', 0, limit - 1);
-    return [ALL_PROJECTS_ITEM, ...real];
-  }
-  return fetchProjects('', offset - 1, limit);
-}
 
 interface Props {
   selectedProjectId: string;
@@ -35,7 +19,7 @@ export function ProjectBar({ selectedProjectId, onSelect }: Props) {
         id="ls-project-select"
         value={selectedProjectId}
         onSelect={(project) => onSelect(project.id)}
-        fetchPage={fetchProjectsPage}
+        fetchPage={fetchProjects}
         placeholder="Select a project…"
         searchPlaceholder="Search projects by name…"
         emptyLabel="No tracing projects in this workspace"
