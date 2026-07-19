@@ -10,6 +10,7 @@ func TestProjectIssuesCmd_Subcommands(t *testing.T) {
 	cmd := newProjectIssuesCmd()
 	expected := map[string]bool{
 		"list":     false,
+		"overview": false,
 		"events":   false,
 		"update":   false,
 		"runs":     false,
@@ -74,6 +75,84 @@ func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
 	f := cmd.Flags().Lookup("assertion")
 	if f == nil {
 		t.Error("flag --assertion not found")
+	}
+}
+
+// ==================== overview command ====================
+
+func TestProjectIssuesOverviewCmd_UseField(t *testing.T) {
+	cmd := newProjectIssuesOverviewCmd()
+	if cmd.Use != "overview" {
+		t.Errorf("expected Use=%q, got %q", "overview", cmd.Use)
+	}
+}
+
+func TestProjectIssuesOverviewCmd_Flags(t *testing.T) {
+	cmd := newProjectIssuesOverviewCmd()
+	for _, name := range []string{"project", "output"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("flag --%s not found", name)
+		}
+	}
+	// 'list' must no longer carry the overview flag — overview is its own command.
+	if newProjectIssuesListCmd().Flags().Lookup("include-overview") != nil {
+		t.Error("list should not have --include-overview flag anymore")
+	}
+}
+
+// ==================== extractOverviewTemplate ====================
+
+func TestExtractOverviewTemplate(t *testing.T) {
+	cases := []struct {
+		name     string
+		manifest any
+		wantTmpl string
+		wantOK   bool
+	}{
+		{
+			name: "valid",
+			manifest: map[string]any{
+				"kwargs": map[string]any{"template": "# Agent Overview\nbody"},
+			},
+			wantTmpl: "# Agent Overview\nbody",
+			wantOK:   true,
+		},
+		{
+			name:     "not a map",
+			manifest: "just a string",
+			wantOK:   false,
+		},
+		{
+			name:     "missing kwargs",
+			manifest: map[string]any{"id": []any{"langchain"}},
+			wantOK:   false,
+		},
+		{
+			name:     "kwargs wrong type",
+			manifest: map[string]any{"kwargs": "nope"},
+			wantOK:   false,
+		},
+		{
+			name:     "missing template",
+			manifest: map[string]any{"kwargs": map[string]any{"input_variables": []any{}}},
+			wantOK:   false,
+		},
+		{
+			name:     "template wrong type",
+			manifest: map[string]any{"kwargs": map[string]any{"template": 42}},
+			wantOK:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpl, ok := extractOverviewTemplate(tc.manifest)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if tmpl != tc.wantTmpl {
+				t.Errorf("template = %q, want %q", tmpl, tc.wantTmpl)
+			}
+		})
 	}
 }
 

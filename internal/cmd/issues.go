@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -47,10 +50,12 @@ func newProjectIssuesCmd() *cobra.Command {
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open --priority high
+  langsmith project issues overview --project my-app
   langsmith project issues events --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
+	cmd.AddCommand(newProjectIssuesOverviewCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
@@ -75,6 +80,9 @@ func newProjectIssuesListCmd() *cobra.Command {
 Fetches issues from the Issues Board for the specified project. Results
 can be filtered by status (open/closed) and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
+
+To fetch the project's Agent Overview (the markdown summary the issues
+agent maintains), use 'langsmith project issues overview'.
 
 Examples:
   langsmith project issues list --project my-app
@@ -146,6 +154,105 @@ Examples:
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
+}
+
+func newProjectIssuesOverviewCmd() *cobra.Command {
+	var (
+		project    string
+		outputFile string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "overview",
+		Short: "Fetch a tracing project's Agent Overview",
+		Long: `Fetch a tracing project's Agent Overview.
+
+The Agent Overview is the markdown summary the issues agent maintains for a
+project, derived from its traces and issues. It is stored as a Prompt Hub
+commit under the repo handle 'ao-<first 8 chars of session UUID>'.
+
+Output is JSON by default ({"overview": <markdown|null>}); pass
+--format pretty to print the markdown directly. If the project has no Agent
+Overview yet, "overview" is null (and pretty mode prints "(no agent overview)").
+
+Examples:
+  langsmith project issues overview --project my-app
+  langsmith project issues overview --project my-app --format pretty`,
+		Run: func(cmd *cobra.Command, args []string) {
+			c := MustGetClient()
+			ctx := context.Background()
+
+			projectName := ResolveProject(project)
+			if projectName == "" {
+				ExitError("--project is required (or set LANGSMITH_PROJECT)")
+			}
+
+			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			if err != nil {
+				ExitErrorf("resolving project %q: %v", projectName, err)
+			}
+
+			overview, haveOverview := fetchAgentOverview(ctx, c, sessionID)
+
+			if GetFormat() == "pretty" {
+				if haveOverview {
+					fmt.Println(overview)
+				} else {
+					fmt.Println("(no agent overview)")
+				}
+				return
+			}
+
+			var overviewVal any
+			if haveOverview {
+				overviewVal = overview
+			}
+			output.OutputJSON(map[string]any{"overview": overviewVal}, outputFile)
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+
+	return cmd
+}
+
+// fetchAgentOverview returns the project's Agent Overview markdown, or ("", false)
+// if the project has no overview yet. The AO repo handle is derived from the
+// session UUID (ao-<first8>), mirroring smith-go's agentOverviewRepoHandle. Fetch
+// failures (no AO repo yet, or transient errors) degrade gracefully so the issues
+// list still renders.
+func fetchAgentOverview(ctx context.Context, c *client.Client, sessionID string) (string, bool) {
+	if len(sessionID) < 8 {
+		return "", false
+	}
+	handle := "ao-" + sessionID[:8]
+	resp, err := c.SDK.Commits.Get(ctx, "-", handle, "latest", langsmith.CommitGetParams{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not fetch agent overview: %v\n", err)
+		return "", false
+	}
+	return extractOverviewTemplate(resp.Manifest)
+}
+
+// extractOverviewTemplate pulls the AO markdown out of a PromptTemplate manifest
+// (content lives at kwargs.template). The SDK types Manifest as interface{}, so
+// it arrives as a map[string]any after JSON decoding. Returns ("", false) if the
+// manifest is not shaped as expected.
+func extractOverviewTemplate(manifest any) (string, bool) {
+	m, ok := manifest.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	kwargs, ok := m["kwargs"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	tmpl, ok := kwargs["template"].(string)
+	if !ok {
+		return "", false
+	}
+	return tmpl, true
 }
 
 // issueEvent mirrors the JSON shape returned by GET /v1/platform/sessions/{id}/issue-events.
