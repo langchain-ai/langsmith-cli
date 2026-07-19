@@ -1,7 +1,6 @@
-// Canonical source, synced into every template that has a file at this same
-// path by scripts/sync-template-shared.sh (run via `make sync-templates`,
-// and automatically before `make build`/`make install`). Edit this copy —
-// per-template copies get overwritten on next sync.
+// Canonical single source. apps_init.go copies this into a scaffolded app's
+// src/ at generation time, and only if the template imports it — there are no
+// standing per-template copies and no sync script.
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
 }
