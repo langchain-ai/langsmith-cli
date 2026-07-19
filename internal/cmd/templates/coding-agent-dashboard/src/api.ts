@@ -55,7 +55,12 @@ export async function fetchProjects(
   offset = 0,
   limit = 25
 ): Promise<Project[]> {
-  const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
+  // reference_free=true keeps real tracing projects and drops eval experiments.
+  const params: Record<string, string> = {
+    limit: String(limit),
+    offset: String(offset),
+    reference_free: 'true',
+  };
   if (search) params.name_contains = search;
   return callWithRetry<Project[]>('GET /api/v1/sessions', { params });
 }
