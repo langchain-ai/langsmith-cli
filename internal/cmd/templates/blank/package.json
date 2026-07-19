@@ -1,0 +1,12 @@
+{
+  "name": "{{.Name}}",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=cjs --outfile=dist/bundle.js",
+    "watch": "npm run build -- --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
