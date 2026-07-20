@@ -181,16 +181,54 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   );
 
   function renderBody() {
-    if (!datasetId) return <StateMessage message="Select a dataset to begin." />;
-    if (!baselineId) return <StateMessage message="Select a baseline experiment to compare against." />;
-    if (examples.length === 0 && examplesLoading) {
-      return <StateMessage message="Loading comparison…" spinner />;
+    if (!datasetId) {
+      return (
+        <GuideState step={1} heading="Pick a dataset to get started" subtext="Every experiment you compare has to run against this dataset." />
+      );
     }
-    if (failed) return <StateMessage message="Failed to load comparison — check the console and your access." tone="error" />;
-    if (examples.length === 0) return <StateMessage message="No examples found for this selection." />;
+    if (experimentsLoading && experiments.length === 0) {
+      return <GuideState spinner heading="Loading experiments…" />;
+    }
+    if (experiments.length === 0) {
+      return (
+        <GuideState
+          step={2}
+          heading="This dataset doesn't have any experiments yet"
+          subtext="Run an evaluation against it, then come back here to compare results."
+        />
+      );
+    }
+    if (!baselineId) {
+      return (
+        <GuideState step={2} heading="Choose a baseline experiment" subtext="Every other experiment gets compared against this one." />
+      );
+    }
+    if (comparisonIds.length === 0) {
+      return (
+        <GuideState
+          step={3}
+          heading="Pick one or more experiments to compare"
+          subtext="Check any experiment above to see how it stacks up against the baseline."
+        />
+      );
+    }
+    if (examples.length === 0 && examplesLoading) {
+      return <GuideState spinner heading="Loading comparison…" />;
+    }
+    if (failed) {
+      return <GuideState tone="error" heading="Couldn't load this comparison" subtext="Check the console and your access to this dataset." />;
+    }
+    if (examples.length === 0) {
+      const comparedNames = expViews.slice(1).map((x) => x.name).join(', ') || 'the selected comparison';
+      return (
+        <GuideState
+          heading="No shared examples for this selection"
+          subtext={`${expViews[0]?.name ?? 'The baseline'} and ${comparedNames} don't have any traced examples in common here. Try a different baseline or comparison above.`}
+        />
+      );
+    }
 
     const capped = examples.length >= EXAMPLE_LIMIT;
-    const hasComparisons = expViews.length > 1;
 
     return (
       <div
@@ -206,7 +244,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
           <SummaryPanel experiments={expViews} aggregates={aggregates} metrics={metrics} />
         </Section>
 
-        {hasComparisons && selectedMetric && (
+        {selectedMetric && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-primary">Focus metric</h2>
@@ -232,7 +270,6 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
         )}
 
         <Section title="Per-example" note={capped ? `Showing first ${EXAMPLE_LIMIT} examples.` : undefined}>
-          {!hasComparisons && <div className="mb-1">{metricSelect()}</div>}
           <ExampleTable examples={examples} experiments={expViews} metric={selectedMetric} />
         </Section>
       </div>
@@ -259,11 +296,40 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   }
 }
 
-function StateMessage({ message, spinner, tone }: { message: string; spinner?: boolean; tone?: 'error' }) {
+// The empty/blocked state for every step of the guide above — echoes the
+// same numbered-badge language as the Pickers stepper, so "you're on step 2"
+// reads the same whether the reason is up top or down here.
+function GuideState({
+  step,
+  heading,
+  subtext,
+  spinner,
+  tone,
+}: {
+  step?: number;
+  heading: string;
+  subtext?: string;
+  spinner?: boolean;
+  tone?: 'error';
+}) {
   return (
-    <div className="flex h-full items-center justify-center gap-2">
-      {spinner && <Spinner size="sm" />}
-      <span className={cn('text-sm', tone === 'error' ? 'text-error-primary' : 'text-tertiary')}>{message}</span>
+    <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-center">
+      {spinner ? (
+        <Spinner size="md" />
+      ) : step != null ? (
+        <span
+          className={cn(
+            'flex size-10 items-center justify-center rounded-full border-2 text-base font-semibold',
+            tone === 'error' ? 'border-error text-error-primary' : 'border-brand text-brand-primary'
+          )}
+        >
+          {step}
+        </span>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <span className={cn('text-base font-semibold', tone === 'error' ? 'text-error-primary' : 'text-primary')}>{heading}</span>
+        {subtext && <span className="max-w-md text-sm text-tertiary">{subtext}</span>}
+      </div>
     </div>
   );
 }
