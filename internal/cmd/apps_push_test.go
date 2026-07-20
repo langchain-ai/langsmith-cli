@@ -122,8 +122,6 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 	}
 }
 
-// A link with a name but no app_id (what "apps init" writes) must POST, not
-// PATCH an empty ID.
 func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	var sawPost bool
 	var postBody map[string]any
@@ -181,10 +179,6 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 	}
 }
 
-// If the linked app was deleted out-of-band (e.g. through the UI),
-// .langsmith/app.json still has its old app_id and push's PATCH 404s. Push
-// must recreate the app under the same name rather than failing, and relink
-// to the new app_id.
 func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 	var sawPatch, sawPost bool
 	var postBody map[string]any
@@ -268,10 +262,6 @@ func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 	}
 }
 
-// Regression test for the actual bug that motivated auto-building: "apps
-// dev"'s watch process empties dist/ before every rebuild, so interrupting
-// it mid-rebuild leaves an empty dist/ behind. Push must not trust that
-// leftover state — it should rebuild from source before uploading.
 func TestAppsPush_BuildsFromPackageJSONByDefault(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps" {
@@ -288,8 +278,6 @@ func TestAppsPush_BuildsFromPackageJSONByDefault(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"build":"vite build"}}`), 0o644); err != nil {
 		t.Fatalf("seed package.json: %v", err)
 	}
-	// No dist/ seeded at all — simulates an "apps dev" watch process that was
-	// interrupted mid-rebuild (emptyOutDir cleared it, nothing was written back).
 	t.Chdir(dir)
 
 	captureStdout(t, func() {

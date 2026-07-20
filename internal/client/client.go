@@ -140,11 +140,7 @@ type httpResponse struct {
 	body       []byte
 }
 
-// HTTPError is returned by RawGet/RawPost/RawPatch/RawDelete when the server
-// responds with a 4xx/5xx status. Its Error() text matches the plain
-// "HTTP <code>: <message>" format these methods have always returned; the
-// StatusCode field lets callers detect specific codes (e.g. 404) via
-// errors.As instead of parsing the message.
+// HTTPError is returned when the server responds with a 4xx/5xx status.
 type HTTPError struct {
 	StatusCode int
 	Body       []byte
@@ -172,17 +168,9 @@ type httpErrorBody struct {
 	Detail           any    `json:"detail"`
 }
 
-// rejectMethodChangingRedirect is the Client's http.Client.CheckRedirect.
-// Go's default redirect policy silently downgrades POST/PATCH/PUT/DELETE to a
-// bodyless GET on a 301/302/303 (per RFC 7231 — the POST/Redirect/GET
-// pattern some servers use intentionally). LangSmith's API is a plain JSON
-// REST surface with no such intentional redirects, so the only time this
-// client would ever see one is a misconfigured endpoint scheme (http instead
-// of https, redirected to https by the server). Following it silently turns
-// a write into a no-op GET — sometimes still 2xx, if a same-path GET happens
-// to exist — which is far worse than a clear error. Same-method redirects
-// (a GET following an http->https upgrade, say) are harmless and still
-// followed.
+// rejectMethodChangingRedirect rejects a redirect that would downgrade a
+// write (POST/PATCH/PUT/DELETE) to GET — Go's default silently follows that,
+// turning a write into a no-op. Same-method redirects are still followed.
 func rejectMethodChangingRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")

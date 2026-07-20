@@ -27,15 +27,13 @@ func newAppsPushCmd() *cobra.Command {
 		Short: "Upload the current directory as a custom app",
 		Long: `Upload the current directory as a custom app.
 
-Builds before uploading: if package.json has a "build" script (both starter
-templates do), this runs it first (like "npm run build"), so the upload
-always reflects your current source — not whatever happened to be left in
-dist/ by a previous "apps dev" session (e.g. one interrupted mid-rebuild).
-Pass --build to run a different command instead, or --no-build to upload
-the directory exactly as-is with no build step. The first push creates the
-app and writes .langsmith/app.json recording its ID; every push after that
-reads that file and updates the same app in place. Commit .langsmith/app.json
-so teammates' pushes update the same app instead of creating new ones.
+Builds first if package.json has a "build" script, so the upload matches
+your current source. Pass --build to use a different command, or --no-build
+to upload as-is.
+
+The first push creates the app and links this directory to it; later pushes
+update the same app. Commit .langsmith/app.json so teammates push to the
+same app too.
 
 --name only takes effect on the first push (creation).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,10 +81,7 @@ so teammates' pushes update the same app instead of creating new ones.
 			if err != nil {
 				return err
 			}
-			// "apps init" writes .langsmith/app.json immediately (recording the
-			// name) with no app_id yet — that's only known once an app is
-			// actually created. So a link file existing isn't enough to mean
-			// "already created"; app_id being set is.
+			// A link file can exist with no app_id yet (from "apps init").
 			notYetCreated := link == nil || link.AppID == ""
 
 			c := MustGetClient()
@@ -112,10 +107,7 @@ so teammates' pushes update the same app instead of creating new ones.
 				case client.IsConflict(err):
 					return fmt.Errorf("a custom app named %q already exists in this workspace", name)
 				case client.IsNotFound(err):
-					// The linked app_id no longer exists server-side (e.g. it
-					// was deleted through the UI) — .langsmith/app.json is
-					// stale. Recreate under the same name rather than failing,
-					// and relink to the new app below.
+					// Stale link (app deleted server-side) — recreate instead of failing.
 					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
 				default:
 					return fmt.Errorf("updating custom app %s: %w", link.AppID, err)
@@ -183,7 +175,7 @@ so teammates' pushes update the same app instead of creating new ones.
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
-	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading, overriding the auto-detected package.json \"build\" script (e.g. \"npm run build\")")
+	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run before uploading, overriding the auto-detected build script")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip building before uploading, even if package.json has a \"build\" script")
 	return cmd
 }

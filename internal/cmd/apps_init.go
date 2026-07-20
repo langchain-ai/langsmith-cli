@@ -15,8 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The all: prefix makes embed.FS include dotfiles (.gitignore) and _-prefixed
-// files; plain embed drops any path segment starting with "." or "_".
+// all: includes dotfiles like .gitignore; plain embed would drop them.
 //
 //go:embed all:templates/blank
 var blankStarterFS embed.FS
@@ -36,22 +35,15 @@ var experimentComparisonStarterFS embed.FS
 //go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
-// Canonical copies of small files reused across templates (SearchableSelect,
-// Spinner, the cn() helper, ...). Templates don't carry their own copies —
-// scaffoldCustomAppStarter infers which ones a given template needs by
-// scanning its own source for the import statements that would reference
-// them (see sharedFilesUsedBy), so there's no per-template list to maintain.
-// This keeps the *source* single-copy while every scaffolded app still ends
-// up with its own real, standalone file — nothing in the generated output
-// depends on this repo or on other templates at runtime.
+// Small files shared across templates (SearchableSelect, Spinner, cn(), ...);
+// scaffoldCustomAppStarter copies in only the ones a template actually imports.
 //
 //go:embed all:templates/_shared
 var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
 
-// appType is one --template choice: which starter to scaffold and which
-// AGENTS.md ships with it. Map key = the --template value.
+// appType is one --template choice. Map key = the --template value.
 type appType struct {
 	templateFS   embed.FS
 	templateRoot string
@@ -86,8 +78,7 @@ var appTypes = map[string]appType{
 	},
 }
 
-// appTypeNames returns the valid --template values, sorted, keeping error
-// text and help in sync with the map.
+// appTypeNames returns the valid --template values, sorted.
 func appTypeNames() []string {
 	names := make([]string, 0, len(appTypes))
 	for name := range appTypes {
@@ -120,39 +111,20 @@ func newAppsInitCmd() *cobra.Command {
 		Long: `Scaffold a starter custom app in the current directory.
 
 --template picks which starter gets scaffolded; omit it for a blank
-single-file starter. Every app is uploaded and rendered the same way
-regardless of choice.
+single-file starter.
 
-  annotation-queue   A real, working queue-review UI (run list,
-                     inputs/outputs viewer, feedback rubric, reviewer
-                     notes). It picks a queue itself and fetches everything
-                     from the LangSmith API.
-  annotation-queue-grid
-                     Same queue-review workflow as annotation-queue, but
-                     rendered as a spreadsheet: rows are queue runs, columns
-                     are rubric keys, cells edited inline, Done per row.
-  coding-agent-dashboard
-                     A charts dashboard over coding-agent runs: pick a
-                     project (or scan all projects), see integration/model
-                     share, token/cost/cache economics, tool and subagent
-                     usage, errors, activity over time, and per-thread
-                     breakdowns.
-  experiment-comparison
-                     Compare evaluation experiments: pick a dataset, a
-                     baseline, and comparisons; see aggregates and a
-                     per-example table colored vs the baseline.
+  annotation-queue        A queue-review UI: run list, inputs/outputs,
+                          feedback rubric, reviewer notes.
+  annotation-queue-grid   Same review workflow, as an editable spreadsheet.
+  coding-agent-dashboard  Charts over coding-agent runs: usage, cost,
+                          errors, activity over time.
+  experiment-comparison   Compare evaluation experiments against a baseline.
 
-This also writes an AGENTS.md describing the LangSmith API
-surface available to this app, and a README explaining the bridge contract.
-This only writes local files — it does not create anything remotely. Run
-"langsmith apps push" once you're ready to upload it.
+Only writes local files — run "langsmith apps push" once you're ready to
+upload it.
 
-By default this also runs "npm install" and "npm run build" in the new
-directory, so "langsmith apps dev" has a dist/bundle.js to serve right away
-instead of 404ing until you build it yourself. Pass --skip-install to just
-write the files. A failed install/build doesn't fail the command — it's a
-convenience, not a requirement — but you'll need to build manually before
-"apps dev" or "apps push" will work.`,
+Also installs dependencies and builds the app so it's ready to preview.
+Pass --skip-install to just write the files.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
 			if templateName == "" {
@@ -204,9 +176,6 @@ convenience, not a requirement — but you'll need to build manually before
 	return cmd
 }
 
-// installAndBuildCustomAppStarter runs "npm install" then "npm run build" in
-// dir, so a freshly scaffolded app has a dist/bundle.js immediately instead
-// of only after the user remembers to build it themselves.
 func installAndBuildCustomAppStarter(dir string) error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return fmt.Errorf("npm not found on PATH")
@@ -276,11 +245,9 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 			return fmt.Errorf("creating directory for %s: %w", rel, err)
 		}
 
-		// Only README.md/package.json actually reference {{.Name}}/{{.Description}}.
-		// Running every file through text/template would also try to parse any
-		// literal "{{"/"}}" elsewhere as template actions — e.g. React's
-		// style={{...}} inline-style syntax — and fail. Copy everything else
-		// byte-for-byte.
+		// Only README.md/package.json use template vars; other files may
+		// contain literal "{{"/"}}" (e.g. JSX style={{...}}) that would
+		// break text/template parsing, so copy them byte-for-byte instead.
 		if !templatedStarterFiles[rel] {
 			if err := os.WriteFile(dest, raw, 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", rel, err)
@@ -334,12 +301,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 }
 
 // writeUsedSharedFiles copies whichever templates/_shared/ files this
-// template's own source actually imports into dir/src/, so the scaffolded
-// app ends up with a real, standalone file — the shared/ source stays the
-// only physical copy in this repo. "Actually imports" is determined by
-// scanning the template's own .ts/.tsx source for the relative-import
-// specifier a file at that shared path would be referenced by (see
-// sharedFileImportSpecifiers), not by a maintained per-template list.
+// template's source actually imports into dir/src/.
 func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 	sharedPaths, err := allSharedFilePaths()
 	if err != nil {
@@ -384,8 +346,7 @@ func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 	return written, nil
 }
 
-// allSharedFilePaths lists every file under templates/_shared/, relative to
-// that root (e.g. "components/SearchableSelect.tsx", "lib/utils.ts").
+// allSharedFilePaths lists files under templates/_shared/, relative to that root.
 func allSharedFilePaths() ([]string, error) {
 	var paths []string
 	err := fs.WalkDir(sharedFS, sharedRoot, func(path string, d fs.DirEntry, walkErr error) error {
@@ -404,9 +365,7 @@ func allSharedFilePaths() ([]string, error) {
 	return paths, nil
 }
 
-// concatenatedTemplateSource returns every .ts/.tsx file in this template
-// concatenated together, for a simple substring scan — cheap and sufficient
-// at this repo's scale (a handful of small, flat template directories).
+// concatenatedTemplateSource concatenates every .ts/.tsx file in the template.
 func concatenatedTemplateSource(at appType) (string, error) {
 	var out strings.Builder
 	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
@@ -430,15 +389,8 @@ func concatenatedTemplateSource(at appType) (string, error) {
 	return out.String(), nil
 }
 
-// sharedFileImportSpecifiers returns the plausible relative-import
-// specifiers a template file could use to reference the shared file at
-// sharedRelPath (relative to templates/_shared/), depending on which
-// directory within the template's src/ the importing file lives in. Matches
-// this repo's template convention: everything lives directly under src/,
-// src/components/, or src/lib/, one level deep — e.g. a file at
-// "components/SearchableSelect.tsx" is imported as "./SearchableSelect" by
-// sibling files under src/components/, or "./components/SearchableSelect"
-// by a top-level file like src/App.tsx.
+// sharedFileImportSpecifiers returns the plausible relative-import specifiers
+// for the shared file at sharedRelPath (relative to templates/_shared/).
 func sharedFileImportSpecifiers(sharedRelPath string) []string {
 	base := strings.TrimSuffix(filepath.Base(sharedRelPath), filepath.Ext(sharedRelPath))
 	dir := filepath.Dir(sharedRelPath) // "components", "lib", or "." for a top-level shared file
@@ -457,9 +409,7 @@ var templatedStarterFiles = map[string]bool{
 	"package.json": true,
 }
 
-// assembleAgentsMD builds an app's AGENTS.md from the generic base
-// (_common.md) with the template-specific fragment injected at the marker.
-// A blank template (agentsMD == "") yields the base alone.
+// assembleAgentsMD injects the template-specific fragment into the base AGENTS.md.
 func assembleAgentsMD(agentsMD string) ([]byte, error) {
 	const marker = "<!-- TEMPLATE-SPECIFIC -->"
 	common, err := agentsMDFS.ReadFile("templates/agents-md/_common.md")

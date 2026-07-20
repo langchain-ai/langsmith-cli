@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// Apps are uniform now — list takes no context_type filter and hits the
-// endpoint with no query string.
 func TestAppsList_ListsAllApps(t *testing.T) {
 	var sawQuery string
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -46,9 +44,6 @@ func TestAppsList_ListsAllApps(t *testing.T) {
 	}
 }
 
-// The default "pretty" format renders a table, matching every other list
-// command (project, dataset, experiment, hub list, ...) instead of always
-// dumping raw JSON.
 func TestAppsList_PrettyFormatRendersTable(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// "apps init" records the name in .langsmith/app.json so a later push reuses
-// it instead of the directory basename.
 func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -103,8 +101,6 @@ func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
 	}
 }
 
-// The coding-agent dashboard is a standalone charts app; it scaffolds its own
-// components and gets its own AGENTS.md.
 func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -151,8 +147,6 @@ func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
 	}
 }
 
-// The experiment-comparison dashboard is a standalone app with its own
-// components and AGENTS.md.
 func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -203,7 +197,7 @@ func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 	}
 }
 
-// The two AQ templates must get distinct AGENTS.md files — guards the per-template agentsMD selection against regression.
+// Guards the per-template agentsMD selection against regression.
 func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
@@ -301,8 +295,6 @@ func TestAppsInit_ScaffoldsBlankFiles(t *testing.T) {
 			t.Errorf("expected %q to be written, got %v", want, written)
 		}
 	}
-	// The blank template must never scaffold the annotation-queue app's own
-	// components — it has its own (much simpler) App.tsx.
 	if writtenSet["src/components/RunList.tsx"] {
 		t.Error("blank template should not scaffold the annotation-queue app's components")
 	}
@@ -316,10 +308,7 @@ func TestAppsInit_ScaffoldsBlankFiles(t *testing.T) {
 	}
 }
 
-// Non-templated files (anything but README.md/package.json) must be copied
-// byte-for-byte — running them through text/template would choke on, or
-// silently mangle, any literal "{{"/"}}" they contain, e.g. React's
-// style={{...}} inline-style syntax.
+// Non-templated files must be copied byte-for-byte, not parsed as templates.
 func TestAppsInit_CopiesNonTemplatedFilesVerbatim(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -552,10 +541,7 @@ func TestInstallAndBuildCustomAppStarter_ErrorsWhenNpmMissing(t *testing.T) {
 	}
 }
 
-// fakeNpm writes an executable named "npm" into a fresh directory prepended
-// to PATH, standing in for a real npm install: no network access, no real
-// esbuild download. It only needs to satisfy the two invocations
-// installAndBuildCustomAppStarter makes: "install" and "run build".
+// fakeNpm stubs "npm" on PATH so tests avoid a real network install.
 func fakeNpm(t *testing.T, onRunBuild string) {
 	t.Helper()
 	binDir := t.TempDir()
@@ -591,10 +577,6 @@ func TestInstallAndBuildCustomAppStarter_ErrorsWhenBuildFails(t *testing.T) {
 	}
 }
 
-// Shared files (templates/_shared/) aren't tracked per template — a
-// template gets one by actually importing it, discovered by scanning its
-// own source. These tests pin down that inference so it can't silently
-// regress into either a maintained list or a "copy everything" fallback.
 func TestSharedFileImportSpecifiers_MatchesTemplateConventions(t *testing.T) {
 	tests := []struct {
 		sharedRelPath string
@@ -631,9 +613,6 @@ func TestSharedFileImportSpecifiers_MatchesTemplateConventions(t *testing.T) {
 	}
 }
 
-// annotation-queue-grid imports SearchableSelect, Spinner, and the cn()
-// helper from lib/utils — all three should be pulled in, byte-identical to
-// the canonical _shared/ source.
 func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -670,9 +649,6 @@ func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
 	}
 }
 
-// experiment-comparison only imports SearchableSelect — it has no Spinner
-// and never had a lib/utils.ts, so those must not appear even though
-// they're valid _shared/ files another template uses.
 func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
@@ -693,18 +669,9 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	}
 }
 
-// go:embed has no concept of .gitignore — it embeds every file physically
-// present under a template's source directory at build time, node_modules
-// included. If a local `npm install`/`vite build` run in a template's source
-// tree isn't cleaned up before `go build`/`go install`, the *entire*
-// node_modules (and dist/) gets silently baked into the CLI binary and
-// scaffolded into every user's project — with a working package.json but no
-// working node_modules/.bin symlinks (embed can't preserve symlinks), so
-// "npm run watch" fails with "vite: command not found" despite the files
-// visibly being there. This walks the actual embedded FS content (not just
-// the source tree, which can look clean between commits) so a stray
-// node_modules/dist left behind before a build gets caught here instead of
-// shipping.
+// go:embed has no .gitignore concept — a stray node_modules/dist left in a
+// template's source tree gets silently baked into the CLI binary. Checks the
+// embedded FS content directly, not just the source tree.
 func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 	check := func(name string, embedded fs.FS) {
 		t.Helper()

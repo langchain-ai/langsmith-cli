@@ -102,14 +102,8 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	}
 }
 
-// A regression test for a real bug: renderApp() used to unconditionally do
-// `root.innerHTML = ”` before calling window.__render(currentData, root).
-// The entrypoint caches its React root across calls (`if (!root) root =
-// createRoot(rootEl)`) specifically so repeat renders (e.g. a theme toggle
-// re-posting LANGSMITH_METADATA) reconcile against the same tree. Wiping the
-// DOM out from under React between calls corrupts that reconciliation —
-// harmless on the very first render (the container starts empty anyway), but
-// the app renders blank on every render after that.
+// Regression test: renderApp() must not clear #root before re-rendering —
+// that corrupts React's cached root and leaves the app blank after the first render.
 func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'ok'; } }")
@@ -168,17 +162,13 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	if !strings.Contains(page, "LANGSMITH_METADATA") {
 		t.Errorf("expected the host page to post LANGSMITH_METADATA:\n%s", page)
 	}
-	// The served page embeds the sandbox srcdoc; the 3-arg render call has no
-	// characters html.EscapeString would touch, so it appears verbatim.
+	// html.EscapeString doesn't touch this substring, so it appears verbatim.
 	if !strings.Contains(page, "window.__render(currentData, root, currentMetadata)") {
 		t.Errorf("expected the sandbox srcdoc to call render with (data, root, metadata):\n%s", page)
 	}
 }
 
-// The sandbox side must implement the pinned theme/metadata contract: handle
-// LANGSMITH_METADATA, set html.dark from mode, and pass metadata as render's
-// 3rd arg. Asserting on the template constant avoids fighting the HTML-escaping
-// the srcdoc goes through when embedded in the host page.
+// Asserts on the template constant directly to avoid fighting HTML-escaping.
 func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
 	for _, want := range []string{
 		"LANGSMITH_METADATA",
@@ -385,10 +375,7 @@ func TestPackageJSONScript_MalformedJSON(t *testing.T) {
 	}
 }
 
-// fakeNpmOnPath puts a fake "npm" script on PATH (for the duration of the
-// test) that touches markerPath and then blocks, so tests can assert
-// startWatchProcess actually launched "npm run watch" without depending on
-// npm or a real bundler being installed in the test environment.
+// fakeNpmOnPath stubs "npm" so tests don't need a real install.
 func fakeNpmOnPath(t *testing.T, markerPath string) {
 	t.Helper()
 	fakeNpmDir := t.TempDir()
@@ -421,8 +408,7 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	// Cancelling ctx should kill the long-running fake npm process rather
-	// than leaving it (and the test process) hanging.
+	// ctx cancellation should kill the process, not hang.
 	cancel()
 	time.Sleep(200 * time.Millisecond)
 }
@@ -495,8 +481,7 @@ func TestWaitForFreshEntrypoint_WaitsForNewerMTimeThanPrevBuild(t *testing.T) {
 	}
 	prevBuildTime := staleInfo.ModTime()
 
-	// Simulate the watch tool's "empty outDir, then rebuild" sequence: the
-	// file briefly disappears, then reappears with a newer mtime.
+	// The file briefly disappears, then reappears with a newer mtime.
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		_ = os.Remove(path)

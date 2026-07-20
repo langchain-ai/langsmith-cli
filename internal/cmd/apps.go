@@ -12,9 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// appsLinkDir and appsLinkFile name the local file that records which
-// remote custom app a directory is linked to, mirroring how `vercel link`/
-// `netlify link` avoid needing a server-side unique name to upsert against.
 const (
 	appsLinkDir  = ".langsmith"
 	appsLinkFile = "app.json"
@@ -25,16 +22,13 @@ const (
 	appsMaxFileSizeBytes = 1 << 20 // 1MB per file, matches hub push's limit.
 )
 
-// appLink is the contents of <dir>/.langsmith/app.json. It is the durable
-// record of "what this app is" that `apps push` reads on every run to decide
-// whether to create a new custom app or update the one it created last time.
+// appLink is the contents of <dir>/.langsmith/app.json.
 type appLink struct {
 	AppID string `json:"app_id"`
 	Name  string `json:"name"`
 }
 
-// customApp mirrors the JSON shape returned by smith-go's
-// /v1/platform/custom-apps endpoints (smith-go/customapps/types.go).
+// customApp mirrors smith-go's /v1/platform/custom-apps JSON shape.
 type customApp struct {
 	ID          string            `json:"id"`
 	TenantID    string            `json:"tenant_id,omitempty"`
@@ -68,16 +62,8 @@ func newAppsCmd() *cobra.Command {
 		Long: `Build, upload, and manage Custom Apps — UIs you build locally against the
 LangSmith API and run inside LangSmith.
 
-A custom app is a small set of files rendered in a locked-down sandbox: no
-direct network access, no npm modules at runtime — only a postMessage
-bridge (window.langsmith.call/setData) proxied through the viewer's own
-LangSmith session. Use React/JSX or npm dependencies freely; the scaffolded
-starter bundles them locally (Vite) into the single dependency-free file the
-sandbox expects.
-
 Pick a starter with --template (blank, annotation-queue,
-annotation-queue-grid); they differ only in the UI they scaffold — every app
-is uploaded and rendered the same way.
+annotation-queue-grid).
 
 Examples:
   langsmith apps init --name my-app
@@ -87,8 +73,8 @@ Examples:
   langsmith apps list
   langsmith apps delete <app-id> --yes
 
-All of the above (except list/delete, which take an app ID) act on the
-current directory — cd into your app's directory first.`,
+Except list/delete, these act on the current directory — cd into your app's
+directory first.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
@@ -98,8 +84,7 @@ current directory — cd into your app's directory first.`,
 	return cmd
 }
 
-// readAppLink reads <dir>/.langsmith/app.json. It returns (nil, nil) if the
-// file does not exist — callers treat that as "not linked yet".
+// readAppLink returns (nil, nil) if not linked yet.
 func readAppLink(dir string) (*appLink, error) {
 	path := filepath.Join(dir, appsLinkDir, appsLinkFile)
 	data, err := os.ReadFile(path)
@@ -116,8 +101,6 @@ func readAppLink(dir string) (*appLink, error) {
 	return &link, nil
 }
 
-// writeAppLink writes <dir>/.langsmith/app.json, creating the directory if
-// needed.
 func writeAppLink(dir string, link appLink) error {
 	linkDir := filepath.Join(dir, appsLinkDir)
 	if err := os.MkdirAll(linkDir, 0o755); err != nil {
@@ -135,12 +118,7 @@ func writeAppLink(dir string, link appLink) error {
 	return nil
 }
 
-// readDirectoryAsAppFiles walks root and returns a flat relative-path →
-// content map suitable for custom_apps.files. Unlike hub's equivalent
-// (readDirectoryAsFiles in hub_push.go), there is no {type, content}
-// wrapper — the custom-apps API takes a plain map[string]string — and
-// .langsmith/ itself is always excluded so the link file never gets
-// uploaded as an app file.
+// readDirectoryAsAppFiles walks root into a relative-path → content map.
 func readDirectoryAsAppFiles(root string) (map[string]string, error) {
 	info, err := os.Stat(root)
 	if err != nil {

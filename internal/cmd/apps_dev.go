@@ -33,25 +33,14 @@ func newAppsDevCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dev",
 		Short: "Run the current directory's custom app locally in a real sandbox",
-		Long: `Serve the current directory's custom app inside a real sandboxed iframe
-(sandbox="allow-scripts", no allow-same-origin — identical restrictions to
-production) and open it in your browser. This is entirely self-contained:
-no LangSmith web app involved.
+		Long: `Preview the current directory's custom app locally in your browser, in
+the same kind of sandbox it runs in on LangSmith. Fully self-contained — no
+LangSmith web app involved.
 
-The app's window.langsmith.call(operation, args) is proxied to the real
-LangSmith API using your local LANGSMITH_API_KEY — the same generic
-passthrough production uses (proxied through the injected platform token
-there instead). It is not a curated allowlist: operation is a
-"<METHOD> <path>" string (e.g. "GET /api/v1/annotation-queues/{id}/runs"),
-forwarded as-is.
+API calls the app makes are proxied through your local credentials.
 
-If the current directory has a package.json with a "watch" script (both
-starter templates do), this runs it for you automatically as a managed
-child process, so editing source files and saving is enough to see the
-change — no second terminal needed. The page itself polls for the
-entrypoint changing and reloads whenever the watcher rebuilds it. Pass
---no-watch to skip this (e.g. you're already running your own build
-process, or want to use a different one).`,
+Rebuilds automatically on save. Pass --no-watch to manage your own build
+process instead.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.Getwd()
 			if err != nil {
@@ -71,13 +60,10 @@ process, or want to use a different one).`,
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
-	cmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't automatically run the build's \"watch\" script (e.g. \"npm run watch\") — use this if you're already running your own build process")
+	cmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't automatically rebuild on save — use this if you're already running your own build process")
 	return cmd
 }
 
-// runAppsDev starts the local sandboxed-preview server for dir, opens it in
-// a browser, and blocks until ctx is cancelled (e.g. by SIGINT) or the
-// server fails.
 func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen, noWatch bool) error {
 	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint)
 	if err != nil {
@@ -91,14 +77,8 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen, noWatch boo
 			prevBuildTime = info.ModTime()
 		}
 		if startWatchProcess(ctx, dir) {
-			// Most build tools (including both starter templates' "vite
-			// build --watch") empty their output directory before their
-			// first rebuild. Without this, that would make an entrypoint we
-			// already had (e.g. from "apps init"'s one-time build) briefly
-			// disappear right as the browser opens, flashing the "waiting
-			// for build" page for no reason. Wait for a fresh build before
-			// continuing — the served page's own poll+reload is still
-			// there as a fallback if this build is slow.
+			// Build tools empty their output dir before rebuilding, which would
+			// briefly hide an existing entrypoint — wait for a fresh build first.
 			waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
 		}
 	}
@@ -131,14 +111,8 @@ func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen, noWatch boo
 	return nil
 }
 
-// startWatchProcess runs dir/package.json's "watch" script (e.g.
-// "vite build --watch", aliased to "npm run watch" by both starter
-// templates) as a child process tied to ctx, so editing source files
-// rebuilds the entrypoint without a second terminal. It never fails
-// runAppsDev — if there's no package.json, no "watch" script, or no npm on
-// PATH, it just prints a note and returns false, leaving the existing
-// run-your-own-build workflow intact. Returns true only if the process was
-// actually started.
+// startWatchProcess runs package.json's "watch" script tied to ctx. Never
+// fails runAppsDev — returns false (with a note) if it can't start one.
 func startWatchProcess(ctx context.Context, dir string) bool {
 	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
 	if err != nil {
@@ -165,16 +139,12 @@ func startWatchProcess(ctx context.Context, dir string) bool {
 		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
 		return false
 	}
-	// Reap the process (and honor ctx cancellation, which exec.CommandContext
-	// enforces via Wait) without blocking runAppsDev on it.
 	go func() { _ = watchCmd.Wait() }()
 	return true
 }
 
-// waitForFreshEntrypoint blocks until path's mtime is newer than after
-// (meaning a build completed since we started watching), ctx is cancelled,
-// or timeout elapses — whichever comes first. A zero-value after matches
-// the first time path ever appears (no prior build to compare against).
+// waitForFreshEntrypoint blocks until path's mtime is newer than after, ctx
+// is cancelled, or timeout elapses.
 func waitForFreshEntrypoint(ctx context.Context, path string, after time.Time, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -189,10 +159,6 @@ func waitForFreshEntrypoint(ctx context.Context, path string, after time.Time, t
 	}
 }
 
-// packageJSONScript reads dir/package.json and returns the named script.
-// pkgJSONExists distinguishes "no package.json at all" (nothing to warn
-// about — this may not be an npm project) from "package.json exists but has
-// no such script" (worth telling the user about).
 func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err error) {
 	raw, readErr := os.ReadFile(filepath.Join(dir, "package.json"))
 	if readErr != nil {
@@ -210,20 +176,9 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 	return pkg.Scripts[name], true, nil
 }
 
-// prepareAppsDevServer builds (but does not start) an HTTP server, bound to
-// an OS-assigned free port on 127.0.0.1, that serves:
-//
-//   - "/"                — a host page embedding the app in a real
-//     sandbox="allow-scripts" iframe (no allow-same-origin), re-read from
-//     disk on every request so a rebuild is reflected on the next reload.
-//   - "/__ls_dev/mtime"  — polled by the host page to detect a rebuild (or
-//     the entrypoint appearing for the first time) and trigger a reload.
-//   - "/__ls_dev/call"   — the generic window.langsmith.call(...) proxy,
-//     forwarding to the real LangSmith API via the authenticated CLI client.
-//
-// The directory is read the same way "apps push" reads it
-// (readDirectoryAsAppFiles), so local dev sees exactly what would be
-// uploaded — including the same .env/.git/node_modules exclusions.
+// prepareAppsDevServer builds (but does not start) an HTTP server on
+// 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
+// ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
 func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	mux := http.NewServeMux()
 
@@ -281,11 +236,8 @@ type lsDevCallArgs struct {
 	Body   any            `json:"body,omitempty"`
 }
 
-// handleLsDevCall is the local-dev twin of smith-frontend's apiProxy.ts
-// createLangSmithApiProxy: a generic passthrough, not a curated allowlist.
-// It forwards operation ("<METHOD> <path>") to the real LangSmith API using
-// the CLI's authenticated client (the same one "langsmith api" uses), so an
-// app can exercise real endpoints while it's being developed.
+// handleLsDevCall proxies the app's API calls to the real LangSmith API
+// using the CLI's authenticated client.
 func handleLsDevCall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -368,10 +320,8 @@ func escapeForScript(jsonBytes []byte) string {
 	return scriptCloseTagPattern.ReplaceAllString(string(jsonBytes), "<\\/script>")
 }
 
-// devWaitingHTML is served at "/" when the entrypoint doesn't exist yet (or
-// the directory can't be read) — it polls the same mtime endpoint the real
-// host page does, so it reloads itself into the real preview the moment a
-// build produces the entrypoint.
+// devWaitingHTML is served at "/" until the entrypoint exists, then reloads
+// into the real preview.
 func devWaitingHTML(message string) string {
 	return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Waiting for build…</title></head>
@@ -390,18 +340,8 @@ setInterval(function() {
 </body></html>`
 }
 
-// renderDevHostHTML builds the top-level host page: it embeds the app in a
-// real sandboxed iframe (mirroring smith-frontend's sandbox.ts
-// buildSandboxSrcdoc as closely as possible, including the multi-file
-// require() loader, so local dev exercises the exact same module-loading
-// behavior as production) and implements the postMessage bridge from the
-// host side — LANGSMITH_READY/LANGSMITH_HEIGHT/LS_API/LS_MUTATION — with
-// LS_API forwarded to /__ls_dev/call, which is real network access the
-// iframe itself can never have.
-//
-// Every app gets a config toolbar, labeled so it reads clearly as the dev
-// tool's own chrome rather than part of the app below it; its first (and
-// only) control is a Light/Dark mode toggle (posting LANGSMITH_METADATA).
+// renderDevHostHTML builds the top-level host page: the sandboxed iframe
+// plus the postMessage bridge and a Light/Dark mode toolbar.
 func renderDevHostHTML(files map[string]string, entrypoint string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
@@ -518,9 +458,7 @@ const devHostHTMLTemplate = `<!doctype html>
     iframe.contentWindow.postMessage(msg, '*');
   }
 
-  // First config control: two always-visible Light/Dark buttons, not a
-  // single toggle. mode ("dark"|"light") defaults from the OS, persists to
-  // localStorage, and drives the sandbox (LANGSMITH_METADATA) and host chrome.
+  // mode defaults from the OS and persists to localStorage.
   var MODE_STORAGE_KEY = 'langsmith:apps-dev:mode';
   var lightBtn = document.getElementById('ls-dev-mode-light');
   var darkBtn = document.getElementById('ls-dev-mode-dark');
@@ -598,8 +536,7 @@ const devHostHTMLTemplate = `<!doctype html>
     }
   });
 
-  // Poll for the entrypoint changing (or appearing for the first time) and
-  // reload the whole page -- simplest reliable way to pick up a rebuild.
+  // Poll for a rebuild and reload the page when detected.
   var seen = false, lastKey = null;
   setInterval(function() {
     fetch('/__ls_dev/mtime', { cache: 'no-store' })
@@ -616,11 +553,9 @@ const devHostHTMLTemplate = `<!doctype html>
 </body>
 </html>`
 
-// sandboxInnerHTMLTemplate is a close Go port of smith-frontend's
-// sandbox.ts buildSandboxSrcdoc — same virtual filesystem + require()
-// loader, same render(data, root) contract, same window.langsmith bridge
-// (call/setData/feedback.create). Kept in sync by hand; there is no shared
-// source between the two repos.
+// sandboxInnerHTMLTemplate ports smith-frontend's sandbox.ts srcdoc — same
+// require() loader, render contract, and window.langsmith bridge. Kept in
+// sync by hand.
 const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -701,8 +636,7 @@ pre, code {
       maybeRender();
     }
     if (msg.type === 'LANGSMITH_METADATA') {
-      // Load-bearing: the host can't set html.dark on this no-same-origin
-      // sandbox, so we do it here from this message.
+      // Load-bearing: the sandboxed origin can't set html.dark itself.
       currentMetadata = msg.metadata;
       document.documentElement.classList.toggle('dark', currentMetadata && currentMetadata.mode === 'dark');
       maybeRender();
@@ -715,8 +649,7 @@ pre, code {
     }
   });
 
-  // First render needs theme, metadata, and data all present; after that,
-  // any of the three changing re-renders.
+  // Renders once all three are present, and on any later change.
   function maybeRender() {
     if (themeReady && currentMetadata !== null && currentData !== null) renderApp();
   }
