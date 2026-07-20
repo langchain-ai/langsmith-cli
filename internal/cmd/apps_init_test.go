@@ -556,7 +556,14 @@ func fakeNpm(t *testing.T, onRunBuild string) {
 		if onRunBuild == "exit 1" {
 			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" exit /b 1\r\n@exit /b 1\r\n"
 		} else {
-			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" (mkdir dist 2>nul & echo module.exports={}^>dist\\bundle.js & exit /b 0)\r\n@exit /b 1\r\n"
+			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" (mkdir dist 2>nul & echo module.exports={} > dist\\bundle.js & exit /b 0)\r\n@exit /b 1\r\n"
+		}
+		posixScript := "#!/bin/sh\n" +
+			"if [ \"$1\" = \"install\" ]; then exit 0; fi\n" +
+			"if [ \"$1\" = \"run\" ] && [ \"$2\" = \"build\" ]; then\n" + onRunBuild + "\nexit 0\nfi\n" +
+			"exit 1\n"
+		if err := os.WriteFile(filepath.Join(binDir, "npm"), []byte(posixScript), 0o755); err != nil {
+			t.Fatalf("write POSIX fake npm: %v", err)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(binDir, npmName), []byte(script), 0o755); err != nil {

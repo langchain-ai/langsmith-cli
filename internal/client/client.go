@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -166,11 +167,30 @@ type httpErrorBody struct {
 	Detail           any    `json:"detail"`
 }
 
+func (c *Client) requestURL(path string) (string, error) {
+	base, err := url.Parse(c.apiURL)
+	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
+		return "", fmt.Errorf("invalid API URL %q", c.apiURL)
+	}
+	ref, err := url.Parse(path)
+	if err != nil || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || ref.IsAbs() || ref.Host != "" {
+		return "", fmt.Errorf("API path %q must be root-relative", path)
+	}
+	resolved := base.ResolveReference(ref)
+	if resolved.Scheme != base.Scheme || resolved.Host != base.Host {
+		return "", fmt.Errorf("API path %q resolves outside the configured origin", path)
+	}
+	return resolved.String(), nil
+}
+
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
 func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
-	url := c.apiURL + path
+	requestURL, err := c.requestURL(path)
+	if err != nil {
+		return nil, err
+	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

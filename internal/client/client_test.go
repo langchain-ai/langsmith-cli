@@ -616,6 +616,32 @@ func TestRawDo_ExtraHeaders(t *testing.T) {
 	}
 }
 
+func TestRawDo_RejectsCrossOriginPathsBeforeSendingCredentials(t *testing.T) {
+	attackerRequests := 0
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attackerRequests++
+		if r.Header.Get("x-api-key") != "" {
+			t.Error("credentials reached the cross-origin server")
+		}
+	}))
+	defer attacker.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected API request: %s", r.URL)
+	}))
+	defer api.Close()
+
+	c := New("secret", api.URL)
+	for _, path := range []string{attacker.URL + "/steal", "//example.com/steal", "ftp://example.com/steal"} {
+		if _, _, _, _, err := c.RawDo(context.Background(), http.MethodGet, path, nil, nil); err == nil {
+			t.Errorf("RawDo accepted cross-origin path %q", path)
+		}
+	}
+	if attackerRequests != 0 {
+		t.Fatalf("cross-origin server received %d requests", attackerRequests)
+	}
+}
+
 func TestRawDo_Returns4xxWithoutError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(422)
