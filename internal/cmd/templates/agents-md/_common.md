@@ -47,6 +47,8 @@ Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 
 **Runs**
 - `POST /api/v1/runs/query` — query runs (body: `session`, `filter`, `is_root`, `run_type`, `start_time`, `limit`, `select`); returns `{ runs, cursor }`
+- `POST /api/v1/runs/stats` — server-side aggregates over a filtered set of runs, no row limit (counts, error rate, latency percentiles, token/cost sums) — prefer this over paging through `runs/query` for any headline number
+- `POST /api/v1/runs/group/stats` — same, grouped (e.g. `group_by: "conversation"` for a distinct thread count)
 - `GET /api/v1/runs/{run_id}` — fetch one full run (all fields + inputs/outputs)
 - `POST /api/v1/runs` / `PATCH /api/v1/runs/{run_id}` — create / update a run
 
