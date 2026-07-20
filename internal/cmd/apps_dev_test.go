@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -379,8 +380,13 @@ func TestPackageJSONScript_MalformedJSON(t *testing.T) {
 func fakeNpmOnPath(t *testing.T, markerPath string) {
 	t.Helper()
 	fakeNpmDir := t.TempDir()
+	npmName := "npm"
 	script := "#!/bin/sh\ntouch \"" + markerPath + "\"\nwhile true; do sleep 0.1; done\n"
-	if err := os.WriteFile(filepath.Join(fakeNpmDir, "npm"), []byte(script), 0o755); err != nil {
+	if runtime.GOOS == "windows" {
+		npmName = "npm.cmd"
+		script = "@type nul > \"" + markerPath + "\"\r\n@ping -t 127.0.0.1 >nul\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(fakeNpmDir, npmName), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake npm: %v", err)
 	}
 	t.Setenv("PATH", fakeNpmDir+string(os.PathListSeparator)+os.Getenv("PATH"))

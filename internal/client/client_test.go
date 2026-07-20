@@ -277,6 +277,25 @@ func TestRawGet_HTTPError(t *testing.T) {
 	}
 }
 
+func TestRawGet_HTTPErrorStatus(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, http.StatusText(status), status)
+			}))
+			defer ts.Close()
+
+			err := New("key", ts.URL).RawGet(context.Background(), "/fail", nil)
+			if got := IsNotFound(err); got != (status == http.StatusNotFound) {
+				t.Errorf("IsNotFound(%v) = %t", err, got)
+			}
+			if got := IsConflict(err); got != (status == http.StatusConflict) {
+				t.Errorf("IsConflict(%v) = %t", err, got)
+			}
+		})
+	}
+}
+
 func TestRawGet_JSONHTTPErrorIncludesMessage(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -630,54 +649,5 @@ func TestAPIURL(t *testing.T) {
 	c := New("key", "http://localhost:1234")
 	if c.APIURL() != "http://localhost:1234" {
 		t.Errorf("expected http://localhost:1234, got %q", c.APIURL())
-	}
-}
-
-// ---------- Redirect handling ----------
-
-func TestRawDo_RejectsMethodChangingRedirect(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/feedback" {
-			http.Redirect(w, r, "/feedback-redirected", http.StatusFound) // 302
-			return
-		}
-		t.Errorf("redirect target should never be reached for a rejected redirect, got %s %s", r.Method, r.URL.Path)
-	}))
-	defer ts.Close()
-
-	c := New("key", ts.URL)
-	_, _, _, _, err := c.RawDo(context.Background(), "POST", "/feedback", strings.NewReader(`{"key":"note"}`), nil)
-	if err == nil {
-		t.Fatal("expected an error, got nil")
-	}
-	if !strings.Contains(err.Error(), "would change") {
-		t.Errorf("expected error to mention the method change, got: %v", err)
-	}
-}
-
-func TestRawDo_FollowsSameMethodRedirect(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/runs" {
-			http.Redirect(w, r, "/runs-redirected", http.StatusFound) // 302
-			return
-		}
-		if r.Method != "GET" {
-			t.Errorf("expected GET on redirect target, got %s", r.Method)
-		}
-		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}))
-	defer ts.Close()
-
-	c := New("key", ts.URL)
-	status, _, _, body, err := c.RawDo(context.Background(), "GET", "/runs", nil, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if status != 200 {
-		t.Errorf("expected 200, got %d", status)
-	}
-	if string(body) != `{"ok":true}` {
-		t.Errorf("unexpected body: %s", body)
 	}
 }

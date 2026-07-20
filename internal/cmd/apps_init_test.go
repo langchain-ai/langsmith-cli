@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -545,12 +546,20 @@ func TestInstallAndBuildCustomAppStarter_ErrorsWhenNpmMissing(t *testing.T) {
 func fakeNpm(t *testing.T, onRunBuild string) {
 	t.Helper()
 	binDir := t.TempDir()
+	npmName := "npm"
 	script := "#!/bin/sh\n" +
 		"if [ \"$1\" = \"install\" ]; then exit 0; fi\n" +
 		"if [ \"$1\" = \"run\" ] && [ \"$2\" = \"build\" ]; then\n" + onRunBuild + "\nexit 0\nfi\n" +
 		"exit 1\n"
-	npmPath := filepath.Join(binDir, "npm")
-	if err := os.WriteFile(npmPath, []byte(script), 0o755); err != nil {
+	if runtime.GOOS == "windows" {
+		npmName = "npm.cmd"
+		if onRunBuild == "exit 1" {
+			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" exit /b 1\r\n@exit /b 1\r\n"
+		} else {
+			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" (mkdir dist 2>nul & echo module.exports={}^>dist\\bundle.js & exit /b 0)\r\n@exit /b 1\r\n"
+		}
+	}
+	if err := os.WriteFile(filepath.Join(binDir, npmName), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake npm: %v", err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -669,8 +678,8 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	}
 }
 
-// go:embed has no .gitignore concept — a stray node_modules/dist left in a
-// template's source tree gets silently baked into the CLI binary. Checks the
+// Embedded files ignore .gitignore, so stray build artifacts in a template's
+// source tree get silently baked into the CLI binary. Checks the
 // embedded FS content directly, not just the source tree.
 func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 	check := func(name string, embedded fs.FS) {

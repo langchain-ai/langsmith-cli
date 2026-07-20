@@ -295,7 +295,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	if err := writeAppLink(dir, appLink{Name: name}); err != nil {
 		return nil, fmt.Errorf("writing .langsmith/app.json: %w", err)
 	}
-	written = append(written, filepath.Join(appsLinkDir, appsLinkFile))
+	written = append(written, filepath.ToSlash(filepath.Join(appsLinkDir, appsLinkFile)))
 
 	return written, nil
 }
@@ -341,7 +341,7 @@ func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 		if err := os.WriteFile(dest, raw, 0o644); err != nil {
 			return nil, fmt.Errorf("writing %s: %w", destRel, err)
 		}
-		written = append(written, destRel)
+		written = append(written, filepath.ToSlash(destRel))
 	}
 	return written, nil
 }
@@ -397,7 +397,7 @@ func sharedFileImportSpecifiers(sharedRelPath string) []string {
 	specifiers := []string{"./" + base}
 	if dir != "." {
 		specifiers = append(specifiers,
-			"./"+dir+"/"+base, // top-level src/*.tsx importing src/<dir>/<base>
+			"./"+dir+"/"+base,  // top-level src/*.tsx importing src/<dir>/<base>
 			"../"+dir+"/"+base, // a different src/<other>/ file importing src/<dir>/<base>
 		)
 	}

@@ -140,25 +140,23 @@ type httpResponse struct {
 	body       []byte
 }
 
-// HTTPError is returned when the server responds with a 4xx/5xx status.
-type HTTPError struct {
-	StatusCode int
-	Body       []byte
+type httpError struct {
+	statusCode int
+	body       []byte
 }
 
-func (e *HTTPError) Error() string {
-	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, formatHTTPErrorBody(e.Body))
+func (e *httpError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.statusCode, formatHTTPErrorBody(e.body))
 }
 
-// IsNotFound reports whether err is an HTTPError with a 404 status.
 func IsNotFound(err error) bool {
-	var httpErr *HTTPError
-	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
+	var httpErr *httpError
+	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusNotFound
 }
 
 func IsConflict(err error) bool {
-	var httpErr *HTTPError
-	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusConflict
+	var httpErr *httpError
+	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusConflict
 }
 
 type httpErrorBody struct {
@@ -166,24 +164,6 @@ type httpErrorBody struct {
 	Message          string `json:"message"`
 	ErrorDescription string `json:"error_description"`
 	Detail           any    `json:"detail"`
-}
-
-// rejectMethodChangingRedirect rejects a redirect that would downgrade a
-// write (POST/PATCH/PUT/DELETE) to GET — Go's default silently follows that,
-// turning a write into a no-op. Same-method redirects are still followed.
-func rejectMethodChangingRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	prev := via[len(via)-1]
-	if req.Method != prev.Method {
-		return fmt.Errorf(
-			"refusing to follow redirect that would change %s %s into %s %s"+
-				" (check LANGSMITH_ENDPOINT is using https, not http)",
-			prev.Method, prev.URL, req.Method, req.URL,
-		)
-	}
-	return nil
 }
 
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
@@ -209,10 +189,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{
-		Timeout:       30 * time.Second,
-		CheckRedirect: rejectMethodChangingRedirect,
-	}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
@@ -269,7 +246,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
-		return &HTTPError{StatusCode: resp.statusCode, Body: resp.body}
+		return &httpError{statusCode: resp.statusCode, body: resp.body}
 	}
 
 	if result != nil {
