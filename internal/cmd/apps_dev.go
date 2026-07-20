@@ -58,6 +58,10 @@ process, or want to use a different one).`,
 				return fmt.Errorf("getting current directory: %w", err)
 			}
 
+			if _, err := getClient(); err != nil {
+				return err
+			}
+
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
