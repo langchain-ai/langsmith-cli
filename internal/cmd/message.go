@@ -325,27 +325,40 @@ func attachRootIO(ctx context.Context, c *client.Client, sessionID string, start
 // trace_id, so we filter by ID (the SDK's RunQueryParams has no list field
 // for trace IDs — Trace is singular).
 func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string) map[string]rootPreview {
+	out, err := queryRootPreviews(ctx, c, sessionID, startTime, ids)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
+		return map[string]rootPreview{}
+	}
+	return out
+}
+
+// queryRootPreviews is the strict form of fetchRootPreviews. Callers that need
+// previews to make their primary output complete can return the lookup error
+// instead of silently rendering partial data.
+func queryRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string) (map[string]rootPreview, error) {
 	out := map[string]rootPreview{}
 	if len(ids) == 0 {
-		return out
+		return out, nil
 	}
 	params := langsmith.RunQueryParams{
-		Session:   langsmith.F([]string{sessionID}),
-		IsRoot:    langsmith.F(true),
-		ID:        langsmith.F(ids),
-		StartTime: langsmith.F(startTime),
-		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc),
-		Limit:     langsmith.F(int64(len(ids))),
+		Session: langsmith.F([]string{sessionID}),
+		IsRoot:  langsmith.F(true),
+		ID:      langsmith.F(ids),
+		Order:   langsmith.F(langsmith.RunQueryParamsOrderDesc),
+		Limit:   langsmith.F(int64(len(ids))),
 		Select: langsmith.F([]langsmith.RunQueryParamsSelect{
 			langsmith.RunQueryParamsSelectTraceID,
 			langsmith.RunQueryParamsSelectInputsPreview,
 			langsmith.RunQueryParamsSelectOutputsPreview,
 		}),
 	}
+	if !startTime.IsZero() {
+		params.StartTime = langsmith.F(startTime)
+	}
 	resp, err := c.SDK.Runs.Query(ctx, params)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
-		return out
+		return nil, err
 	}
 	for _, run := range resp.Runs {
 		tid := run.TraceID
@@ -360,7 +373,7 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			outputs: truncateHard(run.OutputsPreview, 2000),
 		}
 	}
-	return out
+	return out, nil
 }
 
 func truncateHard(s string, n int) string {
