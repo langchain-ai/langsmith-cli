@@ -156,6 +156,11 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
 }
 
+func IsConflict(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusConflict
+}
+
 type httpErrorBody struct {
 	Error            string `json:"error"`
 	Message          string `json:"message"`

@@ -86,6 +86,8 @@ teammates' pushes update the same app instead of creating new ones.
 				switch {
 				case err == nil:
 					updated = true
+				case client.IsConflict(err):
+					return fmt.Errorf("a custom app named %q already exists in this workspace", name)
 				case client.IsNotFound(err):
 					// The linked app_id no longer exists server-side (e.g. it
 					// was deleted through the UI) — .langsmith/app.json is
@@ -121,6 +123,9 @@ teammates' pushes update the same app instead of creating new ones.
 					payload["description"] = description
 				}
 				if err := c.RawPost(ctx, "/v1/platform/custom-apps", payload, &app); err != nil {
+					if client.IsConflict(err) {
+						return fmt.Errorf("a custom app named %q already exists in this workspace. try `langsmith apps push --name \"New Name\"` instead", appName)
+					}
 					return fmt.Errorf("creating custom app: %w", err)
 				}
 				if err := writeAppLink(dir, appLink{
