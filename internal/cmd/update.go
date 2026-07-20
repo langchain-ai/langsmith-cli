@@ -28,24 +28,46 @@ var githubDownloadBaseURL = "https://github.com"
 
 func newUpdateCmd(rawVersion string) *cobra.Command {
 	var dryRun bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "self-update",
 		Short: "Update langsmith to the latest version",
 		Long:  "Check for and install the latest version of the langsmith CLI.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(cmd.Context(), rawVersion, dryRun)
+			return runUpdate(cmd.Context(), rawVersion, dryRun, force)
 		},
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Check for updates without installing")
+	cmd.Flags().BoolVar(&force, "force", false, "Replace the binary in place even if a package manager (brew, scoop, go) manages this install")
 
 	return cmd
 }
 
-func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
-	if currentVersion == "dev" {
+func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) error {
+	// Resolve the current binary path first: it drives both install-method
+	// detection and the eventual in-place replacement.
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolving executable path: %w", err)
+	}
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return fmt.Errorf("resolving symlinks: %w", err)
+	}
+
+	home, _ := os.UserHomeDir()
+	method := detectInstallMethod(execPath, currentVersion, runtime.GOOS, os.Getenv("GOBIN"), os.Getenv("GOPATH"), home)
+
+	if method == methodDev {
 		return fmt.Errorf("cannot update a development build; install from a release")
+	}
+
+	// For package-manager-owned installs, refuse to touch the binary and point
+	// the user at the right command instead. --force overrides this.
+	if shouldDeferToManager(method, force) {
+		return reportManagedExternally(method, GetFormat())
 	}
 
 	latest, err := fetchLatestVersion(ctx)
@@ -81,16 +103,6 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
 			fmt.Println(string(out))
 		}
 		return nil
-	}
-
-	// Resolve current binary path
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolving executable path: %w", err)
-	}
-	execPath, err = filepath.EvalSymlinks(execPath)
-	if err != nil {
-		return fmt.Errorf("resolving symlinks: %w", err)
 	}
 
 	archiveName := buildArchiveName()
@@ -140,6 +152,31 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun bool) error {
 			"status":           "updated",
 			"previous_version": currentVersion,
 			"new_version":      latest,
+		})
+		fmt.Println(string(out))
+	}
+	return nil
+}
+
+// reportManagedExternally informs the user that their install is managed by a
+// package manager and prints the command to update it, without modifying the
+// binary. It returns nil (a successful, informational outcome).
+func reportManagedExternally(method installMethod, format string) error {
+	mgr, ok := externalManagers[method]
+	if !ok {
+		// Programming error: only externally-managed methods should reach here
+		// (methodManaged updates in place, methodDev errors out earlier).
+		return fmt.Errorf("internal error: install method %d is not externally managed", method)
+	}
+
+	if format == "pretty" {
+		fmt.Printf("langsmith was installed with %s, which manages updates for you.\n"+
+			"To update, run:\n\n    %s\n\n(Use --force to update in place anyway.)\n", mgr.display, mgr.command)
+	} else {
+		out, _ := json.Marshal(map[string]string{
+			"status":         "managed-externally",
+			"install_method": mgr.label,
+			"update_command": mgr.command,
 		})
 		fmt.Println(string(out))
 	}

@@ -59,13 +59,17 @@ func NewWithOptions(options Options) *Client {
 	normalized := NormalizeURL(options.APIURL)
 
 	var opts []option.RequestOption
-	if options.ProfileName != "" && options.APIKey == "" {
+	// Auth precedence mirrors resolveClientOptions. A resolved profile is routed
+	// through WithProfile so an explicit selection replaces the config's
+	// current_profile (clearing any inherited tenant/base URL); WithProfile
+	// supplies the profile's own auth (API key or OAuth). A profile-less explicit
+	// key or bearer is applied directly.
+	switch {
+	case options.ProfileName != "":
 		opts = append(opts, langsmith.WithProfile(options.ProfileName))
-	}
-	if options.APIKey != "" {
+	case options.APIKey != "":
 		opts = append(opts, option.WithAPIKey(options.APIKey))
-	}
-	if options.OAuthAccessToken != "" && options.ProfileName == "" && options.APIKey == "" {
+	case options.OAuthAccessToken != "":
 		opts = append(opts, option.WithHeader("authorization", "Bearer "+options.OAuthAccessToken))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).

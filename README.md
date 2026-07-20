@@ -1,8 +1,5 @@
 # langsmith-cli
 
-> [!IMPORTANT]
-> **Alpha** — This CLI is under active development. Commands, flags, and output schemas may change between releases. Feedback and bug reports welcome via [GitHub Issues](https://github.com/langchain-ai/langsmith-cli/issues).
-
 An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
 Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads.
@@ -318,6 +315,19 @@ langsmith self-update --dry-run
 # Update to the latest version
 langsmith self-update
 ```
+
+If langsmith was installed through a package manager, `self-update` won't replace the
+binary in place — it points you at the right command instead:
+
+| Installed via | Update with |
+| --- | --- |
+| Homebrew | `brew upgrade langchain-ai/tap/langsmith-cli` |
+| Scoop | `scoop update langsmith-cli` |
+| `go install` | `go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest` |
+
+Installs from the `install.sh`/`install.ps1` scripts or a direct GitHub Releases download
+are updated in place as usual. Pass `--force` to update in place regardless of how
+langsmith was installed.
 
 ### `trace setup` — Trace coding agents to LangSmith
 
