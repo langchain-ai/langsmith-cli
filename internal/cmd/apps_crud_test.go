@@ -19,6 +19,7 @@ func TestAppsList_ListsAllApps(t *testing.T) {
 		})
 	})
 	defer setupTestEnv(t, srv.URL)()
+	flagOutputFormat = "json"
 
 	out := captureStdout(t, func() {
 		cmd := newAppsCmd()
@@ -42,6 +43,47 @@ func TestAppsList_ListsAllApps(t *testing.T) {
 	}
 	if f := listCmd.Flags().Lookup("context-type"); f != nil {
 		t.Error("expected --context-type flag to be gone from apps list")
+	}
+}
+
+// The default "pretty" format renders a table, matching every other list
+// command (project, dataset, experiment, hub list, ...) instead of always
+// dumping raw JSON.
+func TestAppsList_PrettyFormatRendersTable(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]customApp{
+			{ID: "a1", Name: "one", Entrypoint: "dist/bundle.js", IsEnabled: true},
+		})
+	})
+	defer setupTestEnv(t, srv.URL)()
+	flagOutputFormat = "pretty"
+
+	out := captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"list"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	for _, want := range []string{"Custom apps", "one", "a1", "dist/bundle.js"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected table output to contain %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"id": "a1"`) {
+		t.Errorf("expected table output, not raw JSON:\n%s", out)
+	}
+}
+
+func TestAppsListCmd_HasOutputFlag(t *testing.T) {
+	listCmd, _, err := newAppsCmd().Find([]string{"list"})
+	if err != nil {
+		t.Fatalf("find list: %v", err)
+	}
+	if f := listCmd.Flags().Lookup("output"); f == nil || f.Shorthand != "o" {
+		t.Errorf("expected --output/-o flag on apps list, got %+v", f)
 	}
 }
 

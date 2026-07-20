@@ -9,6 +9,8 @@ import (
 )
 
 func newAppsListCmd() *cobra.Command {
+	var outputFile string
+
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List custom apps",
@@ -19,6 +21,26 @@ func newAppsListCmd() *cobra.Command {
 			var apps []customApp
 			if err := c.RawGet(ctx, "/v1/platform/custom-apps", &apps); err != nil {
 				return fmt.Errorf("listing custom apps: %w", err)
+			}
+
+			if GetFormat() == "pretty" {
+				columns := []string{"Name", "ID", "Entrypoint", "Enabled", "Updated"}
+				var rows [][]string
+				for _, a := range apps {
+					enabled := "false"
+					if a.IsEnabled {
+						enabled = "true"
+					}
+					rows = append(rows, []string{
+						a.Name,
+						a.ID,
+						a.Entrypoint,
+						enabled,
+						a.UpdatedAt,
+					})
+				}
+				output.OutputTable(columns, rows, "Custom apps")
+				return nil
 			}
 
 			data := make([]map[string]any, 0, len(apps))
@@ -32,10 +54,11 @@ func newAppsListCmd() *cobra.Command {
 					"updated_at":  a.UpdatedAt,
 				})
 			}
-			output.OutputJSON(data, "")
+			output.OutputJSON(data, outputFile)
 			return nil
 		},
 	}
 
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
