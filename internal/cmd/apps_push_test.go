@@ -267,3 +267,109 @@ func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 		t.Fatal("expected error when default entrypoint dist/bundle.js is missing")
 	}
 }
+
+// Regression test for the actual bug that motivated auto-building: "apps
+// dev"'s watch process empties dist/ before every rebuild, so interrupting
+// it mid-rebuild leaves an empty dist/ behind. Push must not trust that
+// leftover state — it should rebuild from source before uploading.
+func TestAppsPush_BuildsFromPackageJSONByDefault(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{ID: "app_new", Name: "my-app", Entrypoint: "dist/bundle.js"})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	fakeNpm(t, `mkdir -p dist && printf 'module.exports={render:function(){}}' > dist/bundle.js`)
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"build":"vite build"}}`), 0o644); err != nil {
+		t.Fatalf("seed package.json: %v", err)
+	}
+	// No dist/ seeded at all — simulates an "apps dev" watch process that was
+	// interrupted mid-rebuild (emptyOutDir cleared it, nothing was written back).
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"push", "--name", "my-app"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, "dist", "bundle.js")); err != nil {
+		t.Errorf("expected the auto-detected \"build\" script to produce dist/bundle.js: %v", err)
+	}
+}
+
+func TestAppsPush_NoBuildSkipsAutomaticBuild(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	fakeNpm(t, `mkdir -p dist && printf 'module.exports={render:function(){}}' > dist/bundle.js`)
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"build":"vite build"}}`), 0o644); err != nil {
+		t.Fatalf("seed package.json: %v", err)
+	}
+	t.Chdir(dir)
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"push", "--name", "my-app", "--no-build"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected error: --no-build should skip the build, leaving dist/bundle.js missing")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "dist", "bundle.js")); err == nil {
+		t.Error("--no-build must not run the package.json \"build\" script")
+	}
+}
+
+func TestAppsPush_BuildAndNoBuildAreMutuallyExclusive(t *testing.T) {
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	t.Chdir(dir)
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"push", "--name", "my-app", "--build", "true", "--no-build"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected error when both --build and --no-build are passed")
+	}
+}
+
+func TestAppsPush_CustomBuildCommandOverridesAutoDetection(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{ID: "app_new", Name: "my-app", Entrypoint: "dist/bundle.js"})
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	// A package.json "build" script exists but must NOT run — --build wins.
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"build":"exit 1"}}`), 0o644); err != nil {
+		t.Fatalf("seed package.json: %v", err)
+	}
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{
+			"push", "--name", "my-app",
+			"--build", "mkdir -p dist && printf 'module.exports={render:function(){}}' > dist/bundle.js",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, "dist", "bundle.js")); err != nil {
+		t.Errorf("expected the explicit --build command to produce dist/bundle.js: %v", err)
+	}
+}

@@ -19,6 +19,7 @@ func newAppsPushCmd() *cobra.Command {
 		description string
 		entrypoint  string
 		buildCmd    string
+		noBuild     bool
 	)
 
 	cmd := &cobra.Command{
@@ -26,11 +27,15 @@ func newAppsPushCmd() *cobra.Command {
 		Short: "Upload the current directory as a custom app",
 		Long: `Upload the current directory as a custom app.
 
-Uploads exactly what's in the current directory, as-is — it does not run a
-build for you unless you pass --build. The first push creates the app and
-writes .langsmith/app.json recording its ID; every push after that reads
-that file and updates the same app in place. Commit .langsmith/app.json so
-teammates' pushes update the same app instead of creating new ones.
+Builds before uploading: if package.json has a "build" script (both starter
+templates do), this runs it first (like "npm run build"), so the upload
+always reflects your current source — not whatever happened to be left in
+dist/ by a previous "apps dev" session (e.g. one interrupted mid-rebuild).
+Pass --build to run a different command instead, or --no-build to upload
+the directory exactly as-is with no build step. The first push creates the
+app and writes .langsmith/app.json recording its ID; every push after that
+reads that file and updates the same app in place. Commit .langsmith/app.json
+so teammates' pushes update the same app instead of creating new ones.
 
 --name only takes effect on the first push (creation).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,9 +44,27 @@ teammates' pushes update the same app instead of creating new ones.
 				return fmt.Errorf("getting current directory: %w", err)
 			}
 
-			if buildCmd != "" {
-				if err := runAppsBuildCmd(dir, buildCmd); err != nil {
-					return err
+			if noBuild && buildCmd != "" {
+				return fmt.Errorf("--build and --no-build are mutually exclusive")
+			}
+
+			if !noBuild {
+				cmdToRun := buildCmd
+				if cmdToRun == "" {
+					script, pkgJSONExists, scriptErr := packageJSONScript(dir, "build")
+					if scriptErr != nil {
+						return fmt.Errorf("reading package.json to find a \"build\" script: %w", scriptErr)
+					}
+					if script != "" {
+						cmdToRun = "npm run build"
+					} else if pkgJSONExists {
+						fmt.Fprintln(os.Stderr, `note: no "build" script in package.json — skipping automatic build; pass --build to run one`)
+					}
+				}
+				if cmdToRun != "" {
+					if err := runAppsBuildCmd(dir, cmdToRun); err != nil {
+						return err
+					}
 				}
 			}
 
@@ -155,7 +178,8 @@ teammates' pushes update the same app instead of creating new ones.
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
-	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading (e.g. \"npm run build\")")
+	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run in the current directory before uploading, overriding the auto-detected package.json \"build\" script (e.g. \"npm run build\")")
+	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip building before uploading, even if package.json has a \"build\" script")
 	return cmd
 }
 
