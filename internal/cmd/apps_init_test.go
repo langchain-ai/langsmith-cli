@@ -130,8 +130,8 @@ func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
 		"src/api.ts",
 		"src/types.ts",
 		"src/components/ProjectBar.tsx",
-		"src/components/PieChart.tsx",
-		"src/components/IntegrationBreakdown.tsx",
+		"src/components/OverviewPanel.tsx",
+		"src/components/RunsTable.tsx",
 	} {
 		if !writtenSet[want] {
 			t.Errorf("expected %q to be written, got %v", want, written)
@@ -505,8 +505,8 @@ func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template coding-agent-dashboard, got: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "src", "components", "PieChart.tsx")); err != nil {
-		t.Errorf("expected the dashboard's PieChart.tsx to be scaffolded: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "src", "components", "OverviewPanel.tsx")); err != nil {
+		t.Errorf("expected the dashboard's OverviewPanel.tsx to be scaffolded: %v", err)
 	}
 }
 

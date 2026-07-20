@@ -1,96 +1,94 @@
 ## This app: coding-agent dashboard
 
-Charts runs whose metadata `ls_agent_purpose == "coding"` for one project,
-broken down by integration, model, tool, subagent, cost, cache, errors, and
-time. It picks its own project via `GET /api/v1/sessions`
-(`src/components/ProjectBar.tsx`) because the runs query is project-scoped.
-`src/api.ts` wraps every call. Chart colors use `src/lib/palette.ts` tokens,
-validated light + dark; status meaning uses semantic tokens, not the palette.
+Headline stats for runs whose metadata `ls_agent_purpose == "coding"` in one
+project — turns, threads, cost, tokens, error rate, latency — plus a bounded
+recent-runs table for browsing. It picks its own project via
+`GET /api/v1/sessions` (`src/components/ProjectBar.tsx`, one guided step)
+because everything below is project-scoped. `src/api.ts` wraps every call.
 
-## The four-query architecture (`src/api.ts`)
+**This app used to compute every number by pulling up to 100 raw runs per
+run-type and aggregating client-side.** That silently undercounted on any
+project with real weekly volume (see git history if you want the gory
+details) — every "total" was actually "total across the 100 most recent
+matches, older runs uncounted," with no visual indication of the cap. It has
+since been rebuilt to get headline numbers from LangSmith's stats endpoints
+instead, which aggregate server-side over the *entire* matching window with
+no row limit. Keep that split when extending this app: a number the user
+might trust as "the total" belongs in a stats call, never in something
+computed from the bounded recent-runs sample.
 
-`fetchProjectRuns` runs four scoped `POST /api/v1/runs/query` calls, all with
-the coding filter (`ls_agent_purpose == "coding"`). `run_type` is honored
-server-side, so child runs come from a flat query — no per-trace walk:
+## Stats endpoints (`src/api.ts` → `fetchProjectStats`)
 
-| Query | Scope | Powers |
-|-------|-------|--------|
-| roots | `is_root: true` | turns, tokens, cost, cache, errors, timing, threads, repos, versions, contributors |
-| llm   | `run_type: "llm"` | model & provider breakdown, stop reasons |
-| tool  | `run_type: "tool"` | tool-usage breakdown |
-| chain | `run_type: "chain"` | subagents (filtered client-side to `ls_agent_type == "subagent"`) |
+Two independent calls, both filtered to `ls_agent_purpose == "coding"`:
 
-They run **one at a time** (with a 250ms gap between them), not in parallel —
-four requests fired together was enough on its own to trip a workspace's rate
-limit. Each also goes through `callWithRetry` (5 attempts, exponential
-backoff capped at 6s). `window.langsmith.call` drops the HTTP status of a
-failure before it reaches the app — a 429 is indistinguishable from any other
-error — so retry blindly on failure rather than string-matching "rate limit"
-out of an error message.
+- **`POST /api/v1/runs/stats`** — `{ session: [projectId], filter, start_time, is_root: true, select: [...] }`.
+  Exact, whole-window aggregate over root runs (turns): `run_count`,
+  `error_rate`, `latency_p50`, `latency_p99`, `latency_avg`, `total_tokens`,
+  `prompt_tokens`, `completion_tokens`, `total_cost`, `prompt_cost`,
+  `completion_cost`. Every field is optional in the response — a field this
+  app didn't ask for, or one the backend couldn't compute, is simply absent.
+  Field names mirror `schemas.RunStats` in smith-backend; if a tile in
+  `OverviewPanel.tsx` unexpectedly shows "—", verify the field name against a
+  live response before assuming the stat doesn't exist.
+- **`POST /api/v1/runs/group/stats`** — `{ session_id: projectId, group_by: "conversation", filter, start_time }`.
+  Same shape as above plus `group_count`, the **distinct thread count** — the
+  only place thread count exists as a real server-side aggregate. There is no
+  arbitrary-metadata-key grouped-count endpoint confirmed reachable ad-hoc
+  (checked as of this rewrite); don't assume one exists for a future
+  "breakdown by model" chart without re-verifying against smith-backend.
 
-If a scope is still failing once its retry budget is exhausted, its query
-is **not** allowed to fail the other three — `fetchProjectRuns` catches it,
-records the key in `ProjectRuns.failedScopes`, and returns empty data for
-that scope only. `App.tsx` renders whatever scopes did succeed and shows a
-banner naming the ones that didn't, instead of the whole view going blank
-because of one bad scope.
+The two calls run **one at a time** (with a 250ms gap), not in parallel — a
+lesson carried over from this app's raw-run-query days: several requests
+fired together was enough on its own to trip a workspace's rate limit. Both
+go through `callWithRetry` (5 attempts, exponential backoff capped at 6s).
+`window.langsmith.call` drops the HTTP status of a failure before it reaches
+the app — a 429 looks like any other error — so retry blindly rather than
+string-matching "rate limit" out of a message.
 
-### The 100-run cap
+If one call is still failing once its retry budget is exhausted, it does
+**not** fail the other — `fetchProjectStats` catches it, records the scope
+in `ProjectStats.failedScopes`, and returns `null` for that half only.
+`App.tsx` renders whichever stats did load and shows a banner naming the
+ones that didn't, instead of blanking the whole page over one bad call.
 
-Every query here returns **at most the 100 most-recent matching runs**; the
-response `cursor` is ignored. On busy projects the totals undercount. To report
-true totals, follow the cursor or raise the limit — and surface that a cap is
-in effect rather than presenting a partial count as complete.
+## Recent-runs table (`src/api.ts` → `fetchRecentRuns`)
+
+One bounded `POST /api/v1/runs/query` call (`is_root: true`, same coding
+filter, `limit: 100`, cursor ignored) powers `RunsTable.tsx` — a sample for
+browsing recent activity, explicitly labeled as such in the UI. **Never wire
+a headline stat off this data** — that's exactly the bug this app used to
+have. If you need an accurate new aggregate, add it to the `select` list on
+one of the two stats calls above instead of pulling more raw rows.
 
 ## Where the data lives on a run
 
-- Custom metadata: `run.extra.metadata`. SDK/runtime info: `run.extra.runtime`.
+- Custom metadata: `run.extra.metadata`.
 - **Token & cost totals roll up onto the root run** (`total_tokens`,
-  `prompt_tokens`, `completion_tokens`, `total_cost`,
-  `prompt_token_details.cache_read` / `.cache_creation`). Read economics from
-  roots only — child totals are already included, so summing them double-counts.
-- **Model & provider live on `llm` child runs**, not roots.
+  `total_cost`). Read economics from roots only — child totals are already
+  included, so summing them double-counts.
 - A non-null `run.error` counts as a failed run.
 
-## Verified metadata keys
+## Verified metadata keys still used here
 
-Only these keys are relied on (confirmed present on real coding-agent traces):
-
-- **Every run:** `ls_agent_purpose`, `ls_integration`, `ls_agent_type`
-  (`"root"` | `"subagent"`), `ls_trace_schema_version`, `ls_agent_runtime`,
-  `ls_agent_runtime_version`, `ls_integration_version`, `thread_id`,
-  `turn_number`, `repository_name`, `repository_provider`, `repository_url`,
-  `git_branch`, `git_commit_sha`, `cwd`.
-- **`llm` runs:** `ls_model_name`, `ls_provider`, `stop_reason`, `usage_metadata`.
-- **`tool` runs:** the tool name (key varies — see normalization).
-- **`subagent` runs:** `ls_subagent_type`, `ls_subagent_id`.
-
-## Field normalization (`src/lib/normalize.ts`)
-
-Field names differ by integration, so entity accessors fall back through the
-known aliases — always read through these, never a single raw key:
-
-- **model:** `ls_model_name` → `model`
-- **tool name:** `ls_tool_name` → `tool_name` → `toolName` → run `name`
-- **user:** `user_name` → `user_email` → `local_username`
-
-`user`-family keys and `ls_provider` are not emitted by every integration;
-treat them as best-effort and fall back to `unknown`.
+- `thread_id`, `repository_name` — read through `src/lib/normalize.ts`
+  (`threadOf`, `repoOf`), which falls back to `"unknown"` when absent. Other
+  keys this app no longer reads (`ls_integration`, `ls_model_name`,
+  `ls_tool_name`, `ls_subagent_type`, `git_branch`, user/contributor fields,
+  …) are still present on real coding-agent traces if you're adding a panel
+  that needs them — see git history for the old `normalize.ts` accessors.
 
 ## What this app renders
 
-- `src/api.ts` — `fetchProjects`, `fetchProjectRuns`
-- `src/components/ProjectBar.tsx` — project picker
-- `src/lib/normalize.ts` / `aggregate.ts` / `format.ts` — metadata reads,
-  grouping, formatting
-- `src/lib/palette.ts` — categorical colors (light + dark validated)
-- `src/components/primitives.tsx` — `StatTile`, `BarList`, `StackedBar`,
-  `ColumnChart`, `Legend`, `Section`
-- `src/components/PieChart.tsx` — hand-drawn SVG pie (no chart dependency)
-- Panels: `OverviewPanel`, `CompositionPanel`, `EconomicsPanel`,
-  `BehaviorPanel`, `ActivityPanel`, `ContextPanel`, plus `IntegrationBreakdown`
+- `src/api.ts` — `fetchProjects`, `fetchProjectStats`, `fetchRecentRuns`
+- `src/components/ProjectBar.tsx` — the one guided step (project picker)
+- `src/components/OverviewPanel.tsx` — the stats-hero tile grid
+- `src/components/RunsTable.tsx` — the bounded recent-runs table
+- `src/lib/normalize.ts` / `format.ts` — metadata reads, display formatting
+- `src/components/primitives.tsx` — `Section`, `StatTile` (optional status
+  `tone`), `Empty`
 
-To add a panel: pick the query whose runs carry your field (roots for
-economics, `llm` for models, `tool` for tools, `chain` for subagents), read it
-through `normalize.ts`, aggregate with `aggregate.ts`, render with a primitive.
-For per-turn detail, `GET /api/v1/runs/{id}` returns the full run.
+To add a new headline stat: extend the `select` list on the relevant stats
+call in `api.ts` and add a tile in `OverviewPanel.tsx` — don't reach for the
+recent-runs sample. To add a new browsable column: extend `RunsTable.tsx`
+and, if needed, the `select` list on `fetchRecentRuns` and an accessor in
+`normalize.ts`.
