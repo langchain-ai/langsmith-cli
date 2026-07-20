@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -139,11 +140,62 @@ type httpResponse struct {
 	body       []byte
 }
 
+// HTTPError is returned by RawGet/RawPost/RawPatch/RawDelete when the server
+// responds with a 4xx/5xx status. Its Error() text matches the plain
+// "HTTP <code>: <message>" format these methods have always returned; the
+// StatusCode field lets callers detect specific codes (e.g. 404) via
+// errors.As instead of parsing the message.
+type HTTPError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, formatHTTPErrorBody(e.Body))
+}
+
+// IsNotFound reports whether err is an HTTPError with a 404 status.
+func IsNotFound(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
+}
+
+func IsConflict(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusConflict
+}
+
 type httpErrorBody struct {
 	Error            string `json:"error"`
 	Message          string `json:"message"`
 	ErrorDescription string `json:"error_description"`
 	Detail           any    `json:"detail"`
+}
+
+// rejectMethodChangingRedirect is the Client's http.Client.CheckRedirect.
+// Go's default redirect policy silently downgrades POST/PATCH/PUT/DELETE to a
+// bodyless GET on a 301/302/303 (per RFC 7231 — the POST/Redirect/GET
+// pattern some servers use intentionally). LangSmith's API is a plain JSON
+// REST surface with no such intentional redirects, so the only time this
+// client would ever see one is a misconfigured endpoint scheme (http instead
+// of https, redirected to https by the server). Following it silently turns
+// a write into a no-op GET — sometimes still 2xx, if a same-path GET happens
+// to exist — which is far worse than a clear error. Same-method redirects
+// (a GET following an http->https upgrade, say) are harmless and still
+// followed.
+func rejectMethodChangingRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	prev := via[len(via)-1]
+	if req.Method != prev.Method {
+		return fmt.Errorf(
+			"refusing to follow redirect that would change %s %s into %s %s"+
+				" (check LANGSMITH_ENDPOINT is using https, not http)",
+			prev.Method, prev.URL, req.Method, req.URL,
+		)
+	}
+	return nil
 }
 
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
@@ -169,7 +221,10 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{
+		Timeout:       30 * time.Second,
+		CheckRedirect: rejectMethodChangingRedirect,
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
@@ -226,7 +281,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 	}
 
 	if resp.statusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.statusCode, formatHTTPErrorBody(resp.body))
+		return &HTTPError{StatusCode: resp.statusCode, Body: resp.body}
 	}
 
 	if result != nil {
