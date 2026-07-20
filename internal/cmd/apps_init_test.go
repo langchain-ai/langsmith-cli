@@ -198,7 +198,7 @@ func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(agents), "datasets/{dataset_id}/runs") || !strings.Contains(string(agents), "is_lower_score_better") {
+	if !strings.Contains(string(agents), "datasets/{dataset_id}/runs") || !strings.Contains(string(agents), "delta.ts") {
 		t.Errorf("expected the experiment-comparison AGENTS.md, got:\n%s", agents)
 	}
 }
@@ -402,7 +402,7 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(blankAgents), "standalone") {
+	if !strings.Contains(string(blankAgents), "window.langsmith.call") {
 		t.Errorf("expected the blank template's AGENTS.md, got:\n%s", blankAgents)
 	}
 
@@ -414,7 +414,7 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(aqAgents), "queueId") {
+	if !strings.Contains(string(aqAgents), "3-pane") {
 		t.Errorf("expected the annotation-queue template's AGENTS.md, got:\n%s", aqAgents)
 	}
 }

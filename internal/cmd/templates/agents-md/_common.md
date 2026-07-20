@@ -1,33 +1,12 @@
 # AGENTS.md — building a LangSmith custom app
 
-This is a **standalone** custom app: a single dependency-free bundle the
-LangSmith sandbox loads and calls as `render(data, root, metadata)`. The host
-gives it no bound context — `data = {}` unless you push your own via
-`window.langsmith.setData(patch)` — so what to show and what to fetch is up to
-the app. It has **no network of its own**: every API call goes through
-`window.langsmith.call` (below); `fetch`/XHR will not work.
-
-## The render contract
-
-`src/entry.tsx` default-exports `{ render(data, root, metadata) }` and injects
-its CSS inline (`import css from './index.css?inline'`). Keep that shape — the
-sandbox depends on it.
-
-## Theme (`metadata.mode`)
-
-`render`'s third argument is `metadata`, an open object; v1 has one key,
-`metadata.mode` (`"dark"` | `"light"`). The sandbox sets `html.dark` from it
-before every render, so Tailwind/token-based UIs theme for **free** — no
-branching. Only apps using **inline styles** branch on `metadata.mode`. `mode`
-is re-sent (and `render` re-called) whenever it changes, so react to it each
-render, not once.
+This app runs in a sandboxed iframe with no network access of its own —
+every LangSmith API call goes through `window.langsmith.call`. `src/entry.tsx`
+exports `render(data, root, metadata)`; keep that shape, the sandbox depends
+on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
+need to push a mutation out for the host to persist.
 
 ## Calling the LangSmith API
-
-Everything goes through `window.langsmith.call(operation, args)` — see
-README.md for the exact contract. `operation` is a `"<METHOD> <path>"` string;
-use the full path including its prefix (`/api/v1/...` for Python-hosted
-endpoints, `/v1/platform/...` and `/v2/...` for Go-hosted ones).
 
 ```ts
 const projects = await window.langsmith.call('GET /api/v1/sessions', {
@@ -35,12 +14,20 @@ const projects = await window.langsmith.call('GET /api/v1/sessions', {
 });
 ```
 
-`args` carries `params` (query string) and/or `body` (JSON). This is a generic
-passthrough, not a curated allowlist — any operation your API key already
-permits works; a permission error is a real limit of the key, not something to
-work around client-side. Full reference:
-https://docs.langchain.com/langsmith/home. Base URL:
+`operation` is `"<METHOD> <path>"` — use the full path including its prefix
+(`/api/v1/...` for Python-hosted endpoints, `/v1/platform/...` and `/v2/...`
+for Go-hosted ones). `args` carries `params` (query string) and/or `body`
+(JSON). This is a generic passthrough, not a curated allowlist — anything
+your API key can already do works; a permission error is a real limit of the
+key. Full reference: https://docs.langchain.com/langsmith/home. Base URL:
 `https://api.smith.langchain.com` (or your self-hosted instance's URL).
+
+## Theme
+
+`metadata.mode` is `"dark"` | `"light"`. The sandbox sets `html.dark` from it
+before every render, so Tailwind/token-based UIs theme for free with no
+branching. Only branch on it yourself if you're using inline styles — and
+re-check it every render, since it can change without a remount.
 
 ## Filter DSL for metadata equality
 
