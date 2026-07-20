@@ -1,62 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ProjectBar } from './components/ProjectBar';
 import { OverviewPanel } from './components/OverviewPanel';
-import { CompositionPanel } from './components/CompositionPanel';
-import { EconomicsPanel } from './components/EconomicsPanel';
-import { BehaviorPanel } from './components/BehaviorPanel';
-import { ActivityPanel } from './components/ActivityPanel';
-import { ContextPanel } from './components/ContextPanel';
-import { fetchProjectRuns } from './api';
-import { countBy } from './lib/aggregate';
-import { integrationOf } from './lib/normalize';
-import { colorAt, OTHER } from './lib/palette';
-import type { ProjectRuns, ScopeKey } from './types';
+import { RunsTable } from './components/RunsTable';
+import { Section } from './components/primitives';
+import { Spinner } from './components/Spinner';
+import { fetchProjectStats, fetchRecentRuns } from './api';
+import { cn } from './lib/utils';
+import type { ProjectStats, Run, StatsScope } from './types';
 
-const EMPTY: ProjectRuns = { roots: [], llm: [], tool: [], subagents: [], failedScopes: [] };
+const EMPTY_STATS: ProjectStats = { turns: null, threads: null, failedScopes: [] };
 
-const SCOPE_LABEL: Record<ScopeKey, string> = {
-  roots: 'turns & economics',
-  llm: 'model usage',
-  tool: 'tool usage',
-  chain: 'subagents',
+const WINDOW_OPTIONS: { days: number; label: string }[] = [
+  { days: 1, label: 'Last 24 hours' },
+  { days: 7, label: 'Last 7 days' },
+  { days: 30, label: 'Last 30 days' },
+  { days: 90, label: 'Last 90 days' },
+];
+
+const SCOPE_LABEL: Record<StatsScope, string> = {
+  turns: 'turn stats',
+  threads: 'thread count',
 };
 
 export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [projectId, setProjectId] = useState('');
-  const [runs, setRuns] = useState<ProjectRuns>(EMPTY);
-  const [loading, setLoading] = useState(false);
-  // Set only for a genuinely unexpected failure (e.g. a bug in this app) —
-  // fetchProjectRuns isolates per-scope failures into runs.failedScopes
-  // instead of rejecting, so a rate-limited scope doesn't land here.
+  const [windowDays, setWindowDays] = useState(7);
+
+  const [stats, setStats] = useState<ProjectStats>(EMPTY_STATS);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [crashed, setCrashed] = useState(false);
 
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [runsFailed, setRunsFailed] = useState(false);
+
   useEffect(() => {
-    setRuns(EMPTY);
+    setStats(EMPTY_STATS);
+    setRuns([]);
     setCrashed(false);
+    setRunsFailed(false);
     if (!projectId) return;
-    setLoading(true);
-    fetchProjectRuns(projectId)
-      .then(setRuns)
+
+    setStatsLoading(true);
+    fetchProjectStats(projectId, windowDays)
+      .then(setStats)
       .catch((e) => {
-        console.error('Failed to load coding runs', e);
+        console.error('Failed to load project stats', e);
         setCrashed(true);
       })
-      .finally(() => setLoading(false));
-  }, [projectId]);
+      .finally(() => setStatsLoading(false));
 
-  // Stable integration→color map (by root frequency) shared across panels.
-  const colorOf = useMemo(() => {
-    const counts = countBy(runs.roots, integrationOf);
-    const all = new Set<string>();
-    for (const rs of [runs.roots, runs.llm, runs.tool, runs.subagents]) for (const r of rs) all.add(integrationOf(r));
-    const ordered = [...all].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b));
-    const m = new Map<string, string>();
-    ordered.forEach((integ, i) => m.set(integ, colorAt(i)));
-    return (integ: string) => m.get(integ) ?? OTHER;
-  }, [runs]);
+    setRunsLoading(true);
+    fetchRecentRuns(projectId, windowDays)
+      .then(setRuns)
+      .catch((e) => {
+        console.error('Failed to load recent runs', e);
+        setRunsFailed(true);
+      })
+      .finally(() => setRunsLoading(false));
+  }, [projectId, windowDays]);
 
-  const hasData = runs.roots.length > 0 || runs.llm.length > 0 || runs.tool.length > 0 || runs.subagents.length > 0;
-  const hasFailures = runs.failedScopes.length > 0;
+  const hasAnyStats = stats.turns != null || stats.threads != null;
+  const hasFailures = stats.failedScopes.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-level-1">
@@ -66,42 +71,118 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   );
 
   function renderBody() {
-    if (!projectId) return centered('Select a project to see its coding-agent runs.');
-    if (loading) return centered('Loading coding runs…');
-    if (crashed) return centered('Failed to load runs — check the console and your access.');
-    if (!hasData && hasFailures) {
-      return centered(
-        `Still rate-limited after retries on ${runs.failedScopes.map((k) => SCOPE_LABEL[k]).join(', ')} — try reselecting the project in a moment.`
+    if (!projectId) {
+      return (
+        <GuideState step={1} heading="Pick a tracing project to get started" subtext="Every stat and the recent-runs table below are scoped to it." />
       );
     }
-    if (!hasData) return centered('No coding-agent runs found in this project (last 7 days).');
+    if (statsLoading && !hasAnyStats) {
+      return <GuideState spinner heading="Loading stats…" />;
+    }
+    if (crashed) {
+      return <GuideState tone="error" heading="Couldn't load this project's stats" subtext="Check the console and your access to this project." />;
+    }
+    if (!hasAnyStats && hasFailures) {
+      return (
+        <GuideState
+          tone="error"
+          heading="Still rate-limited after retries"
+          subtext={`Couldn't load ${stats.failedScopes.map((k) => SCOPE_LABEL[k]).join(' or ')} — try reselecting the project in a moment.`}
+        />
+      );
+    }
+    if (!hasAnyStats) {
+      return <GuideState heading="No data in this window" subtext="Try a wider time window above, or a different project." />;
+    }
 
     return (
-      <div className="mx-auto flex max-w-6xl flex-col gap-4">
-        <p className="text-xs text-tertiary">
-          Last 7 days · each query returns the 100 most-recent matches (older runs are not counted).
-        </p>
+      <div className={cn('mx-auto flex max-w-6xl flex-col gap-6', statsLoading && 'motion-safe:transition-opacity motion-safe:duration-normal opacity-50')}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-primary">Overview</h2>
+          {windowSelect()}
+        </div>
+
         {hasFailures && (
           <p className="rounded-md border border-secondary bg-surface-level-2 px-3 py-2 text-xs text-secondary">
-            Rate-limited after retries loading {runs.failedScopes.map((k) => SCOPE_LABEL[k]).join(', ')} — those
-            panels below are showing partial or no data. Reselect the project to retry.
+            Couldn't load {stats.failedScopes.map((k) => SCOPE_LABEL[k]).join(' or ')} after retries — those numbers are
+            showing as "—" below. Reselect the project or change the window to retry.
           </p>
         )}
-        <OverviewPanel roots={runs.roots} />
-        <CompositionPanel roots={runs.roots} llm={runs.llm} colorOf={colorOf} />
-        <EconomicsPanel roots={runs.roots} colorOf={colorOf} />
-        <BehaviorPanel tool={runs.tool} subagents={runs.subagents} llm={runs.llm} />
-        <ActivityPanel roots={runs.roots} colorOf={colorOf} />
-        <ContextPanel roots={runs.roots} colorOf={colorOf} />
+
+        <OverviewPanel stats={stats} />
+
+        <Section
+          title="Recent runs"
+          note={
+            runsFailed
+              ? "Couldn't load recent runs — check the console and your access."
+              : `Most recent ${runs.length} turn${runs.length === 1 ? '' : 's'} in this window — a sample for browsing, not the source of the stats above.`
+          }
+        >
+          {runsLoading && runs.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-8">
+              <Spinner size="sm" />
+              <span className="text-sm text-tertiary">Loading recent runs…</span>
+            </div>
+          ) : (
+            <RunsTable runs={runs} />
+          )}
+        </Section>
       </div>
+    );
+  }
+
+  function windowSelect() {
+    return (
+      <label className="flex items-center gap-2 text-xs text-tertiary">
+        Window
+        <select
+          value={windowDays}
+          onChange={(e) => setWindowDays(Number(e.target.value))}
+          className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
+        >
+          {WINDOW_OPTIONS.map((o) => (
+            <option key={o.days} value={o.days}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
     );
   }
 }
 
-function centered(message: string) {
+function GuideState({
+  step,
+  heading,
+  subtext,
+  spinner,
+  tone,
+}: {
+  step?: number;
+  heading: string;
+  subtext?: string;
+  spinner?: boolean;
+  tone?: 'error';
+}) {
   return (
-    <div className="flex h-full items-center justify-center">
-      <span className="text-sm text-tertiary">{message}</span>
+    <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-center">
+      {spinner ? (
+        <Spinner size="md" />
+      ) : step != null ? (
+        <span
+          className={cn(
+            'flex size-10 items-center justify-center rounded-full border-2 text-base font-semibold',
+            tone === 'error' ? 'border-error text-error-primary' : 'border-brand text-brand-primary'
+          )}
+        >
+          {step}
+        </span>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <span className={cn('text-base font-semibold', tone === 'error' ? 'text-error-primary' : 'text-primary')}>{heading}</span>
+        {subtext && <span className="max-w-md text-sm text-tertiary">{subtext}</span>}
+      </div>
     </div>
   );
 }

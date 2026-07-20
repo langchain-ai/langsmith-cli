@@ -3,23 +3,18 @@ export interface Project {
   name: string;
 }
 
-// Fields selected from POST /api/v1/runs/query. Custom metadata lives at
-// extra.metadata; token/cost totals roll up onto root runs.
+// Fields selected from POST /api/v1/runs/query for the recent-runs table.
+// Custom metadata lives at extra.metadata; token/cost totals roll up onto
+// root runs.
 export interface Run {
   id: string;
   name: string | null;
-  run_type: string | null;
-  parent_run_id: string | null;
-  trace_id: string | null;
   error: string | null;
   start_time: string | null;
   end_time: string | null;
   total_tokens: number | null;
-  prompt_tokens: number | null;
-  completion_tokens: number | null;
   total_cost: number | null;
-  prompt_token_details: { cache_read?: number; cache_creation?: number } | null;
-  extra: { metadata?: Record<string, unknown>; runtime?: Record<string, unknown> } | null;
+  extra: { metadata?: Record<string, unknown> } | null;
 }
 
 export interface RunsQueryResponse {
@@ -27,23 +22,36 @@ export interface RunsQueryResponse {
   cursor?: string | null;
 }
 
-// The four scoped result sets one project view is built from. A scope that
-// never recovered after retries lands in failedScopes with empty runs rather
-// than failing the whole view — see fetchProjectRuns.
-export interface ProjectRuns {
-  roots: Run[];
-  llm: Run[];
-  tool: Run[];
-  subagents: Run[];
-  failedScopes: ScopeKey[];
+// Field names mirror `schemas.RunStats` in smith-backend/app/schemas.py.
+// Every field is optional/nullable there too, so a stat this app didn't ask
+// for (or one the backend didn't compute) is simply absent, not zero.
+export interface RunStats {
+  run_count?: number | null;
+  error_rate?: number | null;
+  latency_p50?: number | null;
+  latency_p99?: number | null;
+  latency_avg?: number | null;
+  total_tokens?: number | null;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_cost?: number | null;
+  prompt_cost?: number | null;
+  completion_cost?: number | null;
 }
 
-export type ScopeKey = 'roots' | 'llm' | 'tool' | 'chain';
+// `schemas.RunGroupStats` = RunStats + group_count (distinct thread count),
+// returned by POST /api/v1/runs/group/stats with group_by="conversation".
+export interface RunGroupStats extends RunStats {
+  group_count?: number | null;
+}
 
-// Per-integration model counts for the model×integration breakdown.
-export interface IntegrationStat {
-  integration: string;
-  count: number;
-  errors: number;
-  models: { model: string; count: number }[];
+export type StatsScope = 'turns' | 'threads';
+
+// The two stats calls this dashboard makes, each independently retryable —
+// one scope failing (e.g. still rate-limited) shouldn't blank the other's
+// numbers. See fetchProjectStats.
+export interface ProjectStats {
+  turns: RunStats | null;
+  threads: RunGroupStats | null;
+  failedScopes: StatsScope[];
 }

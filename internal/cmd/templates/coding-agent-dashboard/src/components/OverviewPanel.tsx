@@ -1,34 +1,47 @@
-import { useMemo } from 'react';
-import type { Run } from '../types';
-import { distinct } from '../lib/aggregate';
-import { repoOf, threadOf } from '../lib/normalize';
-import { formatCost, formatInt, formatPct, formatTokens } from '../lib/format';
-import { StatTile } from './primitives';
+import type { ProjectStats } from '../types';
+import { formatCost, formatDuration, formatInt, formatPct, formatTokens } from '../lib/format';
+import { StatTile, type StatTone } from './primitives';
 
-export function OverviewPanel({ roots }: { roots: Run[] }) {
-  const s = useMemo(() => {
-    const tokens = roots.reduce((a, r) => a + (r.total_tokens ?? 0), 0);
-    const cost = roots.reduce((a, r) => a + (r.total_cost ?? 0), 0);
-    const errors = roots.filter((r) => r.error).length;
-    return {
-      turns: roots.length,
-      threads: distinct(roots, threadOf),
-      repos: distinct(roots, repoOf),
-      tokens,
-      cost,
-      errors,
-      errorRate: roots.length ? (errors / roots.length) * 100 : 0,
-    };
-  }, [roots]);
+const DASH = '—';
+
+function errorTone(rate: number | null | undefined): StatTone | undefined {
+  if (rate == null) return undefined;
+  if (rate >= 10) return 'bad';
+  if (rate >= 2) return 'warning';
+  return 'good';
+}
+
+// The headline numbers, straight from the two stats endpoints — exact,
+// whole-window aggregates, not derived from the sampled recent-runs table
+// below. A tile shows "—" only when its field is genuinely absent from the
+// response, never a silently-wrong zero.
+export function OverviewPanel({ stats }: { stats: ProjectStats }) {
+  const t = stats.turns;
+  const th = stats.threads;
+
+  const tokenHint =
+    t?.prompt_tokens != null && t?.completion_tokens != null
+      ? `${formatTokens(t.prompt_tokens)} prompt · ${formatTokens(t.completion_tokens)} completion`
+      : undefined;
+  const costHint =
+    t?.prompt_cost != null && t?.completion_cost != null
+      ? `${formatCost(t.prompt_cost)} prompt · ${formatCost(t.completion_cost)} completion`
+      : undefined;
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-      <StatTile label="Turns" value={formatInt(s.turns)} />
-      <StatTile label="Threads" value={formatInt(s.threads)} />
-      <StatTile label="Repos" value={formatInt(s.repos)} />
-      <StatTile label="Tokens" value={formatTokens(s.tokens)} />
-      <StatTile label="Cost" value={formatCost(s.cost)} />
-      <StatTile label="Error rate" value={formatPct(s.errorRate)} hint={`${s.errors} failed`} />
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      <StatTile label="Turns" value={t?.run_count != null ? formatInt(t.run_count) : DASH} />
+      <StatTile label="Threads" value={th?.group_count != null ? formatInt(th.group_count) : DASH} />
+      <StatTile label="Cost" value={t?.total_cost != null ? formatCost(t.total_cost) : DASH} hint={costHint} />
+      <StatTile label="Tokens" value={t?.total_tokens != null ? formatTokens(t.total_tokens) : DASH} hint={tokenHint} />
+      <StatTile
+        label="Error rate"
+        value={t?.error_rate != null ? formatPct(t.error_rate) : DASH}
+        tone={errorTone(t?.error_rate)}
+      />
+      <StatTile label="Avg latency" value={t?.latency_avg != null ? formatDuration(t.latency_avg) : DASH} />
+      <StatTile label="p50 latency" value={t?.latency_p50 != null ? formatDuration(t.latency_p50) : DASH} />
+      <StatTile label="p99 latency" value={t?.latency_p99 != null ? formatDuration(t.latency_p99) : DASH} />
     </div>
   );
 }
