@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -21,10 +20,10 @@ func newAppsDeleteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			if !yes {
-				fmt.Fprintf(os.Stderr, "Delete custom app '%s'? [y/N] ", id)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Delete custom app '%s'? [y/N] ", id)
 				var confirm string
-				_, _ = fmt.Scanln(&confirm)
-				if strings.ToLower(confirm) != "y" {
+				_, _ = fmt.Fscanln(cmd.InOrStdin(), &confirm)
+				if c := strings.ToLower(strings.TrimSpace(confirm)); c != "y" && c != "yes" {
 					return errors.New("aborted")
 				}
 			}
