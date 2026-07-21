@@ -24,18 +24,17 @@ pushed. Use npm dependencies freely — they all get inlined at build time.
 
 ## Develop
 
-`langsmith apps init` already ran `npm install` and `npm run build` for you,
-so `dist/bundle.js` exists and `langsmith apps dev` works immediately:
+Install dependencies, then start the dev server (it builds on the first run):
 
 ```bash
+npm install
 langsmith apps dev
 ```
 
 `apps dev` runs the app inside a real sandboxed iframe, identical
 restrictions to production, and automatically starts `npm run watch` for
 you (it detects the script in `package.json`) — edit `src/App.tsx`, save,
-and the preview reloads on its own. Pass `--no-watch` if you'd rather drive
-the build yourself.
+and the preview reloads on its own.
 
 ## The bridge contract
 

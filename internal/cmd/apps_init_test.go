@@ -432,7 +432,7 @@ func TestAppsInitCmd_RejectsExplicitTemplateBlank(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "blank", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "blank"})
 	if err := cmd.Execute(); err == nil {
 		t.Error("expected --template blank to be rejected; omit --template instead")
 	}
@@ -442,7 +442,7 @@ func TestAppsInitCmd_DefaultsToBlankWhenTemplateOmitted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "my-app", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "my-app"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed with --template omitted, got: %v", err)
 	}
@@ -469,7 +469,7 @@ func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "grid-app", "--template", "annotation-queue-grid", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "grid-app", "--template", "annotation-queue-grid"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template annotation-queue-grid, got: %v", err)
 	}
@@ -491,7 +491,7 @@ func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "dash", "--template", "coding-agent-dashboard", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "dash", "--template", "coding-agent-dashboard"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template coding-agent-dashboard, got: %v", err)
 	}
@@ -504,7 +504,7 @@ func TestAppsInitCmd_AcceptsExperimentComparisonTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "cmp", "--template", "experiment-comparison", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "cmp", "--template", "experiment-comparison"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template experiment-comparison, got: %v", err)
 	}
@@ -517,28 +517,9 @@ func TestAppsInitCmd_RejectsInvalidTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	cmd := newAppsCmd()
-	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "bogus", "--skip-install"})
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--template", "bogus"})
 	if err := cmd.Execute(); err == nil {
 		t.Error("expected error for an invalid --template")
-	}
-}
-
-func TestAppsInitCmd_HasSkipInstallFlag(t *testing.T) {
-	cmd := newAppsCmd()
-	initCmd, _, err := cmd.Find([]string{"init"})
-	if err != nil {
-		t.Fatalf("find init command: %v", err)
-	}
-	if f := initCmd.Flags().Lookup("skip-install"); f == nil {
-		t.Error("expected --skip-install flag to exist")
-	}
-}
-
-func TestInstallAndBuildCustomAppStarter_ErrorsWhenNpmMissing(t *testing.T) {
-	t.Setenv("PATH", "")
-	dir := t.TempDir()
-	if err := installAndBuildCustomAppStarter(dir); err == nil {
-		t.Error("expected error when npm is not on PATH")
 	}
 }
 
@@ -570,27 +551,6 @@ func fakeNpm(t *testing.T, onRunBuild string) {
 		t.Fatalf("write fake npm: %v", err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
-func TestInstallAndBuildCustomAppStarter_RunsInstallThenBuild(t *testing.T) {
-	dir := t.TempDir()
-	fakeNpm(t, `mkdir -p dist && printf 'module.exports={render:function(){}}' > dist/bundle.js`)
-
-	if err := installAndBuildCustomAppStarter(dir); err != nil {
-		t.Fatalf("installAndBuildCustomAppStarter: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "dist", "bundle.js")); err != nil {
-		t.Errorf("expected dist/bundle.js to be produced by the build step: %v", err)
-	}
-}
-
-func TestInstallAndBuildCustomAppStarter_ErrorsWhenBuildFails(t *testing.T) {
-	dir := t.TempDir()
-	fakeNpm(t, `exit 1`)
-
-	if err := installAndBuildCustomAppStarter(dir); err == nil {
-		t.Error("expected error when the build step fails")
-	}
 }
 
 func TestSharedFileImportSpecifiers_MatchesTemplateConventions(t *testing.T) {

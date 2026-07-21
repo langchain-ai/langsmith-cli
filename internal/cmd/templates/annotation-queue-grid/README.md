@@ -35,18 +35,17 @@ feedback, marking a run complete) is fetched via `window.langsmith.call`. See
 
 ## Develop
 
-`langsmith apps init` already ran `npm install` and `npm run build` for you,
-so `dist/bundle.js` exists and `langsmith apps dev` works immediately:
+Install dependencies, then start the dev server (it builds on the first run):
 
 ```bash
+npm install
 langsmith apps dev
 ```
 
 `apps dev` runs the app inside a real sandboxed iframe, identical
 restrictions to production, and automatically starts `npm run watch` for you
 (it detects the script in `package.json`) — edit the app, save, and the
-preview reloads on its own. Pass `--no-watch` if you'd rather drive the build
-yourself. Pick a queue from the in-app dropdown once it loads (it calls the
+preview reloads on its own. Pick a queue from the in-app dropdown once it loads (it calls the
 real API using your local `LANGSMITH_API_KEY`, so it lists queues that
 actually exist in your workspace).
 

@@ -18,7 +18,6 @@ func newAppsPushCmd() *cobra.Command {
 		name        string
 		description string
 		entrypoint  string
-		buildCmd    string
 		noBuild     bool
 	)
 
@@ -28,8 +27,7 @@ func newAppsPushCmd() *cobra.Command {
 		Long: `Upload the current directory as a custom app.
 
 Builds first if package.json has a "build" script, so the upload matches
-your current source. Pass --build to use a different command, or --no-build
-to upload as-is.
+your current source. Pass --no-build to upload as-is.
 
 The first push creates the app and links this directory to it; later pushes
 update the same app. Commit .langsmith/app.json so teammates push to the
@@ -42,27 +40,17 @@ same app too.
 				return fmt.Errorf("getting current directory: %w", err)
 			}
 
-			if noBuild && buildCmd != "" {
-				return fmt.Errorf("--build and --no-build are mutually exclusive")
-			}
-
 			if !noBuild {
-				cmdToRun := buildCmd
-				if cmdToRun == "" {
-					script, pkgJSONExists, scriptErr := packageJSONScript(dir, "build")
-					if scriptErr != nil {
-						return fmt.Errorf("reading package.json to find a \"build\" script: %w", scriptErr)
-					}
-					if script != "" {
-						cmdToRun = "npm run build"
-					} else if pkgJSONExists {
-						fmt.Fprintln(os.Stderr, `note: no "build" script in package.json — skipping automatic build; pass --build to run one`)
-					}
+				script, pkgJSONExists, scriptErr := packageJSONScript(dir, "build")
+				if scriptErr != nil {
+					return fmt.Errorf("reading package.json to find a \"build\" script: %w", scriptErr)
 				}
-				if cmdToRun != "" {
-					if err := runAppsBuildCmd(dir, cmdToRun); err != nil {
+				if script != "" {
+					if err := runAppsBuildCmd(dir); err != nil {
 						return err
 					}
+				} else if pkgJSONExists {
+					fmt.Fprintln(os.Stderr, `note: no "build" script in package.json — skipping automatic build`)
 				}
 			}
 
@@ -74,7 +62,7 @@ same app too.
 				return fmt.Errorf("no files found under %s (after applying exclusions)", dir)
 			}
 			if _, ok := files[entrypoint]; !ok {
-				return fmt.Errorf("entrypoint %q not found among uploaded files; pass --entrypoint or check --build produced it", entrypoint)
+				return fmt.Errorf("entrypoint %q not found among uploaded files; pass --entrypoint or check your build produced it", entrypoint)
 			}
 
 			link, err := readAppLink(dir)
@@ -175,18 +163,17 @@ same app too.
 	cmd.Flags().StringVar(&name, "name", "", "App name (required on first push; renames on later pushes if passed)")
 	cmd.Flags().StringVar(&description, "description", "", "App description")
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
-	cmd.Flags().StringVar(&buildCmd, "build", "", "Shell command to run before uploading, overriding the auto-detected build script")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip building before uploading, even if package.json has a \"build\" script")
 	return cmd
 }
 
-func runAppsBuildCmd(dir, buildCmd string) error {
-	c := exec.Command("sh", "-c", buildCmd)
+func runAppsBuildCmd(dir string) error {
+	c := exec.Command("sh", "-c", "npm run build")
 	c.Dir = dir
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("--build command %q failed: %w", buildCmd, err)
+		return fmt.Errorf("\"npm run build\" failed: %w", err)
 	}
 	return nil
 }

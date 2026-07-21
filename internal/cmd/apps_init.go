@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -102,7 +101,6 @@ func newAppsInitCmd() *cobra.Command {
 		description  string
 		templateFlag string
 		force        bool
-		skipInstall  bool
 	)
 
 	cmd := &cobra.Command{
@@ -120,11 +118,8 @@ single-file starter.
                           errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Only writes local files — run "langsmith apps push" once you're ready to
-upload it.
-
-Also installs dependencies and builds the app so it's ready to preview.
-Pass --skip-install to just write the files.`,
+Only writes local files. Next: run "npm install", then "langsmith apps
+dev" to preview or "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
 			if templateName == "" {
@@ -146,22 +141,13 @@ Pass --skip-install to just write the files.`,
 			}
 			sort.Strings(written)
 
-			built := false
-			if !skipInstall {
-				if buildErr := installAndBuildCustomAppStarter(dir); buildErr != nil {
-					fmt.Fprintf(os.Stderr, "warning: automatic \"npm install && npm run build\" failed: %v\n(run those yourself — or \"npm run watch\" — before \"langsmith apps dev\"/\"apps push\")\n", buildErr)
-				} else {
-					built = true
-				}
-			}
-
+			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\nNext: npm install, then langsmith apps dev.\n", templateName, dir)
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
 				"name":     name,
 				"template": templateName,
 				"files":    written,
-				"built":    built,
 			}, "")
 			return nil
 		},
@@ -171,30 +157,8 @@ Pass --skip-install to just write the files.`,
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
 	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template: "+strings.Join(appTypeNames(), ", ")+" (omit for a blank starter)")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
-	cmd.Flags().BoolVar(&skipInstall, "skip-install", false, "Skip running \"npm install && npm run build\" after scaffolding")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
-}
-
-func installAndBuildCustomAppStarter(dir string) error {
-	if _, err := exec.LookPath("npm"); err != nil {
-		return fmt.Errorf("npm not found on PATH")
-	}
-	if err := runInDir(dir, "npm", "install"); err != nil {
-		return fmt.Errorf("npm install: %w", err)
-	}
-	if err := runInDir(dir, "npm", "run", "build"); err != nil {
-		return fmt.Errorf("npm run build: %w", err)
-	}
-	return nil
-}
-
-func runInDir(dir, name string, args ...string) error {
-	c := exec.Command(name, args...)
-	c.Dir = dir
-	c.Stdout = os.Stderr
-	c.Stderr = os.Stderr
-	return c.Run()
 }
 
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {

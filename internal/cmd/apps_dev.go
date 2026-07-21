@@ -27,7 +27,6 @@ func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
 		noOpen     bool
-		noWatch    bool
 	)
 
 	cmd := &cobra.Command{
@@ -39,8 +38,7 @@ LangSmith web app involved.
 
 API calls the app makes are proxied through your local credentials.
 
-Rebuilds automatically on save. Pass --no-watch to manage your own build
-process instead.`,
+Rebuilds automatically on save when package.json has a "watch" script.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.Getwd()
 			if err != nil {
@@ -54,33 +52,30 @@ process instead.`,
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, noOpen, noWatch)
+			return runAppsDev(ctx, dir, entrypoint, noOpen)
 		},
 	}
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
-	cmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't automatically rebuild on save — use this if you're already running your own build process")
 	return cmd
 }
 
-func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen, noWatch bool) error {
+func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen bool) error {
 	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint)
 	if err != nil {
 		return err
 	}
 
-	if !noWatch {
-		entrypointPath := filepath.Join(dir, filepath.FromSlash(entrypoint))
-		var prevBuildTime time.Time
-		if info, statErr := os.Stat(entrypointPath); statErr == nil {
-			prevBuildTime = info.ModTime()
-		}
-		if startWatchProcess(ctx, dir) {
-			// Build tools empty their output dir before rebuilding, which would
-			// briefly hide an existing entrypoint — wait for a fresh build first.
-			waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
-		}
+	entrypointPath := filepath.Join(dir, filepath.FromSlash(entrypoint))
+	var prevBuildTime time.Time
+	if info, statErr := os.Stat(entrypointPath); statErr == nil {
+		prevBuildTime = info.ModTime()
+	}
+	if startWatchProcess(ctx, dir) {
+		// Build tools empty their output dir before rebuilding, which would
+		// briefly hide an existing entrypoint — wait for a fresh build first.
+		waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
 	}
 
 	serveErrCh := make(chan error, 1)

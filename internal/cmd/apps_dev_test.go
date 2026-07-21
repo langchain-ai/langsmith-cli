@@ -21,7 +21,7 @@ func TestAppsDevCmd_Flags(t *testing.T) {
 		t.Fatalf("find dev command: %v", err)
 	}
 	// --queue-id is gone: apps are uniform now and the sandbox always gets {}.
-	for _, gone := range []string{"url", "web-url", "data", "queue-id"} {
+	for _, gone := range []string{"url", "web-url", "data", "queue-id", "no-watch"} {
 		if f := dev.Flags().Lookup(gone); f != nil {
 			t.Errorf("expected --%s flag to be gone from apps dev", gone)
 		}
@@ -31,9 +31,6 @@ func TestAppsDevCmd_Flags(t *testing.T) {
 	}
 	if f := dev.Flags().Lookup("no-open"); f == nil {
 		t.Error("expected --no-open flag to exist")
-	}
-	if f := dev.Flags().Lookup("no-watch"); f == nil {
-		t.Error("expected --no-watch flag to exist")
 	}
 }
 
@@ -544,7 +541,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", true, true)
+		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
