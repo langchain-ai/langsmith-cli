@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -274,6 +275,25 @@ func TestRawGet_HTTPError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "403") {
 		t.Errorf("expected error to contain 403, got %q", err.Error())
+	}
+}
+
+func TestRawGet_HTTPErrorStatus(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusConflict, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, http.StatusText(status), status)
+			}))
+			defer ts.Close()
+
+			err := New("key", ts.URL).RawGet(context.Background(), "/fail", nil)
+			if got := IsNotFound(err); got != (status == http.StatusNotFound) {
+				t.Errorf("IsNotFound(%v) = %t", err, got)
+			}
+			if got := IsConflict(err); got != (status == http.StatusConflict) {
+				t.Errorf("IsConflict(%v) = %t", err, got)
+			}
+		})
 	}
 }
 
@@ -597,6 +617,32 @@ func TestRawDo_ExtraHeaders(t *testing.T) {
 	}
 }
 
+func TestRawDo_RejectsCrossOriginPathsBeforeSendingCredentials(t *testing.T) {
+	attackerRequests := 0
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attackerRequests++
+		if r.Header.Get("x-api-key") != "" {
+			t.Error("credentials reached the cross-origin server")
+		}
+	}))
+	defer attacker.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected API request: %s", r.URL)
+	}))
+	defer api.Close()
+
+	c := New("secret", api.URL)
+	for _, path := range []string{attacker.URL + "/steal", "//example.com/steal", "ftp://example.com/steal"} {
+		if _, _, _, _, err := c.RawDo(context.Background(), http.MethodGet, path, nil, nil); err == nil {
+			t.Errorf("RawDo accepted cross-origin path %q", path)
+		}
+	}
+	if attackerRequests != 0 {
+		t.Fatalf("cross-origin server received %d requests", attackerRequests)
+	}
+}
+
 func TestRawDo_Returns4xxWithoutError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(422)
@@ -614,6 +660,51 @@ func TestRawDo_Returns4xxWithoutError(t *testing.T) {
 	}
 	if string(body) != `{"detail":"invalid"}` {
 		t.Errorf("unexpected body: %s", body)
+	}
+}
+
+func TestIsNotFound_And_IsConflict_SeeThroughWrappedErrors(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		want   func(error) bool
+		other  func(error) bool
+	}{
+		{http.StatusNotFound, IsNotFound, IsConflict},
+		{http.StatusConflict, IsConflict, IsNotFound},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, http.StatusText(tc.status), tc.status)
+			}))
+			defer ts.Close()
+
+			err := New("key", ts.URL).RawGet(context.Background(), "/x", nil)
+			wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", err))
+			if !tc.want(wrapped) {
+				t.Errorf("detector did not see through wrapping: %v", wrapped)
+			}
+			if tc.other(wrapped) {
+				t.Errorf("wrong detector matched: %v", wrapped)
+			}
+		})
+	}
+}
+
+func TestRawDo_PreservesQueryString(t *testing.T) {
+	var sawQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawQuery = r.URL.RawQuery
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	c := New("key", ts.URL)
+	_, _, _, _, err := c.RawDo(context.Background(), "GET", "/runs?status=pending&limit=5", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sawQuery != "status=pending&limit=5" {
+		t.Errorf("expected query preserved, got %q", sawQuery)
 	}
 }
 

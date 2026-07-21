@@ -32,7 +32,12 @@ func runRequest(c *client.Client, method, path, body, input string, params map[s
 	if isSameHost(fullURL, apiURL) {
 		relPath = strings.TrimPrefix(fullURL, apiURL)
 	} else if strings.HasPrefix(fullURL, "http://") || strings.HasPrefix(fullURL, "https://") {
-		reqClient = client.NewWithOptions(client.Options{})
+		target, err := url.Parse(fullURL)
+		if err != nil {
+			return 0, fmt.Errorf("parsing request URL: %w", err)
+		}
+		reqClient = client.NewWithOptions(client.Options{APIURL: target.Scheme + "://" + target.Host})
+		relPath = target.RequestURI()
 	}
 
 	bodyReader, err := resolveRequestBody(method, body, input, params)
