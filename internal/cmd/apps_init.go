@@ -108,18 +108,15 @@ func newAppsInitCmd() *cobra.Command {
 		Short: "Scaffold a starter custom app in the current directory",
 		Long: `Scaffold a starter custom app in the current directory.
 
---template picks which starter gets scaffolded; omit it for a blank
-single-file starter.
+--template picks which starter gets scaffolded; omit it for a blank single-file starter.
 
-  annotation-queue        A queue-review UI: run list, inputs/outputs,
-                          feedback rubric, reviewer notes.
+  annotation-queue        A queue-review UI: run list, inputs/outputs, feedback rubric, reviewer notes.
   annotation-queue-grid   Same review workflow, as an editable spreadsheet.
-  coding-agent-dashboard  Charts over coding-agent runs: usage, cost,
-                          errors, activity over time.
+  coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Only writes local files. Next: run "npm install", then "langsmith apps
-dev" to preview or "langsmith apps push" to upload.`,
+Only writes local files. Next: run "npm install", then "langsmith apps dev" to preview.
+Run "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
 			if templateName == "" {
@@ -155,7 +152,7 @@ dev" to preview or "langsmith apps push" to upload.`,
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
-	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template: "+strings.Join(appTypeNames(), ", ")+" (omit for a blank starter)")
+	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template. Omittable for a blank starter.")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
