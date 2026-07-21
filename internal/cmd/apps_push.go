@@ -93,7 +93,14 @@ same app too.
 				case err == nil:
 					updated = true
 				case client.IsConflict(err):
-					return fmt.Errorf("a custom app named %q already exists in this workspace", name)
+					conflictName := name
+					if conflictName == "" {
+						conflictName = link.Name
+					}
+					if conflictName == "" {
+						conflictName = link.AppID
+					}
+					return fmt.Errorf("a custom app named %q already exists in this workspace", conflictName)
 				case client.IsNotFound(err):
 					// Stale link (app deleted server-side) — recreate instead of failing.
 					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
@@ -168,7 +175,7 @@ same app too.
 }
 
 func runAppsBuildCmd(dir string) error {
-	c := exec.Command("sh", "-c", "npm run build")
+	c := exec.Command("npm", "run", "build")
 	c.Dir = dir
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr

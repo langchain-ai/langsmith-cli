@@ -256,9 +256,7 @@ func TestHandleLsDevCall_ForwardsOperationToRealClient(t *testing.T) {
 	defer setupTestEnv(t, upstream.URL)()
 
 	reqBody := `{"operation":"POST /api/v1/feedback","args":{"body":{"key":"correctness","score":1}}}`
-	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(reqBody))
-	rec := httptest.NewRecorder()
-	handleLsDevCall(rec, req)
+	rec := serveLsDevCall(t, reqBody)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 passed through, got %d: %s", rec.Code, rec.Body.String())
@@ -287,9 +285,7 @@ func TestHandleLsDevCall_ForwardsParamsAsQueryString(t *testing.T) {
 	defer setupTestEnv(t, upstream.URL)()
 
 	reqBody := `{"operation":"GET /api/v1/annotation-queues/q1/runs","args":{"params":{"status":"needs_my_review"}}}`
-	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(reqBody))
-	rec := httptest.NewRecorder()
-	handleLsDevCall(rec, req)
+	rec := serveLsDevCall(t, reqBody)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -300,18 +296,14 @@ func TestHandleLsDevCall_ForwardsParamsAsQueryString(t *testing.T) {
 }
 
 func TestHandleLsDevCall_RejectsMalformedOperation(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(`{"operation":"nospacehere"}`))
-	rec := httptest.NewRecorder()
-	handleLsDevCall(rec, req)
+	rec := serveLsDevCall(t, `{"operation":"nospacehere"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for malformed operation, got %d", rec.Code)
 	}
 }
 
 func TestHandleLsDevCall_RejectsDisallowedMethod(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(`{"operation":"TRACE /api/v1/runs"}`))
-	rec := httptest.NewRecorder()
-	handleLsDevCall(rec, req)
+	rec := serveLsDevCall(t, `{"operation":"TRACE /api/v1/runs"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for disallowed method, got %d", rec.Code)
 	}
@@ -323,13 +315,50 @@ func TestHandleLsDevCall_RejectsPathEscapingOrigin(t *testing.T) {
 		"GET //evil.example.com/steal",
 		"GET not-a-path",
 	} {
-		req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(`{"operation":"`+op+`"}`))
-		rec := httptest.NewRecorder()
-		handleLsDevCall(rec, req)
+		rec := serveLsDevCall(t, `{"operation":"`+op+`"}`)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("operation %q: expected 400, got %d", op, rec.Code)
 		}
 	}
+}
+
+func TestHandleLsDevCall_RejectsMissingOrWrongToken(t *testing.T) {
+	body := `{"operation":"GET /api/v1/runs"}`
+	for _, tok := range []string{"", "wrong-token"} {
+		req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-LS-Dev-Token", tok)
+		}
+		rec := httptest.NewRecorder()
+		makeLsDevCallHandler("test-token")(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("token %q: expected 403, got %d", tok, rec.Code)
+		}
+	}
+}
+
+func TestHandleLsDevCall_RejectsNonJSONContentType(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(`{"operation":"GET /api/v1/runs"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("X-LS-Dev-Token", "test-token")
+	rec := httptest.NewRecorder()
+	makeLsDevCallHandler("test-token")(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("expected 415 for non-JSON content type, got %d", rec.Code)
+	}
+}
+
+// serveLsDevCall drives the handler with a valid token.
+func serveLsDevCall(t *testing.T, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	const token = "test-token"
+	req := httptest.NewRequest(http.MethodPost, "/__ls_dev/call", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-LS-Dev-Token", token)
+	rec := httptest.NewRecorder()
+	makeLsDevCallHandler(token)(rec, req)
+	return rec
 }
 
 func writeFile(t *testing.T, dir, name, content string) {

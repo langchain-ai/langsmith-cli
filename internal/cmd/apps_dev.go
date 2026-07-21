@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -175,6 +178,11 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
 func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
+	token, err := newDevToken()
+	if err != nil {
+		return nil, nil, "", err
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +202,7 @@ func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.List
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +216,7 @@ func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.List
 		_ = json.NewEncoder(w).Encode(map[string]any{"exists": true, "mtime": info.ModTime().UnixNano()})
 	})
 
-	mux.HandleFunc("/__ls_dev/call", handleLsDevCall)
+	mux.HandleFunc("/__ls_dev/call", makeLsDevCallHandler(token))
 
 	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -231,19 +239,45 @@ type lsDevCallArgs struct {
 	Body   any            `json:"body,omitempty"`
 }
 
-// handleLsDevCall proxies the app's API calls to the real LangSmith API
-// using the CLI's authenticated client.
-func handleLsDevCall(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// maxLsDevCallBody caps proxied request bodies.
+const maxLsDevCallBody = 16 << 20
 
-	var req lsDevCallRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
-		return
+// newDevToken returns the proxy's per-session shared secret.
+func newDevToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generating dev token: %w", err)
 	}
+	return hex.EncodeToString(b), nil
+}
+
+// makeLsDevCallHandler guards the credentialed proxy against cross-site use.
+func makeLsDevCallHandler(token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-LS-Dev-Token")), []byte(token)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			http.Error(w, "content-type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, maxLsDevCallBody)
+		var req lsDevCallRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		handleLsDevCall(w, r, req)
+	}
+}
+
+func handleLsDevCall(w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
 	if spaceIdx == -1 {
@@ -337,7 +371,7 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, token string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
 
@@ -348,6 +382,7 @@ func renderDevHostHTML(files map[string]string, entrypoint string) string {
 
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
+		"__LS_DEV_TOKEN__", token,
 	).Replace(devHostHTMLTemplate)
 }
 
@@ -511,7 +546,7 @@ const devHostHTMLTemplate = `<!doctype html>
     if (msg.type === 'LS_API') {
       fetch('/__ls_dev/call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': '__LS_DEV_TOKEN__' },
         body: JSON.stringify({ operation: msg.operation, args: msg.args || {} }),
       })
         .then(function(r) {
