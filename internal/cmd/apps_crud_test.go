@@ -83,19 +83,25 @@ func TestAppsListCmd_HasOutputFlag(t *testing.T) {
 }
 
 func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
+	const id = "11111111-1111-1111-1111-111111111111"
 	var sawDelete bool
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "DELETE" || r.URL.Path != "/v1/platform/custom-apps/a1" {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]customApp{{ID: id, Name: "one"}})
+		case r.Method == "DELETE" && r.URL.Path == "/v1/platform/custom-apps/"+id:
+			sawDelete = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		sawDelete = true
-		w.WriteHeader(http.StatusNoContent)
 	})
 	defer setupTestEnv(t, srv.URL)()
 
 	out := captureStdout(t, func() {
 		cmd := newAppsCmd()
-		cmd.SetArgs([]string{"delete", "a1", "--yes"})
+		cmd.SetArgs([]string{"delete", id, "--yes"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
@@ -105,5 +111,38 @@ func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
 	}
 	if !strings.Contains(out, `"status": "deleted"`) {
 		t.Errorf("expected deleted status:\n%s", out)
+	}
+}
+
+func TestAppsDelete_RejectsNonUUID(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request for non-UUID id: %s %s", r.Method, r.URL.Path)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"delete", "myapp", "--yes"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "expected a UUID") {
+		t.Fatalf("expected UUID rejection, got %v", err)
+	}
+}
+
+func TestAppsDelete_RejectsMissingApp(t *testing.T) {
+	const id = "22222222-2222-2222-2222-222222222222"
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			t.Errorf("delete should not run for a missing app")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]customApp{})
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"delete", id, "--yes"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not-found rejection, got %v", err)
 	}
 }
