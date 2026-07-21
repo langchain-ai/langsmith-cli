@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,7 +28,7 @@ func newAppsDeleteCmd() *cobra.Command {
 			}
 
 			c := MustGetClient()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			if err := c.RawDelete(ctx, "/v1/platform/custom-apps/"+id, nil); err != nil {
 				return fmt.Errorf("deleting custom app %s: %w", id, err)

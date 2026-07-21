@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -16,7 +15,7 @@ func newAppsListCmd() *cobra.Command {
 		Short: "List custom apps",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := MustGetClient()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			var apps []customApp
 			if err := c.RawGet(ctx, "/v1/platform/custom-apps", &apps); err != nil {

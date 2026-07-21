@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,7 +72,7 @@ same app too.
 			notYetCreated := link == nil || link.AppID == ""
 
 			c := MustGetClient()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			var app customApp
 			updated := false
