@@ -53,7 +53,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Fatalf("seed .env: %v", err)
 	}
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'ok'; } }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(){} }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
 
 func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.
 
 func TestPrepareAppsDevServer_MtimeReflectsFileState(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestHandleLsDevCall_RejectsMissingOrWrongToken(t *testing.T) {
 			req.Header.Set("X-LS-Dev-Token", tok)
 		}
 		rec := httptest.NewRecorder()
-		makeLsDevCallHandler("test-token")(rec, req)
+		makeLsDevCallHandler(nil, "test-token")(rec, req)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("token %q: expected 403, got %d", tok, rec.Code)
 		}
@@ -343,7 +343,7 @@ func TestHandleLsDevCall_RejectsNonJSONContentType(t *testing.T) {
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("X-LS-Dev-Token", "test-token")
 	rec := httptest.NewRecorder()
-	makeLsDevCallHandler("test-token")(rec, req)
+	makeLsDevCallHandler(nil, "test-token")(rec, req)
 	if rec.Code != http.StatusUnsupportedMediaType {
 		t.Errorf("expected 415 for non-JSON content type, got %d", rec.Code)
 	}
@@ -357,7 +357,8 @@ func serveLsDevCall(t *testing.T, body string) *httptest.ResponseRecorder {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-LS-Dev-Token", token)
 	rec := httptest.NewRecorder()
-	makeLsDevCallHandler(token)(rec, req)
+	c, _ := getClient()
+	makeLsDevCallHandler(c, token)(rec, req)
 	return rec
 }
 
@@ -570,7 +571,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, dir, "dist/bundle.js", true)
+		errCh <- runAppsDev(ctx, nil, dir, "dist/bundle.js", true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)

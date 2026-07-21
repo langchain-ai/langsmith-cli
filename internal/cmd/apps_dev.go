@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -48,14 +49,15 @@ Rebuilds automatically on save when package.json has a "watch" script.`,
 				return fmt.Errorf("getting current directory: %w", err)
 			}
 
-			if _, err := getClient(); err != nil {
+			c, err := getClient()
+			if err != nil {
 				return err
 			}
 
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, dir, entrypoint, noOpen)
+			return runAppsDev(ctx, c, dir, entrypoint, noOpen)
 		},
 	}
 
@@ -64,8 +66,8 @@ Rebuilds automatically on save when package.json has a "watch" script.`,
 	return cmd
 }
 
-func runAppsDev(ctx context.Context, dir, entrypoint string, noOpen bool) error {
-	srv, ln, previewURL, err := prepareAppsDevServer(dir, entrypoint)
+func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, noOpen bool) error {
+	srv, ln, previewURL, err := prepareAppsDevServer(c, dir, entrypoint)
 	if err != nil {
 		return err
 	}
@@ -177,7 +179,7 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
-func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
+func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	token, err := newDevToken()
 	if err != nil {
 		return nil, nil, "", err
@@ -216,7 +218,7 @@ func prepareAppsDevServer(dir, entrypoint string) (srv *http.Server, ln net.List
 		_ = json.NewEncoder(w).Encode(map[string]any{"exists": true, "mtime": info.ModTime().UnixNano()})
 	})
 
-	mux.HandleFunc("/__ls_dev/call", makeLsDevCallHandler(token))
+	mux.HandleFunc("/__ls_dev/call", makeLsDevCallHandler(c, token))
 
 	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -252,7 +254,7 @@ func newDevToken() (string, error) {
 }
 
 // makeLsDevCallHandler guards the credentialed proxy against cross-site use.
-func makeLsDevCallHandler(token string) http.HandlerFunc {
+func makeLsDevCallHandler(c *client.Client, token string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -273,11 +275,11 @@ func makeLsDevCallHandler(token string) http.HandlerFunc {
 			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		handleLsDevCall(w, r, req)
+		handleLsDevCall(c, w, r, req)
 	}
 }
 
-func handleLsDevCall(w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
+func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
 	if spaceIdx == -1 {
@@ -313,13 +315,6 @@ func handleLsDevCall(w http.ResponseWriter, r *http.Request, req lsDevCallReques
 		bodyReader = bytes.NewReader(b)
 	}
 
-	c, err := getClient()
-	if err != nil {
-		// Not MustGetClient: that exits the process, so one unauthenticated
-		// app call would kill the whole dev server. Return 502 instead.
-		http.Error(w, "not authenticated: "+err.Error(), http.StatusBadGateway)
-		return
-	}
 	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
 	if err != nil {
 		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
