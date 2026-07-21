@@ -210,6 +210,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	}
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
+	// codeql[go/request-forgery] requestURL enforces HTTP(S), root-relative paths, and same-origin resolution.
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
