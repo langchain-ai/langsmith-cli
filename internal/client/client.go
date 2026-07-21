@@ -167,20 +167,20 @@ type httpErrorBody struct {
 	Detail           any    `json:"detail"`
 }
 
-func (c *Client) requestURL(path string) (string, error) {
+func (c *Client) requestURL(path string) (*url.URL, error) {
 	base, err := url.Parse(c.apiURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
-		return "", fmt.Errorf("invalid API URL %q", c.apiURL)
+		return nil, fmt.Errorf("invalid API URL %q", c.apiURL)
 	}
 	ref, err := url.Parse(path)
 	if err != nil || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || ref.IsAbs() || ref.Host != "" {
-		return "", fmt.Errorf("API path %q must be root-relative", path)
+		return nil, fmt.Errorf("API path %q must be root-relative", path)
 	}
-	resolved := base.ResolveReference(ref)
-	if resolved.Scheme != base.Scheme || resolved.Host != base.Host {
-		return "", fmt.Errorf("API path %q resolves outside the configured origin", path)
-	}
-	return resolved.String(), nil
+	base.Path = ref.Path
+	base.RawPath = ref.RawPath
+	base.RawQuery = ref.RawQuery
+	base.Fragment = ""
+	return base, nil
 }
 
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
@@ -190,7 +190,12 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
+	if err == nil {
+		req.URL.Path = requestURL.Path
+		req.URL.RawPath = requestURL.RawPath
+		req.URL.RawQuery = requestURL.RawQuery
+	}
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -210,7 +215,6 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	}
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	// codeql[go/request-forgery] requestURL enforces HTTP(S), root-relative paths, and same-origin resolution.
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
