@@ -296,7 +296,11 @@ func handleLsDevCall(w http.ResponseWriter, r *http.Request, req lsDevCallReques
 		return
 	}
 	if len(req.Args.Params) > 0 {
-		path += "?" + encodeProxyParams(req.Args.Params)
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		path += sep + encodeProxyParams(req.Args.Params)
 	}
 
 	var bodyReader io.Reader

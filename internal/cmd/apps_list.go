@@ -23,7 +23,7 @@ func newAppsListCmd() *cobra.Command {
 				return fmt.Errorf("listing custom apps: %w", err)
 			}
 
-			if GetFormat() == "pretty" {
+			if outputFile == "" && GetFormat() == "pretty" {
 				columns := []string{"Name", "ID", "Entrypoint", "Enabled", "Updated"}
 				var rows [][]string
 				for _, a := range apps {
