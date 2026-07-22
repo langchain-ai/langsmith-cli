@@ -30,7 +30,6 @@ export interface RunStats {
   error_rate?: number | null;
   latency_p50?: number | null;
   latency_p99?: number | null;
-  latency_avg?: number | null;
   total_tokens?: number | null;
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
@@ -43,6 +42,15 @@ export interface RunStats {
 // returned by POST /api/v1/runs/group/stats with group_by="conversation".
 export interface RunGroupStats extends RunStats {
   group_count?: number | null;
+}
+
+// Share of the most recent root runs (up to 100) that are coding-agent
+// traces — metadata ls_agent_purpose="coding". Computed client-side over an
+// unfiltered recent-runs sample, so it's "share of the last N", not a
+// whole-window rate. See fetchCodingShare.
+export interface CodingShare {
+  coding: number;
+  total: number;
 }
 
 export type StatsScope = 'turns' | 'threads';

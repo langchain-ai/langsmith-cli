@@ -1,6 +1,6 @@
 // All LangSmith access goes through window.langsmith.call — the sandbox has
 // no network of its own. See AGENTS.md for the operation format and endpoints.
-import type { Project, ProjectStats, RunGroupStats, RunsQueryResponse, RunStats, StatsScope } from './types';
+import type { CodingShare, Project, ProjectStats, RunGroupStats, RunsQueryResponse, RunStats, StatsScope } from './types';
 
 // Metadata equality is two paired clauses in the filter DSL, not
 // eq(metadata.key, ...).
@@ -66,7 +66,6 @@ const STATS_SELECT = [
   'error_rate',
   'latency_p50',
   'latency_p99',
-  'latency_avg',
   'total_tokens',
   'prompt_tokens',
   'completion_tokens',
@@ -131,4 +130,26 @@ export async function fetchRecentRuns(sessionId: string, windowDays: number) {
     },
   });
   return resp?.runs ?? [];
+}
+
+// What fraction of the most recent root runs in this window are coding-agent
+// traces. Unlike every other query here it is deliberately *unfiltered* — the
+// non-coding runs are the denominator — and we count coding ones client-side
+// off each run's extra.metadata. Bounded to the same 100-row recency sample as
+// the runs table, so the result is "share of the last N (≤100)", not a
+// whole-window rate.
+export async function fetchCodingShare(sessionId: string, windowDays: number): Promise<CodingShare> {
+  await sleep(INTER_QUERY_GAP_MS);
+  const resp = await callWithRetry<RunsQueryResponse>('POST /api/v1/runs/query', {
+    body: {
+      session: [sessionId],
+      start_time: windowStart(windowDays),
+      is_root: true,
+      limit: RECENT_RUNS_LIMIT,
+      select: ['id', 'extra'],
+    },
+  });
+  const runs = resp?.runs ?? [];
+  const coding = runs.filter((r) => r.extra?.metadata?.ls_agent_purpose === 'coding').length;
+  return { coding, total: runs.length };
 }
