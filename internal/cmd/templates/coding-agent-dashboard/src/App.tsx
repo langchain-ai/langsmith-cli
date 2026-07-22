@@ -4,9 +4,9 @@ import { OverviewPanel } from './components/OverviewPanel';
 import { RunsTable } from './components/RunsTable';
 import { Section } from './components/primitives';
 import { Spinner } from './components/Spinner';
-import { fetchProjectStats, fetchRecentRuns } from './api';
+import { fetchCodingShare, fetchProjectStats, fetchRecentRuns } from './api';
 import { cn } from './lib/utils';
-import type { ProjectStats, Run, StatsScope } from './types';
+import type { CodingShare, ProjectStats, Run, StatsScope } from './types';
 
 const EMPTY_STATS: ProjectStats = { turns: null, threads: null, failedScopes: [] };
 
@@ -34,9 +34,12 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   const [runsLoading, setRunsLoading] = useState(false);
   const [runsFailed, setRunsFailed] = useState(false);
 
+  const [codingShare, setCodingShare] = useState<CodingShare | null>(null);
+
   useEffect(() => {
     setStats(EMPTY_STATS);
     setRuns([]);
+    setCodingShare(null);
     setCrashed(false);
     setRunsFailed(false);
     if (!projectId) return;
@@ -58,6 +61,12 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
         setRunsFailed(true);
       })
       .finally(() => setRunsLoading(false));
+
+    // The coding-share tile has its own query (unfiltered recent runs). A
+    // failure here just leaves the tile at "—" — no separate error surface.
+    fetchCodingShare(projectId, windowDays)
+      .then(setCodingShare)
+      .catch((e) => console.error('Failed to load coding share', e));
   }, [projectId, windowDays]);
 
   const hasAnyStats = stats.turns != null || stats.threads != null;
@@ -109,7 +118,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
           </p>
         )}
 
-        <OverviewPanel stats={stats} />
+        <OverviewPanel stats={stats} codingShare={codingShare} />
 
         <Section
           title="Recent runs"
