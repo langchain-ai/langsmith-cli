@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ExampleWithRuns, ExperimentView } from '../types';
 import { SERIES_CAP, type RunMetric } from '../lib/metrics';
 import { Empty } from './primitives';
+import { cn } from '../lib/utils';
 
 interface Props {
   examples: ExampleWithRuns[];
@@ -21,7 +22,9 @@ interface Point {
 
 const W = 520;
 const H = 360;
-const M = { top: 16, right: 16, bottom: 44, left: 64 };
+// left margin is wide enough for a rotated axis title plus formatted tick
+// labels (e.g. "38844 ms") without the two colliding.
+const M = { top: 16, right: 16, bottom: 44, left: 84 };
 const PW = W - M.left - M.right;
 const PH = H - M.top - M.bottom;
 
@@ -64,8 +67,15 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
     ? 'points below the line beat the baseline'
     : 'points above the line beat the baseline';
 
+  // A shown series contributes no dots when it has no example paired with the
+  // baseline for this metric. Call that out in the legend so a missing series
+  // reads as "no data" rather than a bug.
+  const plottedLetters = new Set(points.map((p) => p.letter));
+
   return (
-    <div className="flex flex-col gap-2">
+    // Cap the width so the fixed-aspect viewBox doesn't scale up to a giant,
+    // overlapping chart on wide cards; center it within the section.
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Baseline vs comparison ${metric.label}`}>
         {ticks.map((t) => (
           <g key={`gx-${t}`}>
@@ -154,12 +164,19 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
       </svg>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-tertiary">
-        {shown.map((exp) => (
-          <span key={exp.id} className="inline-flex items-center gap-1.5 text-secondary">
-            <span className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: exp.color }} />
-            {exp.letter} · <span className="truncate max-w-[180px]" title={exp.name}>{exp.name}</span>
-          </span>
-        ))}
+        {shown.map((exp) => {
+          const empty = !plottedLetters.has(exp.letter);
+          return (
+            <span
+              key={exp.id}
+              className={cn('inline-flex items-center gap-1.5 text-secondary', empty && 'opacity-50')}
+            >
+              <span className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: exp.color }} />
+              {exp.letter} · <span className="truncate max-w-[180px]" title={exp.name}>{exp.name}</span>
+              {empty && <span className="text-tertiary">(no paired values)</span>}
+            </span>
+          );
+        })}
         <span>dashed line = parity; {betterHint}.</span>
         {hidden > 0 && <span>+{hidden} more comparison{hidden > 1 ? 's' : ''} not plotted.</span>}
       </div>
