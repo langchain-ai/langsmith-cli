@@ -356,12 +356,12 @@ func devWaitingHTML(message string) string {
 <body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:24px;color:#334155;">
 <p>` + html.EscapeString(message) + `</p>
 <script>
-var seen = false, lastKey = null;
+// Served only while the entrypoint is missing, so reload as soon as the
+// build produces it — no need to track changes, any existing bundle is an
+// improvement over this page.
 setInterval(function() {
   fetch('/__ls_dev/mtime', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
-    var key = j.exists ? String(j.mtime) : 'missing';
-    if (!seen) { seen = true; lastKey = key; return; }
-    if (key !== lastKey) { location.reload(); }
+    if (j.exists) { location.reload(); }
   }).catch(function(){});
 }, 500);
 </script>
@@ -565,15 +565,21 @@ const devHostHTMLTemplate = `<!doctype html>
     }
   });
 
-  // Poll for a rebuild and reload the page when detected.
-  var seen = false, lastKey = null;
+  // Poll for a rebuild and reload once the new bundle is actually on disk.
+  // Build tools empty dist/ before rewriting the entrypoint, so a rebuild
+  // briefly reports exists:false. Reloading during that window would land on
+  // the "waiting for build" page (a white flash), so ignore the transient
+  // missing state entirely and reload only when the entrypoint exists with a
+  // newer mtime than the last one we saw it have.
+  var lastMtime = null;
   setInterval(function() {
     fetch('/__ls_dev/mtime', { cache: 'no-store' })
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        var key = j.exists ? String(j.mtime) : 'missing';
-        if (!seen) { seen = true; lastKey = key; return; }
-        if (key !== lastKey) { location.reload(); }
+        if (!j.exists) return;
+        var mtime = String(j.mtime);
+        if (lastMtime === null) { lastMtime = mtime; return; }
+        if (mtime !== lastMtime) { location.reload(); }
       })
       .catch(function() {});
   }, 500);

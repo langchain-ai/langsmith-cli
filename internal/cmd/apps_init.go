@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -116,7 +115,7 @@ func newAppsInitCmd() *cobra.Command {
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Installs dependencies as the last step, so you can run "langsmith apps dev" next.
+Only writes local files. Next: run "npm install", then "langsmith apps dev" to preview.
 Run "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
@@ -139,11 +138,7 @@ Run "langsmith apps push" to upload.`,
 			}
 			sort.Strings(written)
 
-			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\n", templateName, dir)
-			if err := installAppDeps(dir); err != nil {
-				return err
-			}
-			fmt.Fprintln(os.Stderr, "Next: langsmith apps dev.")
+			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\nNext: npm install, then langsmith apps dev.\n", templateName, dir)
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
@@ -161,23 +156,6 @@ Run "langsmith apps push" to upload.`,
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
-}
-
-// installAppDeps runs npm install
-func installAppDeps(dir string) error {
-	if _, err := exec.LookPath("npm"); err != nil {
-		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm install" before "langsmith apps dev"`)
-		return nil
-	}
-	fmt.Fprintln(os.Stderr, "Installing dependencies: npm install")
-	c := exec.Command("npm", "install")
-	c.Dir = dir
-	c.Stdout = os.Stderr
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		return fmt.Errorf("\"npm install\" failed: %w", err)
-	}
-	return nil
 }
 
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
