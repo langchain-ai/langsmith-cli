@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "langsmith apps dev",
     "build": "vite build",
     "watch": "vite build --watch"
   },
