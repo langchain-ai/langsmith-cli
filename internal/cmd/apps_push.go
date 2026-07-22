@@ -158,13 +158,22 @@ same app too.
 			if updated {
 				status = "updated"
 			}
-			output.OutputJSON(map[string]any{
+			result := map[string]any{
 				"status":     status,
 				"app_id":     app.ID,
 				"name":       app.Name,
 				"entrypoint": app.Entrypoint,
 				"files":      paths,
-			}, "")
+			}
+			output.OutputJSON(result, "")
+
+			workspaceID := app.TenantID
+			if workspaceID == "" {
+				workspaceID = GetWorkspaceID()
+			}
+			if webURL := customAppWebURL(c.APIURL(), workspaceID, app.ID); webURL != "" {
+				fmt.Fprintf(os.Stderr, "View at %s\n", webURL)
+			}
 			return nil
 		},
 	}
