@@ -50,16 +50,6 @@ func getFlagString(cmd *cobra.Command, name string) string {
 	return ""
 }
 
-func isFlagChanged(cmd *cobra.Command, name string) bool {
-	if f := cmd.Flags().Lookup(name); f != nil {
-		return f.Changed
-	}
-	if f := cmd.PersistentFlags().Lookup(name); f != nil {
-		return f.Changed
-	}
-	return false
-}
-
 // ResolveAPIKey reads the API key from cobra's flag tree → env.
 func ResolveAPIKey(cmd *cobra.Command) string {
 	if v := getFlagString(cmd, "api-key"); v != "" {
@@ -132,6 +122,16 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 		}
 	}
 
+	// An explicit --profile selection wins: conflicting env vars are ignored with a warning.
+	explicitProfile := flagProfile != "" && hasProfile
+	warnEnvIgnored := func(name string) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: ignoring %s because profile %q was selected with --profile\n", name, profileName)
+	}
+
+	if explicitProfile && envProfile != "" && envProfile != flagProfile {
+		warnEnvIgnored("LANGSMITH_PROFILE")
+	}
+
 	if hasProfile {
 		if profile.APIURL != "" {
 			opts.APIURL = profile.APIURL
@@ -140,17 +140,29 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		opts.APIURL = client.NormalizeURL(v)
+		if explicitProfile && profile.APIURL != "" {
+			warnEnvIgnored("LANGSMITH_ENDPOINT")
+		} else {
+			opts.APIURL = client.NormalizeURL(v)
+		}
 	}
 	if v := getFlagString(cmd, "api-url"); v != "" {
 		opts.APIURL = client.NormalizeURL(v)
 	}
 
 	if v := os.Getenv("LANGSMITH_TENANT_ID"); v != "" {
-		opts.WorkspaceID = v
+		if explicitProfile && profile.WorkspaceID != "" {
+			warnEnvIgnored("LANGSMITH_TENANT_ID")
+		} else {
+			opts.WorkspaceID = v
+		}
 	}
 	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
-		opts.WorkspaceID = v
+		if explicitProfile && profile.WorkspaceID != "" {
+			warnEnvIgnored("LANGSMITH_WORKSPACE_ID")
+		} else {
+			opts.WorkspaceID = v
+		}
 	}
 	if v := getFlagString(cmd, "workspace"); v != "" {
 		opts.WorkspaceID = v
@@ -158,14 +170,17 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 		opts.WorkspaceID = v
 	}
 
+	profileHasAuth := profile.AccessToken() != "" || profile.OAuth.RefreshToken != "" || profile.APIKey != ""
+	envAPIKey := os.Getenv("LANGSMITH_API_KEY")
+	if envAPIKey != "" && explicitProfile && profileHasAuth {
+		warnEnvIgnored("LANGSMITH_API_KEY")
+		envAPIKey = ""
+	}
 	switch {
 	case getFlagString(cmd, "api-key") != "":
 		opts.APIKey = getFlagString(cmd, "api-key")
-	case os.Getenv("LANGSMITH_API_KEY") != "":
-		if isFlagChanged(cmd, "profile") {
-			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
-		}
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+	case envAPIKey != "":
+		opts.APIKey = envAPIKey
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {

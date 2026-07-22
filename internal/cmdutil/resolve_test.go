@@ -336,7 +336,7 @@ func TestResolveClientOptions_EnvAPIKeyOverridesProfileBearer(t *testing.T) {
 	}
 }
 
-func TestResolveClientOptions_ProfileFlagWarnsWhenEnvAPIKeyOverrides(t *testing.T) {
+func TestResolveClientOptions_ProfileFlagIgnoresEnvAPIKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
@@ -360,9 +360,67 @@ func TestResolveClientOptions_ProfileFlagWarnsWhenEnvAPIKeyOverrides(t *testing.
 
 	opts, err := ResolveClientOptions(cmd, false)
 	require.NoError(t, err)
-	require.Equal(t, "from-env", opts.APIKey)
-	require.Empty(t, opts.OAuthAccessToken)
-	require.Contains(t, stderr.String(), "warning: --profile was specified, but LANGSMITH_API_KEY is set")
+	require.Empty(t, opts.APIKey)
+	require.Equal(t, "test-access-token", opts.OAuthAccessToken)
+	require.Contains(t, stderr.String(), "warning: ignoring LANGSMITH_API_KEY")
+}
+
+func TestResolveClientOptions_ProfileFlagIgnoresConflictingEnvEndpointAndWorkspace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "http://env.example.com")
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "ws-env")
+	err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "api_key": "prod-key",
+      "api_url": "http://prod.example.com",
+      "workspace_id": "ws-prod"
+    }
+  }
+}
+`), 0600)
+	require.NoError(t, err)
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	require.NoError(t, cmd.PersistentFlags().Set("profile", "prod"))
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "http://prod.example.com", opts.APIURL)
+	require.Equal(t, "ws-prod", opts.WorkspaceID)
+	require.Contains(t, stderr.String(), "warning: ignoring LANGSMITH_ENDPOINT")
+	require.Contains(t, stderr.String(), "warning: ignoring LANGSMITH_WORKSPACE_ID")
+}
+
+func TestResolveClientOptions_ImplicitProfileDoesNotIgnoreEnv(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "http://env.example.com")
+	err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {
+      "api_key": "prod-key",
+      "api_url": "http://prod.example.com"
+    }
+  }
+}
+`), 0600)
+	require.NoError(t, err)
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "http://env.example.com", opts.APIURL)
+	require.Empty(t, stderr.String())
 }
 
 func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
