@@ -132,6 +132,9 @@ same app too.
 					payload["description"] = description
 				}
 				if err := c.RawPost(ctx, "/v1/platform/custom-apps", payload, &app); err != nil {
+					if client.IsForbidden(err) {
+						return fmt.Errorf("this workspace doesn't support custom apps — ask a workspace admin to enable them, then try again")
+					}
 					if client.IsConflict(err) {
 						return fmt.Errorf("a custom app named %q already exists in this workspace. try `langsmith apps push --name \"New Name\"` instead", appName)
 					}

@@ -160,6 +160,11 @@ func IsConflict(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusConflict
 }
 
+func IsForbidden(err error) bool {
+	var httpErr *httpError
+	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusForbidden
+}
+
 type httpErrorBody struct {
 	Error            string `json:"error"`
 	Message          string `json:"message"`
