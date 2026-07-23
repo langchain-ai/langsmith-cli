@@ -156,7 +156,7 @@ export function App({ queueId: initialQueueId }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary m-space-4 mt-space-3">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary m-4 mt-3">
         {/* Left: 280px run list */}
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
           <RunList

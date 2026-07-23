@@ -231,7 +231,7 @@ export function App({ queueId: initialQueueId }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="flex min-h-0 flex-1 flex-col p-space-4">
+      <div className="flex min-h-0 flex-1 flex-col p-4">
         <DataGrid
           queue={queue}
           columns={columns}

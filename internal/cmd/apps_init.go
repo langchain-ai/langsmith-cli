@@ -51,6 +51,8 @@ var sharedPackageJSONTmpl string
 
 const iconsImportSpecifier = "@langchain/untitled-ui-icons"
 
+const cnUtilsImportSpecifier = "lib/utils"
+
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
 	templateFS   embed.FS
@@ -103,6 +105,7 @@ type customAppStarterVars struct {
 	Name        string
 	Description string
 	NeedsIcons  bool
+	NeedsCn     bool
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -222,6 +225,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, err
 	}
 	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
+	vars.NeedsCn = strings.Contains(src, cnUtilsImportSpecifier)
 
 	var written []string
 	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
