@@ -22,6 +22,11 @@ your API key can already do works; a permission error is a real limit of the
 key. Full reference: https://docs.langchain.com/langsmith/home. Base URL:
 `https://api.smith.langchain.com` (or your self-hosted instance's URL).
 
+While `langsmith apps dev` is running, the app's failed API calls (with status
+codes and error messages) and uncaught errors stream to that terminal — read it
+to debug without opening browser devtools. Add `--verbose` to also see every
+successful call and all `console.*` output, or `--quiet` to silence it.
+
 ## Theme
 
 `metadata.mode` is `"dark"` | `"light"`. The sandbox sets `html.dark` from it
