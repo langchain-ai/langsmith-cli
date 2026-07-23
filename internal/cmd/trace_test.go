@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // ==================== Command structure ====================
@@ -188,5 +190,32 @@ func TestTraceExportCmd_ExactArgs(t *testing.T) {
 	}
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
 		t.Error("expected error for 2 args")
+	}
+}
+
+// TestVersionFlag_PresentOnTraceAndThreadCmds asserts the --version flag (v1/v2
+// SmithDB selector) is registered on every trace and thread command, mirroring
+// the run commands.
+func TestVersionFlag_PresentOnTraceAndThreadCmds(t *testing.T) {
+	cmds := map[string]*cobra.Command{
+		"trace list":      newTraceListCmd(),
+		"trace get":       newTraceGetCmd(),
+		"trace export":    newTraceExportCmd(),
+		"trace messages":  newTraceMessagesCmd(),
+		"trace stats":     newTraceStatsCmd(),
+		"thread list":     newThreadListCmd(),
+		"thread get":      newThreadGetCmd(),
+		"thread messages": newThreadMessagesCmd(),
+	}
+	const want = `Query API version: "" (v1, default) or "v2" (SmithDB)`
+	for name, cmd := range cmds {
+		f := cmd.Flags().Lookup("version")
+		if f == nil {
+			t.Errorf("%s missing --version flag", name)
+			continue
+		}
+		if f.Usage != want {
+			t.Errorf("%s --version usage = %q, want %q", name, f.Usage, want)
+		}
 	}
 }

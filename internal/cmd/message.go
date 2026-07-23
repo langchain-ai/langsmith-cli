@@ -192,7 +192,7 @@ Examples:
 					traces = []any{}
 				}
 
-				attachRootIO(ctx, c, sessionID, startTime, traces)
+				attachRootIO(ctx, c, sessionID, startTime, traces, ff.Version)
 				for _, t := range traces {
 					trace, _ := t.(map[string]any)
 					traj := buildTraceTrajectory(trace)
@@ -252,7 +252,7 @@ Examples:
 				allTraces = allTraces[:ff.Limit]
 			}
 
-			attachRootIO(ctx, c, sessionID, startTime, allTraces)
+			attachRootIO(ctx, c, sessionID, startTime, allTraces, ff.Version)
 
 			for _, t := range allTraces {
 				trace, _ := t.(map[string]any)
@@ -275,6 +275,7 @@ Examples:
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
+	addVersionFlag(cmd, &ff)
 	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
@@ -292,7 +293,7 @@ type rootPreview struct {
 // root_outputs_preview fields. Failures are logged to stderr — the traces
 // are returned without enrichment rather than erroring out, so callers never
 // lose the main payload to a preview-lookup hiccup.
-func attachRootIO(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, traces []any) {
+func attachRootIO(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, traces []any, version string) {
 	if len(traces) == 0 {
 		return
 	}
@@ -303,7 +304,7 @@ func attachRootIO(ctx context.Context, c *client.Client, sessionID string, start
 			ids = append(ids, tid)
 		}
 	}
-	previews := fetchRootPreviews(ctx, c, sessionID, startTime, ids)
+	previews := fetchRootPreviews(ctx, c, sessionID, startTime, ids, version)
 	for _, t := range traces {
 		trace, _ := t.(map[string]any)
 		if trace == nil {
@@ -324,9 +325,41 @@ func attachRootIO(ctx context.Context, c *client.Client, sessionID string, start
 // map trace_id → (inputs_preview, outputs_preview). For root runs, id ==
 // trace_id, so we filter by ID (the SDK's RunQueryParams has no list field
 // for trace IDs — Trace is singular).
-func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string) map[string]rootPreview {
+func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, startTime time.Time, ids []string, version string) map[string]rootPreview {
 	out := map[string]rootPreview{}
 	if len(ids) == 0 {
+		return out
+	}
+	if version == "v2" {
+		body := langsmith.RunQueryV2Params{
+			IsRoot:       langsmith.F(true),
+			IDs:          langsmith.F(ids),
+			MinStartTime: langsmith.F(startTime),
+			PageSize:     langsmith.F(int64(len(ids))),
+			Selects: langsmith.F([]langsmith.RunQueryV2ParamsSelect{
+				langsmith.RunQueryV2ParamsSelectTraceID,
+				langsmith.RunQueryV2ParamsSelectInputsPreview,
+				langsmith.RunQueryV2ParamsSelectOutputsPreview,
+			}),
+		}
+		runs, err := queryRunsV2(ctx, c, body, sessionID, len(ids), 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
+			return out
+		}
+		for _, run := range runs {
+			tid := run.TraceID
+			if tid == "" {
+				tid = run.ID
+			}
+			if tid == "" {
+				continue
+			}
+			out[tid] = rootPreview{
+				inputs:  truncateHard(run.InputsPreview, 2000),
+				outputs: truncateHard(run.OutputsPreview, 2000),
+			}
+		}
 		return out
 	}
 	params := langsmith.RunQueryParams{

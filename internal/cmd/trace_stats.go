@@ -39,6 +39,7 @@ func newTraceStatsCmd() *cobra.Command {
 		cmpBefore   string
 		cmpLastNMin int
 		filter      string
+		version     string
 		outputFile  string
 	)
 
@@ -107,6 +108,10 @@ Examples:
 	cmd.Flags().StringVar(&cmpBefore, "compare-before", "", "Comparison window end (RFC3339 or YYYY-MM-DD; default: same as --since)")
 	cmd.Flags().IntVar(&cmpLastNMin, "compare-last-n-minutes", 0, "Shorthand: comparison window = N minutes before the primary window starts")
 	cmd.Flags().StringVar(&filter, "filter", "", "LangSmith filter DSL (applied to both windows if comparing)")
+	// --version is accepted for interface consistency but is a no-op here: SDK
+	// v0.18.2 exposes no v2 stats method (only Runs.Stats). The stats endpoint
+	// routes to SmithDB server-side, so v1/v2 selection is not a client concern.
+	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 	cmd.Flags().StringVar(&outputFile, "output", "", "Write JSON output to file instead of stdout")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	return cmd

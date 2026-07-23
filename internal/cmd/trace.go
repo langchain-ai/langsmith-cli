@@ -73,11 +73,18 @@ func newTraceListCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			params := BuildRunQueryParams(&ff, true, ff.Limit)
-			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-				params.Select = langsmith.F(sel)
+			var runs []langsmith.RunSchema
+			if ff.Version == "v2" {
+				body := buildRunQueryV2Params(&ff, true, ff.Limit)
+				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
+				runs, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
+			} else {
+				params := BuildRunQueryParams(&ff, true, ff.Limit)
+				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+					params.Select = langsmith.F(sel)
+				}
+				runs, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			}
-			runs, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -93,13 +100,20 @@ func newTraceListCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 
+			childStart := resolveStartTime(ff.Since, ff.LastNMinutes)
+
 			if fmt_ == "pretty" {
 				if showHierarchy {
 					for _, run := range runs {
-						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
-							Trace: langsmith.F(run.TraceID),
-							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
-						}, sessionID, 1000, 0)
+						var allRuns []langsmith.RunSchema
+						if ff.Version == "v2" {
+							allRuns, err = queryTraceRunsV2(ctx, c, run.TraceID, sessionID, childStart, includeIO, includeFeedback)
+						} else {
+							allRuns, err = queryRuns(ctx, c, langsmith.RunQueryParams{
+								Trace: langsmith.F(run.TraceID),
+								Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
+							}, sessionID, 1000, 0)
+						}
 						if err != nil {
 							ExitErrorf("%v", err)
 						}
@@ -119,8 +133,13 @@ func newTraceListCmd() *cobra.Command {
 					}
 					var result []map[string]any
 					for _, run := range runs {
-						childParams.Trace = langsmith.F(run.TraceID)
-						allRuns, err := queryRuns(ctx, c, childParams, sessionID, 1000, 0)
+						var allRuns []langsmith.RunSchema
+						if ff.Version == "v2" {
+							allRuns, err = queryTraceRunsV2(ctx, c, run.TraceID, sessionID, childStart, includeIO, includeFeedback)
+						} else {
+							childParams.Trace = langsmith.F(run.TraceID)
+							allRuns, err = queryRuns(ctx, c, childParams, sessionID, 1000, 0)
+						}
 						if err != nil {
 							ExitErrorf("%v", err)
 						}
@@ -143,6 +162,7 @@ func newTraceListCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, false)
+	addVersionFlag(cmd, &ff)
 	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
@@ -162,6 +182,7 @@ func newTraceGetCmd() *cobra.Command {
 		projectID       string
 		since           string
 		lastNMinutes    int
+		version         string
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -189,16 +210,20 @@ func newTraceGetCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			params := langsmith.RunQueryParams{
-				Trace:     langsmith.F(traceID),
-				StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
-				Order:     langsmith.F(langsmith.RunQueryParamsOrderAsc),
+			var runs []langsmith.RunSchema
+			if version == "v2" {
+				runs, err = queryTraceRunsV2(ctx, c, traceID, sessionID, resolveStartTime(since, lastNMinutes), includeIO, includeFeedback)
+			} else {
+				params := langsmith.RunQueryParams{
+					Trace:     langsmith.F(traceID),
+					StartTime: langsmith.F(resolveStartTime(since, lastNMinutes)),
+					Order:     langsmith.F(langsmith.RunQueryParamsOrderAsc),
+				}
+				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+					params.Select = langsmith.F(sel)
+				}
+				runs, err = queryRuns(ctx, c, params, sessionID, 1000, 0)
 			}
-			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-				params.Select = langsmith.F(sel)
-			}
-
-			runs, err := queryRuns(ctx, c, params, sessionID, 1000, 0)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -222,6 +247,7 @@ func newTraceGetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
+	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -270,28 +296,41 @@ func newTraceExportCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			params := BuildRunQueryParams(&ff, true, ff.Limit)
 			sel := buildRunSelect(includeIO, includeFeedback)
-			if sel != nil {
-				params.Select = langsmith.F(sel)
+			var rootRuns []langsmith.RunSchema
+			if ff.Version == "v2" {
+				body := buildRunQueryV2Params(&ff, true, ff.Limit)
+				body.Selects = langsmith.F(buildRunSelectV2(includeIO, includeFeedback))
+				rootRuns, err = queryRunsV2(ctx, c, body, sessionID, ff.Limit, ff.MinTokens)
+			} else {
+				params := BuildRunQueryParams(&ff, true, ff.Limit)
+				if sel != nil {
+					params.Select = langsmith.F(sel)
+				}
+				rootRuns, err = queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			}
-			rootRuns, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
 
+			childStart := resolveStartTime(ff.Since, ff.LastNMinutes)
 			exported := 0
 			for _, root := range rootRuns {
 				tid := root.TraceID
 
-				childParams := langsmith.RunQueryParams{
-					Trace: langsmith.F(tid),
-					Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
+				var allRuns []langsmith.RunSchema
+				if ff.Version == "v2" {
+					allRuns, err = queryTraceRunsV2(ctx, c, tid, sessionID, childStart, includeIO, includeFeedback)
+				} else {
+					childParams := langsmith.RunQueryParams{
+						Trace: langsmith.F(tid),
+						Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
+					}
+					if sel != nil {
+						childParams.Select = langsmith.F(sel)
+					}
+					allRuns, err = queryRuns(ctx, c, childParams, sessionID, 1000, 0)
 				}
-				if sel != nil {
-					childParams.Select = langsmith.F(sel)
-				}
-				allRuns, err := queryRuns(ctx, c, childParams, sessionID, 1000, 0)
 				if err != nil {
 					ExitErrorf("%v", err)
 				}
@@ -331,6 +370,7 @@ func newTraceExportCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, false)
+	addVersionFlag(cmd, &ff)
 	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")

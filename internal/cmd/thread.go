@@ -48,6 +48,7 @@ func newThreadListCmd() *cobra.Command {
 		limit        int
 		rawFilter    string
 		lastNMinutes int
+		version      string
 		outputFile   string
 	)
 
@@ -69,46 +70,69 @@ func newThreadListCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			// Query root runs (like the Python SDK does)
-			params := langsmith.RunQueryParams{
-				Session: langsmith.F([]string{sessionID}),
-				IsRoot:  langsmith.F(true),
-				Limit:   langsmith.F(int64(100)),
-			}
-
-			if rawFilter != "" {
-				params.Filter = langsmith.F(rawFilter)
-			}
-
 			// Default to last 24h if no time filter
 			startTime := time.Now().UTC().Add(-24 * time.Hour)
 			if lastNMinutes > 0 {
 				startTime = time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
 			}
-			params.StartTime = langsmith.F(startTime)
 
-			// Paginate all runs and group by thread_id
+			// Paginate all root runs and group by thread_id
 			threadsMap := make(map[string][]map[string]any)
-			cursor := ""
-			for {
-				if cursor != "" {
-					params.Cursor = langsmith.F(cursor)
+			if version == "v2" {
+				body := langsmith.RunQueryV2Params{
+					IsRoot:       langsmith.F(true),
+					MinStartTime: langsmith.F(startTime),
+					PageSize:     langsmith.F(int64(100)),
+					Selects:      langsmith.F(buildRunSelectV2(true, false)),
 				}
-				resp, err := c.SDK.Runs.Query(ctx, params)
+				if rawFilter != "" {
+					body.Filter = langsmith.F(rawFilter)
+				}
+				// v2 requires a bounded fetch; cap at 1000 root runs to group into threads.
+				runs, err := queryRunsV2(ctx, c, body, sessionID, 1000, 0)
 				if err != nil {
 					ExitErrorf("querying runs: %v", err)
 				}
-				for _, run := range resp.Runs {
+				for _, run := range runs {
 					tid := run.ThreadID
 					if tid != "" {
 						m := extract.ExtractRun(run, true, true, false)
 						threadsMap[tid] = append(threadsMap[tid], m)
 					}
 				}
-				if resp.Cursors.Next == "" {
-					break
+			} else {
+				// Query root runs (like the Python SDK does)
+				params := langsmith.RunQueryParams{
+					Session: langsmith.F([]string{sessionID}),
+					IsRoot:  langsmith.F(true),
+					Limit:   langsmith.F(int64(100)),
 				}
-				cursor = resp.Cursors.Next
+				if rawFilter != "" {
+					params.Filter = langsmith.F(rawFilter)
+				}
+				params.StartTime = langsmith.F(startTime)
+
+				cursor := ""
+				for {
+					if cursor != "" {
+						params.Cursor = langsmith.F(cursor)
+					}
+					resp, err := c.SDK.Runs.Query(ctx, params)
+					if err != nil {
+						ExitErrorf("querying runs: %v", err)
+					}
+					for _, run := range resp.Runs {
+						tid := run.ThreadID
+						if tid != "" {
+							m := extract.ExtractRun(run, true, true, false)
+							threadsMap[tid] = append(threadsMap[tid], m)
+						}
+					}
+					if resp.Cursors.Next == "" {
+						break
+					}
+					cursor = resp.Cursors.Next
+				}
 			}
 
 			// Build thread summaries
@@ -185,6 +209,7 @@ func newThreadListCmd() *cobra.Command {
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum number of threads to return")
 	cmd.Flags().StringVar(&rawFilter, "filter", "", "Raw LangSmith filter DSL string")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include threads active in last N minutes")
+	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -193,6 +218,7 @@ func newThreadListCmd() *cobra.Command {
 func newThreadGetCmd() *cobra.Command {
 	var (
 		project         string
+		version         string
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -234,17 +260,31 @@ func newThreadGetCmd() *cobra.Command {
 			if limit > 0 {
 				queryLimit = limit
 			}
-			params := langsmith.RunQueryParams{
-				Session: langsmith.F([]string{sessionID}),
-				IsRoot:  langsmith.F(true),
-				Filter:  langsmith.F(filterDSL),
-				Limit:   langsmith.F(int64(queryLimit)),
+			var runs []langsmith.RunSchema
+			if version == "v2" {
+				// v2 run-query has no thread_id field; filter root runs by the
+				// thread_id DSL. v2 requires a lower time bound and thread get has
+				// no --since flag, so use a wide window (v1 relies on the server default).
+				body := langsmith.RunQueryV2Params{
+					IsRoot:       langsmith.F(true),
+					Filter:       langsmith.F(filterDSL),
+					MinStartTime: langsmith.F(time.Now().UTC().AddDate(-1, 0, 0)),
+					PageSize:     langsmith.F(int64(queryLimit)),
+					Selects:      langsmith.F(buildRunSelectV2(includeIO, includeFeedback)),
+				}
+				runs, err = queryRunsV2(ctx, c, body, sessionID, queryLimit, 0)
+			} else {
+				params := langsmith.RunQueryParams{
+					Session: langsmith.F([]string{sessionID}),
+					IsRoot:  langsmith.F(true),
+					Filter:  langsmith.F(filterDSL),
+					Limit:   langsmith.F(int64(queryLimit)),
+				}
+				if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
+					params.Select = langsmith.F(sel)
+				}
+				runs, err = queryRuns(ctx, c, params, "", queryLimit, 0)
 			}
-			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-				params.Select = langsmith.F(sel)
-			}
-
-			runs, err := queryRuns(ctx, c, params, "", queryLimit, 0)
 			if err != nil {
 				ExitErrorf("querying thread runs: %v", err)
 			}
@@ -267,6 +307,7 @@ func newThreadGetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -283,6 +324,7 @@ func newThreadMessagesCmd() *cobra.Command {
 		limit      int
 		cursor     string
 		traceID    string
+		version    string
 		outputFile string
 	)
 
@@ -366,6 +408,10 @@ Examples:
 	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "Maximum number of turns to return (max 100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous response")
 	cmd.Flags().StringVar(&traceID, "trace-id", "", "Start the page at a specific trace ID")
+	// --version is accepted for interface consistency but is a no-op here: thread
+	// messages reads the dedicated /v2/threads/{id}/messages endpoint, which routes
+	// to the appropriate backend server-side (no v1/v2 runs-query to switch).
+	cmd.Flags().StringVar(&version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd

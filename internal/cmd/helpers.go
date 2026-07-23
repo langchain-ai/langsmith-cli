@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -104,6 +105,26 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 	}
 
 	return allRuns, nil
+}
+
+// queryTraceRunsV2 fetches every run in a single trace (by trace_id) via the v2
+// (SmithDB) endpoint. Results are sorted by start time ascending to mirror the
+// v1 child fetch (which passes Order: Asc); v2 has no server-side order param.
+// startTime bounds the lower edge of the query window — v2 requires a
+// min_start_time (it defaults to 1 day ago otherwise).
+func queryTraceRunsV2(ctx context.Context, c *client.Client, traceID, sessionID string, startTime time.Time, includeIO, includeFeedback bool) ([]langsmith.RunSchema, error) {
+	body := langsmith.RunQueryV2Params{
+		TraceID:      langsmith.F(traceID),
+		MinStartTime: langsmith.F(startTime),
+		PageSize:     langsmith.F(int64(1000)),
+		Selects:      langsmith.F(buildRunSelectV2(includeIO, includeFeedback)),
+	}
+	runs, err := queryRunsV2(ctx, c, body, sessionID, 1000, 0)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(runs, func(i, j int) bool { return runs[i].StartTime.Before(runs[j].StartTime) })
+	return runs, nil
 }
 
 // buildRunQueryV2Params translates FilterFlags into a v2 query body. The
