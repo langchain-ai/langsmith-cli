@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@langchain/untitled-ui-icons';
 import { GridCell } from './GridCell';
 import { Spinner } from './Spinner';
@@ -60,7 +60,32 @@ function prettyIO(value: Record<string, unknown> | null): string {
 // Name/Inputs/Outputs cells — the whole column, not just its text, opens
 // the expanded row.
 const expandableCellClass =
-  'max-w-[220px] cursor-pointer truncate px-3 py-1.5 align-middle hover:bg-surface-level-2';
+  'cursor-pointer truncate px-3 py-1.5 align-middle hover:bg-surface-level-2';
+
+const CHECKBOX_COL_WIDTH = 40;
+const COMPLETE_COL_WIDTH = 140;
+const NAME_COL_DEFAULT = 220;
+const MIN_COL_WIDTH = 80;
+const FALLBACK_CONTAINER_WIDTH = 1200;
+
+function seedWidths(ids: string[], available: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (ids.length === 0) return out;
+  const dataIds = ids.slice(1);
+  let nameW = NAME_COL_DEFAULT;
+  if (nameW > available - dataIds.length * MIN_COL_WIDTH) {
+    nameW = Math.max(MIN_COL_WIDTH, Math.floor(available / ids.length));
+  }
+  out[ids[0]] = nameW;
+  const each = Math.max(MIN_COL_WIDTH, Math.floor((available - nameW) / Math.max(1, dataIds.length)));
+  dataIds.forEach((id) => {
+    out[id] = each;
+  });
+  const last = ids[ids.length - 1];
+  const sum = ids.reduce((s, id) => s + out[id], 0);
+  out[last] = Math.max(MIN_COL_WIDTH, out[last] + (available - sum));
+  return out;
+}
 
 export function DataGrid({
   queue,
@@ -89,6 +114,109 @@ export function DataGrid({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
+
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizeRef = useRef<{
+    leftId: string;
+    rightId: string;
+    startX: number;
+    startLeft: number;
+    startRight: number;
+  } | null>(null);
+
+  const middleIds = useMemo(
+    () => ['name', 'inputs', 'outputs', ...columns.map((c) => c.feedback_key)],
+    [columns]
+  );
+
+  const available = Math.max(
+    MIN_COL_WIDTH * middleIds.length,
+    (containerWidth || FALLBACK_CONTAINER_WIDTH) - CHECKBOX_COL_WIDTH - COMPLETE_COL_WIDTH
+  );
+
+  const widthsReady =
+    middleIds.every((id) => columnWidths[id] != null) &&
+    Object.keys(columnWidths).length === middleIds.length;
+  const resolvedWidths = widthsReady ? columnWidths : seedWidths(middleIds, available);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (containerWidth <= 0) return;
+    setColumnWidths((prev) => {
+      const hasAll =
+        middleIds.every((id) => prev[id] != null) && Object.keys(prev).length === middleIds.length;
+      if (!hasAll) return seedWidths(middleIds, available);
+      const sum = middleIds.reduce((s, id) => s + prev[id], 0);
+      if (sum <= 0 || Math.abs(sum - available) < 1) return prev;
+      const scale = available / sum;
+      const scaled: Record<string, number> = {};
+      middleIds.forEach((id) => {
+        scaled[id] = Math.max(MIN_COL_WIDTH, Math.round(prev[id] * scale));
+      });
+      const last = middleIds[middleIds.length - 1];
+      const scaledSum = middleIds.reduce((s, id) => s + scaled[id], 0);
+      scaled[last] = Math.max(MIN_COL_WIDTH, scaled[last] + (available - scaledSum));
+      return scaled;
+    });
+  }, [containerWidth, middleIds, available]);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const drag = resizeRef.current;
+      if (!drag) return;
+      const total = drag.startLeft + drag.startRight;
+      let newLeft = drag.startLeft + (e.clientX - drag.startX);
+      newLeft = Math.max(MIN_COL_WIDTH, Math.min(newLeft, total - MIN_COL_WIDTH));
+      setColumnWidths((prev) => ({ ...prev, [drag.leftId]: newLeft, [drag.rightId]: total - newLeft }));
+    }
+    function onUp() {
+      if (!resizeRef.current) return;
+      resizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
+  function startResize(e: React.PointerEvent, leftId: string, rightId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = {
+      leftId,
+      rightId,
+      startX: e.clientX,
+      startLeft: resolvedWidths[leftId],
+      startRight: resolvedWidths[rightId],
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function resizeHandle(leftId: string, rightId: string | null) {
+    if (!rightId) return null;
+    return (
+      <span
+        onPointerDown={(e) => startResize(e, leftId, rightId)}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-brand"
+      />
+    );
+  }
 
   // Infinite scroll: fetch the next page once the sentinel at the bottom of
   // the scroll container comes into view.
@@ -235,10 +363,17 @@ export function DataGrid({
             </span>
           </div>
         ) : (
-          <table className="w-full border-collapse text-left">
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col style={{ width: CHECKBOX_COL_WIDTH }} />
+              {middleIds.map((id) => (
+                <col key={id} style={{ width: resolvedWidths[id] }} />
+              ))}
+              <col style={{ width: COMPLETE_COL_WIDTH }} />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-surface-level-2">
               <tr>
-                <th className="w-10 border-b border-secondary px-3 py-2">
+                <th className="border-b border-secondary px-3 py-2">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -248,30 +383,32 @@ export function DataGrid({
                     className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                   />
                 </th>
-                <th className="w-[220px] min-w-[220px] border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
                   Run Name
+                  {resizeHandle('name', 'inputs')}
                 </th>
-                <th className="w-[220px] min-w-[220px] border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
                   Inputs
+                  {resizeHandle('inputs', 'outputs')}
                 </th>
-                <th className="w-[220px] min-w-[220px] border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
                   Outputs
+                  {resizeHandle('outputs', columns[0]?.feedback_key ?? null)}
                 </th>
-                {columns.map((col) => (
+                {columns.map((col, colIndex) => (
                   <th
                     key={col.feedback_key}
-                    className="min-w-[140px] border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary"
+                    className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary"
                     title={col.description ?? undefined}
                   >
                     <span className="flex items-center gap-1">
                       {col.feedback_key}
                       {col.is_required && <span className="text-error-primary">*</span>}
                     </span>
+                    {resizeHandle(col.feedback_key, columns[colIndex + 1]?.feedback_key ?? null)}
                   </th>
                 ))}
-                <th className="w-[140px] border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
-                  {/* Mark Completed column */}
-                </th>
+                <th className="border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary" />
               </tr>
             </thead>
             <tbody>
