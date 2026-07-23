@@ -441,6 +441,7 @@ func TestAppsInitCmd_RejectsExplicitTemplateBlank(t *testing.T) {
 func TestAppsInitCmd_DefaultsToBlankWhenTemplateOmitted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "my-app"})
 	if err := cmd.Execute(); err != nil {
@@ -468,6 +469,7 @@ func TestAppsInitCmd_DefaultsToBlankWhenTemplateOmitted(t *testing.T) {
 func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "grid-app", "--template", "annotation-queue-grid"})
 	if err := cmd.Execute(); err != nil {
@@ -490,6 +492,7 @@ func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "dash", "--template", "coding-agent-dashboard"})
 	if err := cmd.Execute(); err != nil {
@@ -503,6 +506,7 @@ func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 func TestAppsInitCmd_AcceptsExperimentComparisonTemplate(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "cmp", "--template", "experiment-comparison"})
 	if err := cmd.Execute(); err != nil {

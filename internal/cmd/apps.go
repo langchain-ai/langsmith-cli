@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +83,22 @@ directory first.`,
 	cmd.AddCommand(newAppsListCmd())
 	cmd.AddCommand(newAppsDeleteCmd())
 	return cmd
+}
+
+func customAppWebURL(apiURL, workspaceID, appID string) string {
+	if workspaceID == "" || appID == "" {
+		return ""
+	}
+	u, err := url.Parse(apiURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := strings.TrimPrefix(u.Host, "api.")
+	host = strings.Replace(host, ".api.", ".", 1)
+	if !strings.HasSuffix(host, "smith.langchain.com") {
+		return ""
+	}
+	return u.Scheme + "://" + host + "/o/" + workspaceID + "/custom-apps/" + appID
 }
 
 // readAppLink returns (nil, nil) if not linked yet.

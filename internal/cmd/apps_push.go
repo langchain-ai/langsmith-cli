@@ -132,6 +132,9 @@ same app too.
 					payload["description"] = description
 				}
 				if err := c.RawPost(ctx, "/v1/platform/custom-apps", payload, &app); err != nil {
+					if client.IsForbidden(err) {
+						return fmt.Errorf("this workspace doesn't support custom apps — ask a workspace admin to enable them, then try again")
+					}
 					if client.IsConflict(err) {
 						return fmt.Errorf("a custom app named %q already exists in this workspace. try `langsmith apps push --name \"New Name\"` instead", appName)
 					}
@@ -155,13 +158,22 @@ same app too.
 			if updated {
 				status = "updated"
 			}
-			output.OutputJSON(map[string]any{
+			result := map[string]any{
 				"status":     status,
 				"app_id":     app.ID,
 				"name":       app.Name,
 				"entrypoint": app.Entrypoint,
 				"files":      paths,
-			}, "")
+			}
+			output.OutputJSON(result, "")
+
+			workspaceID := app.TenantID
+			if workspaceID == "" {
+				workspaceID = GetWorkspaceID()
+			}
+			if webURL := customAppWebURL(c.APIURL(), workspaceID, app.ID); webURL != "" {
+				fmt.Fprintf(os.Stderr, "View at %s\n", webURL)
+			}
 			return nil
 		},
 	}

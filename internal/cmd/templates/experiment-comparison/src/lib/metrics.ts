@@ -87,10 +87,19 @@ export function histogram(values: number[], binCount = 9): HistogramBin[] {
   return bins;
 }
 
-// Series/small-multiples stay CVD-safe (and legible) only for the first four slots.
-export const SERIES_CAP = 4;
+// max series with a distinct color slot (1–4 CVD-safe).
+export const SERIES_CAP = 8;
 
-const SERIES_VARS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)'];
+const SERIES_VARS = [
+  'var(--series-1)',
+  'var(--series-2)',
+  'var(--series-3)',
+  'var(--series-4)',
+  'var(--series-5)',
+  'var(--series-6)',
+  'var(--series-7)',
+  'var(--series-8)',
+];
 
 // A, B, C… for the ordered experiments.
 export function letterFor(index: number): string {

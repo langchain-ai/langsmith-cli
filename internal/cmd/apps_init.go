@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +42,14 @@ var agentsMDFS embed.FS
 var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
+
+// One package.json rendered for every template; deps that vary per template
+// (currently just the icon set) are toggled by customAppStarterVars.
+//
+//go:embed templates/package.json.tmpl
+var sharedPackageJSONTmpl string
+
+const iconsImportSpecifier = "@langchain/untitled-ui-icons"
 
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
@@ -93,6 +102,7 @@ func appTypeNames() []string {
 type customAppStarterVars struct {
 	Name        string
 	Description string
+	NeedsIcons  bool
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -115,7 +125,7 @@ func newAppsInitCmd() *cobra.Command {
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Only writes local files. Next: run "npm install", then "langsmith apps dev" to preview.
+Installs dependencies as the last step, so you can run "langsmith apps dev" next.
 Run "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
@@ -138,7 +148,11 @@ Run "langsmith apps push" to upload.`,
 			}
 			sort.Strings(written)
 
-			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\nNext: npm install, then langsmith apps dev.\n", templateName, dir)
+			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\n", templateName, dir)
+			if err := installAppDeps(dir); err != nil {
+				return err
+			}
+			fmt.Fprintln(os.Stderr, "Next: langsmith apps dev.")
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
@@ -156,6 +170,23 @@ Run "langsmith apps push" to upload.`,
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
+}
+
+// installAppDeps runs npm install
+func installAppDeps(dir string) error {
+	if _, err := exec.LookPath("npm"); err != nil {
+		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm install" before "langsmith apps dev"`)
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "Installing dependencies: npm install")
+	c := exec.Command("npm", "install")
+	c.Dir = dir
+	c.Stdout = os.Stderr
+	c.Stderr = os.Stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("\"npm install\" failed: %w", err)
+	}
+	return nil
 }
 
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
@@ -186,8 +217,14 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		vars.Description = "TODO: one-sentence description of what this app does."
 	}
 
+	src, err := concatenatedTemplateSource(at)
+	if err != nil {
+		return nil, err
+	}
+	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
+
 	var written []string
-	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -236,6 +273,15 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	if err != nil {
 		return nil, err
 	}
+
+	pkgJSON, err := renderSharedPackageJSON(vars)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), pkgJSON, 0o644); err != nil {
+		return nil, fmt.Errorf("writing package.json: %w", err)
+	}
+	written = append(written, "package.json")
 
 	sharedWritten, err := writeUsedSharedFiles(dir, at)
 	if err != nil {
@@ -366,8 +412,19 @@ func sharedFileImportSpecifiers(sharedRelPath string) []string {
 }
 
 var templatedStarterFiles = map[string]bool{
-	"README.md":    true,
-	"package.json": true,
+	"README.md": true,
+}
+
+func renderSharedPackageJSON(vars customAppStarterVars) ([]byte, error) {
+	tmpl, err := template.New("package.json").Parse(sharedPackageJSONTmpl)
+	if err != nil {
+		return nil, fmt.Errorf("parsing shared package.json template: %w", err)
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return nil, fmt.Errorf("rendering package.json: %w", err)
+	}
+	return []byte(buf.String()), nil
 }
 
 // assembleAgentsMD injects the template-specific fragment into the base AGENTS.md.
