@@ -350,6 +350,8 @@ func makeLsDevLogHandler(token string) http.HandlerFunc {
 	}
 }
 
+var proxyPathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -364,16 +366,22 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 		http.Error(w, fmt.Sprintf("method %q is not permitted", method), http.StatusBadRequest)
 		return
 	}
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "://") {
+	pathPart, queryPart, hasQuery := strings.Cut(path, "?")
+	if !proxyPathPattern.MatchString(pathPart) || strings.ContainsAny(pathPart, `%\`) || strings.Contains(pathPart, "..") {
 		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
 		return
 	}
 	if len(req.Args.Params) > 0 {
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
+		if hasQuery {
+			queryPart += "&"
 		}
-		path += sep + encodeProxyParams(req.Args.Params)
+		queryPart += encodeProxyParams(req.Args.Params)
+		hasQuery = true
+	}
+	if hasQuery {
+		path = pathPart + "?" + queryPart
+	} else {
+		path = pathPart
 	}
 
 	var bodyReader io.Reader
