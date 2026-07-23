@@ -27,6 +27,32 @@ codes and error messages) and uncaught errors stream to that terminal — read i
 to debug without opening browser devtools. Add `--verbose` to also see every
 successful call and all `console.*` output, or `--quiet` to silence it.
 
+## Rate limits & pagination
+
+Every call counts against a rate limit; going over returns **HTTP 429**. Retry
+with exponential backoff + jitter, and don't fan out parallel queries to go
+faster — that just trips the limit sooner. Query endpoints
+(`POST /api/v1/runs/query`, `POST /v2/threads/query`) carry the tightest,
+time-window-based limits, so query deliberately:
+
+- **Set `start_time`.** Omitting it counts as a >7-day "large window" and drops
+  you from 10 req/10s to 3 req/10s. Keep windows ≤ 7 days where you can.
+- **Split long windows.** The query time range (end − start) is capped at **401
+  days**; a longer span is rejected with a 400. Walk it in chunks (ideally ≤ 7
+  days) instead of one huge request.
+- **Paginate.** Pass `limit`, then feed the returned `cursor` back for the next
+  page (`runs/query` returns `{ runs, cursor }`). Don't pull everything at once.
+- **Use `select`** to fetch only the fields you render — smaller, faster responses.
+- **Avoid full-text `search(...)` filters and selecting `child_run_ids`** — both
+  drop you into a stricter tier (as low as 1 req/10s). Prefer `eq()` / `has()`.
+- **Prefer `runs/stats` over paging** for any headline number (counts, rates,
+  sums) — one call instead of walking every page.
+
+Other caps worth knowing: ~2,000 req/min per key overall (writes to `/runs` and
+`/feedback` allow 5,000/min), and 25,000 runs per trace. Full reference:
+https://docs.langchain.com/langsmith/usage-and-billing and
+https://docs.langchain.com/langsmith/export-traces#rate-limits
+
 ## Theme
 
 `metadata.mode` is `"dark"` | `"light"`. The sandbox sets `html.dark` from it
