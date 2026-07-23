@@ -143,13 +143,7 @@ export function DataGrid({
 
   const colSpan = 1 + 3 + columns.length + 1;
 
-  // Keep the active-row highlight in lockstep with whatever cell actually
-  // holds focus — mouse click into a cell, Tab, or arrow-key navigation all
-  // land here because React's onFocus bubbles (focusin semantics). This is
-  // the single source of truth for activeRow; without it the highlight goes
-  // stale (clicking a cell can't rely on the row onClick — the cell's <td>
-  // stops propagation — and Tab uses native focus the arrow handler never
-  // sees), then "jumps" on the next arrow press.
+  // Sync the active-row highlight to whichever cell holds focus.
   function handleGridFocus(e: React.FocusEvent<HTMLDivElement>) {
     const rowAttr = (e.target as HTMLElement).getAttribute('data-row-index');
     if (rowAttr == null) return;
@@ -163,7 +157,6 @@ export function DataGrid({
   // (not just at text boundaries): values here are short scores/categories/
   // comments, so trading away in-text left/right cursor movement for fast
   // cell-to-cell movement is the right default for a review workflow.
-  // Moving focus fires handleGridFocus above, which is what updates activeRow.
   function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
     const target = e.target as HTMLElement;
@@ -189,7 +182,7 @@ export function DataGrid({
     if (!el) return;
     el.focus();
     if (el instanceof HTMLInputElement) el.select();
-    // activeRow is updated by handleGridFocus when el.focus() fires above.
+    // focus fires handleGridFocus, which sets activeRow.
   }
 
   return (
@@ -200,8 +193,7 @@ export function DataGrid({
           <span className="text-base font-medium text-primary">{queue.name}</span>
           <span className="text-sm text-tertiary">
             {Math.max(total, rows.length)} to review ·{' '}
-            {/* ←/→ only move between rubric columns, so only advertise them
-                when there's more than one to move between. */}
+            {/* ←/→ only matter with multiple rubric columns. */}
             {columns.length > 1 ? '↑/↓/←/→' : '↑/↓'} to move between cells
           </span>
         </div>

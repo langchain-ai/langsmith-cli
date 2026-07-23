@@ -43,6 +43,14 @@ var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
 
+// One package.json rendered for every template; deps that vary per template
+// (currently just the icon set) are toggled by customAppStarterVars.
+//
+//go:embed templates/package.json.tmpl
+var sharedPackageJSONTmpl string
+
+const iconsImportSpecifier = "@langchain/untitled-ui-icons"
+
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
 	templateFS   embed.FS
@@ -94,6 +102,7 @@ func appTypeNames() []string {
 type customAppStarterVars struct {
 	Name        string
 	Description string
+	NeedsIcons  bool
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -208,8 +217,14 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		vars.Description = "TODO: one-sentence description of what this app does."
 	}
 
+	src, err := concatenatedTemplateSource(at)
+	if err != nil {
+		return nil, err
+	}
+	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
+
 	var written []string
-	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -258,6 +273,15 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	if err != nil {
 		return nil, err
 	}
+
+	pkgJSON, err := renderSharedPackageJSON(vars)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), pkgJSON, 0o644); err != nil {
+		return nil, fmt.Errorf("writing package.json: %w", err)
+	}
+	written = append(written, "package.json")
 
 	sharedWritten, err := writeUsedSharedFiles(dir, at)
 	if err != nil {
@@ -388,8 +412,19 @@ func sharedFileImportSpecifiers(sharedRelPath string) []string {
 }
 
 var templatedStarterFiles = map[string]bool{
-	"README.md":    true,
-	"package.json": true,
+	"README.md": true,
+}
+
+func renderSharedPackageJSON(vars customAppStarterVars) ([]byte, error) {
+	tmpl, err := template.New("package.json").Parse(sharedPackageJSONTmpl)
+	if err != nil {
+		return nil, fmt.Errorf("parsing shared package.json template: %w", err)
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return nil, fmt.Errorf("rendering package.json: %w", err)
+	}
+	return []byte(buf.String()), nil
 }
 
 // assembleAgentsMD injects the template-specific fragment into the base AGENTS.md.

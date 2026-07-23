@@ -87,10 +87,7 @@ export function histogram(values: number[], binCount = 9): HistogramBin[] {
   return bins;
 }
 
-// How many comparison series get a distinct color slot before folding to a
-// neutral tone. Slots 1–4 are the validated CVD-safe core; 5–8 extend the
-// palette with distinct hues, with the A/B/C… letters carrying the load past
-// the core four (see --series-* in index.css).
+// max series with a distinct color slot (1–4 CVD-safe).
 export const SERIES_CAP = 8;
 
 const SERIES_VARS = [

@@ -22,8 +22,7 @@ interface Point {
 
 const W = 520;
 const H = 360;
-// left margin is wide enough for a rotated axis title plus formatted tick
-// labels (e.g. "38844 ms") without the two colliding.
+// wide left margin fits the axis title plus tick labels.
 const M = { top: 16, right: 16, bottom: 44, left: 84 };
 const PW = W - M.left - M.right;
 const PH = H - M.top - M.bottom;
@@ -67,14 +66,11 @@ export function ScatterPlot({ examples, experiments, metric }: Props) {
     ? 'points below the line beat the baseline'
     : 'points above the line beat the baseline';
 
-  // A shown series contributes no dots when it has no example paired with the
-  // baseline for this metric. Call that out in the legend so a missing series
-  // reads as "no data" rather than a bug.
+  // series letters that actually have plotted points.
   const plottedLetters = new Set(points.map((p) => p.letter));
 
   return (
-    // Cap the width so the fixed-aspect viewBox doesn't scale up to a giant,
-    // overlapping chart on wide cards; center it within the section.
+    // cap width so the chart doesn't scale up huge.
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Baseline vs comparison ${metric.label}`}>
         {ticks.map((t) => (

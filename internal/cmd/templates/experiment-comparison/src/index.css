@@ -116,10 +116,7 @@
     --green-900: #084d31;
     --green-950: #053321;
 
-    /* series (categorical chart slots, light). 1–4 are the validated
-       CVD-safe core; 5–8 extend the palette with distinct hues so larger
-       comparison sets stay legible (the A/B/C… letters remain the reliable
-       channel past the core four). */
+    /* series (categorical chart slots, light; 1–4 CVD-safe, 5–8 extended) */
     --series-1: #2a78d6;
     --series-2: #008300;
     --series-3: #e87ba4;
@@ -387,8 +384,7 @@
     --green-900: #ecfdf3;
     --green-950: #f5fef9;
 
-    /* series stepped for the dark surface (see light block for the 1–4 core
-       vs 5–8 extension rationale). */
+    /* series stepped for the dark surface (1–4 core, 5–8 extended) */
     --series-1: #3987e5;
     --series-2: #008300;
     --series-3: #d55181;
