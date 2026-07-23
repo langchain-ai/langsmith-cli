@@ -1,0 +1,51 @@
+internal/cmd/trace_stats.go
+  s_043184e8d5977f::t_45a6e4361a4636 42
+  s_043184e8d5977f::t_23c75492ac531e 111-114
+internal/cmd/trace_test.go
+  s_043184e8d5977f::t_672e2596643bf1 5-6
+  s_043184e8d5977f::t_155773e3a358c1 195-221
+internal/cmd/trace.go
+  s_043184e8d5977f::t_d64367701ede6c 185
+  s_043184e8d5977f::t_23aba91c6f49ae 76-86
+  s_043184e8d5977f::t_107eb70f4e08d1 103-104,108-116
+  s_043184e8d5977f::t_e85fc0ef96d75d 165
+  s_043184e8d5977f::t_735edacceb32ef 300-310,316,321-332
+  s_043184e8d5977f::t_6534b2a64110c1 373
+  s_043184e8d5977f::t_abfc86a2005bd8 136-142
+  s_043184e8d5977f::t_1977eb65573fcf 213-225
+  s_043184e8d5977f::t_2bc5e9ccb06353 250
+internal/cmd/thread.go
+  s_043184e8d5977f::t_2f73cba49f31f3 263-286
+  s_043184e8d5977f::t_9aa86a17a9cc84 51
+  s_043184e8d5977f::t_950d43b568ee4c 212
+  s_043184e8d5977f::t_9cd748f1c000ef 411-414
+  s_043184e8d5977f::t_449f36c4e04456 310,327
+  s_043184e8d5977f::t_09f9be14dc8bbe 221
+  s_043184e8d5977f::t_62523f82751963 79,81-89,91-92,96,103-134
+internal/cmd/helpers.go
+  s_043184e8d5977f::t_caab410f5a34a1 7
+  s_043184e8d5977f::t_0001797f5426b6 110-129
+internal/cmd/message.go
+  s_043184e8d5977f::t_77fce97663bb2e 328,333-362
+  s_043184e8d5977f::t_7dcd81ae8bbfd9 278
+  s_043184e8d5977f::t_e65952659d806a 296,307
+  s_043184e8d5977f::t_38b1e993d4a654 195
+  s_043184e8d5977f::t_100512fc006dc3 255
+  s_043184e8d5977f::t_8d480ccb452b7c 363-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3fed4fbfd8e71a58c085481c1470822a3585db0c",
+  "prompts": {},
+  "sessions": {
+    "s_043184e8d5977f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e088f5a-9091-4ff1-ab33-38c641e1817f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
