@@ -362,6 +362,23 @@ func serveLsDevCall(t *testing.T, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func TestProxyErrorSummary(t *testing.T) {
+	cases := []struct {
+		name, body, want string
+	}{
+		{"json message", `{"message":"Rate limit exceeded."}`, "Rate limit exceeded."},
+		{"json detail", `{"detail":"nope"}`, "nope"},
+		{"html page dropped", `<!doctype html><title>429</title>429 Too Many Requests`, ""},
+		{"empty dropped", "  ", ""},
+		{"plain text kept", "boom", "boom"},
+	}
+	for _, tc := range cases {
+		if got := proxyErrorSummary([]byte(tc.body)); got != tc.want {
+			t.Errorf("%s: proxyErrorSummary(%q) = %q, want %q", tc.name, tc.body, got, tc.want)
+		}
+	}
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {

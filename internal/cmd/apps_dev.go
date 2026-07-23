@@ -27,10 +27,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// appsDevLogLevel controls how much of the running app the dev server streams
+// to the terminal. Set once from flags before the server starts.
+type appsDevLogLevel int
+
+const (
+	logErrors  appsDevLogLevel = iota // failed API calls + app errors only (default)
+	logQuiet                          // nothing from the app, build output only
+	logVerbose                        // all API calls + all console output
+)
+
+var appsDevLogMode = logErrors
+
 func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
 		noOpen     bool
+		quiet      bool
+		verbose    bool
 	)
 
 	cmd := &cobra.Command{
@@ -42,8 +56,25 @@ LangSmith web app involved.
 
 API calls the app makes are proxied through your local credentials.
 
-Rebuilds automatically on save when package.json has a "watch" script.`,
+Rebuilds automatically on save when package.json has a "watch" script.
+
+The app's failed API calls and errors stream to this terminal so problems
+show up without opening browser devtools. Use --verbose to also see every
+successful call and all console output, or --quiet to silence app output
+entirely (build output stays).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if quiet && verbose {
+				return fmt.Errorf("--quiet and --verbose cannot be used together")
+			}
+			switch {
+			case quiet:
+				appsDevLogMode = logQuiet
+			case verbose:
+				appsDevLogMode = logVerbose
+			default:
+				appsDevLogMode = logErrors
+			}
+
 			dir, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
@@ -63,6 +94,8 @@ Rebuilds automatically on save when package.json has a "watch" script.`,
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
+	cmd.Flags().BoolVar(&quiet, "quiet", false, "Silence the app's console output and API call logging (build output still shows)")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "Also log successful API calls and all console output, not just errors")
 	return cmd
 }
 
@@ -94,6 +127,7 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 		"url":    previewURL,
 	}, "")
 	fmt.Fprintf(os.Stderr, "Serving %s at %s (sandboxed) — press Ctrl+C to stop\n", dir, previewURL)
+	fmt.Fprintln(os.Stderr, appsDevLogModeBanner())
 
 	select {
 	case <-ctx.Done():
@@ -220,6 +254,8 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 
 	mux.HandleFunc("/__ls_dev/call", makeLsDevCallHandler(c, token))
 
+	mux.HandleFunc("/__ls_dev/log", makeLsDevLogHandler(token))
+
 	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("starting local server: %w", err)
@@ -279,6 +315,41 @@ func makeLsDevCallHandler(c *client.Client, token string) http.HandlerFunc {
 	}
 }
 
+// makeLsDevLogHandler receives console output and uncaught errors forwarded
+// from the sandboxed app and prints them to stderr.
+func makeLsDevLogHandler(token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-LS-Dev-Token")), []byte(token)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxLsDevCallBody)
+		var entry struct {
+			Level   string `json:"level"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		level := entry.Level
+		if level == "" {
+			level = "log"
+		}
+		// quiet drops everything; only verbose keeps non-error console output.
+		if appsDevLogMode == logQuiet || (appsDevLogMode != logVerbose && level != "error") {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[app %s] %s\n", level, entry.Message)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -317,14 +388,75 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 
 	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
 	if err != nil {
+		if appsDevLogMode != logQuiet {
+			fmt.Fprintf(os.Stderr, "[app api] %s %s → error: %s\n", method, path, err)
+		}
 		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	logProxyCall(method, path, status, respBody)
 	if ct := respHeaders.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.WriteHeader(status)
 	_, _ = w.Write(respBody)
+}
+
+// logProxyCall prints proxied API calls to stderr per the current log mode,
+// appending an error summary for non-2xx responses so failures surface here.
+func logProxyCall(method, path string, status int, body []byte) {
+	if appsDevLogMode == logQuiet {
+		return
+	}
+	if appsDevLogMode != logVerbose && status < 400 {
+		return
+	}
+	line := fmt.Sprintf("[app api] %s %s → %d", method, path, status)
+	if status >= 400 {
+		msg := proxyErrorSummary(body)
+		if msg == "" {
+			msg = http.StatusText(status)
+		}
+		if msg != "" {
+			line += " " + msg
+		}
+	}
+	fmt.Fprintln(os.Stderr, line)
+}
+
+func proxyErrorSummary(body []byte) string {
+	var parsed struct {
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+	}
+	if json.Unmarshal(body, &parsed) == nil {
+		if parsed.Message != "" {
+			return parsed.Message
+		}
+		if parsed.Detail != "" {
+			return parsed.Detail
+		}
+	}
+	s := strings.TrimSpace(string(body))
+	// HTML error pages (e.g. a proxy's 429) are noise — the status text says enough.
+	if s == "" || strings.HasPrefix(s, "<") {
+		return ""
+	}
+	if len(s) > 300 {
+		s = s[:300] + "…"
+	}
+	return s
+}
+
+func appsDevLogModeBanner() string {
+	switch appsDevLogMode {
+	case logQuiet:
+		return "App logging: off (--quiet) — build output only"
+	case logVerbose:
+		return "App logging: streaming all console output + API calls (--verbose)"
+	default:
+		return "App logging: errors only (--verbose for all calls + console, --quiet to silence)"
+	}
 }
 
 func encodeProxyParams(params map[string]any) string {
@@ -542,6 +674,14 @@ const devHostHTMLTemplate = `<!doctype html>
       console.log('[langsmith apps dev] setData (not persisted locally):', msg.patch);
     }
 
+    if (msg.type === 'LS_LOG') {
+      fetch('/__ls_dev/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': '__LS_DEV_TOKEN__' },
+        body: JSON.stringify({ level: msg.level, message: msg.message }),
+      }).catch(function() {});
+    }
+
     if (msg.type === 'LS_API') {
       fetch('/__ls_dev/call', {
         method: 'POST',
@@ -618,6 +758,31 @@ pre, code {
   var themeReady = false;
   var currentData = null;
   var currentMetadata = null;
+
+  // Forward console output and uncaught errors to the host so they stream
+  // into the terminal running "langsmith apps dev".
+  function reportLog(level, message) {
+    try { window.parent.postMessage({ type: 'LS_LOG', level: level, message: message }, '*'); } catch (e) {}
+  }
+  function formatArg(a) {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return String(a.stack || a.message || a);
+    try { return JSON.stringify(a); } catch (e) { return String(a); }
+  }
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function(level) {
+    var orig = console[level];
+    console[level] = function() {
+      reportLog(level, Array.prototype.map.call(arguments, formatArg).join(' '));
+      if (orig) return orig.apply(console, arguments);
+    };
+  });
+  window.addEventListener('error', function(e) {
+    reportLog('error', String((e.error && e.error.stack) || e.message || 'uncaught error'));
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var r = e.reason;
+    reportLog('error', 'Unhandled rejection: ' + String((r && r.stack) || (r && r.message) || r));
+  });
 
   var FILES = __FILES_JSON__;
 
