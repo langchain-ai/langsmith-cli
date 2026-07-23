@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
-	"github.com/langchain-ai/langsmith-go"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -39,11 +40,17 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string) (*langs
 }
 
 type sandboxCreateInput struct {
+	Snapshot    string
 	SnapshotID  string
 	VCPUs       int
 	Memory      string
 	RootFS      string
 	ProxyConfig string
+
+	Console         bool
+	Shell           string
+	ForwardSSHAgent bool
+	Env             []string
 }
 
 type sandboxServiceURLInput struct {
@@ -83,6 +90,14 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 	}
 	if in.SnapshotID != "" {
 		params.SnapshotID = langsmith.F(in.SnapshotID)
+	}
+	if in.Snapshot != "" {
+		// The server takes snapshot_id (UUID) and snapshot_name (name or name:tag) as distinct fields.
+		if _, err := uuid.Parse(in.Snapshot); err == nil {
+			params.SnapshotID = langsmith.F(in.Snapshot)
+		} else {
+			params.SnapshotName = langsmith.F(in.Snapshot)
+		}
 	}
 	if in.RootFS != "" {
 		rootfsBytes, err := parseByteSize(in.RootFS)
@@ -134,20 +149,29 @@ responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
 Examples:
   langsmith sandbox create
   langsmith sandbox create my-vm
+  langsmith sandbox create my-vm --snapshot <id-or-name>
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
-  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
+  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json
+  langsmith sandbox create my-vm --snapshot-id <id> --console`,
 	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{}
+		cmd.Flags().StringVar(&in.Snapshot, "snapshot", in.Snapshot, "Snapshot ID or name to boot from")
 		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from")
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
+		cmd.Flags().BoolVar(&in.Console, "console", in.Console, "Open an interactive console once the sandbox is ready")
+		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use for --console (default: sandbox default, usually /bin/bash)")
+		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the --console session")
+		cmd.Flags().StringArrayVar(&in.Env, "env", nil, "Additional environment variable for the --console session (KEY or KEY=VALUE, repeatable)")
+		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
 		return in
 	},
+	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxCreateInput, args []string) (any, error) {
 		name := ""
 		if len(args) > 0 {
@@ -159,6 +183,10 @@ Examples:
 			return nil, err
 		}
 
+		if in.Snapshot != "" && in.SnapshotID != "" {
+			return nil, fmt.Errorf("use either --snapshot or --snapshot-id, not both")
+		}
+
 		params, err := sandboxCreateParams(name, in)
 		if err != nil {
 			return nil, err
@@ -168,9 +196,16 @@ Examples:
 			return nil, fmt.Errorf("creating sandbox: %w", err)
 		}
 
-		return resp, nil
+		if !in.Console {
+			return nil, structured.Render(cmd, resp, sandboxBoxDetailRender)
+		}
+
+		if _, err := waitForBoxReady(ctx, c, resp.Name); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "Sandbox %s ready, opening console...\n", resp.Name)
+		return nil, runConsole(resp.Name, in.Shell, in.ForwardSSHAgent, in.Env)
 	},
-	Render: sandboxBoxDetailRender,
 }
 
 var sandboxServiceURLRender = structured.PropertyList{
