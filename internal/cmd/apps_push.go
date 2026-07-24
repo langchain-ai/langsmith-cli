@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -64,6 +65,11 @@ same app too.
 				return fmt.Errorf("entrypoint %q not found among uploaded files; pass --entrypoint or check your build produced it", entrypoint)
 			}
 
+			sourceArchive, err := buildSourceArchive(dir)
+			if err != nil {
+				return err
+			}
+
 			link, err := readAppLink(dir)
 			if err != nil {
 				return err
@@ -77,20 +83,19 @@ same app too.
 			var app customApp
 			updated := false
 			if !notYetCreated {
-				payload := map[string]any{
-					"files":      files,
-					"entrypoint": entrypoint,
-				}
-				if name != "" {
-					payload["name"] = name
-				}
-				if description != "" {
-					payload["description"] = description
+				payload := client.CustomAppRequest{
+					Files:         files,
+					Entrypoint:    &entrypoint,
+					SourceArchive: optionalString(sourceArchive),
+					Name:          optionalString(name),
+					Description:   optionalString(description),
 				}
 				err := c.RawPatch(ctx, "/v1/platform/custom-apps/"+link.AppID, payload, &app)
 				switch {
 				case err == nil:
 					updated = true
+				case isSourceArchiveRejection(err):
+					return sourceArchiveRejectionError(err)
 				case client.IsConflict(err):
 					conflictName := name
 					if conflictName == "" {
@@ -123,15 +128,17 @@ same app too.
 				if appName == "" {
 					appName = filepath.Base(filepath.Clean(dir))
 				}
-				payload := map[string]any{
-					"name":       appName,
-					"files":      files,
-					"entrypoint": entrypoint,
-				}
-				if description != "" {
-					payload["description"] = description
+				payload := client.CustomAppRequest{
+					Name:          &appName,
+					Files:         files,
+					Entrypoint:    &entrypoint,
+					SourceArchive: optionalString(sourceArchive),
+					Description:   optionalString(description),
 				}
 				if err := c.RawPost(ctx, "/v1/platform/custom-apps", payload, &app); err != nil {
+					if isSourceArchiveRejection(err) {
+						return sourceArchiveRejectionError(err)
+					}
 					if client.IsForbidden(err) {
 						return fmt.Errorf("this workspace doesn't support custom apps — ask a workspace admin to enable them, then try again")
 					}
@@ -183,6 +190,25 @@ same app too.
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip building before uploading, even if package.json has a \"build\" script")
 	return cmd
+}
+
+func optionalString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func isSourceArchiveRejection(err error) bool {
+	if !client.IsBadRequest(err) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "source archive") || strings.Contains(msg, "source_archive")
+}
+
+func sourceArchiveRejectionError(err error) error {
+	return fmt.Errorf("the server rejected this app's source archive: %w\nRe-run with a smaller source directory, or report this if it persists", err)
 }
 
 func runAppsBuildCmd(dir string) error {

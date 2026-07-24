@@ -6,6 +6,27 @@ exports `render(data, root, metadata)`; keep that shape, the sandbox depends
 on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
 need to push a mutation out for the host to persist.
 
+## context.md — the handoff file
+
+Keep a `context.md` at the app root and treat it as this app's memory. On a
+fresh `langsmith apps pull` it's the first thing to read; before every
+`langsmith apps push` it's the last thing to update. It rides along in the
+source archive automatically — it's just a root file — so what you write there
+is where the next developer's agent starts instead of from scratch.
+
+Update it as you work, not as a write-up at the end:
+
+- What the app does, and who it's for.
+- The key files and how they fit together — where data is fetched, where it's rendered.
+- Decisions and why, especially the ones the code doesn't explain on its own.
+- Dead ends already ruled out, so nobody burns a day re-trying them.
+- Anything non-obvious about the data or API you hit: which project or dataset,
+  filters that matter, fields that are usually empty, endpoints that were slower
+  or shaped differently than the docs suggest.
+
+It's shared, not secret — no API keys, tokens, or customer data. Nothing
+enforces this; it only pays off if you keep it current.
+
 ## Calling the LangSmith API
 
 ```ts
