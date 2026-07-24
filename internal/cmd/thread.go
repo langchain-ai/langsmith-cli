@@ -76,9 +76,8 @@ func newThreadListCmd() *cobra.Command {
 				startTime = time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
 			}
 
-			// Query root runs (like the Python SDK does). Limit here is the
-			// per-request page size; the query paginates over all matching root
-			// runs so they can be grouped by thread_id below.
+			// Limit is the per-request page size; paginate all root runs, then
+			// group by thread_id below.
 			params := langsmith.RunQueryParams{
 				IsRoot:    langsmith.F(true),
 				Limit:     langsmith.F(int64(100)),

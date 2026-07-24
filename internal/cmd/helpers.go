@@ -106,10 +106,8 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 	return allRuns, nil
 }
 
-// requireV2Feature exits with a clear error when the connected deployment does
-// not support the v2 (SmithDB) API that the named feature depends on. Used to
-// gate v2-only commands (e.g. the message endpoints) on older self-hosted
-// deployments.
+// requireV2Feature exits with a clear error when the deployment lacks the v2
+// (SmithDB) API a v2-only feature needs (older self-hosted).
 func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	useV2, err := c.UseV2Runs(ctx)
 	if err != nil {
@@ -120,11 +118,9 @@ func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	}
 }
 
-// queryRunsAuto queries runs using the v2 (SmithDB) backend when the deployment
-// supports it (see client.UseV2Runs), otherwise the v1 backend. params is the
-// canonical v1 query; v2Selects is the select-field set requested on the v2 path
-// — always pass a base set (see buildRunSelectV2), since omitting selects makes
-// v2 return only run IDs.
+// queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment
+// supports it, else v1. params is the canonical v1 query; always pass a base
+// v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
 func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunQueryV2ParamsSelect, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2Runs(ctx)
 	if err != nil {
@@ -136,10 +132,8 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
 }
 
-// toV2Params translates a canonical v1 RunQueryParams into the equivalent v2
-// RunQueryV2Params. The v1 Order (asc/desc) has no v2 equivalent — v2 returns
-// runs newest-first — and is dropped. Session is applied separately by
-// queryRunsV2 (as ProjectIDs) and is not translated here.
+// toV2Params translates canonical v1 RunQueryParams to v2. Order is dropped (no
+// v2 equivalent; v2 is newest-first); Session is applied by queryRunsV2.
 func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunQueryV2ParamsSelect) langsmith.RunQueryV2Params {
 	var v2 langsmith.RunQueryV2Params
 	if len(selects) > 0 {

@@ -100,9 +100,8 @@ func newTraceListCmd() *cobra.Command {
 							Trace: langsmith.F(run.TraceID),
 							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
 						}
-						// Bound v2's min_start_time to the trace's own start
-						// (the root run's) so older traces aren't clipped by the
-						// v2 default 1-day window; children start at or after it.
+						// Bound v2's min_start_time to the root's start so older
+						// traces aren't clipped by v2's default 1-day window.
 						if !run.StartTime.IsZero() {
 							childParams.StartTime = langsmith.F(run.StartTime)
 						}

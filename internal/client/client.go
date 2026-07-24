@@ -116,14 +116,11 @@ func (c *Client) ResolveSessionID(ctx context.Context, projectName string) (stri
 	return id, nil
 }
 
-// minSelfHostedV2Minor is the minor version (major 0) at which self-hosted
-// deployments gain the v2 (SmithDB) run-query API. Self-hosted >= 0.16 uses v2;
-// older self-hosted must use v1.
+// Self-hosted gains the v2 (SmithDB) run-query API at 0.16.
 const minSelfHostedV2Minor = 16
 
-// UseV2Runs reports whether run queries should target the v2 (SmithDB) API for
-// the connected deployment. The decision is resolved once via the SDK GET /info
-// method and cached for the client's lifetime.
+// UseV2Runs reports whether run queries should use the v2 (SmithDB) API for the
+// connected deployment, resolved once from GET /info and cached.
 func (c *Client) UseV2Runs(ctx context.Context) (bool, error) {
 	if c.runsUseV2 != nil {
 		return *c.runsUseV2, nil
@@ -137,26 +134,22 @@ func (c *Client) UseV2Runs(ctx context.Context) (bool, error) {
 	return v, nil
 }
 
-// useV2Runs decides the run-query backend from a deployment's /info version.
-//
-// Cloud reports a non-release version (e.g. "dev") that does not parse as a
-// release semver and always uses v2. Self-hosted reports a release semver:
-// v2 (SmithDB) methods require >= 0.16, so older self-hosted uses v1.
+// useV2Runs decides the run-query backend from the /info version. Cloud reports
+// a non-release version (e.g. "dev") → v2; self-hosted reports a semver, v2 at
+// >= 0.16 else v1.
 func useV2Runs(version string) bool {
 	major, minor, ok := parseReleaseVersion(version)
 	if !ok {
-		return true // Cloud / non-release version → v2
+		return true // Cloud / non-release version
 	}
 	if major != 0 {
-		return true // 1.x and beyond → v2
+		return true
 	}
 	return minor >= minSelfHostedV2Minor
 }
 
-// parseReleaseVersion extracts the numeric major and minor components of a
-// release version string like "0.16.18rc1" or "v1.2.3". It returns ok=false for
-// non-release versions (e.g. "dev", "") that don't start with numeric
-// major.minor components.
+// parseReleaseVersion pulls major.minor from a release version like "0.16.18rc1"
+// or "v1.2.3"; ok=false for non-release versions (e.g. "dev", "").
 func parseReleaseVersion(v string) (major, minor int, ok bool) {
 	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "v"))
 	parts := strings.SplitN(v, ".", 3)
@@ -174,8 +167,7 @@ func parseReleaseVersion(v string) (major, minor int, ok bool) {
 	return major, minor, true
 }
 
-// leadingDigits returns the leading run of ASCII digits in s (e.g. "16rc1" →
-// "16"), or "" when s does not start with a digit.
+// leadingDigits returns the leading ASCII digits of s (e.g. "16rc1" → "16").
 func leadingDigits(s string) string {
 	i := 0
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {

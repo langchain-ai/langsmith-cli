@@ -10,16 +10,11 @@ import (
 	"testing"
 )
 
-// testDeploymentVersion is the version newTestServer reports at
-// GET /api/v1/info, which drives the v1/v2 run-query backend selection
-// (see client.UseV2Runs). It defaults to a Cloud-style non-release version
-// ("dev"), so commands take the v2 path by default. Tests that need to
-// exercise the v1 (older self-hosted) path override it via
-// withDeploymentVersion.
+// testDeploymentVersion is the version newTestServer reports at /info, driving
+// v1/v2 selection. Defaults to "dev" (Cloud → v2); override for the v1 path.
 var testDeploymentVersion = "dev"
 
-// withDeploymentVersion overrides the version newTestServer reports at /info
-// for the duration of the test.
+// withDeploymentVersion overrides the reported /info version for one test.
 func withDeploymentVersion(t *testing.T, version string) {
 	t.Helper()
 	prev := testDeploymentVersion
@@ -49,10 +44,9 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-// newTestServer creates an httptest server with the given handler. It serves a
-// default GET /api/v1/info response (version testDeploymentVersion) so commands
-// that resolve the run-query backend via client.UseV2Runs work without every
-// test mocking /info; all other paths fall through to handler.
+// newTestServer creates an httptest server with the given handler, serving a
+// default /info (version testDeploymentVersion) so UseV2Runs works without every
+// test mocking it; other paths fall through to handler.
 func newTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
