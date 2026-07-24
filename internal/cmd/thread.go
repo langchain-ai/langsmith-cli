@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -69,46 +70,40 @@ func newThreadListCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			// Query root runs (like the Python SDK does)
-			params := langsmith.RunQueryParams{
-				Session: langsmith.F([]string{sessionID}),
-				IsRoot:  langsmith.F(true),
-				Limit:   langsmith.F(int64(100)),
-			}
-
-			if rawFilter != "" {
-				params.Filter = langsmith.F(rawFilter)
-			}
-
 			// Default to last 24h if no time filter
 			startTime := time.Now().UTC().Add(-24 * time.Hour)
 			if lastNMinutes > 0 {
 				startTime = time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
 			}
-			params.StartTime = langsmith.F(startTime)
 
-			// Paginate all runs and group by thread_id
+			// Query root runs (like the Python SDK does). Limit here is the
+			// per-request page size; the query paginates over all matching root
+			// runs so they can be grouped by thread_id below.
+			params := langsmith.RunQueryParams{
+				IsRoot:    langsmith.F(true),
+				Limit:     langsmith.F(int64(100)),
+				StartTime: langsmith.F(startTime),
+			}
+			if rawFilter != "" {
+				params.Filter = langsmith.F(rawFilter)
+			}
+			if sel := buildRunSelect(true, false); sel != nil {
+				params.Select = langsmith.F(sel)
+			}
+
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(true, false), sessionID, math.MaxInt32, 0)
+			if err != nil {
+				ExitErrorf("querying runs: %v", err)
+			}
+
+			// Group runs by thread_id
 			threadsMap := make(map[string][]map[string]any)
-			cursor := ""
-			for {
-				if cursor != "" {
-					params.Cursor = langsmith.F(cursor)
+			for _, run := range runs {
+				tid := run.ThreadID
+				if tid != "" {
+					m := extract.ExtractRun(run, true, true, false)
+					threadsMap[tid] = append(threadsMap[tid], m)
 				}
-				resp, err := c.SDK.Runs.Query(ctx, params)
-				if err != nil {
-					ExitErrorf("querying runs: %v", err)
-				}
-				for _, run := range resp.Runs {
-					tid := run.ThreadID
-					if tid != "" {
-						m := extract.ExtractRun(run, true, true, false)
-						threadsMap[tid] = append(threadsMap[tid], m)
-					}
-				}
-				if resp.Cursors.Next == "" {
-					break
-				}
-				cursor = resp.Cursors.Next
 			}
 
 			// Build thread summaries
@@ -235,16 +230,15 @@ func newThreadGetCmd() *cobra.Command {
 				queryLimit = limit
 			}
 			params := langsmith.RunQueryParams{
-				Session: langsmith.F([]string{sessionID}),
-				IsRoot:  langsmith.F(true),
-				Filter:  langsmith.F(filterDSL),
-				Limit:   langsmith.F(int64(queryLimit)),
+				IsRoot: langsmith.F(true),
+				Filter: langsmith.F(filterDSL),
+				Limit:  langsmith.F(int64(queryLimit)),
 			}
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
 
-			runs, err := queryRuns(ctx, c, params, "", queryLimit, 0)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, queryLimit, 0)
 			if err != nil {
 				ExitErrorf("querying thread runs: %v", err)
 			}
@@ -313,6 +307,8 @@ Examples:
 
 			c := MustGetClient()
 			ctx := context.Background()
+
+			requireV2Feature(ctx, c, "thread messages")
 
 			sessionID, err := c.ResolveSessionID(ctx, project)
 			if err != nil {

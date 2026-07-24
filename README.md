@@ -168,12 +168,7 @@ langsmith run get <run-id> --full
 langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **For agents querying runs:** prefer `--version v2` first (SmithDB-backed; faster on tenants that are rolled out). If the call fails with a 4xx (typically 403, 404, or 422), retry the **same command without** `--version` to fall back to v1. Example:
->
-> ```bash
-> langsmith run list --project my-app --version v2 \
->   || langsmith run list --project my-app
-> ```
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 

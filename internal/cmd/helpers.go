@@ -106,55 +106,73 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 	return allRuns, nil
 }
 
-// buildRunQueryV2Params translates FilterFlags into a v2 query body. The
-// project name is left for queryRunsV2 to resolve into ProjectIDs.
-func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) langsmith.RunQueryV2Params {
-	var params langsmith.RunQueryV2Params
-
-	limit := defaultLimit
-	if f.Limit > 0 {
-		limit = f.Limit
+// requireV2Feature exits with a clear error when the connected deployment does
+// not support the v2 (SmithDB) API that the named feature depends on. Used to
+// gate v2-only commands (e.g. the message endpoints) on older self-hosted
+// deployments.
+func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
+	useV2, err := c.UseV2Runs(ctx)
+	if err != nil {
+		ExitErrorf("%v", err)
 	}
-	params.PageSize = langsmith.F(int64(limit))
-
-	if isRoot {
-		params.IsRoot = langsmith.F(true)
+	if !useV2 {
+		ExitErrorf("%s is only available on LangSmith Cloud or self-hosted >= 0.16 (SmithDB); this deployment does not support it", feature)
 	}
+}
 
-	params.MinStartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
-	if f.Before != "" {
-		t, err := time.Parse(time.RFC3339, f.Before)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
-			if err != nil {
-				ExitErrorf("invalid --before timestamp: %s", f.Before)
-			}
-		}
-		params.MaxStartTime = langsmith.F(t.UTC())
+// queryRunsAuto queries runs using the v2 (SmithDB) backend when the deployment
+// supports it (see client.UseV2Runs), otherwise the v1 backend. params is the
+// canonical v1 query; v2Selects is the select-field set requested on the v2 path
+// — always pass a base set (see buildRunSelectV2), since omitting selects makes
+// v2 return only run IDs.
+func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunQueryV2ParamsSelect, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+	useV2, err := c.UseV2Runs(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	if f.RunType != "" {
-		params.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(f.RunType)))
+	if useV2 {
+		return queryRunsV2(ctx, c, toV2Params(params, v2Selects), sessionID, limit, minTokens)
 	}
+	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
+}
 
-	if f.ErrorFlag {
-		params.HasError = langsmith.F(true)
-	} else if f.NoErrorFlag {
-		params.HasError = langsmith.F(false)
+// toV2Params translates a canonical v1 RunQueryParams into the equivalent v2
+// RunQueryV2Params. The v1 Order (asc/desc) has no v2 equivalent — v2 returns
+// runs newest-first — and is dropped. Session is applied separately by
+// queryRunsV2 (as ProjectIDs) and is not translated here.
+func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunQueryV2ParamsSelect) langsmith.RunQueryV2Params {
+	var v2 langsmith.RunQueryV2Params
+	if len(selects) > 0 {
+		v2.Selects = langsmith.F(selects)
 	}
-
-	if f.TraceIDs != "" {
-		ids := splitTrim(f.TraceIDs)
-		if len(ids) == 1 {
-			params.TraceID = langsmith.F(ids[0])
-		}
+	if p.Trace.Present {
+		v2.TraceID = langsmith.F(p.Trace.Value)
 	}
-
-	if s := buildFilterDSL(f); s != "" {
-		params.Filter = langsmith.F(s)
+	if p.IsRoot.Present {
+		v2.IsRoot = langsmith.F(p.IsRoot.Value)
 	}
-
-	return params
+	if p.RunType.Present {
+		v2.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(string(p.RunType.Value))))
+	}
+	if p.Error.Present {
+		v2.HasError = langsmith.F(p.Error.Value)
+	}
+	if p.StartTime.Present {
+		v2.MinStartTime = langsmith.F(p.StartTime.Value)
+	}
+	if p.EndTime.Present {
+		v2.MaxStartTime = langsmith.F(p.EndTime.Value)
+	}
+	if p.Filter.Present {
+		v2.Filter = langsmith.F(p.Filter.Value)
+	}
+	if len(p.ID.Value) > 0 {
+		v2.IDs = langsmith.F(p.ID.Value)
+	}
+	if p.Limit.Present {
+		v2.PageSize = langsmith.F(p.Limit.Value)
+	}
+	return v2
 }
 
 // buildRunSelectV2 returns the v2 select-field set covering the same base

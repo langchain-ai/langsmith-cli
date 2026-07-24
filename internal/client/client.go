@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,10 @@ type Client struct {
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
+
+	// Cached run-query backend decision (see UseV2Runs), resolved once per
+	// invocation from GET /info.
+	runsUseV2 *bool
 }
 
 // Options controls LangSmith client authentication and routing.
@@ -109,6 +114,74 @@ func (c *Client) ResolveSessionID(ctx context.Context, projectName string) (stri
 	id := resp.Items[0].ID
 	c.sessionCache[projectName] = id
 	return id, nil
+}
+
+// minSelfHostedV2Minor is the minor version (major 0) at which self-hosted
+// deployments gain the v2 (SmithDB) run-query API. Self-hosted >= 0.16 uses v2;
+// older self-hosted must use v1.
+const minSelfHostedV2Minor = 16
+
+// UseV2Runs reports whether run queries should target the v2 (SmithDB) API for
+// the connected deployment. The decision is resolved once via the SDK GET /info
+// method and cached for the client's lifetime.
+func (c *Client) UseV2Runs(ctx context.Context) (bool, error) {
+	if c.runsUseV2 != nil {
+		return *c.runsUseV2, nil
+	}
+	info, err := c.SDK.Info.List(ctx)
+	if err != nil {
+		return false, fmt.Errorf("fetching deployment info: %w", err)
+	}
+	v := useV2Runs(info.Version)
+	c.runsUseV2 = &v
+	return v, nil
+}
+
+// useV2Runs decides the run-query backend from a deployment's /info version.
+//
+// Cloud reports a non-release version (e.g. "dev") that does not parse as a
+// release semver and always uses v2. Self-hosted reports a release semver:
+// v2 (SmithDB) methods require >= 0.16, so older self-hosted uses v1.
+func useV2Runs(version string) bool {
+	major, minor, ok := parseReleaseVersion(version)
+	if !ok {
+		return true // Cloud / non-release version → v2
+	}
+	if major != 0 {
+		return true // 1.x and beyond → v2
+	}
+	return minor >= minSelfHostedV2Minor
+}
+
+// parseReleaseVersion extracts the numeric major and minor components of a
+// release version string like "0.16.18rc1" or "v1.2.3". It returns ok=false for
+// non-release versions (e.g. "dev", "") that don't start with numeric
+// major.minor components.
+func parseReleaseVersion(v string) (major, minor int, ok bool) {
+	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "v"))
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(leadingDigits(parts[0]))
+	if err != nil {
+		return 0, 0, false
+	}
+	minor, err = strconv.Atoi(leadingDigits(parts[1]))
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// leadingDigits returns the leading run of ASCII digits in s (e.g. "16rc1" →
+// "16"), or "" when s does not start with a digit.
+func leadingDigits(s string) string {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	return s[:i]
 }
 
 // --- Raw HTTP helpers for endpoints not covered by the SDK ---

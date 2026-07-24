@@ -550,3 +550,65 @@ func TestRunV2ToSchema_MapsFirstTokenTimeAndEvents(t *testing.T) {
 		t.Errorf("expected event name=new_token, got %v", out.Events[0]["name"])
 	}
 }
+
+// ---------- toV2Params ----------
+
+func TestToV2Params_TranslatesFields(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	p := langsmith.RunQueryParams{
+		Trace:     langsmith.F("trace-1"),
+		IsRoot:    langsmith.F(true),
+		RunType:   langsmith.F(langsmith.RunTypeEnum("llm")),
+		Error:     langsmith.F(true),
+		StartTime: langsmith.F(start),
+		EndTime:   langsmith.F(end),
+		Filter:    langsmith.F(`eq(name, "x")`),
+		ID:        langsmith.F([]string{"id-1", "id-2"}),
+		Limit:     langsmith.F(int64(25)),
+		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
+	}
+	sel := []langsmith.RunQueryV2ParamsSelect{langsmith.RunQueryV2ParamsSelectID}
+
+	v2 := toV2Params(p, sel)
+
+	if v2.TraceID.Value != "trace-1" {
+		t.Errorf("TraceID = %q, want trace-1", v2.TraceID.Value)
+	}
+	if !v2.IsRoot.Value {
+		t.Error("IsRoot = false, want true")
+	}
+	if v2.RunType.Value != langsmith.RunQueryV2ParamsRunType("LLM") {
+		t.Errorf("RunType = %q, want LLM (uppercased)", v2.RunType.Value)
+	}
+	if !v2.HasError.Value {
+		t.Error("HasError = false, want true")
+	}
+	if !v2.MinStartTime.Value.Equal(start) {
+		t.Errorf("MinStartTime = %v, want %v", v2.MinStartTime.Value, start)
+	}
+	if !v2.MaxStartTime.Value.Equal(end) {
+		t.Errorf("MaxStartTime = %v, want %v", v2.MaxStartTime.Value, end)
+	}
+	if v2.Filter.Value != `eq(name, "x")` {
+		t.Errorf("Filter = %q", v2.Filter.Value)
+	}
+	if len(v2.IDs.Value) != 2 {
+		t.Errorf("IDs = %v, want 2 entries", v2.IDs.Value)
+	}
+	if v2.PageSize.Value != 25 {
+		t.Errorf("PageSize = %d, want 25", v2.PageSize.Value)
+	}
+	if !v2.Selects.Present {
+		t.Error("Selects not set")
+	}
+}
+
+func TestToV2Params_OmitsUnsetFields(t *testing.T) {
+	v2 := toV2Params(langsmith.RunQueryParams{}, nil)
+	if v2.TraceID.Present || v2.IsRoot.Present || v2.HasError.Present ||
+		v2.MinStartTime.Present || v2.Filter.Present || v2.IDs.Present ||
+		v2.PageSize.Present || v2.Selects.Present {
+		t.Error("expected all fields unset for empty input")
+	}
+}

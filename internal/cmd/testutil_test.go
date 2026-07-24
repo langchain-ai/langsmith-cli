@@ -2,12 +2,30 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 )
+
+// testDeploymentVersion is the version newTestServer reports at
+// GET /api/v1/info, which drives the v1/v2 run-query backend selection
+// (see client.UseV2Runs). It defaults to a Cloud-style non-release version
+// ("dev"), so commands take the v2 path by default. Tests that need to
+// exercise the v1 (older self-hosted) path override it via
+// withDeploymentVersion.
+var testDeploymentVersion = "dev"
+
+// withDeploymentVersion overrides the version newTestServer reports at /info
+// for the duration of the test.
+func withDeploymentVersion(t *testing.T, version string) {
+	t.Helper()
+	prev := testDeploymentVersion
+	testDeploymentVersion = version
+	t.Cleanup(func() { testDeploymentVersion = prev })
+}
 
 // captureStdout redirects os.Stdout during fn and returns what was written.
 func captureStdout(t *testing.T, fn func()) string {
@@ -31,10 +49,20 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-// newTestServer creates an httptest server with the given handler.
+// newTestServer creates an httptest server with the given handler. It serves a
+// default GET /api/v1/info response (version testDeploymentVersion) so commands
+// that resolve the run-query backend via client.UseV2Runs work without every
+// test mocking /info; all other paths fall through to handler.
 func newTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(handler)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"version": testDeploymentVersion})
+			return
+		}
+		handler(w, r)
+	}))
 	t.Cleanup(ts.Close)
 	return ts
 }

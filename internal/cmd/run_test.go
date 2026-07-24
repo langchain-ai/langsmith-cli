@@ -211,6 +211,9 @@ func TestRunExportCmd_NoOutputFlag(t *testing.T) {
 // runs is returned for any /runs/query POST.
 func newRunTestServer(t *testing.T, sessions map[string]string, runs []map[string]any) *httptest.Server {
 	t.Helper()
+	// These fixtures mock the v1 /runs/query endpoint, so pin the deployment to
+	// an older self-hosted version that selects the v1 backend.
+	withDeploymentVersion(t, "0.15.0")
 	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
