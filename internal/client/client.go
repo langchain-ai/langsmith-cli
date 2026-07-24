@@ -33,9 +33,7 @@ type Client struct {
 	// from GET /info.
 	cachedUseV2API *bool
 
-	// singleOrigin is true when the endpoint targets a single-origin deployment
-	// (API namespaced under "/api", the self-hosted form). It selects the v2 base
-	// path: "/api/v2" on single-origin, root "/v2" on a dedicated API origin (SaaS).
+	// singleOrigin selects the v2 base path: "/api/v2" if set, else "/v2".
 	singleOrigin bool
 }
 
@@ -46,9 +44,8 @@ type Options struct {
 	APIURL           string
 	WorkspaceID      string
 	ProfileName      string
-	// SingleOrigin selects the v2 API base path (see Client.singleOrigin). Callers
-	// must derive it from the RAW endpoint via EndpointIsSingleOrigin before any
-	// NormalizeURL call, which strips the "/api/v1" suffix the detection relies on.
+	// SingleOrigin must come from the raw endpoint (EndpointIsSingleOrigin), before
+	// NormalizeURL strips the "/api/v1" suffix.
 	SingleOrigin bool
 }
 
@@ -60,14 +57,8 @@ func NormalizeURL(apiURL string) string {
 	return strings.TrimSuffix(u, "/api/v1")
 }
 
-// EndpointIsSingleOrigin reports whether the RAW endpoint targets a single-origin
-// deployment, where one host serves both the frontend and the API and the API is
-// namespaced under "/api" (e.g. "https://host/api/v1", the documented self-hosted
-// form). On such deployments smith-go's v2 API is reached at "/api/v2"; on a
-// dedicated API origin (SaaS) it is at root "/v2". Mirrors the frontend's
-// single-origin branch (smith-frontend constants.tsx).
-//
-// Call this on the RAW endpoint, before NormalizeURL strips the "/api/v1" suffix.
+// EndpointIsSingleOrigin reports whether the raw endpoint is a single-origin
+// deployment (API under "/api", e.g. ".../api/v1"). Call before NormalizeURL.
 func EndpointIsSingleOrigin(apiURL string) bool {
 	u := strings.TrimRight(apiURL, "/")
 	return strings.HasSuffix(u, "/api/v1") || strings.HasSuffix(u, "/api")
@@ -120,8 +111,7 @@ func NewWithOptions(options Options) *Client {
 	}
 }
 
-// v2PathPrefix is the base path for the v2 (SmithDB) API: "/api/v2" on a
-// single-origin deployment, root "/v2" on a dedicated API origin (SaaS).
+// v2PathPrefix is the v2 API base path: "/api/v2" on single-origin, else "/v2".
 func (c *Client) v2PathPrefix() string {
 	if c.singleOrigin {
 		return "/api/v2"
@@ -129,16 +119,13 @@ func (c *Client) v2PathPrefix() string {
 	return "/v2"
 }
 
-// V2Path builds a raw-request path under the v2 API base (see v2PathPrefix).
-// suffix must begin with "/", e.g. V2Path("/traces/messages").
+// V2Path returns suffix under the v2 API base (suffix must start with "/").
 func (c *Client) V2Path(suffix string) string {
 	return c.v2PathPrefix() + suffix
 }
 
-// V2RequestOptions returns per-call SDK options so the SDK's relative v2 paths
-// (e.g. "v2/runs/query") resolve under the right base. On single-origin the base
-// is shifted to "<apiURL>/api/" so "v2/…" becomes "/api/v2/…"; on SaaS no override
-// is needed (the default base resolves "v2/…" to root "/v2/…").
+// V2RequestOptions shifts the SDK base to "<apiURL>/api/" on single-origin so the
+// SDK's relative "v2/…" paths resolve to "/api/v2/…"; nil (default base) otherwise.
 func (c *Client) V2RequestOptions() []option.RequestOption {
 	if c.singleOrigin {
 		return []option.RequestOption{option.WithBaseURL(c.apiURL + "/api/")}
@@ -184,14 +171,12 @@ func (c *Client) UseV2API(ctx context.Context) (bool, error) {
 	return v, nil
 }
 
-// useV2API decides whether to use the v2 API from the /info version. Both SaaS
-// and self-hosted report a real semver (currently 0.16.x), so the rule is
-// "major != 0, or minor >= 16 → v2, else v1". A non-parseable version (e.g. a
-// local/dev build reporting "dev" or a bare git sha) is treated as v2.
+// useV2API decides v1 vs v2 from the /info version: major != 0 or minor >= 16 → v2.
+// Both SaaS and self-hosted report a real semver; an unparseable version → v2.
 func useV2API(version string) bool {
 	major, minor, ok := parseReleaseVersion(version)
 	if !ok {
-		return true // non-release version (local/dev build)
+		return true // unparseable version
 	}
 	if major != 0 {
 		return true

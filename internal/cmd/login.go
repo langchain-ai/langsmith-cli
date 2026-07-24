@@ -184,9 +184,7 @@ func loginProfileName(cfg *lsconfig.Config) string {
 	return "default"
 }
 
-// loginRawAPIURL resolves the effective endpoint (profile → env → flag) without
-// normalizing, so callers can detect single-origin before the "/api/v1" suffix
-// is stripped.
+// loginRawAPIURL resolves the endpoint (profile → env → flag) without normalizing.
 func loginRawAPIURL(cfg *lsconfig.Config, profileName string) string {
 	apiURL := lsconfig.DefaultAPIURL
 	if profile, ok := cfg.Profiles[profileName]; ok && profile.APIURL != "" {

@@ -758,19 +758,17 @@ func TestUseV2API(t *testing.T) {
 	}
 }
 
-// ---------- v2 API base path (single-origin vs dedicated API origin) ----------
+// ---------- v2 API base path ----------
 
 func TestEndpointIsSingleOrigin(t *testing.T) {
 	cases := []struct {
 		endpoint string
 		want     bool
 	}{
-		// Single-origin (self-hosted): API namespaced under /api.
 		{"https://host/api/v1", true},
 		{"https://host/api/v1/", true},
 		{"https://host/api", true},
 		{"https://host/base-path/api/v1", true},
-		// Dedicated API origin (SaaS) or default.
 		{"https://api.smith.langchain.com", false},
 		{"https://host", false},
 		{"", false},
@@ -800,8 +798,7 @@ func TestV2Path(t *testing.T) {
 	}
 }
 
-// TestQueryV2PathResolution verifies the SDK's relative v2 path resolves to the
-// right base on each topology: root /v2 on SaaS, /api/v2 on single-origin.
+// TestQueryV2PathResolution checks the SDK v2 path: /v2 on SaaS, /api/v2 on single-origin.
 func TestQueryV2PathResolution(t *testing.T) {
 	cases := []struct {
 		name     string
