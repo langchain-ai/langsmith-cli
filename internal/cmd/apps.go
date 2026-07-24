@@ -74,8 +74,8 @@ Examples:
   langsmith apps list
   langsmith apps delete <app-id> --yes
 
-Except list/delete, these act on the current directory — cd into your app's
-directory first.`,
+"init" creates a new directory named after --name. Except init/list/delete,
+these act on the current directory — cd into your app's directory first.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
