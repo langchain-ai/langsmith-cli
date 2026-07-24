@@ -595,6 +595,24 @@ const devHostHTMLTemplate = `<!doctype html>
     box-shadow: 0 0 0 2px #006ddd;
   }
 
+  #ls-dev-guide {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ls-dev-control-text);
+    background-color: var(--ls-dev-control-bg);
+    border: 1px solid var(--ls-dev-control-border);
+    border-radius: 7px;
+    padding: 5px 12px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+  #ls-dev-guide:hover { border-color: var(--ls-dev-control-border-hover); }
+  #ls-dev-guide:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #006ddd;
+  }
+
   iframe { display: block; width: 100%; border: none; flex: 1 1 auto; }
 </style>
 </head>
@@ -602,6 +620,7 @@ const devHostHTMLTemplate = `<!doctype html>
 <div id="ls-dev-toolbar">
   <span id="ls-dev-toolbar-title">LangSmith Custom Apps — local preview below</span>
   <div class="ls-dev-toolbar-controls">
+    <a id="ls-dev-guide" href="https://docs.langchain.com/" target="_blank" rel="noopener noreferrer">Builders Guide</a>
     <div id="ls-dev-mode-group" role="group" aria-label="Appearance">
       <button id="ls-dev-mode-light" type="button" class="ls-dev-mode-btn" aria-pressed="false">Light</button>
       <button id="ls-dev-mode-dark" type="button" class="ls-dev-mode-btn" aria-pressed="false">Dark</button>
