@@ -1,0 +1,43 @@
+internal/cmd/message.go
+  s_6764a5ab39be4a::t_39138da409e10e 189,237
+internal/cmd/thread.go
+  s_6764a5ab39be4a::t_8e3fe50d153c20 329
+internal/cmd/root.go
+  s_6764a5ab39be4a::t_e66566703172fc 167,172-173,175,179
+internal/cmd/login.go
+  s_6764a5ab39be4a::t_d2ac00fc0564c2 138
+  s_6764a5ab39be4a::t_90c5639ad16340 187-190,201-205
+internal/client/client_test.go
+  s_6764a5ab39be4a::t_99f7ee60a91ed0 760-778,781-835
+  s_6764a5ab39be4a::t_e6c5edfc3c2256 14-15
+  s_6764a5ab39be4a::t_bff6ac62f7cb13 779-780
+internal/config/config.go
+  s_6764a5ab39be4a::t_ca7c8603876a1e 23-27
+internal/cmd/helpers.go
+  s_6764a5ab39be4a::t_9339ab83ac011a 91
+internal/client/client.go
+  s_6764a5ab39be4a::t_95ac912e3a12da 72-75
+  s_6764a5ab39be4a::t_8e6f1b325cc537 79-82
+  s_6764a5ab39be4a::t_73b9509c342287 35-39
+  s_6764a5ab39be4a::t_b49df2a67ff0b1 49-52
+  s_6764a5ab39be4a::t_bc3181b29f7a6f 63-71
+  s_6764a5ab39be4a::t_43275623d7662f 187-190,194
+  s_6764a5ab39be4a::t_5f51f853fa5751 120-144,146
+  s_6764a5ab39be4a::t_3fe8b2f3707121 119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a01ddb8797f2c185f51d00f3326b55707e8b6268",
+  "prompts": {},
+  "sessions": {
+    "s_6764a5ab39be4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ece988e2-4e42-49eb-8516-398ff75b652c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
