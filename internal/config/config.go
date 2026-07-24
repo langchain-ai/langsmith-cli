@@ -16,13 +16,11 @@ const (
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
-	APIKey      string `json:"api_key,omitempty"`
-	APIURL      string `json:"api_url,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	OAuth       OAuth  `json:"oauth,omitempty"`
-	// SingleOrigin selects the v2 API base path; captured at login from the raw
-	// endpoint (APIURL is stored normalized). Absent in older profiles → false.
-	SingleOrigin bool `json:"single_origin,omitempty"`
+	APIKey       string `json:"api_key,omitempty"`
+	APIURL       string `json:"api_url,omitempty"`
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	OAuth        OAuth  `json:"oauth,omitempty"`
+	SingleOrigin bool   `json:"single_origin,omitempty"`
 }
 
 // OAuth stores OAuth tokens written by `langsmith login`.
