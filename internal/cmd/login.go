@@ -135,6 +135,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	profile := cfg.Profiles[profileName]
 	if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
 		profile.APIURL = apiURL
+		profile.SingleOrigin = client.EndpointIsSingleOrigin(loginRawAPIURL(cfg, profileName))
 	}
 	if workspaceID == "" && promptWorkspace {
 		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
@@ -183,7 +184,10 @@ func loginProfileName(cfg *lsconfig.Config) string {
 	return "default"
 }
 
-func loginAPIURL(cfg *lsconfig.Config, profileName string) string {
+// loginRawAPIURL resolves the effective endpoint (profile → env → flag) without
+// normalizing, so callers can detect single-origin before the "/api/v1" suffix
+// is stripped.
+func loginRawAPIURL(cfg *lsconfig.Config, profileName string) string {
 	apiURL := lsconfig.DefaultAPIURL
 	if profile, ok := cfg.Profiles[profileName]; ok && profile.APIURL != "" {
 		apiURL = profile.APIURL
@@ -194,7 +198,11 @@ func loginAPIURL(cfg *lsconfig.Config, profileName string) string {
 	if flagAPIURL != "" {
 		apiURL = flagAPIURL
 	}
-	return client.NormalizeURL(apiURL)
+	return apiURL
+}
+
+func loginAPIURL(cfg *lsconfig.Config, profileName string) string {
+	return client.NormalizeURL(loginRawAPIURL(cfg, profileName))
 }
 
 func validateProfileName(name string) error {

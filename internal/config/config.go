@@ -20,6 +20,11 @@ type Profile struct {
 	APIURL      string `json:"api_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	OAuth       OAuth  `json:"oauth,omitempty"`
+	// SingleOrigin records whether the endpoint this profile was created with was a
+	// single-origin deployment (API under "/api"). APIURL is stored normalized, so
+	// this is captured at creation from the raw endpoint. Selects the v2 API base
+	// path; profiles predating this field default to false (dedicated API origin).
+	SingleOrigin bool `json:"single_origin,omitempty"`
 }
 
 // OAuth stores OAuth tokens written by `langsmith login`.

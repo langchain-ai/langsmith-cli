@@ -326,7 +326,7 @@ Examples:
 				q.Set("trace_id", traceID)
 			}
 
-			path := fmt.Sprintf("/v2/threads/%s/messages?%s", url.PathEscape(threadID), q.Encode())
+			path := fmt.Sprintf("%s?%s", c.V2Path("/threads/"+url.PathEscape(threadID)+"/messages"), q.Encode())
 
 			extraHeaders := http.Header{"Accept": {"text/event-stream"}}
 			_, _, _, body, err := c.RawDo(ctx, http.MethodGet, path, nil, extraHeaders)

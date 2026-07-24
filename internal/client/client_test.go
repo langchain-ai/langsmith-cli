@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 // ---------- NormalizeURL ----------
@@ -753,5 +755,81 @@ func TestUseV2API(t *testing.T) {
 		if got := useV2API(tc.version); got != tc.want {
 			t.Errorf("useV2API(%q) = %v, want %v", tc.version, got, tc.want)
 		}
+	}
+}
+
+// ---------- v2 API base path (single-origin vs dedicated API origin) ----------
+
+func TestEndpointIsSingleOrigin(t *testing.T) {
+	cases := []struct {
+		endpoint string
+		want     bool
+	}{
+		// Single-origin (self-hosted): API namespaced under /api.
+		{"https://host/api/v1", true},
+		{"https://host/api/v1/", true},
+		{"https://host/api", true},
+		{"https://host/base-path/api/v1", true},
+		// Dedicated API origin (SaaS) or default.
+		{"https://api.smith.langchain.com", false},
+		{"https://host", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := EndpointIsSingleOrigin(tc.endpoint); got != tc.want {
+			t.Errorf("EndpointIsSingleOrigin(%q) = %v, want %v", tc.endpoint, got, tc.want)
+		}
+	}
+}
+
+func TestV2Path(t *testing.T) {
+	saas := New("key", "https://api.smith.langchain.com")
+	if got := saas.V2Path("/traces/messages"); got != "/v2/traces/messages" {
+		t.Errorf("SaaS V2Path = %q, want /v2/traces/messages", got)
+	}
+	if n := len(saas.V2RequestOptions()); n != 0 {
+		t.Errorf("SaaS V2RequestOptions len = %d, want 0", n)
+	}
+
+	sh := New("key", "https://host/api/v1")
+	if got := sh.V2Path("/traces/messages"); got != "/api/v2/traces/messages" {
+		t.Errorf("self-hosted V2Path = %q, want /api/v2/traces/messages", got)
+	}
+	if n := len(sh.V2RequestOptions()); n != 1 {
+		t.Errorf("self-hosted V2RequestOptions len = %d, want 1", n)
+	}
+}
+
+// TestQueryV2PathResolution verifies the SDK's relative v2 path resolves to the
+// right base on each topology: root /v2 on SaaS, /api/v2 on single-origin.
+func TestQueryV2PathResolution(t *testing.T) {
+	cases := []struct {
+		name     string
+		endpoint func(base string) string
+		wantPath string
+	}{
+		{"saas root", func(b string) string { return b }, "/v2/runs/query"},
+		{"single-origin", func(b string) string { return b + "/api/v1" }, "/api/v2/runs/query"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotPath string
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"items":[],"next_cursor":""}`))
+			}))
+			defer ts.Close()
+
+			c := New("key", tc.endpoint(ts.URL))
+			iter := c.SDK.Runs.QueryV2AutoPaging(context.Background(), langsmith.RunQueryV2Params{}, c.V2RequestOptions()...)
+			iter.Next()
+			if err := iter.Err(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotPath != tc.wantPath {
+				t.Errorf("v2 request path = %q, want %q", gotPath, tc.wantPath)
+			}
+		})
 	}
 }

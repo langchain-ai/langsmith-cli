@@ -164,14 +164,19 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	if hasProfile {
 		if profile.APIURL != "" {
 			opts.APIURL = profile.APIURL
+			opts.SingleOrigin = profile.SingleOrigin
 		}
 		opts.WorkspaceID = profile.WorkspaceID
 	}
 
+	// SingleOrigin must be derived from the RAW endpoint (env/flag) before
+	// NormalizeURL strips the "/api/v1" suffix the detection keys on.
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
+		opts.SingleOrigin = client.EndpointIsSingleOrigin(v)
 		opts.APIURL = client.NormalizeURL(v)
 	}
 	if flagAPIURL != "" {
+		opts.SingleOrigin = client.EndpointIsSingleOrigin(flagAPIURL)
 		opts.APIURL = client.NormalizeURL(flagAPIURL)
 	}
 

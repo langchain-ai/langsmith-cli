@@ -88,7 +88,7 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 
 	var allRuns []langsmith.RunSchema
 
-	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params)
+	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params, c.V2RequestOptions()...)
 	for iter.Next() {
 		if len(allRuns) >= limit {
 			break
