@@ -334,14 +334,36 @@ Examples:
 			path := fmt.Sprintf("/v2/threads/%s/messages?%s", url.PathEscape(threadID), q.Encode())
 
 			extraHeaders := http.Header{"Accept": {"text/event-stream"}}
-			_, _, _, body, err := c.RawDo(ctx, http.MethodGet, path, nil, extraHeaders)
+			statusCode, _, _, body, err := c.RawDo(ctx, http.MethodGet, path, nil, extraHeaders)
 			if err != nil {
 				ExitErrorf("%v", err)
+			}
+			if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+				ExitErrorf(
+					"thread messages request failed (HTTP %d): %s",
+					statusCode,
+					threadMessagesHTTPError(statusCode, body),
+				)
 			}
 
 			groups, nextCursor, prevCursor, sseErr := parseSSEGroups(body)
 			if sseErr != "" {
 				ExitErrorf("server error: %s", sseErr)
+			}
+
+			blankTraceIDs, minStartTime := blankThreadTurnPreviewRequest(groups)
+			if len(blankTraceIDs) > 0 {
+				previews, err := queryRootPreviews(
+					ctx,
+					c,
+					sessionID,
+					minStartTime,
+					blankTraceIDs,
+				)
+				if err != nil {
+					ExitErrorf("fetching blank-turn root previews: %v", err)
+				}
+				groups = fillBlankThreadTurns(groups, previews)
 			}
 
 			result := map[string]any{
@@ -430,15 +452,135 @@ func parseSSEGroups(body []byte) (groups []any, nextCursor, prevCursor, errMsg s
 				}
 			}
 		case "error":
-			var errPayload struct {
-				Error string `json:"error"`
-			}
-			if err := json.Unmarshal([]byte(ev.Data), &errPayload); err == nil {
-				errMsg = errPayload.Error
-			}
+			errMsg = threadMessagesSSEError(ev.Data)
 		}
 	}
 	return
+}
+
+func threadMessagesSSEError(data string) string {
+	var payload struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+		Title   string `json:"title"`
+	}
+	if err := json.Unmarshal([]byte(data), &payload); err != nil {
+		return "invalid error event from server"
+	}
+	for _, message := range []string{payload.Error, payload.Detail, payload.Message, payload.Title} {
+		if message = strings.TrimSpace(message); message != "" {
+			return truncateHard(message, 1000)
+		}
+	}
+	return "unspecified server error"
+}
+
+func threadMessagesHTTPError(statusCode int, body []byte) string {
+	message := threadMessagesSSEError(string(body))
+	if message == "invalid error event from server" || message == "unspecified server error" {
+		if statusText := http.StatusText(statusCode); statusText != "" {
+			return statusText
+		}
+	}
+	return message
+}
+
+// blankThreadTurnPreviewRequest returns the trace IDs for turn-boundary
+// segments with no message/tool groups and the earliest available start time.
+func blankThreadTurnPreviewRequest(groups []any) ([]string, time.Time) {
+	var (
+		traceIDs     []string
+		seen         = map[string]struct{}{}
+		currentTrace string
+		currentStart time.Time
+		hasMessages  bool
+		minStartTime time.Time
+	)
+
+	flush := func() {
+		if currentTrace == "" || hasMessages {
+			return
+		}
+		if _, ok := seen[currentTrace]; ok {
+			return
+		}
+		seen[currentTrace] = struct{}{}
+		traceIDs = append(traceIDs, currentTrace)
+		if !currentStart.IsZero() && (minStartTime.IsZero() || currentStart.Before(minStartTime)) {
+			minStartTime = currentStart
+		}
+	}
+
+	for _, rawGroup := range groups {
+		group, _ := rawGroup.(map[string]any)
+		switch group["type"] {
+		case "turn_boundary":
+			flush()
+			boundary, _ := group["turnBoundary"].(map[string]any)
+			currentTrace, _ = boundary["trace_id"].(string)
+			currentStart = time.Time{}
+			if rawStart, ok := boundary["start_time"].(string); ok {
+				currentStart, _ = time.Parse(time.RFC3339Nano, rawStart)
+			}
+			hasMessages = false
+		case "message", "tool_interaction":
+			if currentTrace != "" {
+				hasMessages = true
+			}
+		}
+	}
+	flush()
+	return traceIDs, minStartTime
+}
+
+// fillBlankThreadTurns inserts bounded root I/O previews only for turns where
+// the message stream emitted no normalized message groups.
+func fillBlankThreadTurns(groups []any, previews map[string]rootPreview) []any {
+	blankTraceIDs, _ := blankThreadTurnPreviewRequest(groups)
+	blank := make(map[string]struct{}, len(blankTraceIDs))
+	for _, traceID := range blankTraceIDs {
+		blank[traceID] = struct{}{}
+	}
+
+	result := make([]any, 0, len(groups)+2*len(blank))
+	for _, rawGroup := range groups {
+		result = append(result, rawGroup)
+		group, _ := rawGroup.(map[string]any)
+		if group["type"] != "turn_boundary" {
+			continue
+		}
+		boundary, _ := group["turnBoundary"].(map[string]any)
+		traceID, _ := boundary["trace_id"].(string)
+		if _, ok := blank[traceID]; !ok {
+			continue
+		}
+		preview, ok := previews[traceID]
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(preview.inputs) != "" {
+			result = append(result, rootPreviewMessageGroup(traceID, "human", preview.inputs))
+		}
+		if strings.TrimSpace(preview.outputs) != "" {
+			result = append(result, rootPreviewMessageGroup(traceID, "ai", preview.outputs))
+		}
+	}
+	return result
+}
+
+func rootPreviewMessageGroup(traceID, role, content string) map[string]any {
+	return map[string]any{
+		"type": "message",
+		"message": map[string]any{
+			"role":    role,
+			"content": content,
+		},
+		"metadata": map[string]any{
+			"trace_id": traceID,
+			"source":   "root_io_preview",
+		},
+	}
 }
 
 // printThreadMessages prints a human-readable view of thread messages grouped by turn.
@@ -465,7 +607,11 @@ func printThreadMessages(result map[string]any) {
 			fmt.Printf("\n--- Turn %d (trace: %s) ---\n", int(turnIndex)+1, traceID)
 		case "message":
 			msg, _ := group["message"].(map[string]any)
-			printMessage(msg)
+			if isRootPreviewGroup(group) {
+				printRootPreviewMessage(msg)
+			} else {
+				printMessage(msg)
+			}
 		case "tool_interaction":
 			aiMsg, _ := group["aiMessage"].(map[string]any)
 			printMessage(aiMsg)
@@ -488,4 +634,18 @@ func printThreadMessages(result map[string]any) {
 	if prev, ok := cursors["prev"].(string); ok && prev != "" {
 		fmt.Printf("Prev cursor: %s\n", prev)
 	}
+}
+
+func isRootPreviewGroup(group map[string]any) bool {
+	metadata, _ := group["metadata"].(map[string]any)
+	return metadata["source"] == "root_io_preview"
+}
+
+func printRootPreviewMessage(msg map[string]any) {
+	role, _ := msg["role"].(string)
+	text := coerceContent(msg["content"])
+	if len(text) > 200 {
+		text = text[:200] + "..."
+	}
+	fmt.Printf("  [%s, root preview] %s\n", role, text)
 }
