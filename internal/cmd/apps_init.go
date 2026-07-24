@@ -118,8 +118,8 @@ func newAppsInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init --name NAME [--template annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
-		Short: "Scaffold a starter custom app in the current directory",
-		Long: `Scaffold a starter custom app in the current directory.
+		Short: "Scaffold a starter custom app in a new directory named after the app",
+		Long: `Scaffold a starter custom app into a new directory named after --name.
 
 --template picks which starter gets scaffolded; omit it for a blank single-file starter.
 
@@ -128,8 +128,8 @@ func newAppsInitCmd() *cobra.Command {
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Installs dependencies as the last step, so you can run "langsmith apps dev" next.
-Run "langsmith apps push" to upload.`,
+Installs dependencies as the last step, so you can cd in and run
+"langsmith apps dev" next. Run "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
 			if templateName == "" {
@@ -141,9 +141,17 @@ Run "langsmith apps push" to upload.`,
 			if !ok {
 				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
-			dir, err := os.Getwd()
+			slug := slugifyAppName(name)
+			if slug == "" {
+				return fmt.Errorf("--name %q has no characters usable in a directory name", name)
+			}
+			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
+			}
+			dir := filepath.Join(cwd, slug)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("creating %s: %w", slug, err)
 			}
 			written, err := scaffoldCustomAppStarter(dir, name, description, at, force)
 			if err != nil {
@@ -155,7 +163,7 @@ Run "langsmith apps push" to upload.`,
 			if err := installAppDeps(dir); err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, "Next: langsmith apps dev.")
+			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
@@ -170,9 +178,29 @@ Run "langsmith apps push" to upload.`,
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
 	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template. Omittable for a blank starter.")
-	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
+	cmd.Flags().BoolVar(&force, "force", false, "Write even if the target directory already exists and is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
+}
+
+// slugifyAppName turns --name into a directory name: lowercase, non-alphanumeric
+// runs collapsed to a single dash, no leading/trailing dashes.
+func slugifyAppName(name string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 // installAppDeps runs npm install
