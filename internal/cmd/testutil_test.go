@@ -45,7 +45,7 @@ func captureStdout(t *testing.T, fn func()) string {
 }
 
 // newTestServer creates an httptest server with the given handler, serving a
-// default /info (version testDeploymentVersion) so UseV2Runs works without every
+// default /info (version testDeploymentVersion) so UseV2API works without every
 // test mocking it; other paths fall through to handler.
 func newTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()

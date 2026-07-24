@@ -726,7 +726,7 @@ func TestAPIURL(t *testing.T) {
 
 // ---------- Run-query backend selection ----------
 
-func TestUseV2Runs(t *testing.T) {
+func TestUseV2API(t *testing.T) {
 	cases := []struct {
 		version string
 		want    bool
@@ -750,8 +750,8 @@ func TestUseV2Runs(t *testing.T) {
 		{"0.0.1", false},
 	}
 	for _, tc := range cases {
-		if got := useV2Runs(tc.version); got != tc.want {
-			t.Errorf("useV2Runs(%q) = %v, want %v", tc.version, got, tc.want)
+		if got := useV2API(tc.version); got != tc.want {
+			t.Errorf("useV2API(%q) = %v, want %v", tc.version, got, tc.want)
 		}
 	}
 }

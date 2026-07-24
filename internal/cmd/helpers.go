@@ -109,7 +109,7 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 // requireV2Feature exits with a clear error when the deployment lacks the v2
 // (SmithDB) API a v2-only feature needs (older self-hosted).
 func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
-	useV2, err := c.UseV2Runs(ctx)
+	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		ExitErrorf("%v", err)
 	}
@@ -122,7 +122,7 @@ func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 // supports it, else v1. params is the canonical v1 query; always pass a base
 // v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
 func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunQueryV2ParamsSelect, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
-	useV2, err := c.UseV2Runs(ctx)
+	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
 	}

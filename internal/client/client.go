@@ -29,9 +29,9 @@ type Client struct {
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
 
-	// Cached run-query backend decision (see UseV2Runs), resolved once per
-	// invocation from GET /info.
-	runsUseV2 *bool
+	// Cached v2-API decision (see UseV2API), resolved once per invocation
+	// from GET /info.
+	cachedUseV2API *bool
 }
 
 // Options controls LangSmith client authentication and routing.
@@ -119,25 +119,25 @@ func (c *Client) ResolveSessionID(ctx context.Context, projectName string) (stri
 // Self-hosted gains the v2 (SmithDB) run-query API at 0.16.
 const minSelfHostedV2Minor = 16
 
-// UseV2Runs reports whether run queries should use the v2 (SmithDB) API for the
-// connected deployment, resolved once from GET /info and cached.
-func (c *Client) UseV2Runs(ctx context.Context) (bool, error) {
-	if c.runsUseV2 != nil {
-		return *c.runsUseV2, nil
+// UseV2API reports whether the connected deployment's v2 (SmithDB) API should
+// be used, resolved once from GET /info and cached.
+func (c *Client) UseV2API(ctx context.Context) (bool, error) {
+	if c.cachedUseV2API != nil {
+		return *c.cachedUseV2API, nil
 	}
 	info, err := c.SDK.Info.List(ctx)
 	if err != nil {
 		return false, fmt.Errorf("fetching deployment info: %w", err)
 	}
-	v := useV2Runs(info.Version)
-	c.runsUseV2 = &v
+	v := useV2API(info.Version)
+	c.cachedUseV2API = &v
 	return v, nil
 }
 
-// useV2Runs decides the run-query backend from the /info version. Cloud reports
+// useV2API decides whether to use the v2 API from the /info version. Cloud reports
 // a non-release version (e.g. "dev") → v2; self-hosted reports a semver, v2 at
 // >= 0.16 else v1.
-func useV2Runs(version string) bool {
+func useV2API(version string) bool {
 	major, minor, ok := parseReleaseVersion(version)
 	if !ok {
 		return true // Cloud / non-release version
