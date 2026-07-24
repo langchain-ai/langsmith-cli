@@ -723,3 +723,35 @@ func TestAPIURL(t *testing.T) {
 		t.Errorf("expected http://localhost:1234, got %q", c.APIURL())
 	}
 }
+
+// ---------- Run-query backend selection ----------
+
+func TestUseV2API(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		// Cloud reports a non-release version.
+		{"dev", true},
+		{"", true},
+		{"latest", true},
+		// Self-hosted release semvers.
+		{"0.16", true},
+		{"0.16.0", true},
+		{"0.16.18", true},
+		{"0.16.18rc1", true},
+		{"v0.16.0", true},
+		{"0.17.3", true},
+		{"1.0.0", true},
+		{"1.2.3", true},
+		{"0.15.9", false},
+		{"0.15", false},
+		{"0.10.7", false},
+		{"0.0.1", false},
+	}
+	for _, tc := range cases {
+		if got := useV2API(tc.version); got != tc.want {
+			t.Errorf("useV2API(%q) = %v, want %v", tc.version, got, tc.want)
+		}
+	}
+}

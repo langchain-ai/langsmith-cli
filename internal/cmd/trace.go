@@ -77,7 +77,7 @@ func newTraceListCmd() *cobra.Command {
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -96,10 +96,16 @@ func newTraceListCmd() *cobra.Command {
 			if fmt_ == "pretty" {
 				if showHierarchy {
 					for _, run := range runs {
-						allRuns, err := queryRuns(ctx, c, langsmith.RunQueryParams{
+						childParams := langsmith.RunQueryParams{
 							Trace: langsmith.F(run.TraceID),
 							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
-						}, sessionID, 1000, 0)
+						}
+						// Bound v2's min_start_time to the root's start so older
+						// traces aren't clipped by v2's default 1-day window.
+						if !run.StartTime.IsZero() {
+							childParams.StartTime = langsmith.F(run.StartTime)
+						}
+						allRuns, err := queryRunsAuto(ctx, c, childParams, buildRunSelectV2(includeIO, includeFeedback), sessionID, 1000, 0)
 						if err != nil {
 							ExitErrorf("%v", err)
 						}
@@ -111,16 +117,21 @@ func newTraceListCmd() *cobra.Command {
 				}
 			} else {
 				if showHierarchy {
-					childParams := langsmith.RunQueryParams{
-						Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
-					}
-					if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-						childParams.Select = langsmith.F(sel)
-					}
+					baseSelect := buildRunSelect(includeIO, includeFeedback)
+					v2Select := buildRunSelectV2(includeIO, includeFeedback)
 					var result []map[string]any
 					for _, run := range runs {
-						childParams.Trace = langsmith.F(run.TraceID)
-						allRuns, err := queryRuns(ctx, c, childParams, sessionID, 1000, 0)
+						childParams := langsmith.RunQueryParams{
+							Trace: langsmith.F(run.TraceID),
+							Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
+						}
+						if baseSelect != nil {
+							childParams.Select = langsmith.F(baseSelect)
+						}
+						if !run.StartTime.IsZero() {
+							childParams.StartTime = langsmith.F(run.StartTime)
+						}
+						allRuns, err := queryRunsAuto(ctx, c, childParams, v2Select, sessionID, 1000, 0)
 						if err != nil {
 							ExitErrorf("%v", err)
 						}
@@ -198,7 +209,7 @@ func newTraceGetCmd() *cobra.Command {
 				params.Select = langsmith.F(sel)
 			}
 
-			runs, err := queryRuns(ctx, c, params, sessionID, 1000, 0)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, 1000, 0)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -275,7 +286,8 @@ func newTraceExportCmd() *cobra.Command {
 			if sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			rootRuns, err := queryRuns(ctx, c, params, sessionID, ff.Limit, ff.MinTokens)
+			v2Select := buildRunSelectV2(includeIO, includeFeedback)
+			rootRuns, err := queryRunsAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -291,7 +303,10 @@ func newTraceExportCmd() *cobra.Command {
 				if sel != nil {
 					childParams.Select = langsmith.F(sel)
 				}
-				allRuns, err := queryRuns(ctx, c, childParams, sessionID, 1000, 0)
+				if !root.StartTime.IsZero() {
+					childParams.StartTime = langsmith.F(root.StartTime)
+				}
+				allRuns, err := queryRunsAuto(ctx, c, childParams, v2Select, sessionID, 1000, 0)
 				if err != nil {
 					ExitErrorf("%v", err)
 				}

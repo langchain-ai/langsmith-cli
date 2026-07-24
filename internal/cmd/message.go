@@ -133,6 +133,9 @@ Examples:
 
 			c := MustGetClient()
 			ctx := context.Background()
+
+			requireV2Feature(ctx, c, "trace messages")
+
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace messages")
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -330,7 +333,6 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 		return out
 	}
 	params := langsmith.RunQueryParams{
-		Session:   langsmith.F([]string{sessionID}),
 		IsRoot:    langsmith.F(true),
 		ID:        langsmith.F(ids),
 		StartTime: langsmith.F(startTime),
@@ -342,12 +344,17 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			langsmith.RunQueryParamsSelectOutputsPreview,
 		}),
 	}
-	resp, err := c.SDK.Runs.Query(ctx, params)
+	v2Select := []langsmith.RunQueryV2ParamsSelect{
+		langsmith.RunQueryV2ParamsSelectTraceID,
+		langsmith.RunQueryV2ParamsSelectInputsPreview,
+		langsmith.RunQueryV2ParamsSelectOutputsPreview,
+	}
+	runs, err := queryRunsAuto(ctx, c, params, v2Select, sessionID, len(ids), 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
 		return out
 	}
-	for _, run := range resp.Runs {
+	for _, run := range runs {
 		tid := run.TraceID
 		if tid == "" {
 			tid = run.ID
