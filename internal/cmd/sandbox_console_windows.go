@@ -21,3 +21,7 @@ var sandboxConsoleCommand = structured.Command[struct{}]{
 func newSandboxConsoleCmd() *cobra.Command {
 	return sandboxConsoleCommand.Cobra()
 }
+
+func runConsole(name, shell string, forwardSSHAgent bool, extraEnv []string) error {
+	return fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandbox ssh-setup %s", name)
+}
