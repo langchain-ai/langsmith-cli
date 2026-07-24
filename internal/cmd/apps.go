@@ -73,7 +73,7 @@ Examples:
   langsmith apps push
   langsmith apps pull my-app
   langsmith apps list
-  langsmith apps delete <app-id> --yes
+  langsmith apps delete my-app --yes
 
 "init" and "pull" create a new directory named after the app. Except
 init/pull/list/delete, these act on the current directory — cd into your

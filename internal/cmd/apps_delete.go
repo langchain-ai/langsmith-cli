@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -14,33 +13,18 @@ func newAppsDeleteCmd() *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
-		Use:   "delete APP_ID",
-		Short: "Delete a custom app",
+		Use:   "delete APP_ID_OR_NAME",
+		Short: "Delete a custom app by ID or name",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-			if _, err := uuid.Parse(id); err != nil {
-				return fmt.Errorf("invalid app ID %q: expected a UUID (run `langsmith apps list` to find it)", id)
-			}
-
 			c := MustGetClient()
 			ctx := cmd.Context()
 
-			var apps []customApp
-			if err := c.RawGet(ctx, "/v1/platform/custom-apps", &apps); err != nil {
-				return fmt.Errorf("looking up custom app %s: %w", id, err)
+			app, err := resolveCustomApp(ctx, c, args[0])
+			if err != nil {
+				return err
 			}
-			var found bool
-			var name string
-			for _, a := range apps {
-				if a.ID == id {
-					found, name = true, a.Name
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("custom app %s not found (run `langsmith apps list`)", id)
-			}
+			id, name := app.ID, app.Name
 
 			if !yes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Delete custom app %q (%s)? [y/N] ", name, id)
@@ -57,6 +41,7 @@ func newAppsDeleteCmd() *cobra.Command {
 			output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"app_id": id,
+				"name":   name,
 			}, "")
 			return nil
 		},
