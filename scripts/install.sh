@@ -5,6 +5,7 @@
 # Environment variables:
 #   INSTALL_DIR   — directory to install to (default: auto-detect)
 #   VERSION       — specific version to install (default: latest)
+#   GITHUB_TOKEN  — token for the release lookup, to avoid anonymous rate limits
 
 set -e
 
@@ -41,10 +42,20 @@ fi
 if [ -z "$VERSION" ]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
+  # Fall back to an authenticated gh when GITHUB_TOKEN is unset
+  GH_AUTHED=0
+  if [ -z "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    GH_AUTHED=1
+  fi
+
   fetch_latest() {
     if [ -n "$GITHUB_TOKEN" ]; then
       curl -fsSL -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL"
+    elif [ "$GH_AUTHED" -eq 1 ]; then
+      gh api -H "Accept: application/vnd.github+json" \
+        "repos/${REPO}/releases/latest" 2>/dev/null \
+        || curl -fsSL -H "Accept: application/vnd.github+json" "$API_URL"
     else
       curl -fsSL -H "Accept: application/vnd.github+json" "$API_URL"
     fi
@@ -61,7 +72,7 @@ if [ -z "$VERSION" ]; then
 
   if [ -z "$VERSION" ]; then
     echo "Failed to determine latest version (GitHub API unreachable or rate-limited)." >&2
-    echo "Set GITHUB_TOKEN to raise the rate limit, or set VERSION to install a specific release." >&2
+    echo "Set GITHUB_TOKEN, run 'gh auth login', or set VERSION to install a specific release." >&2
     exit 1
   fi
 fi
