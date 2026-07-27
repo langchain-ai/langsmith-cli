@@ -413,6 +413,25 @@ Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands lik
 - Go 1.23+
 - golangci-lint (for linting)
 
+## Releasing
+
+Releases are tag-driven. Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which invokes GoReleaser to cross-compile linux/darwin/windows on amd64+arm64, publish the
+archives and `checksums.txt`, and cut the GitHub Release with a changelog generated from the
+commits since the previous tag (`docs:`, `test:`, and `ci:` commits are excluded).
+
+```bash
+git checkout main && git pull
+git tag v0.2.43          # next patch after the latest tag
+git push origin v0.2.43
+```
+
+There is no version file or changelog to edit — the version is stamped into the binary from the
+tag via ldflags, so `git tag` is the only bump. Find the latest tag with `git tag --sort=-v:refname | head -1`.
+
+The install scripts and `langsmith self-update` both read the latest GitHub Release, so a tag push
+is all that's needed to ship to users.
+
 ## License
 
 MIT
