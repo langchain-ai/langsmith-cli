@@ -447,17 +447,18 @@ func TestAppsInitCmd_DefaultsToBlankWhenTemplateOmitted(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed with --template omitted, got: %v", err)
 	}
+	target := filepath.Join(dir, "my-app")
 
 	// Omitting --template scaffolds the blank starter: a partial link and a
 	// queue-free App.tsx.
-	link, err := readAppLink(dir)
+	link, err := readAppLink(target)
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
 	if link == nil || link.Name != "my-app" {
 		t.Errorf("expected a partial link recording the name, got %+v", link)
 	}
-	appTsx, err := os.ReadFile(filepath.Join(dir, "src", "App.tsx"))
+	appTsx, err := os.ReadFile(filepath.Join(target, "src", "App.tsx"))
 	if err != nil {
 		t.Fatalf("read App.tsx: %v", err)
 	}
@@ -476,11 +477,13 @@ func TestAppsInitCmd_AcceptsAnnotationQueueGridTemplate(t *testing.T) {
 		t.Fatalf("expected init to succeed for --template annotation-queue-grid, got: %v", err)
 	}
 
+	target := filepath.Join(dir, "grid-app")
+
 	// The grid variant's own component is scaffolded.
-	if _, err := os.Stat(filepath.Join(dir, "src", "components", "DataGrid.tsx")); err != nil {
+	if _, err := os.Stat(filepath.Join(target, "src", "components", "DataGrid.tsx")); err != nil {
 		t.Errorf("expected the grid template's DataGrid.tsx to be scaffolded: %v", err)
 	}
-	link, err := readAppLink(dir)
+	link, err := readAppLink(target)
 	if err != nil {
 		t.Fatalf("readAppLink: %v", err)
 	}
@@ -498,7 +501,7 @@ func TestAppsInitCmd_AcceptsCodingAgentDashboardTemplate(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template coding-agent-dashboard, got: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "src", "components", "OverviewPanel.tsx")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "dash", "src", "components", "OverviewPanel.tsx")); err != nil {
 		t.Errorf("expected the dashboard's OverviewPanel.tsx to be scaffolded: %v", err)
 	}
 }
@@ -512,8 +515,100 @@ func TestAppsInitCmd_AcceptsExperimentComparisonTemplate(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("expected init to succeed for --template experiment-comparison, got: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "src", "components", "SummaryPanel.tsx")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "cmp", "src", "components", "SummaryPanel.tsx")); err != nil {
 		t.Errorf("expected the SummaryPanel.tsx to be scaffolded: %v", err)
+	}
+}
+
+func TestAppsInitCmd_ScaffoldsIntoSlugifiedSubdirNotCwd(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "My Cool App!"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	target := filepath.Join(dir, "my-cool-app")
+	if _, err := os.Stat(filepath.Join(target, "package.json")); err != nil {
+		t.Errorf("expected package.json under the slugified subdir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "package.json")); !os.IsNotExist(err) {
+		t.Error("expected nothing scaffolded into the current directory")
+	}
+
+	link, err := readAppLink(target)
+	if err != nil {
+		t.Fatalf("readAppLink: %v", err)
+	}
+	if link == nil || link.Name != "My Cool App!" {
+		t.Errorf("expected the raw --name recorded in the link, got %+v", link)
+	}
+	pkg, err := os.ReadFile(filepath.Join(target, "package.json"))
+	if err != nil {
+		t.Fatalf("read package.json: %v", err)
+	}
+	if !strings.Contains(string(pkg), `"name": "My Cool App!"`) {
+		t.Errorf("expected the raw --name in package.json:\n%s", pkg)
+	}
+}
+
+func TestAppsInitCmd_RejectsExistingNonEmptyDirWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fakeNpm(t, "exit 1")
+	if err := os.MkdirAll(filepath.Join(dir, "my-app"), 0o755); err != nil {
+		t.Fatalf("seed dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "my-app", "existing.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "my-app"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("expected a not-empty error for an existing populated dir, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-app", "package.json")); !os.IsNotExist(err) {
+		t.Error("expected nothing written into the existing directory")
+	}
+
+	cmd = newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "my-app", "--force"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected --force to write into the existing dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-app", "package.json")); err != nil {
+		t.Errorf("expected package.json after --force: %v", err)
+	}
+}
+
+func TestAppsInitCmd_RejectsUnslugifiableName(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "///"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected an error for a name that slugifies to nothing")
+	}
+}
+
+func TestSlugifyAppName(t *testing.T) {
+	tests := map[string]string{
+		"my-app":        "my-app",
+		"My Cool App!":  "my-cool-app",
+		"  spaced  out": "spaced-out",
+		"a__b--c":       "a-b-c",
+		"Queue 2.0":     "queue-2-0",
+		"///":           "",
+		"":              "",
+	}
+	for in, want := range tests {
+		if got := slugifyAppName(in); got != want {
+			t.Errorf("slugifyAppName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

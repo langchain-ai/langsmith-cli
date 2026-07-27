@@ -114,17 +114,56 @@ func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
 	}
 }
 
-func TestAppsDelete_RejectsNonUUID(t *testing.T) {
+func TestAppsDelete_ResolvesNameToID(t *testing.T) {
+	const id = "33333333-3333-3333-3333-333333333333"
+	var deletePath string
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("unexpected request for non-UUID id: %s %s", r.Method, r.URL.Path)
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]customApp{
+				{ID: "44444444-4444-4444-4444-444444444444", Name: "other"},
+				{ID: id, Name: "My App"},
+			})
+		case r.Method == "DELETE":
+			deletePath = r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	out := captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"delete", "My App", "--yes"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+	if deletePath != "/v1/platform/custom-apps/"+id {
+		t.Errorf("expected the name resolved to its ID before deleting, got %q", deletePath)
+	}
+	if !strings.Contains(out, `"name": "My App"`) {
+		t.Errorf("expected the resolved name in the output:\n%s", out)
+	}
+}
+
+func TestAppsDelete_RejectsUnknownName(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			t.Error("delete should not run for an unknown name")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]customApp{{ID: "55555555-5555-5555-5555-555555555555", Name: "one"}})
 	})
 	defer setupTestEnv(t, srv.URL)()
 
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"delete", "myapp", "--yes"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "expected a UUID") {
-		t.Fatalf("expected UUID rejection, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no custom app named") {
+		t.Fatalf("expected an unknown-name error, got %v", err)
 	}
 }
 
