@@ -63,14 +63,14 @@ func resolveStartTime(since string, lastNMinutes int) time.Time {
 		return time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
 	}
 	if since != "" {
-		t, err := time.Parse(time.RFC3339, since)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", since)
-			if err != nil {
-				ExitErrorf("invalid --since timestamp: %s", since)
+		// Date-only is accepted so --since matches --before (parseFlexTime) and
+		// the "RFC3339 or YYYY-MM-DD" contract the flag help advertises.
+		for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+			if t, err := time.Parse(layout, since); err == nil {
+				return t
 			}
 		}
-		return t
+		ExitErrorf("invalid --since timestamp: %s", since)
 	}
 	return time.Now().UTC().Add(-7 * 24 * time.Hour)
 }
