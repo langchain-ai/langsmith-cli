@@ -10,6 +10,27 @@ import (
 
 // ==================== Command structure ====================
 
+// trace messages rejects invocations without --since/--last-n-minutes, so every
+// example in its help text must carry one. Three examples did not, which is
+// where callers copying the help got commands that always exit 1.
+func TestTraceMessagesCmd_HelpExamplesHaveStartTime(t *testing.T) {
+	cmd := newTraceMessagesCmd()
+	var examples int
+	for _, line := range strings.Split(cmd.Long, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "langsmith trace messages") {
+			continue
+		}
+		examples++
+		if !strings.Contains(line, "--since") && !strings.Contains(line, "--last-n-minutes") {
+			t.Errorf("help example lacks a start time (always exits 1): %q", line)
+		}
+	}
+	if examples == 0 {
+		t.Fatal("no help examples found; the assertion above would vacuously pass")
+	}
+}
+
 func TestTraceMessagesCmd_UseField(t *testing.T) {
 	cmd := newTraceMessagesCmd()
 	if cmd.Use != "messages" {

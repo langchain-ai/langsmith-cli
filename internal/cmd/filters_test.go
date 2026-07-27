@@ -371,6 +371,17 @@ func TestResolveStartTime_Since(t *testing.T) {
 	}
 }
 
+// --before accepts date-only via parseFlexTime and the flag help advertises
+// "RFC3339 or YYYY-MM-DD", so --since must accept it too.
+func TestResolveStartTime_SinceAcceptsDateOnly(t *testing.T) {
+	for _, in := range []string{"2024-01-15", "2024-01-15T10:00:00", "2024-01-15T10:00:00Z"} {
+		st := resolveStartTime(in, 0)
+		if st.Year() != 2024 || st.Month() != time.January || st.Day() != 15 {
+			t.Errorf("resolveStartTime(%q) = %v, want 2024-01-15", in, st)
+		}
+	}
+}
+
 func TestResolveStartTime_LastNMinutesTakesPrecedence(t *testing.T) {
 	before := time.Now().UTC().Add(-61 * time.Minute)
 	st := resolveStartTime("2024-01-15T10:00:00Z", 60)

@@ -58,7 +58,7 @@ to fetch a second time window side-by-side for trend comparison.
 Examples:
   langsmith trace stats --project my-app
   langsmith trace stats --project my-app --last-n-minutes 120
-  langsmith trace stats --project my-app --since 2025-01-10 --compare-since 2025-01-03 --compare-before 2025-01-10
+  langsmith trace stats --project my-app --since <YYYY-MM-DD> --compare-since <YYYY-MM-DD> --compare-before <YYYY-MM-DD>
   langsmith trace stats --project my-app --filter 'eq(status, "error")'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := MustGetClient()
