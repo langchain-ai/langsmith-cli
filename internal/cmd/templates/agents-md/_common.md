@@ -40,7 +40,7 @@ const projects = await window.langsmith.call('GET /api/v1/sessions', {
 for Go-hosted ones). `args` carries `params` (query string) and/or `body`
 (JSON). This is a generic passthrough, not a curated allowlist — anything
 your API key can already do works; a permission error is a real limit of the
-key. Full reference: https://docs.langchain.com/langsmith/home. Base URL:
+key. Full reference: https://docs.langchain.com/langsmith/smith-api-ref. Base URL:
 `https://api.smith.langchain.com` (or your self-hosted instance's URL).
 
 While `langsmith apps dev` is running, the app's failed API calls (with status
