@@ -273,6 +273,9 @@ func safeSourceArchivePath(dest, name string) (string, bool, error) {
 	if strings.HasPrefix(slash, "/") || filepath.IsAbs(name) || strings.Contains(name, `\`) {
 		return "", false, fmt.Errorf("source archive entry %q is not a relative path; refusing to extract", name)
 	}
+	if !filepath.IsLocal(slash) {
+		return "", false, fmt.Errorf("source archive entry %q would escape the target directory; refusing to extract", name)
+	}
 	clean := filepath.Clean(filepath.FromSlash(slash))
 	for _, segment := range strings.Split(filepath.ToSlash(clean), "/") {
 		if segment == ".." {
