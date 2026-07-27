@@ -109,8 +109,8 @@ Each trace in the response contains a list of conversation groups:
   - "tool_interaction" groups contain an AI message with tool calls and their results
 
 Requires --project and an explicit start time (--since or --last-n-minutes);
-unlike the read/query commands this one has no implicit time window. Results
-are paginated internally (default limit: 10, max: 100).
+unlike the read/query commands this one has no implicit time window.
+Default limit: 10, max: 100.
 
 Examples:
   langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
