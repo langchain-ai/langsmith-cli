@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 )
 
@@ -10,6 +12,7 @@ func TestProjectIssuesCmd_Subcommands(t *testing.T) {
 	cmd := newProjectIssuesCmd()
 	expected := map[string]bool{
 		"list":     false,
+		"get":      false,
 		"events":   false,
 		"update":   false,
 		"runs":     false,
@@ -24,6 +27,62 @@ func TestProjectIssuesCmd_Subcommands(t *testing.T) {
 		if !found {
 			t.Errorf("issues missing subcommand %q", name)
 		}
+	}
+}
+
+func TestProjectIssuesGetCmd(t *testing.T) {
+	var method string
+	var path string
+	proposedFix := "Add the missing command"
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(forgeIssue{
+			ID:          "issue-123",
+			Name:        "Missing issues get command",
+			ProposedFix: &proposedFix,
+		})
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	out := captureStdout(t, func() {
+		cmd := newProjectIssuesGetCmd()
+		cmd.SetArgs([]string{"issue-123"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if method != http.MethodGet {
+		t.Errorf("expected GET request, got %q", method)
+	}
+	if path != "/v1/platform/issues/issue-123" {
+		t.Errorf("expected issue path, got %q", path)
+	}
+
+	var issue map[string]any
+	if err := json.Unmarshal([]byte(out), &issue); err != nil {
+		t.Fatalf("decode output: %v\n%s", err, out)
+	}
+	if issue["id"] != "issue-123" {
+		t.Errorf("expected issue ID in output, got %#v", issue["id"])
+	}
+	if issue["proposed_fix"] != proposedFix {
+		t.Errorf("expected proposed fix in output, got %#v", issue["proposed_fix"])
+	}
+}
+
+func TestProjectIssuesGetCmd_ArgsAndFlags(t *testing.T) {
+	cmd := newProjectIssuesGetCmd()
+	if cmd.Use != "get <issue-id>" {
+		t.Errorf("expected Use=%q, got %q", "get <issue-id>", cmd.Use)
+	}
+	if err := cmd.Args(cmd, nil); err == nil {
+		t.Error("expected missing issue ID to fail argument validation")
+	}
+	if f := cmd.Flags().Lookup("output"); f == nil || f.Shorthand != "o" {
+		t.Errorf("expected --output/-o flag, got %+v", f)
 	}
 }
 
