@@ -42,17 +42,12 @@ fi
 if [ -z "$VERSION" ]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
-  # Fall back to an authenticated gh when GITHUB_TOKEN is unset
-  GH_AUTHED=0
-  if [ -z "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    GH_AUTHED=1
-  fi
-
+  # GITHUB_TOKEN, then an authenticated gh, then anonymous
   fetch_latest() {
     if [ -n "$GITHUB_TOKEN" ]; then
       curl -fsSL -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL"
-    elif [ "$GH_AUTHED" -eq 1 ]; then
+    elif command -v gh >/dev/null 2>&1; then
       gh api -H "Accept: application/vnd.github+json" \
         "repos/${REPO}/releases/latest" 2>/dev/null \
         || curl -fsSL -H "Accept: application/vnd.github+json" "$API_URL"
