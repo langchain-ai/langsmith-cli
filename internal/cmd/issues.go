@@ -168,13 +168,12 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			path := fmt.Sprintf("/v1/platform/issues/%s", args[0])
-			var issue forgeIssue
-			if err := c.RawGet(ctx, path, &issue); err != nil {
+			issue, err := c.SDK.Issues.Get(ctx, args[0])
+			if err != nil {
 				ExitErrorf("getting issue: %v", err)
 			}
 
-			output.OutputJSON(issueToMap(issue), outputFile)
+			output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile)
 		},
 	}
 
