@@ -46,11 +46,13 @@ func newProjectIssuesCmd() *cobra.Command {
 
 Examples:
   langsmith project issues list --project my-app
+  langsmith project issues get <issue-id>
   langsmith project issues list --project my-app --status open --priority high
   langsmith project issues events --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
+	cmd.AddCommand(newProjectIssuesGetCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
@@ -145,6 +147,38 @@ Examples:
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
+	return cmd
+}
+
+func newProjectIssuesGetCmd() *cobra.Command {
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "get <issue-id>",
+		Short: "Get an issue by ID",
+		Long: `Get full details for a specific issue.
+
+The issue ID is the UUID returned by 'langsmith project issues list'.
+
+Examples:
+  langsmith project issues get <issue-id>
+  langsmith project issues get <issue-id> --output issue.json`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := MustGetClient()
+			ctx := context.Background()
+
+			path := fmt.Sprintf("/v1/platform/issues/%s", args[0])
+			var issue forgeIssue
+			if err := c.RawGet(ctx, path, &issue); err != nil {
+				ExitErrorf("getting issue: %v", err)
+			}
+
+			output.OutputJSON(issueToMap(issue), outputFile)
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
 
@@ -395,6 +429,7 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"fix_branch":    issue.FixBranch,
 		"fix_prompt":    issue.FixPrompt,
 		"fix_pr_number": issue.FixPRNumber,
+		"proposed_fix":  issue.ProposedFix,
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
