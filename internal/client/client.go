@@ -211,7 +211,7 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 // FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
-	path := "/v1/platform/custom-apps/" + url.PathEscape(appID) + "/source"
+	path := "/api/v1/platform/custom-apps/" + url.PathEscape(appID) + "/source"
 	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err

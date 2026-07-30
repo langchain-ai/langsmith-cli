@@ -310,10 +310,10 @@ func newEvaluatorUploadCmd() *cobra.Command {
 
 			var result map[string]any
 			if existing != nil {
-				if err := c.RawPatch(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), payload, &result); err != nil {
+				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing evaluator: %v", err)
 				}
-			} else if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
+			} else if err := c.RawPost(ctx, "/api/v1/runs/rules", payload, &result); err != nil {
 				ExitErrorf("uploading evaluator: %v", err)
 			}
 
@@ -407,10 +407,10 @@ Examples:
 
 			var result map[string]any
 			if existing != nil {
-				if err := c.RawPatch(ctx, fmt.Sprintf("/runs/rules/%s", existing.ID), payload, &result); err != nil {
+				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing LLM evaluator: %v", err)
 				}
-			} else if err := c.RawPost(ctx, "/runs/rules", payload, &result); err != nil {
+			} else if err := c.RawPost(ctx, "/api/v1/runs/rules", payload, &result); err != nil {
 				ExitErrorf("creating LLM evaluator: %v", err)
 			}
 			targetLabel := "project"
@@ -483,7 +483,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 
 			deleted := 0
 			for _, rule := range matching {
-				if err := c.RawDelete(ctx, fmt.Sprintf("/runs/rules/%s", rule.ID), nil); err != nil {
+				if err := c.RawDelete(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", rule.ID), nil); err != nil {
 					ExitErrorf("deleting evaluator %s: %v", rule.ID, err)
 				}
 				deleted++
