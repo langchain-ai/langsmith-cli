@@ -15,7 +15,7 @@ func TestPromptPush_SendsDescription(t *testing.T) {
 	var gotBody map[string]any
 
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/commits/acme/my-prompt" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/commits/acme/my-prompt" {
 			http.NotFound(w, r)
 			return
 		}
@@ -67,7 +67,7 @@ func TestPromptPush_OmitsDescriptionWhenUnset(t *testing.T) {
 	var gotBody map[string]any
 
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/commits/acme/my-prompt" {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/commits/acme/my-prompt" {
 			http.NotFound(w, r)
 			return
 		}
@@ -105,7 +105,7 @@ func TestPromptPush_OmitsDescriptionWhenUnset(t *testing.T) {
 // the per-commit description in JSON output.
 func TestPromptCommits_ShowsDescription(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/commits/acme/my-prompt" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/commits/acme/my-prompt" {
 			http.NotFound(w, r)
 			return
 		}

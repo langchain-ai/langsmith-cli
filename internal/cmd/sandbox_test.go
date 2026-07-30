@@ -143,7 +143,7 @@ func TestSandboxCreateCmd_AllowsNoArgs(t *testing.T) {
 	var body map[string]any
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/v2/sandboxes/boxes", r.URL.Path)
+		require.Equal(t, "/api/v2/sandboxes/boxes", r.URL.Path)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -170,7 +170,7 @@ func TestSandboxExecCmd_WritesCommandOutputDirectly(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v2/sandboxes/boxes/my-vm":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/sandboxes/boxes/my-vm":
 			_, err := w.Write([]byte(`{"id":"box-id","name":"my-vm","status":"ready","dataplane_url":"` + tsURL(t, r) + `"}`))
 			require.NoError(t, err)
 		case r.Method == http.MethodPost && r.URL.Path == "/execute":
@@ -403,7 +403,7 @@ func TestSandboxServiceURLCmd_GeneratesServiceURL(t *testing.T) {
 	var body map[string]any
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/v2/sandboxes/boxes/my-vm/service-url", r.URL.Path)
+		require.Equal(t, "/api/v2/sandboxes/boxes/my-vm/service-url", r.URL.Path)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 
 		w.Header().Set("Content-Type", "application/json")

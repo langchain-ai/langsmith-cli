@@ -23,7 +23,7 @@ func TestHubPush_CreatesRepoAndPostsCommit(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("{}"))
-		case r.Method == "POST" && r.URL.Path == "/v1/platform/hub/repos/-/my-skill/directories/commits":
+		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/hub/repos/-/my-skill/directories/commits":
 			sawCommit = true
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &commitBody)

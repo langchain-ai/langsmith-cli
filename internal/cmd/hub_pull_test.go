@@ -12,7 +12,7 @@ import (
 func TestHubPull_WritesFilesAndReportsLinks(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path != "/v1/platform/hub/repos/acme/my-skill/directories" {
+		if r.URL.Path != "/api/v1/platform/hub/repos/acme/my-skill/directories" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		if r.URL.Query().Get("commit") != "production" {
