@@ -121,7 +121,7 @@ func TestTraceMessages_Success(t *testing.T) {
 					},
 				},
 			})
-		case r.URL.Path == "/v2/runs/query" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/runs/query" && r.Method == "POST":
 			// attachRootIO always fetches root run previews (v2 backend here)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
@@ -620,7 +620,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 				},
 				"next_cursor": "",
 			})
-		case r.URL.Path == "/v2/runs/query" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/runs/query" && r.Method == "POST":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		default:

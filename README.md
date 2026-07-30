@@ -434,8 +434,8 @@ commits since the previous tag (`docs:`, `test:`, and `ci:` commits are excluded
 
 ```bash
 git checkout main && git pull
-git tag v0.2.43          # next patch after the latest tag
-git push origin v0.2.43
+git tag v0.2.44          # next patch after the latest tag
+git push origin v0.2.44
 ```
 
 There is no version file or changelog to edit — the version is stamped into the binary from the

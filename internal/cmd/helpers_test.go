@@ -505,23 +505,23 @@ func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
 	// select builder: first_token_time is a base field always requested,
 	// events is requested alongside inputs/outputs/error under --include-io.
 	base := buildRunSelectV2(false, false)
-	baseHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	baseHas := map[langsmith.RunSelectField]bool{}
 	for _, f := range base {
 		baseHas[f] = true
 	}
-	if !baseHas[langsmith.RunQueryV2ParamsSelectFirstTokenTime] {
+	if !baseHas[langsmith.RunSelectFieldFirstTokenTime] {
 		t.Error("missing first_token_time field in base v2 select set")
 	}
-	if baseHas[langsmith.RunQueryV2ParamsSelectEvents] {
+	if baseHas[langsmith.RunSelectFieldEvents] {
 		t.Error("events should not be requested without --include-io")
 	}
 
 	withIO := buildRunSelectV2(true, false)
-	ioHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	ioHas := map[langsmith.RunSelectField]bool{}
 	for _, f := range withIO {
 		ioHas[f] = true
 	}
-	if !ioHas[langsmith.RunQueryV2ParamsSelectEvents] {
+	if !ioHas[langsmith.RunSelectFieldEvents] {
 		t.Error("missing events field when --include-io requested")
 	}
 }
@@ -568,7 +568,7 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 		Limit:     langsmith.F(int64(25)),
 		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
 	}
-	sel := []langsmith.RunQueryV2ParamsSelect{langsmith.RunQueryV2ParamsSelectID}
+	sel := []langsmith.RunSelectField{langsmith.RunSelectFieldID}
 
 	v2 := toV2Params(p, sel)
 
@@ -578,7 +578,7 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 	if !v2.IsRoot.Value {
 		t.Error("IsRoot = false, want true")
 	}
-	if v2.RunType.Value != langsmith.RunQueryV2ParamsRunType("LLM") {
+	if v2.RunType.Value != langsmith.RunType("LLM") {
 		t.Errorf("RunType = %q, want LLM (uppercased)", v2.RunType.Value)
 	}
 	if !v2.HasError.Value {

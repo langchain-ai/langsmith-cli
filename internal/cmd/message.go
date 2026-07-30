@@ -346,10 +346,10 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			langsmith.RunQueryParamsSelectOutputsPreview,
 		}),
 	}
-	v2Select := []langsmith.RunQueryV2ParamsSelect{
-		langsmith.RunQueryV2ParamsSelectTraceID,
-		langsmith.RunQueryV2ParamsSelectInputsPreview,
-		langsmith.RunQueryV2ParamsSelectOutputsPreview,
+	v2Select := []langsmith.RunSelectField{
+		langsmith.RunSelectFieldTraceID,
+		langsmith.RunSelectFieldInputsPreview,
+		langsmith.RunSelectFieldOutputsPreview,
 	}
 	runs, err := queryRunsAuto(ctx, c, params, v2Select, sessionID, len(ids), 0)
 	if err != nil {
