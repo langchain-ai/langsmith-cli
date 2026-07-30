@@ -66,6 +66,7 @@ func newProjectIssuesListCmd() *cobra.Command {
 		status     string
 		priority   string
 		limit      int
+		offset     int
 		outputFile string
 	)
 
@@ -75,13 +76,17 @@ func newProjectIssuesListCmd() *cobra.Command {
 		Long: `List forge issues associated with a tracing project.
 
 Fetches issues from the Issues Board for the specified project. Results
-can be filtered by status (open/closed) and priority (high/medium/low).
+can be filtered by status and priority (high/medium/low).
 Output is JSON by default; pass --format pretty for a human-readable table.
+
+The server returns at most 500 issues per request. Page through larger
+boards with --offset, advancing by --limit until a page comes back short.
 
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
+  langsmith project issues list --project my-app --limit 500 --offset 500
   langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
@@ -91,10 +96,22 @@ Examples:
 			if projectName == "" {
 				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
+			if limit < 0 {
+				ExitError("--limit must be a positive integer")
+			}
+			if offset < 0 {
+				ExitError("--offset must be a non-negative integer")
+			}
 
 			path := fmt.Sprintf("/api/v1/platform/issues?session_name=%s", urlEscape(projectName))
 			if status != "" {
 				path += "&status=" + urlEscape(status)
+			}
+			if limit > 0 {
+				path += fmt.Sprintf("&limit=%d", limit)
+			}
+			if offset > 0 {
+				path += fmt.Sprintf("&offset=%d", offset)
 			}
 			if priority != "" {
 				sev := priorityToSeverity(priority)
@@ -106,10 +123,6 @@ Examples:
 			var issues []forgeIssue
 			if err := c.RawGet(ctx, path, &issues); err != nil {
 				ExitErrorf("listing issues: %v", err)
-			}
-
-			if limit > 0 && len(issues) > limit {
-				issues = issues[:limit]
 			}
 
 			fmt_ := GetFormat()
@@ -142,9 +155,10 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open or closed")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open, fixing, watching, completed, or ignored")
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
-	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
+	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return (server caps at 500)")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Number of issues to skip, for paging through boards larger than --limit")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
