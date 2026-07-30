@@ -57,7 +57,7 @@ func TestProjectIssuesGetCmd(t *testing.T) {
 	if method != http.MethodGet {
 		t.Errorf("expected GET request, got %q", method)
 	}
-	if path != "/v1/platform/issues/issue-123" {
+	if path != "/api/v1/platform/issues/issue-123" {
 		t.Errorf("expected issue path, got %q", path)
 	}
 
