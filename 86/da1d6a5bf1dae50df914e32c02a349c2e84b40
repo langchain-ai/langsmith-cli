@@ -1,0 +1,41 @@
+internal/cmd/thread_test.go
+  s_5906d7b327e659::t_353d55511d8f3c 30
+internal/cmd/message.go
+  s_5906d7b327e659::t_353d55511d8f3c 349-352
+internal/cmd/message_test.go
+  s_5906d7b327e659::t_8c274f1fa63e2a 124,623
+internal/cmd/hub_pull_test.go
+  s_5906d7b327e659::t_8c274f1fa63e2a 15
+internal/cmd/hub_delete_test.go
+  s_5906d7b327e659::t_8c274f1fa63e2a 16
+internal/cmd/prompt_test.go
+  s_5906d7b327e659::t_8c274f1fa63e2a 18,70,108
+internal/cmd/helpers.go
+  s_5906d7b327e659::t_353d55511d8f3c 124,137,149,180-181,187-210,214-217,221
+go.mod
+  s_5906d7b327e659::t_25bccd4252fe9e 8
+internal/cmd/hub_push_test.go
+  s_5906d7b327e659::t_8c274f1fa63e2a 26
+internal/cmd/helpers_test.go
+  s_5906d7b327e659::t_353d55511d8f3c 508,512,515,520,524,571,581
+internal/cmd/sandbox_test.go
+  s_5906d7b327e659::t_fa8112917f8261 146,173,406
+go.sum
+  s_5906d7b327e659::t_5b23aad2c2540f 36-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "86da1d6a5bf1dae50df914e32c02a349c2e84b40",
+  "prompts": {},
+  "sessions": {
+    "s_5906d7b327e659": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ca2ae8e-cada-47cb-af19-1672e9dd54c0",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
