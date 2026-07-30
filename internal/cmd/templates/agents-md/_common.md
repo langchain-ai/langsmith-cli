@@ -53,17 +53,18 @@ successful call and all `console.*` output, or `--quiet` to silence it.
 Every call counts against a rate limit; going over returns **HTTP 429**. Retry
 with exponential backoff + jitter, and don't fan out parallel queries to go
 faster — that just trips the limit sooner. Query endpoints
-(`POST /api/v1/runs/query`, `POST /v2/threads/query`) carry the tightest,
+(`POST /v2/runs/query`, `POST /v2/threads/query`) carry the tightest,
 time-window-based limits, so query deliberately:
 
-- **Set `start_time`.** Omitting it counts as a >7-day "large window" and drops
+- **Set `min_start_time`.** Omitting it counts as a >7-day "large window" and drops
   you from 10 req/10s to 3 req/10s. Keep windows ≤ 7 days where you can.
-- **Split long windows.** The query time range (end − start) is capped at **401
-  days**; a longer span is rejected with a 400. Walk it in chunks (ideally ≤ 7
-  days) instead of one huge request.
-- **Paginate.** Pass `limit`, then feed the returned `cursor` back for the next
-  page (`runs/query` returns `{ runs, cursor }`). Don't pull everything at once.
-- **Use `select`** to fetch only the fields you render — smaller, faster responses.
+- **Split long windows.** The query time range (`max_start_time` − `min_start_time`)
+  is capped at **401 days**; a longer span is rejected with a 400. Walk it in
+  chunks (ideally ≤ 7 days) instead of one huge request.
+- **Paginate.** Pass `page_size`, then feed the returned `next_cursor` back as
+  `cursor` for the next page (`runs/query` returns `{ items, next_cursor }`).
+  Don't pull everything at once.
+- **Use `selects`** to fetch only the fields you render — smaller, faster responses.
 - **Avoid full-text `search(...)` filters and selecting `child_run_ids`** — both
   drop you into a stricter tier (as low as 1 req/10s). Prefer `eq()` / `has()`.
 - **Prefer `runs/stats` over paging** for any headline number (counts, rates,
@@ -98,10 +99,10 @@ Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 ## More of the LangSmith API (starting points, not exhaustive)
 
 **Runs**
-- `POST /api/v1/runs/query` — query runs (body: `session`, `filter`, `is_root`, `run_type`, `start_time`, `limit`, `select`); returns `{ runs, cursor }`
-- `POST /api/v1/runs/stats` — server-side aggregates over a filtered set of runs, no row limit (counts, error rate, latency percentiles, token/cost sums) — prefer this over paging through `runs/query` for any headline number
-- `POST /api/v1/runs/group/stats` — same, grouped (e.g. `group_by: "conversation"` for a distinct thread count)
-- `GET /api/v1/runs/{run_id}` — fetch one full run (all fields + inputs/outputs)
+- `POST /v2/runs/query` — query runs (body: `project_ids`, `filter`, `is_root`, `run_type`, `min_start_time`, `max_start_time`, `page_size`, `cursor`, `selects` — UPPER_SNAKE field names, e.g. `ID`, `NAME`, `TOTAL_COST`); returns `{ items, next_cursor }`
+- `GET /v2/runs/{run_id}` — fetch one full run (`project_id` + `selects` control which fields come back)
+- `POST /api/v1/runs/stats` — server-side aggregates over a filtered set of runs, no row limit (counts, error rate, latency percentiles, token/cost sums) — prefer this over paging through `runs/query` for any headline number; no v2 equivalent
+- `POST /api/v1/runs/group/stats` — same, grouped (e.g. `group_by: "conversation"` for a distinct thread count); no v2 equivalent
 - `POST /api/v1/runs` / `PATCH /api/v1/runs/{run_id}` — create / update a run
 
 **Projects (tracing sessions)**
@@ -110,7 +111,7 @@ Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 
 **Datasets & experiments**
 - `GET /api/v1/datasets` — list datasets
-- `POST /api/v1/datasets/{dataset_id}/runs` — per-example rows across experiments
+- `POST /v2/datasets/{dataset_id}/experiment-runs` — per-example rows across experiments (body: `experiment_ids`, `page_size`, `cursor`, `selects`); returns `{ items, next_cursor }`
 - `POST /v1/platform/datasets/{dataset_id}/examples` — create examples
 
 **Feedback**
