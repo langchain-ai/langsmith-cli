@@ -35,7 +35,7 @@ func newAppsDeleteCmd() *cobra.Command {
 				}
 			}
 
-			if err := c.RawDelete(ctx, "/v1/platform/custom-apps/"+id, nil); err != nil {
+			if err := c.RawDelete(ctx, "/api/v1/platform/custom-apps/"+id, nil); err != nil {
 				return fmt.Errorf("deleting custom app %s: %w", id, err)
 			}
 			output.OutputJSON(map[string]any{

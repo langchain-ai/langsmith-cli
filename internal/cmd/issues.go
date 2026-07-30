@@ -92,7 +92,7 @@ Examples:
 				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues?session_name=%s", urlEscape(projectName))
+			path := fmt.Sprintf("/api/v1/platform/issues?session_name=%s", urlEscape(projectName))
 			if status != "" {
 				path += "&status=" + urlEscape(status)
 			}
@@ -230,7 +230,7 @@ Examples:
 				ExitErrorf("resolving project %q: %v", projectName, err)
 			}
 
-			path := fmt.Sprintf("/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
+			path := fmt.Sprintf("/api/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
 				sessionID, lookBackMinutes, limit)
 
 			var events []issueEvent
@@ -380,7 +380,7 @@ Examples:
 				}}
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s", issueID)
 
 			var issue forgeIssue
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
@@ -562,7 +562,7 @@ Examples:
 				body["comment"] = comment
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/runs", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/runs", issueID)
 			if err := c.RawPost(ctx, path, body, nil); err != nil {
 				ExitErrorf("linking run: %v", err)
 			}
@@ -588,7 +588,7 @@ func newProjectIssuesRunsRemoveCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawDelete(ctx, path, nil); err != nil {
 				ExitErrorf("unlinking run: %v", err)
 			}
@@ -700,7 +700,7 @@ Examples:
 				"assertions": parsed,
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/proposed-examples", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/proposed-examples", issueID)
 			var result map[string]any
 			if err := c.RawPost(ctx, path, body, &result); err != nil {
 				ExitErrorf("proposing example: %v", err)

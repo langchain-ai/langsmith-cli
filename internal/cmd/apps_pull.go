@@ -98,7 +98,7 @@ The target directory is replaced, not merged. Run "npm install" after.`,
 // resolveCustomApp accepts an app ID or name.
 func resolveCustomApp(ctx context.Context, c *client.Client, nameOrID string) (*customApp, error) {
 	var apps []customApp
-	if err := c.RawGet(ctx, "/v1/platform/custom-apps", &apps); err != nil {
+	if err := c.RawGet(ctx, "/api/v1/platform/custom-apps", &apps); err != nil {
 		return nil, fmt.Errorf("looking up custom app %q: %w", nameOrID, err)
 	}
 

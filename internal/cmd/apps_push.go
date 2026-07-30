@@ -90,7 +90,7 @@ same app too.
 					Name:          optionalString(name),
 					Description:   optionalString(description),
 				}
-				err := c.RawPatch(ctx, "/v1/platform/custom-apps/"+link.AppID, payload, &app)
+				err := c.RawPatch(ctx, "/api/v1/platform/custom-apps/"+link.AppID, payload, &app)
 				switch {
 				case err == nil:
 					updated = true
@@ -135,7 +135,7 @@ same app too.
 					SourceArchive: optionalString(sourceArchive),
 					Description:   optionalString(description),
 				}
-				if err := c.RawPost(ctx, "/v1/platform/custom-apps", payload, &app); err != nil {
+				if err := c.RawPost(ctx, "/api/v1/platform/custom-apps", payload, &app); err != nil {
 					if isSourceArchiveRejection(err) {
 						return sourceArchiveRejectionError(err)
 					}

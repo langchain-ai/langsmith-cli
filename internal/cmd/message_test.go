@@ -94,7 +94,7 @@ func TestTraceMessages_Success(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-123", "name": "my-project"},
 			})
-		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/traces/messages" && r.Method == "POST":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 
@@ -166,7 +166,7 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-456", "name": "test-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -214,7 +214,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-pretty", "name": "my-project"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{
@@ -314,7 +314,7 @@ func TestTraceMessages_Pagination(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-pag", "name": "pag-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			pageCount++
@@ -399,7 +399,7 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-lim", "name": "lim-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			pageCount++
@@ -457,7 +457,7 @@ func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-cur", "name": "cur-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			callCount++
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -515,7 +515,7 @@ func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-first", "name": "first-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			callCount++
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -565,7 +565,7 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-bef", "name": "bef-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -600,7 +600,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-fb", "name": "fb-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/traces/messages" && r.Method == "POST":
 			// API returns feedback_stats directly on each trace
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -673,7 +673,7 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-789", "name": "empty-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []any{},

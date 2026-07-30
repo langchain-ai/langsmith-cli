@@ -18,7 +18,7 @@ func newAppsListCmd() *cobra.Command {
 			ctx := cmd.Context()
 
 			var apps []customApp
-			if err := c.RawGet(ctx, "/v1/platform/custom-apps", &apps); err != nil {
+			if err := c.RawGet(ctx, "/api/v1/platform/custom-apps", &apps); err != nil {
 				return fmt.Errorf("listing custom apps: %w", err)
 			}
 

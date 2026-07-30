@@ -762,7 +762,7 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 					},
 				},
 			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "PATCH":
+		case r.URL.Path == "/api/v1/runs/rules/existing-rule" && r.Method == "PATCH":
 			if err := json.NewDecoder(r.Body).Decode(&patchBody); err != nil {
 				t.Fatalf("decoding patch body: %v", err)
 			}
@@ -771,7 +771,7 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 				"display_name": "accuracy",
 				"session_id":   "project-1",
 			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "DELETE":
+		case r.URL.Path == "/api/v1/runs/rules/existing-rule" && r.Method == "DELETE":
 			sawDelete = true
 			http.Error(w, "delete should not be called", http.StatusInternalServerError)
 		default:
@@ -866,7 +866,7 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 					},
 				},
 			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "PATCH":
+		case r.URL.Path == "/api/v1/runs/rules/existing-rule" && r.Method == "PATCH":
 			if err := json.NewDecoder(r.Body).Decode(&patchBody); err != nil {
 				t.Fatalf("decoding patch body: %v", err)
 			}
@@ -875,7 +875,7 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 				"display_name": "relevance",
 				"session_id":   "project-1",
 			})
-		case r.URL.Path == "/runs/rules/existing-rule" && r.Method == "DELETE":
+		case r.URL.Path == "/api/v1/runs/rules/existing-rule" && r.Method == "DELETE":
 			sawDelete = true
 			http.Error(w, "delete should not be called", http.StatusInternalServerError)
 		default:
