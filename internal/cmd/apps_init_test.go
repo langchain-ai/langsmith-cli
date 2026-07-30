@@ -193,7 +193,7 @@ func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(agents), "datasets/{dataset_id}/runs") || !strings.Contains(string(agents), "delta.ts") {
+	if !strings.Contains(string(agents), "datasets/{dataset_id}/experiment-runs") || !strings.Contains(string(agents), "delta.ts") {
 		t.Errorf("expected the experiment-comparison AGENTS.md, got:\n%s", agents)
 	}
 }
