@@ -3,7 +3,7 @@ export interface Project {
   name: string;
 }
 
-// Fields selected from POST /api/v1/runs/query for the recent-runs table.
+// Fields selected from POST /v2/runs/query for the recent-runs table.
 // Custom metadata lives at extra.metadata; token/cost totals roll up onto
 // root runs.
 export interface Run {
@@ -18,8 +18,8 @@ export interface Run {
 }
 
 export interface RunsQueryResponse {
-  runs: Run[];
-  cursor?: string | null;
+  items: Run[];
+  next_cursor?: string | null;
 }
 
 // Field names mirror `schemas.RunStats` in smith-backend/app/schemas.py.
