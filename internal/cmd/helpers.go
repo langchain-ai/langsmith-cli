@@ -177,8 +177,8 @@ func threadListSelect() []langsmith.RunQueryParamsSelect {
 	return append(buildRunSelect(true, false), langsmith.RunQueryParamsSelectThreadID)
 }
 
-func threadListSelectV2() []langsmith.RunQueryV2ParamsSelect {
-	return append(buildRunSelectV2(true, false), langsmith.RunQueryV2ParamsSelectThreadID)
+func threadListSelectV2() []langsmith.RunSelectField {
+	return append(buildRunSelectV2(true, false), langsmith.RunSelectFieldThreadID)
 }
 
 // buildRunSelectV2 returns the v2 select-field set covering the same base

@@ -27,7 +27,7 @@ func TestThreadListSelect_IncludesThreadID(t *testing.T) {
 func TestThreadListSelectV2_IncludesThreadID(t *testing.T) {
 	var found bool
 	for _, f := range threadListSelectV2() {
-		if f == langsmith.RunQueryV2ParamsSelectThreadID {
+		if f == langsmith.RunSelectFieldThreadID {
 			found = true
 			break
 		}
