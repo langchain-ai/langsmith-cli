@@ -1,0 +1,51 @@
+internal/client/client.go
+  s_5906d7b327e659::t_bf26378d27a101 214
+internal/cmd/skill.go
+  s_5906d7b327e659::t_bf26378d27a101 91
+internal/cmd/apps_push_test.go
+  s_5906d7b327e659::t_be6340d712ef76 29,82,120,131,188,193,267,324,375
+internal/cmd/evaluator_test.go
+  s_5906d7b327e659::t_be6340d712ef76 765,774,869,878
+internal/cmd/apps_list.go
+  s_5906d7b327e659::t_bf26378d27a101 21
+internal/cmd/message_test.go
+  s_5906d7b327e659::t_be6340d712ef76 97,169,217,317,402,460,518,568,603,676
+internal/cmd/apps_delete.go
+  s_5906d7b327e659::t_bf26378d27a101 38
+internal/cmd/api_path_prefix_test.go
+  s_5906d7b327e659::t_4837a60479e6f5 1-47
+internal/cmd/apps_crud_test.go
+  s_5906d7b327e659::t_be6340d712ef76 90,93,122,144
+internal/cmd/evaluator.go
+  s_5906d7b327e659::t_bf26378d27a101 313,316,410,413,486
+internal/cmd/message.go
+  s_5906d7b327e659::t_bf26378d27a101 191,239
+internal/cmd/prompt.go
+  s_5906d7b327e659::t_bf26378d27a101 547,606,649
+internal/cmd/thread.go
+  s_5906d7b327e659::t_bf26378d27a101 329
+internal/cmd/apps_pull.go
+  s_5906d7b327e659::t_bf26378d27a101 101
+internal/cmd/apps_pull_test.go
+  s_5906d7b327e659::t_be6340d712ef76 68,72-73,119
+internal/cmd/apps_push.go
+  s_5906d7b327e659::t_bf26378d27a101 93,138
+internal/cmd/issues.go
+  s_5906d7b327e659::t_bf26378d27a101 95,233,383,565,591,703
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "39c6bbfb36df6181d7753b361b74902553710303",
+  "prompts": {},
+  "sessions": {
+    "s_5906d7b327e659": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ca2ae8e-cada-47cb-af19-1672e9dd54c0",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
