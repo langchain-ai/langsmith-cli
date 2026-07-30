@@ -121,7 +121,7 @@ func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 // queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment
 // supports it, else v1. params is the canonical v1 query; always pass a base
 // v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
-func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunQueryV2ParamsSelect, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 
 // toV2Params translates canonical v1 RunQueryParams to v2. Order is dropped (no
 // v2 equivalent; v2 is newest-first); Session is applied by queryRunsV2.
-func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunQueryV2ParamsSelect) langsmith.RunQueryV2Params {
+func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) langsmith.RunQueryV2Params {
 	var v2 langsmith.RunQueryV2Params
 	if len(selects) > 0 {
 		v2.Selects = langsmith.F(selects)
@@ -146,7 +146,7 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunQueryV2Params
 		v2.IsRoot = langsmith.F(p.IsRoot.Value)
 	}
 	if p.RunType.Present {
-		v2.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(string(p.RunType.Value))))
+		v2.RunType = langsmith.F(langsmith.RunType(strings.ToUpper(string(p.RunType.Value))))
 	}
 	if p.Error.Present {
 		v2.HasError = langsmith.F(p.Error.Value)
@@ -172,41 +172,41 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunQueryV2Params
 // buildRunSelectV2 returns the v2 select-field set covering the same base
 // fields used by the downstream RunSchema pipeline plus the optional groups
 // requested by the include flags.
-func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2ParamsSelect {
-	fields := []langsmith.RunQueryV2ParamsSelect{
-		langsmith.RunQueryV2ParamsSelectID,
-		langsmith.RunQueryV2ParamsSelectTraceID,
-		langsmith.RunQueryV2ParamsSelectName,
-		langsmith.RunQueryV2ParamsSelectRunType,
-		langsmith.RunQueryV2ParamsSelectStartTime,
-		langsmith.RunQueryV2ParamsSelectEndTime,
-		langsmith.RunQueryV2ParamsSelectParentRunIDs,
-		langsmith.RunQueryV2ParamsSelectProjectID,
-		langsmith.RunQueryV2ParamsSelectDottedOrder,
-		langsmith.RunQueryV2ParamsSelectIsRoot,
-		langsmith.RunQueryV2ParamsSelectExtra,
-		langsmith.RunQueryV2ParamsSelectMetadata,
-		langsmith.RunQueryV2ParamsSelectTags,
-		langsmith.RunQueryV2ParamsSelectPromptTokens,
-		langsmith.RunQueryV2ParamsSelectCompletionTokens,
-		langsmith.RunQueryV2ParamsSelectTotalTokens,
-		langsmith.RunQueryV2ParamsSelectPromptCost,
-		langsmith.RunQueryV2ParamsSelectCompletionCost,
-		langsmith.RunQueryV2ParamsSelectTotalCost,
-		langsmith.RunQueryV2ParamsSelectLatencySeconds,
-		langsmith.RunQueryV2ParamsSelectAppPath,
-		langsmith.RunQueryV2ParamsSelectFirstTokenTime,
+func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunSelectField {
+	fields := []langsmith.RunSelectField{
+		langsmith.RunSelectFieldID,
+		langsmith.RunSelectFieldTraceID,
+		langsmith.RunSelectFieldName,
+		langsmith.RunSelectFieldRunType,
+		langsmith.RunSelectFieldStartTime,
+		langsmith.RunSelectFieldEndTime,
+		langsmith.RunSelectFieldParentRunIDs,
+		langsmith.RunSelectFieldProjectID,
+		langsmith.RunSelectFieldDottedOrder,
+		langsmith.RunSelectFieldIsRoot,
+		langsmith.RunSelectFieldExtra,
+		langsmith.RunSelectFieldMetadata,
+		langsmith.RunSelectFieldTags,
+		langsmith.RunSelectFieldPromptTokens,
+		langsmith.RunSelectFieldCompletionTokens,
+		langsmith.RunSelectFieldTotalTokens,
+		langsmith.RunSelectFieldPromptCost,
+		langsmith.RunSelectFieldCompletionCost,
+		langsmith.RunSelectFieldTotalCost,
+		langsmith.RunSelectFieldLatencySeconds,
+		langsmith.RunSelectFieldAppPath,
+		langsmith.RunSelectFieldFirstTokenTime,
 	}
 	if includeIO {
 		fields = append(fields,
-			langsmith.RunQueryV2ParamsSelectInputs,
-			langsmith.RunQueryV2ParamsSelectOutputs,
-			langsmith.RunQueryV2ParamsSelectError,
-			langsmith.RunQueryV2ParamsSelectEvents,
+			langsmith.RunSelectFieldInputs,
+			langsmith.RunSelectFieldOutputs,
+			langsmith.RunSelectFieldError,
+			langsmith.RunSelectFieldEvents,
 		)
 	}
 	if includeFeedback {
-		fields = append(fields, langsmith.RunQueryV2ParamsSelectFeedbackStats)
+		fields = append(fields, langsmith.RunSelectFieldFeedbackStats)
 	}
 	return fields
 }
