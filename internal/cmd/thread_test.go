@@ -2,7 +2,51 @@ package cmd
 
 import (
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+// ==================== Select fields ====================
+
+// thread list groups runs by thread_id. If the field is missing from the
+// select set the query succeeds and returns runs with an empty ThreadID, so
+// the command reports zero threads with exit code 0 instead of failing.
+func TestThreadListSelect_IncludesThreadID(t *testing.T) {
+	var found bool
+	for _, f := range threadListSelect() {
+		if f == langsmith.RunQueryParamsSelectThreadID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("threadListSelect() must include thread_id; without it thread list returns zero threads")
+	}
+}
+
+func TestThreadListSelectV2_IncludesThreadID(t *testing.T) {
+	var found bool
+	for _, f := range threadListSelectV2() {
+		if f == langsmith.RunQueryV2ParamsSelectThreadID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("threadListSelectV2() must include THREAD_ID; without it thread list returns zero threads")
+	}
+}
+
+// The base select sets feed every other run query; thread_id belongs only to
+// the thread-list variants, so a regression there is visible here too.
+func TestThreadListSelect_ExtendsBaseSet(t *testing.T) {
+	if len(threadListSelect()) != len(buildRunSelect(true, false))+1 {
+		t.Error("threadListSelect() should be the base v1 set plus thread_id")
+	}
+	if len(threadListSelectV2()) != len(buildRunSelectV2(true, false))+1 {
+		t.Error("threadListSelectV2() should be the base v2 set plus THREAD_ID")
+	}
+}
 
 // ==================== Command structure ====================
 

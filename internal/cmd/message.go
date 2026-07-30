@@ -108,13 +108,15 @@ Each trace in the response contains a list of conversation groups:
   - "message" groups contain a single normalized message (human, ai, system, tool)
   - "tool_interaction" groups contain an AI message with tool calls and their results
 
-Requires --project. Results are paginated internally (default limit: 10, max: 100).
+Requires --project and an explicit start time (--since or --last-n-minutes);
+unlike the read/query commands this one has no implicit time window.
+Default limit: 10, max: 100.
 
 Examples:
-  langsmith trace messages --project my-chatbot --limit 5
-  langsmith trace messages --project my-chatbot --filter "eq(status, \"error\")"
-  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z
-  langsmith trace messages --project my-chatbot --trace-ids <id1,id2>`,
+  langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
+  langsmith trace messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
+  langsmith trace messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
+  langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {

@@ -169,6 +169,18 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) 
 	return v2
 }
 
+// threadListSelect and threadListSelectV2 add thread_id to the base select
+// sets. `thread list` groups runs by thread_id, so omitting it yields zero
+// threads rather than an error; the base sets leave it out because no other
+// command reads it.
+func threadListSelect() []langsmith.RunQueryParamsSelect {
+	return append(buildRunSelect(true, false), langsmith.RunQueryParamsSelectThreadID)
+}
+
+func threadListSelectV2() []langsmith.RunQueryV2ParamsSelect {
+	return append(buildRunSelectV2(true, false), langsmith.RunQueryV2ParamsSelectThreadID)
+}
+
 // buildRunSelectV2 returns the v2 select-field set covering the same base
 // fields used by the downstream RunSchema pipeline plus the optional groups
 // requested by the include flags.

@@ -71,15 +71,18 @@ Examples:
   langsmith apps init --name my-queue-app --template annotation-queue
   langsmith apps dev
   langsmith apps push
+  langsmith apps pull my-app
   langsmith apps list
-  langsmith apps delete <app-id> --yes
+  langsmith apps delete my-app --yes
 
-Except list/delete, these act on the current directory — cd into your app's
-directory first.`,
+"init" and "pull" create a new directory named after the app. Except
+init/pull/list/delete, these act on the current directory — cd into your
+app's directory first.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
 	cmd.AddCommand(newAppsPushCmd())
+	cmd.AddCommand(newAppsPullCmd())
 	cmd.AddCommand(newAppsListCmd())
 	cmd.AddCommand(newAppsDeleteCmd())
 	return cmd

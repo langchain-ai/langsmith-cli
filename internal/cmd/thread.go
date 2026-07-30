@@ -86,11 +86,11 @@ func newThreadListCmd() *cobra.Command {
 			if rawFilter != "" {
 				params.Filter = langsmith.F(rawFilter)
 			}
-			if sel := buildRunSelect(true, false); sel != nil {
+			if sel := threadListSelect(); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
 
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(true, false), sessionID, math.MaxInt32, 0)
+			runs, err := queryRunsAuto(ctx, c, params, threadListSelectV2(), sessionID, math.MaxInt32, 0)
 			if err != nil {
 				ExitErrorf("querying runs: %v", err)
 			}
