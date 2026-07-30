@@ -96,7 +96,7 @@ Examples:
 			if projectName == "" {
 				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
-			if limit < 0 {
+			if limit <= 0 {
 				ExitError("--limit must be a positive integer")
 			}
 			if offset < 0 {

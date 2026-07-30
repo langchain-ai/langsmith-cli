@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -83,6 +84,68 @@ func TestProjectIssuesGetCmd_ArgsAndFlags(t *testing.T) {
 	}
 	if f := cmd.Flags().Lookup("output"); f == nil || f.Shorthand != "o" {
 		t.Errorf("expected --output/-o flag, got %+v", f)
+	}
+}
+
+func TestProjectIssuesListCmd_ForwardsPaginationAndFilters(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]forgeIssue{})
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	captureStdout(t, func() {
+		cmd := newProjectIssuesListCmd()
+		cmd.SetArgs([]string{
+			"--project", "my app",
+			"--status", "watching",
+			"--priority", "high",
+			"--limit", "200",
+			"--offset", "400",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	if gotPath != "/api/v1/platform/issues" {
+		t.Errorf("expected issues list path, got %q", gotPath)
+	}
+	want := url.Values{
+		"session_name": {"my app"},
+		"status":       {"watching"},
+		"severity":     {"1"},
+		"limit":        {"200"},
+		"offset":       {"400"},
+	}
+	if gotQuery.Encode() != want.Encode() {
+		t.Errorf("unexpected query: got %q, want %q", gotQuery.Encode(), want.Encode())
+	}
+}
+
+func TestProjectIssuesListCmd_Flags(t *testing.T) {
+	cmd := newProjectIssuesListCmd()
+	tests := []struct {
+		name   string
+		defVal string
+	}{
+		{name: "limit", defVal: "50"},
+		{name: "offset", defVal: "0"},
+		{name: "status", defVal: ""},
+	}
+	for _, tc := range tests {
+		flag := cmd.Flags().Lookup(tc.name)
+		if flag == nil {
+			t.Errorf("flag --%s not found", tc.name)
+			continue
+		}
+		if flag.DefValue != tc.defVal {
+			t.Errorf("flag --%s: expected default %q, got %q", tc.name, tc.defVal, flag.DefValue)
+		}
 	}
 }
 
