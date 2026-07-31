@@ -6,13 +6,23 @@ exports `render(data, root, metadata)`; keep that shape, the sandbox depends
 on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
 need to push a mutation out for the host to persist.
 
+## Don't run `langsmith apps push`
+
+Publishing is the developer's call, not yours. `langsmith apps push` uploads
+to their LangSmith workspace, where everyone with access sees the result — so
+leave it to them even when the work looks finished.
+
+Use `langsmith apps dev` to check your changes locally. When you're done, say
+the app is ready and let the developer push it once they're satisfied.
+
 ## context.md — the handoff file
 
 Keep a `context.md` at the app root and treat it as this app's memory. On a
-fresh `langsmith apps pull` it's the first thing to read; before every
-`langsmith apps push` it's the last thing to update. It rides along in the
-source archive automatically — it's just a root file — so what you write there
-is where the next developer's agent starts instead of from scratch.
+fresh `langsmith apps pull` it's the first thing to read; before you hand the
+app back to the developer to push, it's the last thing to update. It rides
+along in the source archive automatically — it's just a root file — so what
+you write there is where the next developer's agent starts instead of from
+scratch.
 
 Update it as you work, not as a write-up at the end:
 
