@@ -32,6 +32,29 @@ type forgeIssue struct {
 	Traces           json.RawMessage `json:"traces"`
 }
 
+// issueStatuses renders the valid --status values in error messages. It is not
+// the validator: that is the SDK's IsKnown, so if the API gains a status before
+// this list is updated the filter still works and only the message is stale —
+// the reverse would reject a filter the server supports.
+var issueStatuses = []langsmith.IssueListParamsStatus{
+	langsmith.IssueListParamsStatusOpen,
+	langsmith.IssueListParamsStatusFixing,
+	langsmith.IssueListParamsStatusWatching,
+	langsmith.IssueListParamsStatusCompleted,
+	langsmith.IssueListParamsStatusIgnored,
+}
+
+func issueStatusList() string {
+	names := make([]string, len(issueStatuses))
+	for i, s := range issueStatuses {
+		names[i] = string(s)
+	}
+	return strings.Join(names, ", ")
+}
+
+// issuePriorities mirrors the keys priorityToSeverity accepts, for its message.
+var issuePriorities = []string{"urgent", "high", "medium", "low"}
+
 var severityLabels = map[int]string{
 	0: "URGENT",
 	1: "HIGH",
@@ -104,14 +127,23 @@ Examples:
 			params := langsmith.IssueListParams{
 				SessionName: langsmith.F(projectName),
 			}
+			// Validate both filters before sending: an unknown --status used to
+			// cost a round-trip and return a server 400, and an unknown
+			// --priority was dropped silently, returning the whole unfiltered
+			// list with exit 0.
 			if status != "" {
-				params.Status = langsmith.F(langsmith.IssueListParamsStatus(status))
+				st := langsmith.IssueListParamsStatus(status)
+				if !st.IsKnown() {
+					ExitErrorf("invalid --status %q: must be one of %s", status, issueStatusList())
+				}
+				params.Status = langsmith.F(st)
 			}
 			if priority != "" {
 				sev := priorityToSeverity(priority)
-				if sev >= 0 {
-					params.Severity = langsmith.F(langsmith.IssueListParamsSeverity(sev))
+				if sev < 0 {
+					ExitErrorf("invalid --priority %q: must be one of %s", priority, strings.Join(issuePriorities, ", "))
 				}
+				params.Severity = langsmith.F(langsmith.IssueListParamsSeverity(sev))
 			}
 			// Both are server-side; the server clamps limit to 500 and rejects
 			// a non-positive limit or negative offset.

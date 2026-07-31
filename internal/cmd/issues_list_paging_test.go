@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 // These assert the query the server actually receives from `issues list`.
@@ -174,5 +177,58 @@ func TestIssuesList_JSONOutputStaysArrayWithGreppedKeys(t *testing.T) {
 	}
 	if rows[0]["name"] != "Agent retries failed tool call" {
 		t.Errorf("name = %v", rows[0]["name"])
+	}
+}
+
+// The validation added alongside the v0.25.4 bump calls ExitErrorf, which
+// os.Exit(1)s, so the failure path itself is not unit-testable in-process (no
+// test in this package asserts on an ExitError path). These cover the inputs
+// that drive the decision; the exit behavior is verified by running the binary.
+
+// Pins the SDK requirement: before v0.25.4 the generated enum omitted `fixing`
+// and `watching`, so validating with IsKnown would have rejected two filters the
+// API accepts. This test fails against the older SDK.
+func TestIsKnownAcceptsEveryStatusWeAdvertise(t *testing.T) {
+	for _, s := range issueStatuses {
+		if !s.IsKnown() {
+			t.Errorf("IssueListParamsStatus(%q).IsKnown() = false; SDK too old or list wrong", s)
+		}
+	}
+}
+
+func TestIssueStatusListNamesEveryStatus(t *testing.T) {
+	got := issueStatusList()
+	for _, s := range issueStatuses {
+		if !strings.Contains(got, string(s)) {
+			t.Errorf("issueStatusList() = %q, missing %q", got, s)
+		}
+	}
+}
+
+// `closed` is the one that matters: the help text advertised it for a long time
+// and the API never accepted it. Previously it cost a round-trip and a 400.
+func TestIsKnownRejectsInvalidStatuses(t *testing.T) {
+	for _, s := range []string{"closed", "bogus", "", "Open", "OPEN", "fixing "} {
+		if langsmith.IssueListParamsStatus(s).IsKnown() {
+			t.Errorf("IsKnown() accepted %q", s)
+		}
+	}
+}
+
+// priorityToSeverity returning a negative value is what now triggers a fast
+// failure. It used to skip the filter, returning the whole unfiltered list.
+func TestPriorityToSeverityRejectsUnknown(t *testing.T) {
+	for _, p := range []string{"bogus", "", "critical", "URGENT!"} {
+		if got := priorityToSeverity(p); got >= 0 {
+			t.Errorf("priorityToSeverity(%q) = %d, want negative", p, got)
+		}
+	}
+}
+
+func TestPriorityToSeverityMapsEveryAdvertisedPriority(t *testing.T) {
+	for _, p := range issuePriorities {
+		if got := priorityToSeverity(p); got < 0 {
+			t.Errorf("priorityToSeverity(%q) = %d, but it is advertised as valid", p, got)
+		}
 	}
 }
