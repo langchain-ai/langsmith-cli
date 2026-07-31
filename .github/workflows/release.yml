@@ -28,3 +28,30 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: "Iv23liMFOFBcPTKFWi3S"
+          private-key: ${{ secrets.LANGCHAIN_ACTIONS_PR_BOT_PRIVATE_KEY }}
+          owner: langchain-ai
+          repositories: homebrew-tap
+
+      - name: Open bump PR against the tap
+        uses: dawidd6/action-homebrew-bump-formula@a0e064e08103c01870c6d1b05168d1b726aab119 # v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          user_name: "langtions-bot[bot]"
+          user_email: "261626216+langtions-bot[bot]@users.noreply.github.com"
+          no_fork: true
+          tap: langchain-ai/homebrew-tap
+          formula: langsmith-cli
+          tag: ${{ github.ref }}
