@@ -35,6 +35,8 @@ github.com/langchain-ai/langsmith-go v0.18.2 h1:/Hs4KoJ2nqsPahFZz47RpXmdPZL/NkL8
 github.com/langchain-ai/langsmith-go v0.18.2/go.mod h1:2NXq2u8YbQkpP9BaKG7RKs0g0ZoCeqVzAZsBu7nr58Y=
 github.com/langchain-ai/langsmith-go v0.25.2 h1:jHy1p02zT9a4m3TySTuB+dv0oT4Mfp7haHb8CCQELHU=
 github.com/langchain-ai/langsmith-go v0.25.2/go.mod h1:I8S3n3i7P/EdlMOoJXUeuD6+XBrkopJ6LByZxHq5rGA=
+github.com/langchain-ai/langsmith-go v0.25.4 h1:PyNaofnvqJRGBXRYloX9Zk40ajBbr8JtKki3KUzeYoM=
+github.com/langchain-ai/langsmith-go v0.25.4/go.mod h1:I8S3n3i7P/EdlMOoJXUeuD6+XBrkopJ6LByZxHq5rGA=
 github.com/mattn/go-runewidth v0.0.9/go.mod h1:H031xJmbD/WCDINGzjvQ9THkh0rPKHF+m2gUSrubnMI=
 github.com/mattn/go-runewidth v0.0.15 h1:UNAjwbU9l54TA3KzvqLGxwWjHmMgBUVhBiTjelZgg3U=
 github.com/mattn/go-runewidth v0.0.15/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
