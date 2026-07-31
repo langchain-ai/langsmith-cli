@@ -6,6 +6,15 @@ exports `render(data, root, metadata)`; keep that shape, the sandbox depends
 on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
 need to push a mutation out for the host to persist.
 
+## Don't run `langsmith apps push`
+
+Publishing is the developer's call, not yours. `langsmith apps push` uploads
+to their LangSmith workspace, where everyone with access sees the result — so
+leave it to them even when the work looks finished.
+
+Use `langsmith apps dev` to check your changes locally. When you're done, say
+the app is ready and let the developer push it once they're satisfied.
+
 ## context.md — the handoff file
 
 Keep a `context.md` at the app root and treat it as this app's memory. On a
