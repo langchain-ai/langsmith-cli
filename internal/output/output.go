@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/xlab/treeprint"
@@ -17,18 +19,18 @@ import (
 func OutputJSON(data any, filePath string) {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		PrintError(fmt.Sprintf("JSON encoding error: %v", err))
+		Errorf("JSON encoding error: %v\n", err)
 		return
 	}
 
 	if filePath != "" {
 		if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
+			Errorf("write error: %v\n", err)
 			return
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
+		Errorf(`{"status": "written", "path": %q}`+"\n", filePath)
 	} else {
-		fmt.Println(string(jsonBytes))
+		PrintLines(string(jsonBytes) + "\n")
 	}
 }
 
@@ -37,7 +39,7 @@ func OutputJSONL(items []map[string]any, filePath string) {
 	if filePath != "" {
 		f, err := os.Create(filePath)
 		if err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
+			Errorf("write error: %v\n", err)
 			return
 		}
 		defer f.Close()
@@ -46,30 +48,55 @@ func OutputJSONL(items []map[string]any, filePath string) {
 			_, _ = f.Write(line)
 			_, _ = f.WriteString("\n")
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
+		Errorf(`{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
 	} else {
 		for _, item := range items {
 			line, _ := json.Marshal(item)
-			fmt.Println(string(line))
+			PrintLines(string(line) + "\n")
 		}
 	}
 }
 
 // OutputTable prints a table to stdout using tablewriter.
 func OutputTable(columns []string, rows [][]string, title string) {
-	if title != "" {
-		fmt.Println(title)
-		fmt.Println(strings.Repeat("─", len(title)))
-	}
+	TableTo(os.Stdout, columns, rows, title)
+}
 
-	table := tablewriter.NewWriter(os.Stdout)
+func TableTo(w io.Writer, columns []string, rows [][]string, title string) {
+	printTitle(w, title)
+
+	table := newTable(w, sanitizeRow(columns))
+	for _, row := range rows {
+		table.Append(sanitizeRow(row))
+	}
+	table.Render()
+}
+
+func newTable(w io.Writer, columns []string) *tablewriter.Table {
+	table := tablewriter.NewWriter(w)
 	table.SetHeader(columns)
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
 	table.SetAutoWrapText(false)
-	table.AppendBulk(rows)
-	table.Render()
+	return table
+}
+
+func printTitle(w io.Writer, title string) {
+	if title == "" {
+		return
+	}
+	title = SanitizeTerminal(title)
+	Fprintln(w, title)
+	Fprintln(w, strings.Repeat("─", utf8.RuneCountInString(title)))
+}
+
+func sanitizeRow(cells []string) []string {
+	out := make([]string, len(cells))
+	for i, c := range cells {
+		out[i] = SanitizeTerminal(c)
+	}
+	return out
 }
 
 // RunTreeData holds the data needed for tree rendering.
@@ -85,7 +112,7 @@ type RunTreeData struct {
 // OutputTree prints a trace hierarchy tree.
 func OutputTree(runs []RunTreeData, rootID string) {
 	if len(runs) == 0 {
-		fmt.Println("No runs found")
+		Println("No runs found")
 		return
 	}
 
@@ -120,22 +147,26 @@ func OutputTree(runs []RunTreeData, rootID string) {
 
 	for _, root := range roots {
 		tree := treeprint.New()
-		label := fmt.Sprintf("%s (%s) [%s]", root.Name, root.RunType, FormatDuration(root.DurationMs))
-		tree.SetValue(label)
+		tree.SetValue(treeLabel(root))
 		addChildren(tree, root.ID, childrenMap)
-		fmt.Print(tree.String())
+		PrintLines(tree.String())
 	}
 }
 
 func addChildren(node treeprint.Tree, parentID string, childrenMap map[string][]RunTreeData) {
 	for _, child := range childrenMap[parentID] {
-		label := fmt.Sprintf("%s (%s) [%s]", child.Name, child.RunType, FormatDuration(child.DurationMs))
+		label := treeLabel(child)
 		if child.HasError {
 			label = "ERROR: " + label
 		}
 		childNode := node.AddBranch(label)
 		addChildren(childNode, child.ID, childrenMap)
 	}
+}
+
+func treeLabel(r RunTreeData) string {
+	return fmt.Sprintf("%s (%s) [%s]",
+		SanitizeTerminal(r.Name), SanitizeTerminal(r.RunType), FormatDuration(r.DurationMs))
 }
 
 // PrintOutput dispatches to JSON or pretty output.
@@ -146,49 +177,33 @@ func PrintOutput(data any, format string, filePath string) {
 		if filePath != "" {
 			_ = os.WriteFile(filePath, jsonBytes, 0644)
 		} else {
-			fmt.Println(string(jsonBytes))
+			PrintLines(string(jsonBytes) + "\n")
 		}
 	} else {
 		OutputJSON(data, filePath)
 	}
 }
 
-// PrintError prints an error to stderr.
-func PrintError(msg string) {
-	fmt.Fprintln(os.Stderr, msg)
-}
-
 // PrintRunsTable prints a table of runs in pretty format.
 func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, title string) {
-	if title != "" {
-		fmt.Fprintln(w, title)
-		fmt.Fprintln(w, strings.Repeat("─", len(title)))
-	}
+	printTitle(w, title)
 
 	columns := []string{"Time", "Name", "Type", "Trace ID", "Run ID"}
 	if includeMetadata {
 		columns = append(columns, "Duration", "Status", "Tokens")
 	}
 
-	table := tablewriter.NewWriter(w)
-	table.SetHeader(columns)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := newTable(w, columns)
 
 	for _, r := range runs {
 		timeStr := "N/A"
-		if st, ok := r["start_time"].(string); ok && st != "" {
-			if len(st) > 19 {
-				timeStr = st[11:19]
+		if st, ok := r["start_time"].(string); ok {
+			if clock := clockTime(st); clock != "" {
+				timeStr = clock
 			}
 		}
 
-		name := getStr(r, "name")
-		if len(name) > 40 {
-			name = name[:40]
-		}
+		name := TruncateRunes(getStr(r, "name"), 40)
 
 		traceID := getStr(r, "trace_id")
 
@@ -234,9 +249,18 @@ func FormatDuration(ms *int64) string {
 
 func getStr(m map[string]any, key string) string {
 	if v, ok := m[key].(string); ok {
-		return v
+		return SanitizeTerminal(v)
 	}
 	return "N/A"
+}
+
+func clockTime(s string) string {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999", "2006-01-02T15:04:05"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.Format("15:04:05")
+		}
+	}
+	return ""
 }
 
 func toInt64Ptr(v any) *int64 {
