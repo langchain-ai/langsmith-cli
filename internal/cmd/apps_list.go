@@ -53,7 +53,7 @@ func newAppsListCmd() *cobra.Command {
 					"updated_at":  a.UpdatedAt,
 				})
 			}
-			output.OutputJSON(data, outputFile)
+			outputJSON(data, outputFile)
 			return nil
 		},
 	}

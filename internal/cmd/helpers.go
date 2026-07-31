@@ -422,6 +422,24 @@ func resolveDataset(ctx context.Context, c *client.Client, nameOrID string) (*la
 	return &resp.Items[0], nil
 }
 
+func outputJSON(data any, filePath string) {
+	if err := output.OutputJSON(data, filePath); err != nil {
+		ExitErrorf("writing output: %v", err)
+	}
+}
+
+func outputJSONL(items []map[string]any, filePath string) {
+	if err := output.OutputJSONL(items, filePath); err != nil {
+		ExitErrorf("writing output: %v", err)
+	}
+}
+
+func printOutput(data any, format, filePath string) {
+	if err := output.PrintOutput(data, format, filePath); err != nil {
+		ExitErrorf("writing output: %v", err)
+	}
+}
+
 // formatTimedelta formats a duration as a human-readable string.
 func formatTimedelta(seconds float64) string {
 	if seconds < 1 {

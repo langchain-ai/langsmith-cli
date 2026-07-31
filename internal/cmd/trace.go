@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,13 +142,13 @@ func newTraceListCmd() *cobra.Command {
 							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO, includeFeedback),
 						})
 					}
-					output.OutputJSON(result, outputFile)
+					outputJSON(result, outputFile)
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					if flaggedByTrace != nil {
 						annotateFlagged(data, flaggedByTrace)
 					}
-					output.OutputJSON(data, outputFile)
+					outputJSON(data, outputFile)
 				}
 			}
 		},
@@ -224,7 +225,7 @@ func newTraceGetCmd() *cobra.Command {
 					"run_count": len(runs),
 					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback),
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -329,15 +330,28 @@ func newTraceExportCmd() *cobra.Command {
 
 				for _, run := range allRuns {
 					data := extractRunsToMaps([]langsmith.RunSchema{run}, includeMetadata, includeIO, includeFeedback)
-					line, _ := json.Marshal(data[0])
-					_, _ = f.Write(line)
-					_, _ = f.WriteString("\n")
+					line, err := json.Marshal(data[0])
+					if err != nil {
+						_ = f.Close()
+						ExitErrorf("encoding trace %s: %v", tid, err)
+					}
+					line = append(line, '\n')
+					n, err := f.Write(line)
+					if err == nil && n != len(line) {
+						err = io.ErrShortWrite
+					}
+					if err != nil {
+						_ = f.Close()
+						ExitErrorf("writing file %s: %v", fpath, err)
+					}
 				}
-				f.Close()
+				if err := f.Close(); err != nil {
+					ExitErrorf("closing file %s: %v", fpath, err)
+				}
 				exported++
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":     "exported",
 				"count":      exported,
 				"output_dir": outputDir,

@@ -136,7 +136,7 @@ Examples:
 				for _, issue := range issues {
 					data = append(data, issueToMap(issue))
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -173,7 +173,7 @@ Examples:
 				ExitErrorf("getting issue: %v", err)
 			}
 
-			output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile)
+			outputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile)
 		},
 	}
 
@@ -283,7 +283,7 @@ Examples:
 					}
 					data = append(data, m)
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -387,7 +387,7 @@ Examples:
 				ExitErrorf("updating issue: %v", err)
 			}
 
-			output.OutputJSON(issueToMap(issue), outputFile)
+			outputJSON(issueToMap(issue), outputFile)
 		},
 	}
 
@@ -706,7 +706,7 @@ Examples:
 				ExitErrorf("proposing example: %v", err)
 			}
 
-			output.OutputJSON(result, outputFile)
+			outputJSON(result, outputFile)
 		},
 	}
 

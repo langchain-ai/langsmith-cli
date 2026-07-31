@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +37,7 @@ func newAppsDeleteCmd() *cobra.Command {
 			if err := c.RawDelete(ctx, "/api/v1/platform/custom-apps/"+id, nil); err != nil {
 				return fmt.Errorf("deleting custom app %s: %w", id, err)
 			}
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"app_id": id,
 				"name":   name,

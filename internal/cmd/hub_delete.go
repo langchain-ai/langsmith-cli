@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +36,7 @@ func newHubDeleteCmd() *cobra.Command {
 			if err := c.SDK.Repos.Directories.Delete(ctx, owner, name); err != nil {
 				return fmt.Errorf("deleting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
 				"repo":   name,

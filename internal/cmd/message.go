@@ -12,7 +12,6 @@ import (
 	langsmith "github.com/langchain-ai/langsmith-go"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -218,7 +217,7 @@ Examples:
 				if fmt_ == "pretty" {
 					printTraceMessages(combined)
 				} else {
-					output.OutputJSON(combined, outputFile)
+					outputJSON(combined, outputFile)
 				}
 				return
 			}
@@ -274,7 +273,7 @@ Examples:
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
-				output.OutputJSON(combined, outputFile)
+				outputJSON(combined, outputFile)
 			}
 		},
 	}

@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -80,7 +79,7 @@ The target directory is replaced, not merged. Run "npm install" after.`,
 
 			fmt.Fprintf(os.Stderr, "Pulled %q into %s (%d files).\n", app.Name, dest, len(written))
 			fmt.Fprintf(os.Stderr, "Next: cd %s && npm install && langsmith apps dev.\n", dirName)
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "pulled",
 				"app_id": app.ID,
 				"name":   app.Name,

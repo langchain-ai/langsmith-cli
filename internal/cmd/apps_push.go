@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -172,7 +171,7 @@ same app too.
 				"entrypoint": app.Entrypoint,
 				"files":      paths,
 			}
-			output.OutputJSON(result, "")
+			outputJSON(result, "")
 
 			workspaceID := app.TenantID
 			if workspaceID == "" {

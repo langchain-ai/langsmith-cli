@@ -92,7 +92,7 @@ Examples:
 				if hasCompare {
 					result["compare"] = compare
 				}
-				output.OutputJSON(result, outputFile)
+				outputJSON(result, outputFile)
 			}
 			return nil
 		},

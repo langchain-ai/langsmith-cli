@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
@@ -92,7 +91,7 @@ func newHubPushCmd() *cobra.Command {
 				paths = append(paths, k)
 			}
 			sort.Strings(paths)
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":      "pushed",
 				"owner":       owner,
 				"repo":        name,

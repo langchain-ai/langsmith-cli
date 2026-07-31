@@ -100,7 +100,7 @@ for full details including the executive summary and category breakdown.`,
 				for _, job := range jobs {
 					data = append(data, insightJobToMap(job))
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -155,7 +155,7 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 				printInsightPretty(detail)
 			} else {
 				data := buildInsightDetailJSON(detail)
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +24,7 @@ func newHubGetCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("getting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(sdkRepoToHubRepo(resp.Repo), "")
+			outputJSON(sdkRepoToHubRepo(resp.Repo), "")
 			return nil
 		},
 	}

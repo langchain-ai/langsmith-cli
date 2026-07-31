@@ -86,7 +86,7 @@ func newHubListCmd() *cobra.Command {
 				return nil
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"total": int(resp.Total),
 				"repos": repos,
 			}, "")

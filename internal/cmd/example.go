@@ -133,7 +133,7 @@ func newExampleListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -167,14 +167,14 @@ func newExampleCreateCmd() *cobra.Command {
 			// Parse JSON inputs
 			var parsedInputs map[string]any
 			if err := json.Unmarshal([]byte(inputs), &parsedInputs); err != nil {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)}, "")
+				outputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)}, "")
 				return
 			}
 
 			var parsedOutputs map[string]any
 			if outputs != "" {
 				if err := json.Unmarshal([]byte(outputs), &parsedOutputs); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)}, "")
+					outputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)}, "")
 					return
 				}
 			}
@@ -182,7 +182,7 @@ func newExampleCreateCmd() *cobra.Command {
 			var parsedMetadata map[string]any
 			if metadata != "" {
 				if err := json.Unmarshal([]byte(metadata), &parsedMetadata); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)}, "")
+					outputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)}, "")
 					return
 				}
 			}
@@ -214,7 +214,7 @@ func newExampleCreateCmd() *cobra.Command {
 				ExitErrorf("creating example: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":     "created",
 				"id":         ex.ID,
 				"dataset_id": ex.DatasetID,
@@ -262,7 +262,7 @@ func newExampleDeleteCmd() *cobra.Command {
 				ExitErrorf("deleting example: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"id":     exampleID,
 			}, "")

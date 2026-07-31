@@ -81,7 +81,7 @@ func newRunListCmd() *cobra.Command {
 				output.PrintRunsTable(os.Stdout, data, includeMetadata, "Runs")
 			} else {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -148,9 +148,9 @@ func newRunGetCmd() *cobra.Command {
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				printOutput(data, "pretty", outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -210,7 +210,7 @@ func newRunExportCmd() *cobra.Command {
 			}
 
 			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-			output.OutputJSONL(data, outputFile)
+			outputJSONL(data, outputFile)
 		},
 	}
 

@@ -148,7 +148,7 @@ func newPromptListCmd() *cobra.Command {
 				for _, r := range repos {
 					data = append(data, repoToMap(r))
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -193,9 +193,9 @@ func newPromptGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				printOutput(data, "pretty", outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -235,7 +235,7 @@ func newPromptCreateCmd() *cobra.Command {
 				ExitErrorf("creating prompt: %v", err)
 			}
 
-			output.OutputJSON(repoToMap(resp.Repo), "")
+			outputJSON(repoToMap(resp.Repo), "")
 		},
 	}
 
@@ -278,7 +278,7 @@ func newPromptDeleteCmd() *cobra.Command {
 				ExitErrorf("deleting prompt %s/%s: %v", owner, repo, err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
 				"repo":   repo,
@@ -332,9 +332,9 @@ func newPromptPullCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				printOutput(data, "pretty", outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -397,7 +397,7 @@ func newPromptPushCmd() *cobra.Command {
 				ExitErrorf("pushing commit to %s/%s: %v", owner, repo, err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":      "pushed",
 				"owner":       owner,
 				"repo":        repo,
@@ -485,7 +485,7 @@ func newPromptCommitsCmd() *cobra.Command {
 						"created_at":         formatTimeISO(c.CreatedAt),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -570,7 +570,7 @@ func newPromptTagListCmd() *cobra.Command {
 						"updated_at":  t.UpdatedAt,
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -608,7 +608,7 @@ func newPromptTagCreateCmd() *cobra.Command {
 				ExitErrorf("creating tag %q: %v", tagName, err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":      "created",
 				"tag_name":    tag.TagName,
 				"commit_id":   tag.CommitID,
@@ -651,7 +651,7 @@ func newPromptTagUpdateCmd() *cobra.Command {
 				ExitErrorf("updating tag %q: %v", tagName, err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":      "updated",
 				"tag_name":    tag.TagName,
 				"commit_id":   tag.CommitID,

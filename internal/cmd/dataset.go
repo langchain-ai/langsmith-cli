@@ -113,7 +113,7 @@ func newDatasetListCmd() *cobra.Command {
 						"created_at":    formatTimeISO(ds.CreatedAt),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -152,9 +152,9 @@ func newDatasetGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				printOutput(data, "pretty", outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -188,7 +188,7 @@ func newDatasetCreateCmd() *cobra.Command {
 				ExitErrorf("creating dataset: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":      "created",
 				"id":          ds.ID,
 				"name":        ds.Name,
@@ -235,7 +235,7 @@ func newDatasetDeleteCmd() *cobra.Command {
 				ExitErrorf("deleting dataset: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"id":     ds.ID,
 				"name":   ds.Name,
@@ -298,7 +298,7 @@ func newDatasetExportCmd() *cobra.Command {
 				ExitErrorf("writing file: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":  "exported",
 				"dataset": ds.Name,
 				"count":   len(data),
@@ -390,7 +390,7 @@ func newDatasetUploadCmd() *cobra.Command {
 				}
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":        "uploaded",
 				"dataset_id":    ds.ID,
 				"dataset_name":  name,
