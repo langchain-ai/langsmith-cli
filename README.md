@@ -208,6 +208,13 @@ langsmith dataset export my-dataset ./data.json --limit 500
 langsmith dataset upload data.json --name new-dataset
 ```
 
+Exports use version `1` of a JSON envelope containing the dataset name and
+each example's inputs, outputs, metadata, IDs, timestamps, and split
+membership. Upload validates every example before creating the destination
+dataset and uses the bulk API; a failed import removes the newly created
+dataset. Attachment URLs are retained in exports for visibility but are
+rejected on upload because they cannot be restored without the source files.
+
 ### `example` — Manage dataset examples
 
 List results are **paginated** — by default, only the first **20** examples are returned (use `--limit` to change). Use `--offset` to paginate through results.
