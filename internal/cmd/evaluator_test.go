@@ -730,6 +730,142 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 	}
 }
 
+func TestEvaluatorUpload_InvalidTargetReturnsError(t *testing.T) {
+	var runErr error
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorUploadCmd()
+		cmd.SetArgs([]string{"eval.py", "--name", "accuracy", "--function", "check"})
+		runErr = cmd.Execute()
+	})
+	if runErr == nil {
+		t.Fatal("expected invalid target to return an error")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("structured error is not JSON: %v\n%s", err, out)
+	}
+	if payload["error"] != runErr.Error() {
+		t.Errorf("payload error = %q, command error = %q", payload["error"], runErr)
+	}
+}
+
+func TestEvaluatorUpload_DuplicateReturnsError(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(evaluatorFile, []byte("def check(run, example):\n    return {\"score\": 1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var mutationRequested bool
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/sessions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "project-1", "name": "my-project"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/runs/rules":
+			_ = json.NewEncoder(w).Encode([]testRule{{
+				ID: "existing-rule", DisplayName: "accuracy", SessionID: "project-1",
+				CodeEvaluators: []testCodeEval{{Code: "def perform_eval(): pass", Language: "python"}},
+			}})
+		default:
+			mutationRequested = true
+			http.Error(w, "unexpected mutation", http.StatusInternalServerError)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	var runErr error
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorUploadCmd()
+		cmd.SetArgs([]string{
+			evaluatorFile, "--name", "accuracy", "--function", "check", "--project", "my-project",
+		})
+		runErr = cmd.Execute()
+	})
+	if runErr == nil || !strings.Contains(runErr.Error(), "already exists") {
+		t.Fatalf("error = %v, want duplicate error", runErr)
+	}
+	if mutationRequested {
+		t.Fatal("duplicate evaluator should not trigger a mutation")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("structured error is not JSON: %v\n%s", err, out)
+	}
+	if payload["id"] != "existing-rule" || payload["error"] != runErr.Error() {
+		t.Errorf("unexpected duplicate payload: %#v", payload)
+	}
+}
+
+func TestEvaluatorCreateLLM_DuplicateReturnsError(t *testing.T) {
+	modelConfigPath := t.TempDir() + "/model.json"
+	if err := os.WriteFile(modelConfigPath, []byte(`{"type":"chat","config":{"model":"test-model"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/sessions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "project-1", "name": "my-project"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/runs/rules":
+			_ = json.NewEncoder(w).Encode([]testRule{{
+				ID: "existing-rule", DisplayName: "relevance", SessionID: "project-1",
+				Evaluators: []testLLMEval{{Structured: testLLMStructured{HubRef: "my-org/relevance:latest"}}},
+			}})
+		default:
+			http.Error(w, "unexpected request", http.StatusInternalServerError)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	var runErr error
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorCreateLLMCmd()
+		cmd.SetArgs([]string{
+			"--name", "relevance", "--project", "my-project",
+			"--hub-ref", "my-org/relevance:latest", "--model-config", modelConfigPath,
+		})
+		runErr = cmd.Execute()
+	})
+	if runErr == nil || !strings.Contains(runErr.Error(), "already exists") {
+		t.Fatalf("error = %v, want duplicate error", runErr)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("structured error is not JSON: %v\n%s", err, out)
+	}
+	if payload["id"] != "existing-rule" || payload["error"] != runErr.Error() {
+		t.Errorf("unexpected duplicate payload: %#v", payload)
+	}
+}
+
+func TestEvaluatorDelete_NotFoundReturnsError(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/runs/rules" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	var runErr error
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorDeleteCmd()
+		cmd.SetArgs([]string{"missing", "--yes"})
+		runErr = cmd.Execute()
+	})
+	if runErr == nil || !strings.Contains(runErr.Error(), "not found") {
+		t.Fatalf("error = %v, want not-found error", runErr)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("structured error is not JSON: %v\n%s", err, out)
+	}
+	if payload["error"] != runErr.Error() {
+		t.Errorf("payload error = %q, command error = %q", payload["error"], runErr)
+	}
+}
+
 func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 	evaluatorFile := t.TempDir() + "/eval.py"
 	if err := os.WriteFile(
@@ -791,7 +927,9 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, []string{evaluatorFile})
+		if err := cmd.RunE(cmd, []string{evaluatorFile}); err != nil {
+			t.Fatalf("upload evaluator: %v", err)
+		}
 	})
 
 	if sawDelete {
@@ -896,7 +1034,9 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, nil)
+		if err := cmd.RunE(cmd, nil); err != nil {
+			t.Fatalf("create LLM evaluator: %v", err)
+		}
 	})
 
 	if sawDelete {
@@ -977,7 +1117,9 @@ func TestEvaluatorGetCmd_Execute_CodeEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		if err := cmd.RunE(cmd, []string{"accuracy"}); err != nil {
+			t.Fatalf("get evaluator: %v", err)
+		}
 	})
 
 	var result map[string]any
@@ -1027,7 +1169,9 @@ func TestEvaluatorGetCmd_Execute_LLMEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"relevance"})
+		if err := cmd.RunE(cmd, []string{"relevance"}); err != nil {
+			t.Fatalf("get evaluator: %v", err)
+		}
 	})
 
 	var result map[string]any
@@ -1059,10 +1203,14 @@ func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
+	var runErr error
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"nonexistent"})
+		runErr = cmd.RunE(cmd, []string{"nonexistent"})
 	})
+	if runErr == nil {
+		t.Fatal("expected not-found error")
+	}
 
 	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
@@ -1103,7 +1251,9 @@ func TestEvaluatorGetCmd_Execute_FilterBySessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, nil)
+		if err := cmd.RunE(cmd, nil); err != nil {
+			t.Fatalf("get evaluators: %v", err)
+		}
 	})
 
 	var result []map[string]any
@@ -1148,7 +1298,9 @@ func TestEvaluatorGetCmd_Execute_FilterByNameAndSessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, []string{"accuracy"})
+		if err := cmd.RunE(cmd, []string{"accuracy"}); err != nil {
+			t.Fatalf("get evaluator: %v", err)
+		}
 	})
 
 	var result map[string]any
@@ -1178,7 +1330,9 @@ func TestEvaluatorGetCmd_Execute_MultipleMatches(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		if err := cmd.RunE(cmd, []string{"accuracy"}); err != nil {
+			t.Fatalf("get evaluators: %v", err)
+		}
 	})
 
 	var result []map[string]any
