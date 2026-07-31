@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -66,6 +67,7 @@ func newProjectIssuesListCmd() *cobra.Command {
 		status     string
 		priority   string
 		limit      int
+		offset     int
 		outputFile string
 	)
 
@@ -74,14 +76,21 @@ func newProjectIssuesListCmd() *cobra.Command {
 		Short: "List issues for a tracing project",
 		Long: `List forge issues associated with a tracing project.
 
-Fetches issues from the Issues Board for the specified project. Results
-can be filtered by status (open/closed) and priority (high/medium/low).
+Fetches issues from the Issues Board for the specified project. Results can be
+filtered by status (open/fixing/watching/completed/ignored) and priority
+(urgent/high/medium/low).
+
+Paging is server-side: --limit is the page size (max 500) and --offset skips
+that many issues. To read a board larger than one page, advance --offset by
+--limit until a request returns fewer rows than the limit.
+
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
+  langsmith project issues list --project my-app --limit 100 --offset 100
   langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
@@ -92,25 +101,32 @@ Examples:
 				ExitError("--project is required (or set LANGSMITH_PROJECT)")
 			}
 
-			path := fmt.Sprintf("/api/v1/platform/issues?session_name=%s", urlEscape(projectName))
+			params := langsmith.IssueListParams{
+				SessionName: langsmith.F(projectName),
+			}
 			if status != "" {
-				path += "&status=" + urlEscape(status)
+				params.Status = langsmith.F(langsmith.IssueListParamsStatus(status))
 			}
 			if priority != "" {
 				sev := priorityToSeverity(priority)
 				if sev >= 0 {
-					path += fmt.Sprintf("&severity=%d", sev)
+					params.Severity = langsmith.F(langsmith.IssueListParamsSeverity(sev))
 				}
 			}
+			// Both are server-side; the server clamps limit to 500 and rejects
+			// a non-positive limit or negative offset.
+			if limit > 0 {
+				params.Limit = langsmith.F(int64(limit))
+			}
+			if offset > 0 {
+				params.Offset = langsmith.F(int64(offset))
+			}
 
-			var issues []forgeIssue
-			if err := c.RawGet(ctx, path, &issues); err != nil {
+			page, err := c.SDK.Issues.List(ctx, params)
+			if err != nil {
 				ExitErrorf("listing issues: %v", err)
 			}
-
-			if limit > 0 && len(issues) > limit {
-				issues = issues[:limit]
-			}
+			issues := page.Items
 
 			fmt_ := GetFormat()
 
@@ -118,33 +134,30 @@ Examples:
 				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
-					sevLabel := severityLabels[issue.Severity]
+					sevLabel := severityLabels[int(issue.Severity)]
 					if sevLabel == "" {
 						sevLabel = fmt.Sprintf("%d", issue.Severity)
 					}
 					rows = append(rows, []string{
 						truncate(issue.Name, 60),
 						sevLabel,
-						issue.Status,
+						string(issue.Status),
 						strings.Join(issue.Tags, ", "),
-						formatIssueTime(issue.CreatedAt),
+						formatIssueTimestamp(issue.CreatedAt),
 					})
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
 			} else {
-				data := []map[string]any{}
-				for _, issue := range issues {
-					data = append(data, issueToMap(issue))
-				}
-				output.OutputJSON(data, outputFile)
+				output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile)
 			}
 		},
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open or closed")
-	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
-	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open, fixing, watching, completed, or ignored")
+	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: urgent, high, medium, or low")
+	cmd.Flags().IntVar(&limit, "limit", 50, "Page size (server-side; max 500)")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Number of issues to skip (server-side; for paging)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -490,14 +503,14 @@ func formatIssueTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-func urlEscape(s string) string {
-	s = strings.ReplaceAll(s, "%", "%25")
-	s = strings.ReplaceAll(s, " ", "%20")
-	s = strings.ReplaceAll(s, "&", "%26")
-	s = strings.ReplaceAll(s, "=", "%3D")
-	s = strings.ReplaceAll(s, "+", "%2B")
-	s = strings.ReplaceAll(s, "#", "%23")
-	return s
+// formatIssueTimestamp renders an RFC3339 timestamp string from the SDK, which
+// types these fields as strings rather than time.Time.
+func formatIssueTimestamp(s string) string {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return "N/A"
+	}
+	return formatIssueTime(t)
 }
 
 func truncate(s string, n int) string {
