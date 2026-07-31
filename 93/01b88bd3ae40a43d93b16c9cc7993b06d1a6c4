@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_bf53db671a5be3::t_bc3cce6381c66f 31-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "9301b88bd3ae40a43d93b16c9cc7993b06d1a6c4",
+  "prompts": {},
+  "sessions": {
+    "s_bf53db671a5be3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a1a00bd-8e90-4f39-a9f1-f99452890bdb",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Dariel Dato-on <293921406+darieldatoon@users.noreply.github.com>"
+    }
+  }
+}
