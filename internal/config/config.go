@@ -104,16 +104,40 @@ func (c *Config) SaveTo(path string) error {
 		return fmt.Errorf("encoding config JSON: %w", err)
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".langsmith-config-*")
 	if err != nil {
-		return fmt.Errorf("opening config for write: %w", err)
+		return fmt.Errorf("creating temporary config: %w", err)
 	}
-	defer f.Close()
+	tmpPath := f.Name()
+	cleanup := func() {
+		_ = os.Remove(tmpPath)
+	}
 	if _, err := f.Write(buf.Bytes()); err != nil {
+		closeErr := f.Close()
+		cleanup()
+		if closeErr != nil {
+			return fmt.Errorf("writing config: %v (closing temporary config: %v)", err, closeErr)
+		}
 		return fmt.Errorf("writing config: %w", err)
 	}
 	if err := f.Chmod(0600); err != nil {
+		_ = f.Close()
+		cleanup()
 		return fmt.Errorf("setting config permissions: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		cleanup()
+		return fmt.Errorf("syncing temporary config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("closing temporary config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return fmt.Errorf("replacing config: %w", err)
 	}
 	return nil
 }
