@@ -110,7 +110,7 @@ func newExperimentListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -185,9 +185,9 @@ func newExperimentGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				printOutput(data, "pretty", outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}

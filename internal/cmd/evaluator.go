@@ -93,7 +93,7 @@ Examples:
 			}
 
 			if len(matching) == 0 {
-				output.OutputJSON(map[string]any{
+				outputJSON(map[string]any{
 					"error": "no matching evaluators found",
 				}, "")
 				return
@@ -124,9 +124,9 @@ Examples:
 			}
 
 			if len(data) == 1 {
-				output.OutputJSON(data[0], outputFile)
+				outputJSON(data[0], outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -183,7 +183,7 @@ func newEvaluatorListCmd() *cobra.Command {
 						"session_id":    nilStr(rule.SessionID),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}
@@ -212,7 +212,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			evaluatorFile := args[0]
 
 			if err := validateEvaluatorTargetFlags(targetDataset, targetProject); err != nil {
-				output.OutputJSON(map[string]any{"error": err.Error()}, "")
+				outputJSON(map[string]any{"error": err.Error()}, "")
 				return
 			}
 
@@ -292,7 +292,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			existing := findEvaluator(*rules, name, datasetID, projectID)
 			if existing != nil {
 				if !replace {
-					output.OutputJSON(map[string]any{
+					outputJSON(map[string]any{
 						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
 						"id":    existing.ID,
 					}, "")
@@ -321,7 +321,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			if datasetID != "" {
 				targetLabel = "dataset"
 			}
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "uploaded",
 				"id":     result["id"],
 				"name":   name,
@@ -399,7 +399,7 @@ Examples:
 					ExitError("aborted")
 				}
 				if existing != nil {
-					output.OutputJSON(map[string]any{"error": err.Error(), "id": existing.ID}, "")
+					outputJSON(map[string]any{"error": err.Error(), "id": existing.ID}, "")
 					return
 				}
 				ExitErrorf("%v", err)
@@ -417,7 +417,7 @@ Examples:
 			if target.datasetID != "" {
 				targetLabel = "dataset"
 			}
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "created", "type": "llm",
 				"id": result["id"], "name": name, "target": targetLabel,
 			}, "")
@@ -468,7 +468,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 			}
 
 			if len(matching) == 0 {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Evaluator '%s' not found", name)}, "")
+				outputJSON(map[string]any{"error": fmt.Sprintf("Evaluator '%s' not found", name)}, "")
 				return
 			}
 
@@ -489,7 +489,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 				deleted++
 			}
 
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status": "deleted",
 				"name":   name,
 				"count":  deleted,

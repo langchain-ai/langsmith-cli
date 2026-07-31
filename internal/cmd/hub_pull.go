@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
@@ -70,7 +69,7 @@ func newHubPullCmd() *cobra.Command {
 			if len(linked) > 0 {
 				out["linked_children"] = linked
 			}
-			output.OutputJSON(out, "")
+			outputJSON(out, "")
 			return nil
 		},
 	}

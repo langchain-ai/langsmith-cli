@@ -2,6 +2,8 @@ package output
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +16,9 @@ func TestOutputJSON(t *testing.T) {
 		"id":   "123",
 		"name": "test",
 	}
-	OutputJSON(data, "")
+	if err := OutputJSON(data, ""); err != nil {
+		t.Fatalf("OutputJSON: %v", err)
+	}
 }
 
 func TestOutputJSONToFile(t *testing.T) {
@@ -26,7 +30,9 @@ func TestOutputJSONToFile(t *testing.T) {
 		{"id": "2", "name": "second"},
 	}
 
-	OutputJSON(data, fpath)
+	if err := OutputJSON(data, fpath); err != nil {
+		t.Fatalf("OutputJSON: %v", err)
+	}
 
 	content, err := os.ReadFile(fpath)
 	if err != nil {
@@ -47,7 +53,9 @@ func TestOutputJSONL(t *testing.T) {
 		{"id": "2", "name": "second"},
 	}
 
-	OutputJSONL(items, fpath)
+	if err := OutputJSONL(items, fpath); err != nil {
+		t.Fatalf("OutputJSONL: %v", err)
+	}
 
 	content, err := os.ReadFile(fpath)
 	if err != nil {
@@ -58,6 +66,102 @@ func TestOutputJSONL(t *testing.T) {
 	if len(lines) != 2 {
 		t.Errorf("expected 2 lines, got %d", len(lines))
 	}
+}
+
+func TestOutputJSON_ReturnsMarshalError(t *testing.T) {
+	err := OutputJSON(map[string]any{"unsupported": make(chan int)}, "")
+	if err == nil || !strings.Contains(err.Error(), "encoding JSON") {
+		t.Fatalf("error = %v, want JSON encoding error", err)
+	}
+}
+
+func TestOutputJSON_ReturnsFileError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "output.json")
+	err := OutputJSON(map[string]any{"ok": true}, path)
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %v, want path %q", err, path)
+	}
+}
+
+func TestPrintOutput_ReturnsFileError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "output.json")
+	err := PrintOutput(map[string]any{"ok": true}, "pretty", path)
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("error = %v, want path %q", err, path)
+	}
+}
+
+func TestWriteBytes_ReturnsShortWrite(t *testing.T) {
+	err := writeBytes(shortWriter{}, []byte("complete output"))
+	if !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("error = %v, want io.ErrShortWrite", err)
+	}
+}
+
+func TestOutputJSONL_ReturnsWriteErrorWithoutSuccess(t *testing.T) {
+	writeErr := errors.New("disk full")
+	writer := &errorWriteCloser{writeErr: writeErr}
+	var stderr bytes.Buffer
+	err := outputJSONL(
+		[]map[string]any{{"id": "1"}},
+		"output.jsonl",
+		io.Discard,
+		&stderr,
+		func(string) (io.WriteCloser, error) { return writer, nil },
+	)
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("error = %v, want %v", err, writeErr)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("failure must not print success status: %q", stderr.String())
+	}
+	if !writer.closed {
+		t.Error("writer was not closed after write failure")
+	}
+}
+
+func TestOutputJSONL_ReturnsCloseErrorWithoutSuccess(t *testing.T) {
+	closeErr := errors.New("close failed")
+	writer := &errorWriteCloser{closeErr: closeErr}
+	var stderr bytes.Buffer
+	err := outputJSONL(
+		[]map[string]any{{"id": "1"}},
+		"output.jsonl",
+		io.Discard,
+		&stderr,
+		func(string) (io.WriteCloser, error) { return writer, nil },
+	)
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("error = %v, want %v", err, closeErr)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("close failure must not print success status: %q", stderr.String())
+	}
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) {
+	return len(p) - 1, nil
+}
+
+type errorWriteCloser struct {
+	bytes.Buffer
+	writeErr error
+	closeErr error
+	closed   bool
+}
+
+func (w *errorWriteCloser) Write(p []byte) (int, error) {
+	if w.writeErr != nil {
+		return 0, w.writeErr
+	}
+	return w.Buffer.Write(p)
+}
+
+func (w *errorWriteCloser) Close() error {
+	w.closed = true
+	return w.closeErr
 }
 
 func TestFormatDuration(t *testing.T) {

@@ -124,7 +124,7 @@ func newProjectListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				outputJSON(data, outputFile)
 			}
 		},
 	}

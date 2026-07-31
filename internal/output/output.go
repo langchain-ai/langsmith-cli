@@ -14,45 +14,86 @@ import (
 
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
-func OutputJSON(data any, filePath string) {
+func OutputJSON(data any, filePath string) error {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		PrintError(fmt.Sprintf("JSON encoding error: %v", err))
-		return
+		return fmt.Errorf("encoding JSON: %w", err)
 	}
 
 	if filePath != "" {
-		if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
+		if err := os.WriteFile(filePath, jsonBytes, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", filePath, err)
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
-	} else {
-		fmt.Println(string(jsonBytes))
+		if _, err := fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath); err != nil {
+			return fmt.Errorf("writing status: %w", err)
+		}
+		return nil
 	}
+	if err := writeBytes(os.Stdout, append(jsonBytes, '\n')); err != nil {
+		return fmt.Errorf("writing JSON output: %w", err)
+	}
+	return nil
 }
 
 // OutputJSONL writes items as JSONL (one JSON object per line).
-func OutputJSONL(items []map[string]any, filePath string) {
+func OutputJSONL(items []map[string]any, filePath string) error {
+	return outputJSONL(items, filePath, os.Stdout, os.Stderr, func(path string) (io.WriteCloser, error) {
+		return os.Create(path)
+	})
+}
+
+func outputJSONL(
+	items []map[string]any,
+	filePath string,
+	stdout io.Writer,
+	stderr io.Writer,
+	createFile func(string) (io.WriteCloser, error),
+) error {
 	if filePath != "" {
-		f, err := os.Create(filePath)
+		f, err := createFile(filePath)
 		if err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
+			return fmt.Errorf("creating %s: %w", filePath, err)
 		}
-		defer f.Close()
 		for _, item := range items {
-			line, _ := json.Marshal(item)
-			_, _ = f.Write(line)
-			_, _ = f.WriteString("\n")
+			line, err := json.Marshal(item)
+			if err != nil {
+				_ = f.Close()
+				return fmt.Errorf("encoding JSONL: %w", err)
+			}
+			if err := writeBytes(f, append(line, '\n')); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("writing %s: %w", filePath, err)
+			}
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
-	} else {
-		for _, item := range items {
-			line, _ := json.Marshal(item)
-			fmt.Println(string(line))
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("closing %s: %w", filePath, err)
+		}
+		if _, err := fmt.Fprintf(stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items)); err != nil {
+			return fmt.Errorf("writing status: %w", err)
+		}
+		return nil
+	}
+	for _, item := range items {
+		line, err := json.Marshal(item)
+		if err != nil {
+			return fmt.Errorf("encoding JSONL: %w", err)
+		}
+		if err := writeBytes(stdout, append(line, '\n')); err != nil {
+			return fmt.Errorf("writing JSONL output: %w", err)
 		}
 	}
+	return nil
+}
+
+func writeBytes(w io.Writer, data []byte) error {
+	n, err := w.Write(data)
+	if err != nil {
+		return err
+	}
+	if n != len(data) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 // OutputTable prints a table to stdout using tablewriter.
@@ -139,18 +180,25 @@ func addChildren(node treeprint.Tree, parentID string, childrenMap map[string][]
 }
 
 // PrintOutput dispatches to JSON or pretty output.
-func PrintOutput(data any, format string, filePath string) {
+func PrintOutput(data any, format string, filePath string) error {
 	if format == "pretty" {
 		// Pretty mode: just pretty-print JSON to stdout
-		jsonBytes, _ := json.MarshalIndent(data, "", "  ")
-		if filePath != "" {
-			_ = os.WriteFile(filePath, jsonBytes, 0644)
-		} else {
-			fmt.Println(string(jsonBytes))
+		jsonBytes, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encoding JSON: %w", err)
 		}
-	} else {
-		OutputJSON(data, filePath)
+		if filePath != "" {
+			if err := os.WriteFile(filePath, jsonBytes, 0o644); err != nil {
+				return fmt.Errorf("writing %s: %w", filePath, err)
+			}
+			return nil
+		}
+		if err := writeBytes(os.Stdout, append(jsonBytes, '\n')); err != nil {
+			return fmt.Errorf("writing JSON output: %w", err)
+		}
+		return nil
 	}
+	return OutputJSON(data, filePath)
 }
 
 // PrintError prints an error to stderr.

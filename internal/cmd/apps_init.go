@@ -11,7 +11,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -164,7 +163,7 @@ Installs dependencies as the last step, so you can cd in and run
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
-			output.OutputJSON(map[string]any{
+			outputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
 				"name":     name,

@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +12,32 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+func TestOutputJSONFailureExitsNonZero(t *testing.T) {
+	if path := os.Getenv("LANGSMITH_TEST_INVALID_OUTPUT_PATH"); path != "" {
+		outputJSON(map[string]any{"ok": true}, path)
+		return
+	}
+
+	path := filepath.Join(t.TempDir(), "missing", "output.json")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestOutputJSONFailureExitsNonZero$")
+	cmd.Env = append(os.Environ(), "LANGSMITH_TEST_INVALID_OUTPUT_PATH="+path)
+	combined, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("output failure exited successfully:\n%s", combined)
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() == 0 {
+		t.Fatalf("error = %v, want non-zero process exit", err)
+	}
+	text := string(combined)
+	if !strings.Contains(text, "writing output") || !strings.Contains(text, path) {
+		t.Errorf("missing actionable output error:\n%s", text)
+	}
+	if strings.Contains(text, `"status": "written"`) {
+		t.Errorf("failure printed a success status:\n%s", text)
+	}
+}
 
 // ---------- resolveSessionID ----------
 //
