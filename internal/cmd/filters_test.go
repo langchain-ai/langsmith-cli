@@ -3,6 +3,8 @@ package cmd
 import (
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func TestBuildFilterDSL_Empty(t *testing.T) {
@@ -299,6 +301,29 @@ func TestAddCommonFilterFlags_WithoutRunType(t *testing.T) {
 	cmd := newTraceListCmd()
 	if cmd.Flags().Lookup("run-type") != nil {
 		t.Error("trace list should not have --run-type flag")
+	}
+}
+
+func TestAddCommonFilterFlags_CursorOnlyOnTraceMessages(t *testing.T) {
+	tests := []struct {
+		name       string
+		cmd        *cobra.Command
+		wantCursor bool
+	}{
+		{name: "run list", cmd: newRunListCmd()},
+		{name: "run export", cmd: newRunExportCmd()},
+		{name: "trace list", cmd: newTraceListCmd()},
+		{name: "trace export", cmd: newTraceExportCmd()},
+		{name: "trace messages", cmd: newTraceMessagesCmd(), wantCursor: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCursor := tt.cmd.Flags().Lookup("cursor") != nil
+			if gotCursor != tt.wantCursor {
+				t.Errorf("cursor flag present = %t, want %t", gotCursor, tt.wantCursor)
+			}
+		})
 	}
 }
 
