@@ -19,17 +19,35 @@ function Get-Architecture {
     }
 }
 
+function Get-LatestVersionViaGitHubCli {
+    try {
+        $tag = & gh api -H "Accept: application/vnd.github+json" "repos/$Repo/releases/latest" --jq ".tag_name" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return $null
+        }
+
+        return $tag
+    } catch {
+        return $null
+    }
+}
+
 function Get-LatestVersion {
     $headers = @{
         "Accept" = "application/vnd.github+json"
     }
     if ($env:GITHUB_TOKEN) {
         $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+    } else {
+        $tag = Get-LatestVersionViaGitHubCli
+        if ($tag) {
+            return $tag
+        }
     }
 
     $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$Repo/releases/latest"
     if (-not $release.tag_name) {
-        throw "Failed to determine latest version"
+        throw "Failed to determine latest version. Set GITHUB_TOKEN, run 'gh auth login', or pass -Version."
     }
 
     return $release.tag_name
