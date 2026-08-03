@@ -4,8 +4,10 @@ import { LinearProgress } from './components/LinearProgress';
 import { QueueBar } from './components/QueueBar';
 import { RunList } from './components/RunList';
 import { RunViewer } from './components/RunViewer';
-import { fetchQueue, markRunComplete } from './api';
-import { useRunSection } from './hooks/useRunSection';
+import { ThreadViewer } from './components/ThreadViewer';
+import { fetchQueue, markItemComplete } from './api';
+import { useHydratedItem } from './hooks/useHydratedItem';
+import { useItemSection } from './hooks/useItemSection';
 import type { AnnotationQueue } from './types';
 
 interface Props {
@@ -20,38 +22,38 @@ interface Props {
 export function App({ queueId: initialQueueId }: Props) {
   const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
-  const [selectedQueueRunId, setSelectedQueueRunId] = useState<string | undefined>(undefined);
+  const [selectedItemId, setSelectedItemId] = useState<string | undefined>(undefined);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
 
   const isMultiReviewer = !!queue?.num_reviewers_per_item && queue.num_reviewers_per_item > 1;
-  const needsReview = useRunSection(queueId || undefined, 'needs_my_review');
-  const needsOthersReview = useRunSection(queueId || undefined, 'needs_others_review', isMultiReviewer);
-  const completed = useRunSection(queueId || undefined, 'completed');
+  const needsReview = useItemSection(queueId || undefined, 'needs_my_review');
+  const needsOthersReview = useItemSection(
+    queueId || undefined,
+    'needs_others_review',
+    isMultiReviewer
+  );
+  const completed = useItemSection(queueId || undefined, 'completed');
 
-  // Keep a ref to the complete handler so hotkey always calls the latest version
   const completeRef = useRef<() => void>(() => {});
-  // Same trick for h/l navigation, which needs the latest run list + selection
-  const goToAdjacentRunRef = useRef<(direction: 'prev' | 'next') => void>(() => {});
+  const goToAdjacentItemRef = useRef<(direction: 'prev' | 'next') => void>(() => {});
 
-  // Load queue metadata whenever the queue changes. Run sections load
-  // themselves (see useRunSection), keyed on the same queueId.
   useEffect(() => {
-    // Clear the previous queue's rubric first so switching queues doesn't
-    // flash stale data from the one before.
     setQueue(null);
-    setSelectedQueueRunId(undefined);
+    setSelectedItemId(undefined);
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
       .catch((e) => console.error('Failed to load queue', e));
   }, [queueId]);
 
-  // Keyboard shortcuts: H=prev, L=next, Esc=blur, Cmd/Ctrl+Enter=complete
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement | null)?.isContentEditable;
+      const inInput =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (document.activeElement as HTMLElement | null)?.isContentEditable;
 
       if (e.key === 'Escape') {
         (document.activeElement as HTMLElement | null)?.blur();
@@ -66,10 +68,10 @@ export function App({ queueId: initialQueueId }: Props) {
 
       if (!inInput) {
         if (e.key === 'h') {
-          goToAdjacentRunRef.current('prev');
+          goToAdjacentItemRef.current('prev');
         }
         if (e.key === 'l') {
-          goToAdjacentRunRef.current('next');
+          goToAdjacentItemRef.current('next');
         }
       }
     }
@@ -77,48 +79,48 @@ export function App({ queueId: initialQueueId }: Props) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const allRuns = [...needsReview.runs, ...needsOthersReview.runs, ...completed.runs];
-  const selectedRun =
-    allRuns.find((r) => r.queue_run_id === selectedQueueRunId) ?? needsReview.runs[0] ?? null;
+  const allItems = [...needsReview.items, ...needsOthersReview.items, ...completed.items];
+  const selectedListItem =
+    allItems.find((i) => i.id === selectedItemId) ?? needsReview.items[0] ?? null;
 
-  function handleSelectRun(queueRunId: string) {
-    setSelectedQueueRunId(queueRunId);
+  const { item: selectedItem, loading: hydrating } = useHydratedItem(selectedListItem);
+
+  function handleSelectItem(itemId: string) {
+    setSelectedItemId(itemId);
     setCompleteError(null);
   }
 
-  // h/l step through the "Needs Review" list. No-op at a list boundary.
-  function goToAdjacentRun(direction: 'prev' | 'next') {
-    const list = needsReview.runs;
+  function goToAdjacentItem(direction: 'prev' | 'next') {
+    const list = needsReview.items;
     if (list.length === 0) return;
-    const idx = list.findIndex((r) => r.queue_run_id === selectedQueueRunId);
+    const idx = list.findIndex((i) => i.id === selectedItemId);
     if (idx === -1) {
-      handleSelectRun(list[0].queue_run_id);
+      handleSelectItem(list[0].id);
       return;
     }
     const nextIdx = direction === 'prev' ? idx - 1 : idx + 1;
     if (nextIdx < 0 || nextIdx >= list.length) return;
-    handleSelectRun(list[nextIdx].queue_run_id);
+    handleSelectItem(list[nextIdx].id);
   }
 
   useEffect(() => {
-    goToAdjacentRunRef.current = goToAdjacentRun;
+    goToAdjacentItemRef.current = goToAdjacentItem;
   });
 
-  // Synchronous trigger (so both the footer button and the Cmd/Ctrl+Enter
-  // hotkey can call it the same way) that runs the async complete flow and
-  // surfaces any failure via completeError instead of swallowing it — a
-  // failed call used to look identical to a successful one.
   function handleComplete() {
-    if (!selectedRun || completing) return;
-    const queueRunId = selectedRun.queue_run_id;
+    if (!selectedItem || completing) return;
+    const itemId = selectedItem.id;
     setCompleting(true);
     setCompleteError(null);
-    markRunComplete(queueRunId)
+    markItemComplete(itemId)
       .then(() => {
-        const remainingNeedsReview = needsReview.runs.filter((r) => r.queue_run_id !== queueRunId);
-        needsReview.removeRun(queueRunId);
-        completed.prependRun({ ...selectedRun, last_reviewed_time: new Date().toISOString() });
-        setSelectedQueueRunId(remainingNeedsReview[0]?.queue_run_id);
+        const remainingNeedsReview = needsReview.items.filter((i) => i.id !== itemId);
+        needsReview.removeItem(itemId);
+        completed.prependItem({
+          ...selectedItem,
+          last_reviewed_time: new Date().toISOString(),
+        });
+        setSelectedItemId(remainingNeedsReview[0]?.id);
       })
       .catch((e) => {
         console.error('Failed to mark complete', e);
@@ -136,7 +138,9 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">Select an annotation queue to start reviewing.</span>
+          <span className="text-sm text-tertiary">
+            Select an annotation queue to start reviewing.
+          </span>
         </div>
       </div>
     );
@@ -151,53 +155,63 @@ export function App({ queueId: initialQueueId }: Props) {
     );
   }
 
-  const contentLoading = (needsReview.loading || completed.loading) && !selectedRun;
+  const contentLoading =
+    ((needsReview.loading || completed.loading) && !selectedListItem) || hydrating;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary m-4 mt-3">
-        {/* Left: 280px run list */}
+      <div className="m-4 mt-3 flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary">
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
           <RunList
             needsReview={needsReview}
             needsOthersReview={needsOthersReview}
             completed={completed}
-            selectedQueueRunId={selectedQueueRunId ?? selectedRun?.queue_run_id}
+            selectedItemId={selectedItemId ?? selectedItem?.id}
             numReviewersPerItem={queue.num_reviewers_per_item}
-            onSelectRun={handleSelectRun}
+            onSelectItem={handleSelectItem}
           />
         </div>
 
-        {/* Center: flex-1 inputs/outputs */}
         <div className="relative flex min-w-0 flex-1 flex-col overflow-auto">
-          {selectedRun || contentLoading ? (
-            <RunViewer
-              inputs={selectedRun?.inputs ?? null}
-              outputs={selectedRun?.outputs ?? null}
-              error={selectedRun?.error}
-              loading={contentLoading}
-            />
+          {selectedItem || contentLoading ? (
+            selectedItem?.item_type === 'THREAD' ? (
+              <ThreadViewer
+                messages={selectedItem?.messages}
+                threadId={selectedItem?.thread_id}
+                loading={contentLoading}
+              />
+            ) : (
+              <RunViewer
+                inputs={selectedItem?.inputs ?? null}
+                outputs={selectedItem?.outputs ?? null}
+                error={selectedItem?.error}
+                loading={contentLoading}
+              />
+            )
           ) : (
             <div className="flex flex-1 items-center justify-center">
-              <span className="text-sm text-tertiary">Select a run to review</span>
+              <span className="text-sm text-tertiary">Select an item to review</span>
             </div>
           )}
         </div>
 
-        {/* Right: 450px feedback panel */}
         <div className="flex h-full w-[450px] min-w-[450px] max-w-[450px] flex-col border-l border-secondary">
           <FeedbackPanel
             queue={queue}
-            runId={selectedRun?.id}
-            traceId={selectedRun?.trace_id}
-            sessionId={selectedRun?.session_id}
-            startTime={selectedRun?.start_time}
-            queueRunId={selectedRun?.queue_run_id}
+            itemType={selectedItem?.item_type}
+            runId={selectedItem?.item_type === 'RUN' ? selectedItem.run_id : undefined}
+            feedbackThreadId={
+              selectedItem?.item_type === 'THREAD' ? selectedItem.thread_id : undefined
+            }
+            traceId={selectedItem?.trace_id}
+            sessionId={selectedItem?.project_id}
+            startTime={selectedItem?.start_time}
+            itemId={selectedItem?.id}
             onComplete={handleComplete}
             completing={completing}
             completeError={completeError}
-            totalNeedsReview={needsReview.runs.length}
+            totalNeedsReview={needsReview.items.length}
           />
         </div>
       </div>

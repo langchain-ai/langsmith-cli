@@ -125,17 +125,22 @@ Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 - `POST /v1/platform/datasets/{dataset_id}/examples` — create examples
 
 **Feedback**
-- `POST /api/v1/feedback` — create feedback
+- `POST /api/v1/feedback` — create feedback (`run_id` for RUN items, or `feedback_thread_id` for THREAD items)
 - `GET /api/v1/feedback?run={run_id}` — list feedback for a run
+- `GET /api/v1/feedback?feedback_thread_id={thread_id}` — list feedback for a thread
 - `GET /api/v1/feedback-configs?key={key}` — a feedback key's type / direction
 
 **Annotation queues**
 - `GET /api/v1/annotation-queues` — list queues
-- `GET /api/v1/annotation-queues/{queue_id}/runs` — list runs in a queue
+- `GET /api/v1/platform/annotation-queues/{queue_id}/items` — list membership stubs (`status`, `page_size`, `cursor`); returns `{ items, next_cursor }`. Items are metadata-only (`id`, `item_type` RUN|THREAD, `run_id`/`thread_id`, `project_id`, …) — hydrate payloads separately. Use `/platform/` (smith-go); plain `/api/v1/annotation-queues/.../items` 404s on SaaS.
+- `GET /api/v1/platform/annotation-queues/{queue_id}/items/count?status=` — section totals (`needs_my_review`, `needs_others_review`, `archived`)
+- `POST /api/v1/platform/annotation-queues/items/{item_id}/status` — mark reviewer complete (`{ status: "completed" }`)
+- UI "Completed" maps to API status `archived`
 
 **Threads**
 - `POST /v2/threads/query` — query threads
-- `GET /v2/threads/{thread_id}/traces` — get a thread's traces
+- `POST /v1/trajectory` — thread chat messages as JSON (`{ project_id, thread_id, format: "messages" }` → `{ messages, next_cursor }`). Prefer this over `GET /v2/threads/{id}/messages` (SSE-only; JSON bridge cannot stream it) and over `/traces` when you want human/AI text
+- `GET /v2/threads/{thread_id}/traces` — thread turn list / IO stubs (not normalized chat)
 
 If you need something not listed, check the docs — almost everything in the
 LangSmith API is reachable this way.

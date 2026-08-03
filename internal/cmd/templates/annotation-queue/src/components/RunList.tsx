@@ -6,9 +6,12 @@ import {
   ClockIcon,
   LayersTwo01Icon,
   Lock01Icon,
+  MessageChatCircleIcon,
+  ZapIcon,
 } from '@langchain/untitled-ui-icons';
-import type { AnnotationQueueRun } from '../types';
-import type { RunSection as RunSectionData } from '../hooks/useRunSection';
+import type { QueueItem } from '../types';
+import { itemLabel } from '../types';
+import type { ItemSection as ItemSectionData } from '../hooks/useItemSection';
 import { getCollapsedPreview } from '../lib/messages';
 import { cn } from '../lib/utils';
 import { Spinner } from './Spinner';
@@ -40,20 +43,24 @@ function RunListSkeletons() {
   );
 }
 
-interface RunListItemProps {
-  run: AnnotationQueueRun;
+interface ItemListRowProps {
+  item: QueueItem;
   isSelected: boolean;
   onClick: () => void;
   numReviewersPerItem?: number | null;
 }
 
-function RunListItem({ run, isSelected, onClick, numReviewersPerItem }: RunListItemProps) {
-  const preview = getCollapsedPreview(run.inputs);
-  const completedCount = run.completed_by?.length ?? 0;
-  const reservedCount = run.reserved_by?.length ?? 0;
+function ItemListRow({ item, isSelected, onClick, numReviewersPerItem }: ItemListRowProps) {
+  const preview =
+    item.item_type === 'THREAD'
+      ? item.thread_id ?? 'thread'
+      : getCollapsedPreview(item.inputs ?? null);
+  const completedCount = item.completed_by?.length ?? 0;
+  const reservedCount = item.reserved_by?.length ?? 0;
   const isFullyReserved =
     !!numReviewersPerItem && reservedCount >= numReviewersPerItem;
   const showProgress = !!numReviewersPerItem && numReviewersPerItem > 1 && completedCount > 0;
+  const TypeIcon = item.item_type === 'THREAD' ? MessageChatCircleIcon : ZapIcon;
 
   return (
     <button
@@ -66,11 +73,23 @@ function RunListItem({ run, isSelected, onClick, numReviewersPerItem }: RunListI
     >
       <span
         className={cn(
+          'inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold uppercase',
+          item.item_type === 'THREAD'
+            ? 'bg-brand-muted text-brand-primary'
+            : 'bg-secondary text-tertiary'
+        )}
+        title={item.item_type}
+      >
+        <TypeIcon className="h-3 w-3" />
+        {item.item_type === 'THREAD' ? 'Thread' : 'Run'}
+      </span>
+      <span
+        className={cn(
           'shrink-0 truncate text-sm',
           isFullyReserved ? 'text-quaternary' : 'text-primary'
         )}
       >
-        {run.name ?? run.id.slice(0, 8)}
+        {itemLabel(item)}
       </span>
       {preview && (
         <span
@@ -104,32 +123,29 @@ function RunListItem({ run, isSelected, onClick, numReviewersPerItem }: RunListI
 interface SectionProps {
   label: string;
   icon: React.ElementType;
-  section: RunSectionData;
-  selectedQueueRunId: string | undefined;
+  section: ItemSectionData;
+  selectedItemId: string | undefined;
   defaultOpen: boolean;
   isLast?: boolean;
   numReviewersPerItem?: number | null;
-  onSelectRun: (queueRunId: string) => void;
+  onSelectItem: (itemId: string) => void;
 }
 
-function RunSection({
+function ItemSection({
   label,
   icon: Icon,
   section,
-  selectedQueueRunId,
+  selectedItemId,
   defaultOpen,
   isLast,
   numReviewersPerItem,
-  onSelectRun,
+  onSelectItem,
 }: SectionProps) {
-  const { runs, total, loading, loadingMore, hasMore, loadMore } = section;
+  const { items, total, loading, loadingMore, hasMore, loadMore } = section;
   const [open, setOpen] = useState(defaultOpen);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch the next page once the sentinel at the bottom of this section's
-  // scroll container comes into view. hasMore comes from a separate /size
-  // call (see useRunSection), not from this page's response.
   useEffect(() => {
     if (!open || !hasMore) return;
     const root = scrollRef.current;
@@ -165,7 +181,7 @@ function RunSection({
         <span className="text-sm font-medium text-secondary">{label}</span>
         <div className="ml-auto flex items-center gap-1.5">
           {loading && <Spinner size="sm" />}
-          <span className="text-xs text-tertiary">{Math.max(total, runs.length)}</span>
+          <span className="text-xs text-tertiary">{Math.max(total, items.length)}</span>
         </div>
       </button>
 
@@ -173,18 +189,18 @@ function RunSection({
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
             <RunListSkeletons />
-          ) : runs.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="flex items-center justify-center px-3 py-6">
-              <span className="text-xs text-tertiary">No runs</span>
+              <span className="text-xs text-tertiary">No items</span>
             </div>
           ) : (
             <>
-              {runs.map((run) => (
-                <RunListItem
-                  key={run.queue_run_id}
-                  run={run}
-                  isSelected={run.queue_run_id === selectedQueueRunId}
-                  onClick={() => onSelectRun(run.queue_run_id)}
+              {items.map((item) => (
+                <ItemListRow
+                  key={item.id}
+                  item={item}
+                  isSelected={item.id === selectedItemId}
+                  onClick={() => onSelectItem(item.id)}
                   numReviewersPerItem={numReviewersPerItem}
                 />
               ))}
@@ -202,54 +218,54 @@ function RunSection({
 }
 
 interface Props {
-  needsReview: RunSectionData;
-  needsOthersReview: RunSectionData;
-  completed: RunSectionData;
-  selectedQueueRunId: string | undefined;
+  needsReview: ItemSectionData;
+  needsOthersReview: ItemSectionData;
+  completed: ItemSectionData;
+  selectedItemId: string | undefined;
   numReviewersPerItem?: number | null;
-  onSelectRun: (queueRunId: string) => void;
+  onSelectItem: (itemId: string) => void;
 }
 
 export function RunList({
   needsReview,
   needsOthersReview,
   completed,
-  selectedQueueRunId,
+  selectedItemId,
   numReviewersPerItem,
-  onSelectRun,
+  onSelectItem,
 }: Props) {
   const showNeedsOthersReview = (numReviewersPerItem ?? 0) > 1;
 
   return (
     <div className="flex h-full flex-col divide-y divide-secondary overflow-hidden border-r border-secondary">
-      <RunSection
+      <ItemSection
         label="Needs Review"
         icon={LayersTwo01Icon}
         section={needsReview}
-        selectedQueueRunId={selectedQueueRunId}
+        selectedItemId={selectedItemId}
         defaultOpen={true}
         numReviewersPerItem={numReviewersPerItem}
-        onSelectRun={onSelectRun}
+        onSelectItem={onSelectItem}
       />
       {showNeedsOthersReview && (
-        <RunSection
+        <ItemSection
           label="Needs Others' Review"
           icon={ClockIcon}
           section={needsOthersReview}
-          selectedQueueRunId={selectedQueueRunId}
+          selectedItemId={selectedItemId}
           defaultOpen={false}
           numReviewersPerItem={numReviewersPerItem}
-          onSelectRun={onSelectRun}
+          onSelectItem={onSelectItem}
         />
       )}
-      <RunSection
+      <ItemSection
         label="Completed"
         icon={CheckCircleIcon}
         section={completed}
-        selectedQueueRunId={selectedQueueRunId}
+        selectedItemId={selectedItemId}
         defaultOpen={false}
         isLast={true}
-        onSelectRun={onSelectRun}
+        onSelectItem={onSelectItem}
       />
     </div>
   );

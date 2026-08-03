@@ -284,13 +284,13 @@ func TestHandleLsDevCall_ForwardsParamsAsQueryString(t *testing.T) {
 	})
 	defer setupTestEnv(t, upstream.URL)()
 
-	reqBody := `{"operation":"GET /api/v1/annotation-queues/q1/runs","args":{"params":{"status":"needs_my_review"}}}`
+	reqBody := `{"operation":"GET /api/v1/annotation-queues/q1/items","args":{"params":{"status":"needs_my_review","page_size":"50"}}}`
 	rec := serveLsDevCall(t, reqBody)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if sawQuery != "status=needs_my_review" {
+	if sawQuery != "page_size=50&status=needs_my_review" {
 		t.Errorf("expected query string forwarded, got %q", sawQuery)
 	}
 }
