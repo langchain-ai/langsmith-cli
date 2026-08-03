@@ -1,6 +1,6 @@
 import { Trash02Icon } from '@langchain/untitled-ui-icons';
 import { useEffect, useState } from 'react';
-import { deleteFeedback, fetchFeedbacks, submitFeedback } from '../api';
+import { deleteFeedback, fetchFeedbacksForRun, submitFeedback } from '../api';
 import type { FeedbackItem } from '../types';
 import { ErrorBanner } from './ErrorBanner';
 import { Spinner } from './Spinner';
@@ -18,6 +18,7 @@ interface Props {
 
 // Mirrors LangSmith's RunNotesCrud: a per-run comment thread built on the
 // regular feedback API under the reserved "note" key (comment-only, no score).
+// THREAD items omit this panel — same as the product annotation queue UI.
 const NOTE_KEY = 'note';
 
 export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
@@ -35,7 +36,7 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
       return;
     }
     setLoading(true);
-    fetchFeedbacks(runId)
+    fetchFeedbacksForRun(runId)
       .then((items) =>
         setNotes(
           items
@@ -72,7 +73,6 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
   }
 
   async function handleDeleteNote(note: FeedbackItem) {
-    setError(null);
     try {
       await deleteFeedback(note.id);
       setNotes((prev) => prev.filter((n) => n.id !== note.id));
@@ -82,57 +82,53 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
     }
   }
 
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="text-base font-medium text-primary">Reviewer Notes</div>
+  if (!runId) return null;
 
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-tertiary">
+        Reviewer notes
+      </div>
+      {error && <ErrorBanner error={error} />}
       <div className="flex flex-col gap-2">
         <textarea
+          className="resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-50"
+          rows={3}
+          placeholder="Leave a note for other reviewers…"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              handleAddNote();
-            }
-          }}
-          placeholder="Leave a note for other reviewers…"
-          rows={2}
-          disabled={!runId || submitting}
-          className="resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-50"
+          disabled={submitting}
         />
         <button
           type="button"
-          onClick={handleAddNote}
-          disabled={!runId || submitting || !draft.trim()}
           className="self-end rounded-md border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-secondary disabled:opacity-50"
+          onClick={handleAddNote}
+          disabled={submitting || !draft.trim()}
         >
           {submitting ? 'Adding…' : 'Add note'}
         </button>
       </div>
-
-      {error && <ErrorBanner error={error} />}
-
       {loading ? (
-        <div className="flex items-center justify-center py-4">
+        <div className="flex justify-center py-2">
           <Spinner size="sm" />
         </div>
       ) : (
         notes.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
             {notes.map((note) => (
-              <div
+              <li
                 key={note.id}
-                className="flex flex-col gap-1 rounded-lg border border-secondary p-3"
+                className="flex flex-col gap-1 rounded-md border border-secondary px-3 py-2"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="whitespace-pre-line break-words text-sm text-primary">
+                  <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-primary">
                     {note.comment}
-                  </span>
+                  </p>
                   <button
                     type="button"
-                    onClick={() => handleDeleteNote(note)}
                     className="shrink-0 rounded p-1 text-quaternary hover:bg-secondary"
+                    onClick={() => handleDeleteNote(note)}
+                    aria-label="Delete note"
                   >
                     <Trash02Icon className="h-3.5 w-3.5" />
                   </button>
@@ -140,9 +136,9 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
                 <span className="text-xs text-quaternary">
                   {new Date(note.created_at).toLocaleString()}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )
       )}
     </div>

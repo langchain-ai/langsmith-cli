@@ -2,39 +2,42 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@langchain/untitled-ui-icons';
 import { GridCell } from './GridCell';
 import { Spinner } from './Spinner';
+import { ThreadViewer } from './ThreadViewer';
 import type {
   AnnotationQueue,
-  AnnotationQueueRun,
   FeedbackConfig,
   FeedbackItem,
+  QueueItem,
   RubricItem,
 } from '../types';
+import { feedbackSubjectKey, itemLabel } from '../types';
 import { cn } from '../lib/utils';
 
 interface Props {
   queue: AnnotationQueue | null;
   columns: RubricItem[];
   configs: Record<string, FeedbackConfig>;
-  rows: AnnotationQueueRun[];
-  /** Exact total for this section (see useRunSection) — shown in the header
+  rows: QueueItem[];
+  /** Exact total for this section (see useItemSection) — shown in the header
    * bar instead of deriving a count from the loaded page. */
   total: number;
   rowsLoading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
-  feedbackByRun: Record<string, Record<string, FeedbackItem>>;
+  feedbackBySubject: Record<string, Record<string, FeedbackItem>>;
   activeRow: number;
-  expandedRunId: string | null;
+  expandedItemId: string | null;
+  expandLoading: boolean;
   completeError: string | null;
-  selectedRunIds: Set<string>;
-  onToggleExpand: (runId: string) => void;
-  onToggleRowSelected: (queueRunId: string) => void;
+  selectedItemIds: Set<string>;
+  onToggleExpand: (itemId: string) => void;
+  onToggleRowSelected: (itemId: string) => void;
   onToggleSelectAll: () => void;
   onBulkComplete: () => void;
   onActivateRow: (index: number) => void;
-  onCellSaved: (runId: string, feedback: FeedbackItem) => void;
-  onCellDeleted: (runId: string, feedbackKey: string) => void;
+  onCellSaved: (subjectKey: string, feedback: FeedbackItem) => void;
+  onCellDeleted: (subjectKey: string, feedbackKey: string) => void;
   onComplete: (index: number) => void;
 }
 
@@ -97,11 +100,12 @@ export function DataGrid({
   loadingMore,
   hasMore,
   onLoadMore,
-  feedbackByRun,
+  feedbackBySubject,
   activeRow,
-  expandedRunId,
+  expandedItemId,
+  expandLoading,
   completeError,
-  selectedRunIds,
+  selectedItemIds,
   onToggleExpand,
   onToggleRowSelected,
   onToggleSelectAll,
@@ -251,8 +255,9 @@ export function DataGrid({
   // HTML has no attribute for this, it's set imperatively on the node.
   useEffect(() => {
     if (!selectAllRef.current) return;
-    selectAllRef.current.indeterminate = selectedRunIds.size > 0 && selectedRunIds.size < rows.length;
-  }, [selectedRunIds.size, rows.length]);
+    selectAllRef.current.indeterminate =
+      selectedItemIds.size > 0 && selectedItemIds.size < rows.length;
+  }, [selectedItemIds.size, rows.length]);
 
   if (!queue) {
     return (
@@ -264,8 +269,9 @@ export function DataGrid({
 
   // A row's required columns must all have feedback before it can be marked
   // complete — mirrors the 3-pane FeedbackPanel's allRequiredFilled gate.
-  function requiredFilled(runId: string): boolean {
-    const rowFeedback = feedbackByRun[runId] ?? {};
+  function requiredFilled(subjectKey: string | undefined): boolean {
+    if (!subjectKey) return false;
+    const rowFeedback = feedbackBySubject[subjectKey] ?? {};
     return columns.filter((c) => c.is_required).every((c) => rowFeedback[c.feedback_key] != null);
   }
 
@@ -325,13 +331,13 @@ export function DataGrid({
             {columns.length > 1 ? '↑/↓/←/→' : '↑/↓'} to move between cells
           </span>
         </div>
-        {selectedRunIds.size > 0 && (
+        {selectedItemIds.size > 0 && (
           <button
             type="button"
             onClick={onBulkComplete}
             className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover"
           >
-            Mark {selectedRunIds.size} Completed
+            Mark {selectedItemIds.size} Completed
           </button>
         )}
       </div>
@@ -359,7 +365,7 @@ export function DataGrid({
               {/* hasMore here means the auto-fetch effect above is already
                   loading the next page — never flash "nothing left" when
                   we know there's more coming. */}
-              {rowsLoading || loadingMore || hasMore ? 'Loading runs…' : 'Nothing left to review 🎉'}
+                  {rowsLoading || loadingMore || hasMore ? 'Loading items…' : 'Nothing left to review 🎉'}
             </span>
           </div>
         ) : (
@@ -377,14 +383,14 @@ export function DataGrid({
                   <input
                     ref={selectAllRef}
                     type="checkbox"
-                    checked={rows.length > 0 && selectedRunIds.size === rows.length}
+                    checked={rows.length > 0 && selectedItemIds.size === rows.length}
                     onChange={onToggleSelectAll}
                     aria-label="Select all rows"
                     className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                   />
                 </th>
                 <th className="relative border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
-                  Run Name
+                  Item
                   {resizeHandle('name', 'inputs')}
                 </th>
                 <th className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
@@ -412,15 +418,20 @@ export function DataGrid({
               </tr>
             </thead>
             <tbody>
-              {rows.map((run, index) => {
+              {rows.map((item, index) => {
                 const isActive = index === activeRow;
-                const isExpanded = expandedRunId === run.id;
-                const isSelected = selectedRunIds.has(run.queue_run_id);
-                const rowFeedback = feedbackByRun[run.id] ?? {};
-                const inputsPreview = stringifyIO(run.inputs);
-                const outputsPreview = stringifyIO(run.outputs);
+                const isExpanded = expandedItemId === item.id;
+                const isSelected = selectedItemIds.has(item.id);
+                const subjectKey = feedbackSubjectKey(item);
+                const rowFeedback = subjectKey ? (feedbackBySubject[subjectKey] ?? {}) : {};
+                const isThread = item.item_type === 'THREAD';
+                const inputsPreview = isThread
+                  ? 'Open to view messages'
+                  : stringifyIO(item.inputs ?? null);
+                const outputsPreview = isThread ? '—' : stringifyIO(item.outputs ?? null);
+                const label = itemLabel(item);
                 return (
-                  <Fragment key={run.queue_run_id}>
+                  <Fragment key={item.id}>
                     <tr
                       onClick={() => onActivateRow(index)}
                       className={cn(
@@ -437,8 +448,8 @@ export function DataGrid({
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => onToggleRowSelected(run.queue_run_id)}
-                          aria-label={`Select ${run.name ?? run.id}`}
+                          onChange={() => onToggleRowSelected(item.id)}
+                          aria-label={`Select ${label}`}
                           className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                         />
                       </td>
@@ -446,7 +457,7 @@ export function DataGrid({
                         className={cn(expandableCellClass, 'text-sm text-secondary')}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleExpand(run.id);
+                          onToggleExpand(item.id);
                         }}
                       >
                         <div className="flex min-w-0 items-center gap-1.5">
@@ -455,8 +466,18 @@ export function DataGrid({
                           ) : (
                             <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-tertiary" />
                           )}
-                          <span className="min-w-0 truncate" title={run.name ?? run.id}>
-                            {run.name ?? run.id.slice(0, 8)}
+                          <span
+                            className={cn(
+                              'shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase',
+                              isThread
+                                ? 'bg-brand-muted text-brand-primary'
+                                : 'bg-secondary text-tertiary'
+                            )}
+                          >
+                            {isThread ? 'Thread' : 'Run'}
+                          </span>
+                          <span className="min-w-0 truncate" title={label}>
+                            {label}
                           </span>
                         </div>
                       </td>
@@ -465,7 +486,7 @@ export function DataGrid({
                         title={inputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleExpand(run.id);
+                          onToggleExpand(item.id);
                         }}
                       >
                         {inputsPreview || '—'}
@@ -475,7 +496,7 @@ export function DataGrid({
                         title={outputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleExpand(run.id);
+                          onToggleExpand(item.id);
                         }}
                       >
                         {outputsPreview || '—'}
@@ -489,32 +510,36 @@ export function DataGrid({
                           <GridCell
                             item={col}
                             config={configs[col.feedback_key]}
-                            runId={run.id}
-                            traceId={run.trace_id}
-                            sessionId={run.session_id}
-                            startTime={run.start_time}
+                            itemType={item.item_type}
+                            runId={item.item_type === 'RUN' ? item.run_id : undefined}
+                            feedbackThreadId={
+                              item.item_type === 'THREAD' ? item.thread_id : undefined
+                            }
+                            traceId={item.trace_id}
+                            sessionId={item.project_id}
+                            startTime={item.start_time}
                             existingFeedback={rowFeedback[col.feedback_key]}
                             rowIndex={index}
                             colIndex={colIndex}
-                            onSaved={(fb) => onCellSaved(run.id, fb)}
-                            onDeleted={(key) => onCellDeleted(run.id, key)}
+                            onSaved={(fb) => subjectKey && onCellSaved(subjectKey, fb)}
+                            onDeleted={(key) => subjectKey && onCellDeleted(subjectKey, key)}
                           />
                         </td>
                       ))}
                       <td className="border-l border-secondary px-2 py-1 text-center align-middle">
-                        {/* One or more rows selected: only the bulk action
-                            in the header bar applies — hide the per-row
-                            button instead of leaving a redundant, easy-to-
-                            misclick affordance next to the checkboxes. */}
-                        {selectedRunIds.size === 0 && (
+                        {selectedItemIds.size === 0 && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               onComplete(index);
                             }}
-                            disabled={!requiredFilled(run.id)}
-                            title={!requiredFilled(run.id) ? 'Fill all required (*) columns first' : undefined}
+                            disabled={!requiredFilled(subjectKey)}
+                            title={
+                              !requiredFilled(subjectKey)
+                                ? 'Fill all required (*) columns first'
+                                : undefined
+                            }
                             className="rounded-md bg-brand px-3 py-1 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
                           >
                             Mark Completed
@@ -525,20 +550,34 @@ export function DataGrid({
                     {isExpanded && (
                       <tr className="border-b border-secondary bg-surface-level-1">
                         <td colSpan={colSpan} className="px-3 py-3">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs font-medium text-tertiary">Inputs</span>
-                              <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
-                                {prettyIO(run.inputs)}
-                              </pre>
+                          {isThread ? (
+                            <div className="max-h-[360px] overflow-auto">
+                              <ThreadViewer
+                                messages={item.messages}
+                                threadId={item.thread_id}
+                                loading={expandLoading}
+                              />
                             </div>
-                            <div className="flex flex-col gap-1">
-                              <span className="text-xs font-medium text-tertiary">Outputs</span>
-                              <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
-                                {prettyIO(run.outputs)}
-                              </pre>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-tertiary">Inputs</span>
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                                  {expandLoading && !item.inputs
+                                    ? 'Loading…'
+                                    : prettyIO(item.inputs ?? null)}
+                                </pre>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-tertiary">Outputs</span>
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                                  {expandLoading && !item.outputs
+                                    ? 'Loading…'
+                                    : prettyIO(item.outputs ?? null)}
+                                </pre>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </td>
                       </tr>
                     )}

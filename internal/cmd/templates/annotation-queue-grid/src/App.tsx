@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid } from './components/DataGrid';
 import { QueueBar } from './components/QueueBar';
-import { fetchFeedbackConfigs, fetchFeedbacks, fetchQueue, markRunComplete } from './api';
-import { useRunSection } from './hooks/useRunSection';
-import type { AnnotationQueue, FeedbackConfig, FeedbackItem } from './types';
+import {
+  fetchFeedbackConfigs,
+  fetchFeedbacksForRun,
+  fetchFeedbacksForThread,
+  fetchQueue,
+  markItemComplete,
+} from './api';
+import { useHydratedItem } from './hooks/useHydratedItem';
+import { useItemSection } from './hooks/useItemSection';
+import type { AnnotationQueue, FeedbackConfig, FeedbackItem, QueueItem } from './types';
+import { feedbackSubjectKey } from './types';
 
 interface Props {
   /** Optional starting queue. Apps are uniform now and normally receive {}, so
@@ -13,51 +21,51 @@ interface Props {
   metadata?: RenderMetadata;
 }
 
-// feedbackByRun[runId][feedbackKey] → the latest saved feedback for that cell.
-export type FeedbackByRun = Record<string, Record<string, FeedbackItem>>;
+// feedbackBySubject[runId|threadId][feedbackKey] → latest saved feedback.
+export type FeedbackBySubject = Record<string, Record<string, FeedbackItem>>;
 
 export function App({ queueId: initialQueueId }: Props) {
   const [queueId, setQueueId] = useState(initialQueueId ?? '');
   const [queue, setQueue] = useState<AnnotationQueue | null>(null);
   const [configs, setConfigs] = useState<Record<string, FeedbackConfig>>({});
-  const [feedbackByRun, setFeedbackByRun] = useState<FeedbackByRun>({});
+  const [feedbackBySubject, setFeedbackBySubject] = useState<FeedbackBySubject>({});
   const [activeRow, setActiveRow] = useState(0);
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [completeError, setCompleteError] = useState<string | null>(null);
-  const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
-  const section = useRunSection(queueId || undefined, 'needs_my_review');
-  const rows = section.runs;
+  const section = useItemSection(queueId || undefined, 'needs_my_review');
+  const rows = section.items;
 
-  // Refs so the window keydown listener always calls the latest handlers
-  // (same trick as the 3-pane App.tsx).
+  const expandedListItem =
+    rows.find((r) => r.id === expandedItemId) ?? null;
+  const { item: hydratedExpanded, loading: expanding } = useHydratedItem(expandedListItem);
+
+  const displayRows: QueueItem[] = useMemo(() => {
+    if (!hydratedExpanded) return rows;
+    return rows.map((r) => (r.id === hydratedExpanded.id ? hydratedExpanded : r));
+  }, [rows, hydratedExpanded]);
+
   const completeRef = useRef<(index: number) => void>(() => {});
   const moveRef = useRef<(direction: 'up' | 'down') => void>(() => {});
 
-  // Columns are the rubric's feedback keys.
-  // Assertion-flagged items are pass/fail claims managed elsewhere, not
-  // scored feedback, so they're excluded (same as the real "Edit Annotation
-  // Queue" page's Feedback Rubrics list).
   const columns = useMemo(
     () => (queue?.rubric_items ?? []).filter((item) => !item.is_assertion),
     [queue?.rubric_items]
   );
 
-  // Reset per-queue UI state when the queue changes (run loading itself is
-  // owned by useRunSection, keyed on the same queueId).
   useEffect(() => {
     setQueue(null);
     setActiveRow(0);
-    setExpandedRunId(null);
+    setExpandedItemId(null);
     setCompleteError(null);
-    setSelectedRunIds(new Set());
+    setSelectedItemIds(new Set());
     if (!queueId) return;
     fetchQueue(queueId)
       .then(setQueue)
       .catch((e) => console.error('Failed to load queue', e));
   }, [queueId]);
 
-  // Fetch each key's type/min/max/categories config — the rubric item carries none (see RubricItem).
   const columnKeys = useMemo(() => columns.map((c) => c.feedback_key), [columns]);
   useEffect(() => {
     if (columnKeys.length === 0) {
@@ -73,30 +81,36 @@ export function App({ queueId: initialQueueId }: Props) {
       .catch((e) => console.error('Failed to load feedback configs', e));
   }, [columnKeys.join(',')]);
 
-  // Load existing feedback for every loaded row so already-scored cells are
-  // prefilled — re-runs as loadMore brings in new rows, only fetching the
-  // ones we don't already have.
   useEffect(() => {
-    const idsToFetch = rows.map((r) => r.id).filter((id) => !(id in feedbackByRun));
-    if (idsToFetch.length === 0) return;
+    const toFetch = rows
+      .map((r) => ({ item: r, key: feedbackSubjectKey(r) }))
+      .filter(({ key }) => key && !(key in feedbackBySubject)) as {
+      item: QueueItem;
+      key: string;
+    }[];
+    if (toFetch.length === 0) return;
     let cancelled = false;
     Promise.all(
-      idsToFetch.map((id) =>
-        fetchFeedbacks(id)
-          .then((items) => [id, items] as const)
+      toFetch.map(({ item, key }) => {
+        const load =
+          item.item_type === 'THREAD'
+            ? fetchFeedbacksForThread(key, item.project_id)
+            : fetchFeedbacksForRun(key);
+        return load
+          .then((items) => [key, items] as const)
           .catch((e) => {
-            console.error('Failed to load feedback for run', id, e);
-            return [id, [] as FeedbackItem[]] as const;
-          })
-      )
+            console.error('Failed to load feedback for', key, e);
+            return [key, [] as FeedbackItem[]] as const;
+          });
+      })
     ).then((entries) => {
       if (cancelled) return;
-      setFeedbackByRun((prev) => {
+      setFeedbackBySubject((prev) => {
         const next = { ...prev };
-        for (const [runId, items] of entries) {
+        for (const [subject, items] of entries) {
           const byKey: Record<string, FeedbackItem> = {};
           for (const item of items) byKey[item.key] = item;
-          next[runId] = byKey;
+          next[subject] = byKey;
         }
         return next;
       });
@@ -105,35 +119,33 @@ export function App({ queueId: initialQueueId }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.map((r) => r.id).join(',')]);
+  }, [rows.map((r) => `${r.id}:${r.item_type}`).join(',')]);
 
-  function handleCellSaved(runId: string, feedback: FeedbackItem) {
-    setFeedbackByRun((prev) => ({
+  function handleCellSaved(subjectKey: string, feedback: FeedbackItem) {
+    setFeedbackBySubject((prev) => ({
       ...prev,
-      [runId]: { ...(prev[runId] ?? {}), [feedback.key]: feedback },
+      [subjectKey]: { ...(prev[subjectKey] ?? {}), [feedback.key]: feedback },
     }));
   }
 
-  function handleCellDeleted(runId: string, feedbackKey: string) {
-    setFeedbackByRun((prev) => {
-      const row = { ...(prev[runId] ?? {}) };
+  function handleCellDeleted(subjectKey: string, feedbackKey: string) {
+    setFeedbackBySubject((prev) => {
+      const row = { ...(prev[subjectKey] ?? {}) };
       delete row[feedbackKey];
-      return { ...prev, [runId]: row };
+      return { ...prev, [subjectKey]: row };
     });
   }
 
-  // Optimistically remove a completed row and keep the active row within
-  // bounds; restore it (and surface the error) if the server rejects it.
   function handleComplete(index: number) {
-    const run = rows[index];
-    if (!run) return;
-    const queueRunId = run.queue_run_id;
+    const item = rows[index];
+    if (!item) return;
+    const itemId = item.id;
     setCompleteError(null);
-    section.removeRun(queueRunId);
+    section.removeItem(itemId);
     setActiveRow((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
-    markRunComplete(queueRunId).catch((e) => {
+    markItemComplete(itemId).catch((e) => {
       console.error('Failed to mark complete — restoring row', e);
-      section.restoreRun(run, index);
+      section.restoreItem(item, index);
       setCompleteError(e instanceof Error ? e.message : String(e));
     });
   }
@@ -141,42 +153,39 @@ export function App({ queueId: initialQueueId }: Props) {
     completeRef.current = handleComplete;
   });
 
-  function toggleRowSelected(queueRunId: string) {
-    setSelectedRunIds((prev) => {
+  function toggleRowSelected(itemId: string) {
+    setSelectedItemIds((prev) => {
       const next = new Set(prev);
-      if (next.has(queueRunId)) next.delete(queueRunId);
-      else next.add(queueRunId);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
       return next;
     });
   }
 
   function toggleSelectAll() {
-    setSelectedRunIds((prev) =>
-      prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.queue_run_id))
+    setSelectedItemIds((prev) =>
+      prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))
     );
   }
 
-  // Mark every selected row complete at once. Each optimistically removed up
-  // front; any that the server rejects are restored (at their original
-  // index) and rolled into a single error summary.
   async function handleBulkComplete() {
     const targets = rows
-      .map((run, index) => ({ run, index }))
-      .filter(({ run }) => selectedRunIds.has(run.queue_run_id));
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => selectedItemIds.has(item.id));
     if (targets.length === 0) return;
 
     setCompleteError(null);
-    setSelectedRunIds(new Set());
-    for (const { run } of targets) section.removeRun(run.queue_run_id);
+    setSelectedItemIds(new Set());
+    for (const { item } of targets) section.removeItem(item.id);
 
     const results = await Promise.allSettled(
-      targets.map(({ run }) => markRunComplete(run.queue_run_id))
+      targets.map(({ item }) => markItemComplete(item.id))
     );
     const failures = targets.filter((_, i) => results[i].status === 'rejected');
     if (failures.length > 0) {
-      failures.forEach(({ run, index }) => section.restoreRun(run, index));
+      failures.forEach(({ item, index }) => section.restoreItem(item, index));
       setCompleteError(
-        `Failed to mark ${failures.length} of ${targets.length} run${targets.length === 1 ? '' : 's'} complete`
+        `Failed to mark ${failures.length} of ${targets.length} item${targets.length === 1 ? '' : 's'} complete`
       );
     }
   }
@@ -193,12 +202,12 @@ export function App({ queueId: initialQueueId }: Props) {
     moveRef.current = moveActiveRow;
   });
 
-  // ArrowUp/ArrowDown move between rows (ignored mid-edit); Escape blurs the cell.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName;
-      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable;
+      const inInput =
+        tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable;
 
       if (e.key === 'Escape') {
         el?.blur();
@@ -222,7 +231,9 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">Select an annotation queue to start reviewing.</span>
+          <span className="text-sm text-tertiary">
+            Select an annotation queue to start reviewing.
+          </span>
         </div>
       </div>
     );
@@ -236,18 +247,21 @@ export function App({ queueId: initialQueueId }: Props) {
           queue={queue}
           columns={columns}
           configs={configs}
-          rows={rows}
+          rows={displayRows}
           total={section.total}
           rowsLoading={section.loading}
           loadingMore={section.loadingMore}
           hasMore={section.hasMore}
           onLoadMore={section.loadMore}
-          feedbackByRun={feedbackByRun}
+          feedbackBySubject={feedbackBySubject}
           activeRow={activeRow}
-          expandedRunId={expandedRunId}
-          onToggleExpand={(runId) => setExpandedRunId((prev) => (prev === runId ? null : runId))}
+          expandedItemId={expandedItemId}
+          expandLoading={expanding}
+          onToggleExpand={(itemId) =>
+            setExpandedItemId((prev) => (prev === itemId ? null : itemId))
+          }
           completeError={completeError}
-          selectedRunIds={selectedRunIds}
+          selectedItemIds={selectedItemIds}
           onToggleRowSelected={toggleRowSelected}
           onToggleSelectAll={toggleSelectAll}
           onBulkComplete={handleBulkComplete}

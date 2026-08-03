@@ -123,7 +123,7 @@ func newAppsInitCmd() *cobra.Command {
 
 --template picks which starter gets scaffolded; omit it for a blank single-file starter.
 
-  annotation-queue        A queue-review UI: run list, inputs/outputs, feedback rubric, reviewer notes.
+  annotation-queue        A queue-review UI: RUN/THREAD items, type-specific viewer, feedback rubric.
   annotation-queue-grid   Same review workflow, as an editable spreadsheet.
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
