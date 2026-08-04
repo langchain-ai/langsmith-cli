@@ -200,13 +200,14 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 }
 
 func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
+	meta := client.ResolveOAuth(ctx, apiURL)
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},
-		"resource":      {oauthResource(apiURL)},
+		"resource":      {meta.Resource},
 		"refresh_token": {refreshToken},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauthURL(apiURL, "/oauth/token"), strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, meta.TokenEndpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -254,14 +255,4 @@ func decodeOAuthError(body []byte, statusCode int) *oauthErrorResponse {
 		}
 	}
 	return &oauthErr
-}
-
-func oauthURL(apiURL, path string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/") + path
-}
-
-// oauthResource is the API origin expected by the OAuth server; it must not
-// include the /api/v1 suffix accepted by LANGSMITH_ENDPOINT.
-func oauthResource(apiURL string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/")
 }
