@@ -25,6 +25,7 @@ type authInfoResult struct {
 	ConfigFile        string `json:"config_file,omitempty"`
 	APIKey            string `json:"api_key,omitempty"`
 	APIKeyFile        string `json:"api_key_file,omitempty"`
+	APIKeyError       string `json:"api_key_error,omitempty"`
 	OAuthAccessToken  bool   `json:"oauth_access_token,omitempty"`
 	OAuthRefreshToken bool   `json:"oauth_refresh_token,omitempty"`
 	OAuthExpiresAt    string `json:"oauth_expires_at,omitempty"`
@@ -60,6 +61,7 @@ var authInfoCommand = structured.Command[struct{}]{
 			{Label: "Config file", Template: "{{.ConfigFile}}", OmitEmpty: true},
 			{Label: "API key", Template: "{{.APIKey}}", OmitEmpty: true},
 			{Label: "API key file", Template: "{{.APIKeyFile}}", OmitEmpty: true},
+			{Label: "API key error", Template: "{{.APIKeyError}}", OmitEmpty: true},
 			{Label: "OAuth access token", Template: "{{if .OAuthAccessToken}}present{{end}}", OmitEmpty: true},
 			{Label: "OAuth refresh token", Template: "{{if .OAuthRefreshToken}}present{{end}}", OmitEmpty: true},
 			{Label: "OAuth expires at", Template: "{{.OAuthExpiresAt}}{{if .OAuthExpired}}{{if .OAuthExpired}} (expired){{end}}{{end}}", OmitEmpty: true},
@@ -193,16 +195,18 @@ func resolveAuthInfo() (authInfoResult, error) {
 			result.OAuthExpired = &expired
 		}
 	case hasProfile && profile.HasAPIKey():
-		key, err := profile.ResolveAPIKey()
-		if err != nil {
-			return result, fmt.Errorf("profile %q: %w", profileName, err)
-		}
 		result.Auth = "api_key"
 		result.AuthSource = "profile"
 		result.APIKeyFile = profile.APIKeyFile
-		result.APIKey = lsconfig.MaskSecret(key)
+		// An unreadable key file is reported, not raised: `auth info` is the
+		// command reached for when auth is broken.
+		if key, err := profile.ResolveAPIKey(); err != nil {
+			result.APIKeyError = err.Error()
+		} else {
+			result.APIKey = lsconfig.MaskSecret(key)
+		}
 	}
-	result.Authenticated = result.Auth != "none"
+	result.Authenticated = result.Auth != "none" && result.APIKeyError == ""
 
 	if result.ConfigError != "" && !result.Authenticated {
 		return result, fmt.Errorf("loading config: %s", result.ConfigError)

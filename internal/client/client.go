@@ -73,6 +73,11 @@ func NewWithOptions(options Options) *Client {
 	switch {
 	case options.ProfileName != "":
 		opts = append(opts, langsmith.WithProfile(options.ProfileName))
+		// An api_key_file profile holds no key the SDK can read; WithProfile clears
+		// any key applied before it, so the resolved one goes after.
+		if options.APIKey != "" {
+			opts = append(opts, option.WithAPIKey(options.APIKey))
+		}
 	case options.APIKey != "":
 		opts = append(opts, option.WithAPIKey(options.APIKey))
 	case options.OAuthAccessToken != "":

@@ -30,6 +30,7 @@ type profileShowItem struct {
 	Auth           string `json:"auth"`
 	APIKey         string `json:"api_key,omitempty"`
 	APIKeyFile     string `json:"api_key_file,omitempty"`
+	APIKeyError    string `json:"api_key_error,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
@@ -237,16 +238,20 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		OAuthExpiresAt: profile.OAuth.ExpiresAt,
 	}
 	if profile.HasAPIKey() {
-		key, err := profile.ResolveAPIKey()
-		if err != nil {
-			return err
-		}
-		item.APIKey = lsconfig.MaskSecret(key)
 		item.APIKeyFile = profile.APIKeyFile
+		// An unreadable key file must not suppress the rest of the profile.
+		if key, err := profile.ResolveAPIKey(); err != nil {
+			item.APIKeyError = err.Error()
+		} else {
+			item.APIKey = lsconfig.MaskSecret(key)
+		}
 	}
 
 	if GetFormat() == "pretty" {
 		renderProfileShowTable(cmd, item)
+		if item.APIKeyError != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", item.APIKeyError)
+		}
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())

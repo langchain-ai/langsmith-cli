@@ -396,6 +396,53 @@ func TestProfileShowDoesNotExposeSecrets(t *testing.T) {
 	}
 }
 
+func TestProfileShowReportsUnreadableKeyFile(t *testing.T) {
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(configPath, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_key_file": "`+filepath.Join(dir, "absent")+`",
+      "api_url": "https://dev.api.smith.langchain.com"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "--format=json", "profile", "show", "dev")
+	if err != nil {
+		t.Fatalf("profile show should report an unreadable key file, not fail: %v", err)
+	}
+
+	var result profileShowItem
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if result.Name != "dev" || result.Auth != "api_key" || result.APIURL != "https://dev.api.smith.langchain.com" {
+		t.Fatalf("expected the rest of the profile to still render: %+v", result)
+	}
+	if result.APIKeyError == "" {
+		t.Fatal("expected api_key_error to describe the unreadable file")
+	}
+	if result.APIKey != "" {
+		t.Fatalf("expected no api key, got %q", result.APIKey)
+	}
+}
+
 func TestProfileDisplayTrimsEnvProfile(t *testing.T) {
 	oldProfile := flagProfile
 	oldFormat := flagOutputFormat
