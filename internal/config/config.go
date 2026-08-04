@@ -100,7 +100,7 @@ func warnIfGroupOrWorldReadable(path string) {
 	if _, seen := warnedConfigs.LoadOrStore(path, struct{}{}); seen {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "warning: %s holds credentials and is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
+	fmt.Fprintf(os.Stderr, "warning: %s is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }
 
 // Save writes the config to the default config path with owner-only permissions.
