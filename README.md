@@ -52,6 +52,12 @@ Or pass them as flags:
 langsmith --api-key lsv2_pt_... --workspace <workspace-id> trace list --project my-app
 ```
 
+Prefix the `--api-key` value with `@` to read the key from a file instead
+(`--api-key @~/.langsmith/api-key`); the file must contain only the key.
+`langsmith profile create` given an `@path` key saves the path under
+`api_key_file` and re-reads it on each invocation, so the key stays out of
+`~/.langsmith/config.json`.
+
 ## Quick Start
 
 ```bash

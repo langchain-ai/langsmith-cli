@@ -84,6 +84,78 @@ func TestProfileCreate(t *testing.T) {
 	}
 }
 
+func TestProfileCreateStoresAPIKeyFile(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+	flagOutputFormat = "json"
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	keyFile := filepath.Join(dir, "api-key")
+	if err := os.WriteFile(keyFile, []byte("lsv2_pt_from_file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+
+	if _, err := executeCommand(t, "--format=json", "profile", "create", "dev", "--api-key", "@"+keyFile); err != nil {
+		t.Fatalf("profile create returned error: %v", err)
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := cfg.Profiles["dev"]
+	if profile.APIKey != "" {
+		t.Fatal("expected the key to stay in the file, not be copied into the config")
+	}
+	if profile.APIKeyFile != keyFile {
+		t.Fatalf("expected api_key_file %q, got %q", keyFile, profile.APIKeyFile)
+	}
+	key, err := profile.ResolveAPIKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key != "lsv2_pt_from_file" {
+		t.Fatalf("expected resolved key from file, got %q", key)
+	}
+}
+
+func TestProfileCreateRejectsUnreadableAPIKeyFile(t *testing.T) {
+	oldKey := flagAPIKey
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagProfile = ""
+
+	dir := t.TempDir()
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(dir, "config.json"))
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+
+	_, err := executeCommand(t, "profile", "create", "dev", "--api-key", "@"+filepath.Join(dir, "absent"))
+	if err == nil {
+		t.Fatal("expected profile create to reject an unreadable api key file")
+	}
+}
+
 func TestProfileCreateDoesNotDefineLocalWorkspaceIDFlag(t *testing.T) {
 	cmd := newProfileCreateCmd()
 	if f := cmd.Flags().Lookup("workspace-id"); f != nil {

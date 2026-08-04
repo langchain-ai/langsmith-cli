@@ -34,6 +34,7 @@ func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
 
 Authentication:
   Run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key.
+  Pass --api-key @path to read the key from a file (e.g. @~/.langsmith/api-key).
   Optionally set LANGSMITH_ENDPOINT for self-hosted instances.
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
   Pass --workspace to target a specific workspace for one command.
@@ -186,12 +187,16 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	}
 	switch {
 	case flagAPIKey != "":
-		opts.APIKey = flagAPIKey
-	case os.Getenv("LANGSMITH_API_KEY") != "":
+		key, err := lsconfig.ResolveAPIKeyValue(flagAPIKey)
+		if err != nil {
+			return opts, err
+		}
+		opts.APIKey = key
+	case os.Getenv(lsconfig.APIKeyEnv) != "":
 		if flagProfile != "" {
 			fmt.Fprintln(os.Stderr, "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
 		}
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+		opts.APIKey = os.Getenv(lsconfig.APIKeyEnv)
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
@@ -207,8 +212,12 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		}
 		opts.ProfileName = profileName
 		opts.OAuthAccessToken = profile.AccessToken()
-	case hasProfile && profile.APIKey != "":
-		opts.APIKey = profile.APIKey
+	case hasProfile && profile.HasAPIKey():
+		key, err := profile.ResolveAPIKey()
+		if err != nil {
+			return opts, fmt.Errorf("profile %q: %w", profileName, err)
+		}
+		opts.APIKey = key
 		// Route the resolved profile through the SDK (WithProfile) so an explicit
 		// selection replaces the config's current_profile instead of inheriting
 		// its tenant/base URL. APIKey is kept for the raw-HTTP helpers.

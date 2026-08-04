@@ -11,12 +11,14 @@ import (
 
 const (
 	ConfigFileEnv = "LANGSMITH_CONFIG_FILE"
+	APIKeyEnv     = "LANGSMITH_API_KEY"
 	DefaultAPIURL = "https://api.smith.langchain.com"
 )
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
 	APIKey      string `json:"api_key,omitempty"`
+	APIKeyFile  string `json:"api_key_file,omitempty"`
 	APIURL      string `json:"api_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	OAuth       OAuth  `json:"oauth,omitempty"`
@@ -143,6 +145,24 @@ func (c *Config) ResolveProfile(flagProfile, envProfile string) (string, Profile
 	}
 	p, ok := c.Profiles[name]
 	return name, p, ok
+}
+
+// HasAPIKey reports whether the profile carries API-key auth, either inline or
+// as a file reference.
+func (p Profile) HasAPIKey() bool {
+	return p.APIKey != "" || p.APIKeyFile != ""
+}
+
+// ResolveAPIKey returns the profile's API key, reading api_key_file when the
+// key is not stored inline.
+func (p Profile) ResolveAPIKey() (string, error) {
+	if p.APIKey != "" {
+		return p.APIKey, nil
+	}
+	if p.APIKeyFile == "" {
+		return "", nil
+	}
+	return readAPIKeyFile(p.APIKeyFile)
 }
 
 // AccessToken returns the OAuth access token to use for bearer auth.

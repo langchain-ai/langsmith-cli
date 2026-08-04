@@ -27,25 +27,36 @@ func newTestCmd() *cobra.Command {
 func TestResolveAPIKey_Flag(t *testing.T) {
 	cmd := newTestCmd()
 	_ = cmd.PersistentFlags().Set("api-key", "from-flag")
-	if got := ResolveAPIKey(cmd); got != "from-flag" {
-		t.Errorf("expected from-flag, got %q", got)
-	}
+	got, err := ResolveAPIKey(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "from-flag", got)
 }
 
 func TestResolveAPIKey_Env(t *testing.T) {
 	cmd := newTestCmd()
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
-	if got := ResolveAPIKey(cmd); got != "from-env" {
-		t.Errorf("expected from-env, got %q", got)
-	}
+	got, err := ResolveAPIKey(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "from-env", got)
 }
 
 func TestResolveAPIKey_Empty(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "")
 	cmd := newTestCmd()
-	if got := ResolveAPIKey(cmd); got != "" {
-		t.Errorf("expected empty, got %q", got)
-	}
+	got, err := ResolveAPIKey(cmd)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestResolveAPIKey_FileReference(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "key")
+	require.NoError(t, os.WriteFile(keyFile, []byte("lsv2_pt_from_file\n"), 0600))
+
+	cmd := newTestCmd()
+	_ = cmd.PersistentFlags().Set("api-key", "@"+keyFile)
+	got, err := ResolveAPIKey(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "lsv2_pt_from_file", got)
 }
 
 func TestResolveAPIURL_Flag(t *testing.T) {

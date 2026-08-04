@@ -61,11 +61,11 @@ func isFlagChanged(cmd *cobra.Command, name string) bool {
 }
 
 // ResolveAPIKey reads the API key from cobra's flag tree → env.
-func ResolveAPIKey(cmd *cobra.Command) string {
+func ResolveAPIKey(cmd *cobra.Command) (string, error) {
 	if v := getFlagString(cmd, "api-key"); v != "" {
-		return v
+		return lsconfig.ResolveAPIKeyValue(v)
 	}
-	return os.Getenv("LANGSMITH_API_KEY")
+	return os.Getenv(lsconfig.APIKeyEnv), nil
 }
 
 // ResolveAPIURL reads the API URL from cobra's flag tree → env → default.
@@ -160,12 +160,16 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 
 	switch {
 	case getFlagString(cmd, "api-key") != "":
-		opts.APIKey = getFlagString(cmd, "api-key")
-	case os.Getenv("LANGSMITH_API_KEY") != "":
+		key, err := lsconfig.ResolveAPIKeyValue(getFlagString(cmd, "api-key"))
+		if err != nil {
+			return opts, err
+		}
+		opts.APIKey = key
+	case os.Getenv(lsconfig.APIKeyEnv) != "":
 		if isFlagChanged(cmd, "profile") {
 			fmt.Fprintln(cmd.ErrOrStderr(), "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
 		}
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+		opts.APIKey = os.Getenv(lsconfig.APIKeyEnv)
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
@@ -185,8 +189,12 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 		}
 		opts.ProfileName = profileName
 		opts.OAuthAccessToken = profile.AccessToken()
-	case hasProfile && profile.APIKey != "":
-		opts.APIKey = profile.APIKey
+	case hasProfile && profile.HasAPIKey():
+		key, err := profile.ResolveAPIKey()
+		if err != nil {
+			return opts, fmt.Errorf("profile %q: %w", profileName, err)
+		}
+		opts.APIKey = key
 		// Route the resolved profile through the SDK (WithProfile) so an explicit
 		// selection replaces the config's current_profile instead of inheriting
 		// its tenant/base URL. APIKey is kept for the raw-HTTP helpers.
