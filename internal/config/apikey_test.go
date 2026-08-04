@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,6 +33,7 @@ func TestResolveAPIKeyValue_File(t *testing.T) {
 func TestResolveAPIKeyValue_HomeExpansion(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // what os.UserHomeDir reads on Windows
 	require.NoError(t, os.WriteFile(filepath.Join(home, "key"), []byte("lsv2_pt_home"), 0600))
 
 	got, err := ResolveAPIKeyValue("@~/key")
@@ -40,6 +42,9 @@ func TestResolveAPIKeyValue_HomeExpansion(t *testing.T) {
 }
 
 func TestResolveAPIKeyValue_WarnsOnReadableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permission bits are not meaningful on windows")
+	}
 	dir := t.TempDir()
 	open := filepath.Join(dir, "open-key")
 	require.NoError(t, os.WriteFile(open, []byte("lsv2_pt_open"), 0644))

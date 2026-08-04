@@ -410,11 +410,15 @@ func TestProfileShowReportsUnreadableKeyFile(t *testing.T) {
 	configPath := filepath.Join(dir, "config.json")
 	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
 	t.Setenv("LANGSMITH_PROFILE", "")
+	keyFile, err := json.Marshal(filepath.Join(dir, "absent"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(configPath, []byte(`{
   "current_profile": "dev",
   "profiles": {
     "dev": {
-      "api_key_file": "`+filepath.Join(dir, "absent")+`",
+      "api_key_file": `+string(keyFile)+`,
       "api_url": "https://dev.api.smith.langchain.com"
     }
   }

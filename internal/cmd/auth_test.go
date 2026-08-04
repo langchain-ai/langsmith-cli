@@ -221,11 +221,15 @@ func TestAuthInfoReportsUnreadableKeyFile(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 	t.Setenv("LANGSMITH_PROFILE", "")
+	keyFileJSON, err := json.Marshal(keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(`{
   "current_profile": "dev",
   "profiles": {
     "dev": {
-      "api_key_file": "`+keyFile+`",
+      "api_key_file": `+string(keyFileJSON)+`,
       "workspace_id": "00000000-0000-0000-0000-000000000123"
     }
   }

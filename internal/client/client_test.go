@@ -196,14 +196,11 @@ func TestNewWithOptions_KeyFileProfileSendsResolvedKey(t *testing.T) {
 	t.Setenv("LANGSMITH_CONFIG_FILE", path)
 	t.Setenv("LANGSMITH_PROFILE", "")
 	t.Setenv("LANGSMITH_API_KEY", "")
-	if err := os.WriteFile(path, []byte(`{
-  "profiles": {
-    "prod": {
-      "api_key_file": "`+filepath.Join(dir, "key")+`"
-    }
-  }
-}
-`), 0600); err != nil {
+	keyFile, err := json.Marshal(filepath.Join(dir, "key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"profiles": {"prod": {"api_key_file": `+string(keyFile)+`}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
