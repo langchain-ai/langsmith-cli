@@ -15,18 +15,15 @@ const (
 	oauthDiscoveryMaxBody = 1 << 20 // 1 MiB cap on the metadata document
 )
 
-// OAuthMetadata holds the OAuth authorization server endpoints resolved via
-// RFC 8414 discovery. Endpoints are the absolute URLs advertised by the server,
-// so callers never construct OAuth paths themselves — this is what lets the same
-// code path serve SaaS (AS at <origin>/oauth/*) and self-hosted (AS at
-// <origin>/api/oauth/*) without branching.
+// OAuthMetadata holds absolute authorization server endpoints. The AS lives at
+// <origin>/oauth on SaaS and <origin>/api/oauth on self-hosted, so callers use
+// these rather than building paths themselves.
 type OAuthMetadata struct {
 	Issuer                      string
 	DeviceAuthorizationEndpoint string
 	TokenEndpoint               string
 	RegistrationEndpoint        string
-	// Resource is the RFC 8707 resource indicator to request (the API the token
-	// is minted for). It equals the authorization server's issuer.
+	// Resource is the RFC 8707 resource indicator; it equals the issuer.
 	Resource string
 }
 
@@ -38,9 +35,8 @@ type oauthServerMetadata struct {
 	ProtectedResourcesSupported []string `json:"protected_resources_supported"`
 }
 
-// oauthDeploymentRoot reduces apiURL to the deployment root by stripping a
-// trailing "/api/v1" or "/api" mount segment, mirroring how the SDK derives its
-// REST base URL. A basePath prefix is preserved.
+// oauthDeploymentRoot strips a trailing "/api/v1" or "/api" mount segment,
+// preserving any basePath prefix.
 func oauthDeploymentRoot(apiURL string) string {
 	u := strings.TrimRight(apiURL, "/")
 	u = strings.TrimSuffix(u, "/api/v1")
@@ -48,12 +44,8 @@ func oauthDeploymentRoot(apiURL string) string {
 	return u
 }
 
-// oauthDiscoveryCandidates returns the base URLs to probe for the RFC 8414
-// metadata document, most specific first. The user-provided path (minus a
-// trailing /api/v1) is tried first, so basePath deployments and an explicit
-// "<origin>/api" resolve directly; the "<origin>/api" self-hosted default and
-// the bare "<origin>" (SaaS) follow so a user who passes only the origin still
-// resolves.
+// oauthDiscoveryCandidates returns metadata base URLs to probe, most specific
+// first: what the user configured, then the self-hosted and SaaS mount points.
 func oauthDiscoveryCandidates(apiURL string) []string {
 	given := strings.TrimRight(NormalizeURL(apiURL), "/")
 	origin := strings.TrimRight(oauthDeploymentRoot(apiURL), "/")
@@ -71,12 +63,8 @@ func oauthDiscoveryCandidates(apiURL string) []string {
 	return out
 }
 
-// DiscoverOAuth resolves the OAuth authorization server endpoints for apiURL via
-// RFC 8414 discovery. It probes candidate .well-known locations and returns the
-// first that yields a valid metadata document (one that parses as JSON and
-// advertises token and device-authorization endpoints). It returns an error if
-// no candidate yields valid metadata, so callers can fall back to legacy path
-// construction against older backends that do not serve the document.
+// DiscoverOAuth returns the endpoints from the first candidate serving a valid
+// RFC 8414 metadata document, or an error if none does.
 func DiscoverOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
 	var lastErr error
 	for _, base := range oauthDiscoveryCandidates(apiURL) {
@@ -93,12 +81,8 @@ func DiscoverOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
 	return nil, fmt.Errorf("discovering OAuth authorization server: %w", lastErr)
 }
 
-// ResolveOAuth returns the OAuth endpoints for apiURL. It prefers RFC 8414
-// discovery and falls back to legacy path construction (<base>/oauth/*) when the
-// backend serves no metadata document, where <base> is apiURL with a trailing
-// /api/v1 stripped. The fallback reproduces the pre-discovery behavior, so an
-// older self-hosted backend keeps working when apiURL points at the API root
-// (e.g. "<origin>/api"). It never returns nil.
+// ResolveOAuth prefers discovery, falling back to <base>/oauth/* so backends
+// that serve no metadata document keep working. It never returns nil.
 func ResolveOAuth(ctx context.Context, apiURL string) *OAuthMetadata {
 	if meta, err := DiscoverOAuth(ctx, apiURL); err == nil {
 		return meta
@@ -138,8 +122,7 @@ func fetchOAuthMetadata(ctx context.Context, metadataURL string) (*OAuthMetadata
 
 	var doc oauthServerMetadata
 	if err := json.Unmarshal(body, &doc); err != nil {
-		// A self-hosted SPA catch-all answers unknown paths with an HTML 200;
-		// reject anything that is not a valid metadata JSON document.
+		// The self-hosted SPA catch-all answers unknown paths with an HTML 200.
 		return nil, fmt.Errorf("%s: response is not authorization server metadata", metadataURL)
 	}
 	if doc.TokenEndpoint == "" || doc.DeviceAuthorizationEndpoint == "" {

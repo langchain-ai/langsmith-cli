@@ -8,10 +8,8 @@ import (
 	"testing"
 )
 
-// selfHostedDiscoveryServer serves the RFC 8414 metadata document under /api
-// (as self-hosted LangSmith does) and returns an HTML 200 at the bare-root
-// .well-known path, mimicking the SPA catch-all that must not be mistaken for
-// real metadata.
+// selfHostedDiscoveryServer serves metadata under /api and, like the real SPA
+// catch-all, an HTML 200 at the bare-root .well-known path.
 func selfHostedDiscoveryServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	var srv *httptest.Server
@@ -58,8 +56,8 @@ func TestDiscoverOAuth_SelfHostedUnderApi(t *testing.T) {
 	}
 }
 
-// A self-hosted user who passes the bare origin must still resolve: the bare
-// .well-known returns HTML (rejected), and discovery falls back to /api.
+// A bare origin must still resolve: the root .well-known returns HTML, so
+// discovery has to reject it and fall back to /api.
 func TestDiscoverOAuth_BareOriginFallsBackToApi(t *testing.T) {
 	srv := selfHostedDiscoveryServer(t)
 
@@ -105,8 +103,7 @@ func TestDiscoverOAuth_SaaSAtRoot(t *testing.T) {
 	}
 }
 
-// When no metadata document exists (older backend), discovery returns an error
-// so callers can fall back to legacy path construction.
+// No metadata document must surface an error so callers can fall back.
 func TestDiscoverOAuth_NoMetadataReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -118,9 +115,8 @@ func TestDiscoverOAuth_NoMetadataReturnsError(t *testing.T) {
 	}
 }
 
-// ResolveOAuth falls back to legacy <base>/oauth/* construction when the backend
-// serves no metadata document, so older self-hosted backends keep working when
-// apiURL points at the API root.
+// Without a metadata document, ResolveOAuth keeps the legacy <base>/oauth/*
+// behavior.
 func TestResolveOAuth_FallsBackToLegacyPaths(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -139,8 +135,7 @@ func TestResolveOAuth_FallsBackToLegacyPaths(t *testing.T) {
 	}
 }
 
-// ResolveOAuth prefers discovery: a bare origin resolves to the discovered /api
-// endpoints even though the legacy fallback would have produced bare-root paths.
+// Discovery wins over the fallback, which would have produced root paths.
 func TestResolveOAuth_PrefersDiscovery(t *testing.T) {
 	srv := selfHostedDiscoveryServer(t)
 
