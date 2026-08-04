@@ -38,14 +38,36 @@ func APIKeyFilePath(value string) string {
 	return strings.TrimSpace(strings.TrimPrefix(value, APIKeyFilePrefix))
 }
 
+// AbsAPIKeyFilePath expands a leading "~" and makes path absolute, for storing
+// in a profile that later runs resolve from any working directory.
+func AbsAPIKeyFilePath(path string) (string, error) {
+	expanded, err := expandHome(path)
+	if err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Errorf("resolving api key file %s: %w", path, err)
+	}
+	return abs, nil
+}
+
+func expandHome(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolving home directory for api key file %s: %w", path, err)
+	}
+	return filepath.Join(home, strings.TrimPrefix(path, "~")), nil
+}
+
 // readAPIKeyFile reads an API key from path, expanding a leading "~".
 func readAPIKeyFile(path string) (string, error) {
-	if path == "~" || strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("resolving home directory for api key file %s: %w", path, err)
-		}
-		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+	path, err := expandHome(path)
+	if err != nil {
+		return "", err
 	}
 
 	f, err := os.Open(path)

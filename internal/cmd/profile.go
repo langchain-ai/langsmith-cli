@@ -188,14 +188,17 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 	return enc.Encode(result)
 }
 
-// profileCreateAPIKey resolves the key to persist, keeping a file-backed key as
-// a path so the secret is never copied into the config.
+// profileCreateAPIKey resolves the key to persist, keeping a file-backed key as a path.
 func profileCreateAPIKey() (apiKey, apiKeyFile string, err error) {
 	if strings.HasPrefix(flagAPIKey, lsconfig.APIKeyFilePrefix) {
 		if _, err := lsconfig.ResolveAPIKeyValue(flagAPIKey); err != nil {
 			return "", "", err
 		}
-		return "", lsconfig.APIKeyFilePath(flagAPIKey), nil
+		abs, err := lsconfig.AbsAPIKeyFilePath(lsconfig.APIKeyFilePath(flagAPIKey))
+		if err != nil {
+			return "", "", err
+		}
+		return "", abs, nil
 	}
 	if flagAPIKey != "" {
 		return flagAPIKey, "", nil

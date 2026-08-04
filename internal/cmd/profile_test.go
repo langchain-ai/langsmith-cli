@@ -135,6 +135,40 @@ func TestProfileCreateStoresAPIKeyFile(t *testing.T) {
 	}
 }
 
+func TestProfileCreateStoresAbsoluteAPIKeyFilePath(t *testing.T) {
+	oldKey := flagAPIKey
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagProfile = ""
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	keyFile := filepath.Join(dir, "api-key")
+	if err := os.WriteFile(keyFile, []byte("lsv2_pt_from_file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Chdir(dir)
+
+	if _, err := executeCommand(t, "profile", "create", "dev", "--api-key", "@api-key"); err != nil {
+		t.Fatalf("profile create returned error: %v", err)
+	}
+
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Profiles["dev"].APIKeyFile; got != keyFile {
+		t.Fatalf("expected absolute api_key_file %q, got %q", keyFile, got)
+	}
+}
+
 func TestProfileCreateRejectsUnreadableAPIKeyFile(t *testing.T) {
 	oldKey := flagAPIKey
 	oldProfile := flagProfile
