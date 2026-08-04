@@ -2,9 +2,13 @@ package config
 
 import (
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -44,7 +48,15 @@ func readAPIKeyFile(path string) (string, error) {
 		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
 	}
 
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("reading api key file %s: %w", path, err)
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err == nil {
+		warnIfGroupOrWorldReadable(path, info.Mode())
+	}
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return "", fmt.Errorf("reading api key file %s: %w", path, err)
 	}
@@ -56,4 +68,21 @@ func readAPIKeyFile(path string) (string, error) {
 		return "", fmt.Errorf("api key file %s must contain only the key", path)
 	}
 	return key, nil
+}
+
+// warnedKeyFiles keeps the warning to once per path; a command resolves the key several times.
+var warnedKeyFiles sync.Map
+
+func warnIfGroupOrWorldReadable(path string, mode fs.FileMode) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	perm := mode.Perm()
+	if perm&0o044 == 0 {
+		return
+	}
+	if _, seen := warnedKeyFiles.LoadOrStore(path, struct{}{}); seen {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: api key file %s is readable by other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }

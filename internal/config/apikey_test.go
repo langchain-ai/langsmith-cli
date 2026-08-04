@@ -1,8 +1,10 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,6 +37,46 @@ func TestResolveAPIKeyValue_HomeExpansion(t *testing.T) {
 	got, err := ResolveAPIKeyValue("@~/key")
 	require.NoError(t, err)
 	require.Equal(t, "lsv2_pt_home", got)
+}
+
+func TestResolveAPIKeyValue_WarnsOnReadableFile(t *testing.T) {
+	dir := t.TempDir()
+	open := filepath.Join(dir, "open-key")
+	require.NoError(t, os.WriteFile(open, []byte("lsv2_pt_open"), 0644))
+	locked := filepath.Join(dir, "locked-key")
+	require.NoError(t, os.WriteFile(locked, []byte("lsv2_pt_locked"), 0600))
+
+	stderr := captureStderr(t, func() {
+		_, err := ResolveAPIKeyValue("@" + open)
+		require.NoError(t, err)
+		// The warning is emitted once per path.
+		_, err = ResolveAPIKeyValue("@" + open)
+		require.NoError(t, err)
+	})
+	require.Equal(t, 1, strings.Count(stderr, "warning:"))
+	require.Contains(t, stderr, open)
+	require.Contains(t, stderr, "readable by other users")
+	require.NotContains(t, stderr, "lsv2_pt_open")
+
+	stderr = captureStderr(t, func() {
+		_, err := ResolveAPIKeyValue("@" + locked)
+		require.NoError(t, err)
+	})
+	require.Empty(t, stderr)
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	orig := os.Stderr
+	os.Stderr = w
+	fn()
+	os.Stderr = orig
+	require.NoError(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	return string(out)
 }
 
 func TestProfileResolveAPIKey(t *testing.T) {

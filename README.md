@@ -53,7 +53,8 @@ langsmith --api-key lsv2_pt_... --workspace <workspace-id> trace list --project 
 ```
 
 Prefix the `--api-key` value with `@` to read the key from a file instead
-(`--api-key @~/.langsmith/api-key`); the file must contain only the key.
+(`--api-key @~/.langsmith/api-key`); the file must contain only the key, and the
+CLI warns if it is readable by other users.
 `langsmith profile create` given an `@path` key saves the path under
 `api_key_file` and re-reads it on each invocation, so the key stays out of
 `~/.langsmith/config.json`.
