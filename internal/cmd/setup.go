@@ -71,9 +71,9 @@ Use the claude/codex subcommands to target one.
   langsmith trace setup claude demo-key dev.smith.com shared-claude
   langsmith trace setup codex --yes
 
-The API key, URL, and project may be positional args or the --api-key/--api-url
-/--project flags (or LANGSMITH_API_KEY / LANGSMITH_ENDPOINT / LANGSMITH_PROJECT,
-or a saved profile). A non-default URL accepts a bare host (dev.smith.com →
+The API key, URL, and project may be positional args or come from
+LANGSMITH_API_KEY / LANGSMITH_ENDPOINT / LANGSMITH_PROJECT, the --api-url
+/--project flags, or a saved profile. A non-default URL accepts a bare host (dev.smith.com →
 https://dev.smith.com). An API key is required; OAuth profiles are not supported.`,
 		Args: cobra.MaximumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {

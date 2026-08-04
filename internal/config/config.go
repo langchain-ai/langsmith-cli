@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -76,7 +78,29 @@ func LoadFrom(path string) (*Config, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]Profile)
 	}
+	warnIfGroupOrWorldReadable(path)
 	return cfg, nil
+}
+
+// warnedConfigs keeps the warning to once per path; a command loads the config several times.
+var warnedConfigs sync.Map
+
+func warnIfGroupOrWorldReadable(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	perm := info.Mode().Perm()
+	if perm&0o077 == 0 {
+		return
+	}
+	if _, seen := warnedConfigs.LoadOrStore(path, struct{}{}); seen {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: %s is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }
 
 // Save writes the config to the default config path with owner-only permissions.

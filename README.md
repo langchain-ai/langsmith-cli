@@ -46,10 +46,20 @@ export LANGSMITH_WORKSPACE_ID="<workspace-id>"                # Default workspac
 export LANGSMITH_PROJECT="my-default-project"                 # Default project for queries
 ```
 
-Or pass them as flags:
+Or save the credentials in a profile:
 
 ```bash
-langsmith --api-key lsv2_pt_... --workspace <workspace-id> trace list --project my-app
+langsmith auth login                    # OAuth
+langsmith profile create prod           # API key, taken from $LANGSMITH_API_KEY
+```
+
+Profiles live in `~/.langsmith/config.json`, written owner-only; the CLI warns
+if it is readable by other users.
+
+Other settings can be passed as flags:
+
+```bash
+langsmith --workspace <workspace-id> trace list --project my-app
 ```
 
 ## Quick Start
