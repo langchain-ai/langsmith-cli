@@ -182,43 +182,6 @@ func TestNewWithOptions_APIKeyProfileRoutesThroughSDK(t *testing.T) {
 	}
 }
 
-func TestNewWithOptions_KeyFileProfileSendsResolvedKey(t *testing.T) {
-	var gotAPIKey string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAPIKey = r.Header.Get("X-API-Key")
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
-	}))
-	defer ts.Close()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-	t.Setenv("LANGSMITH_CONFIG_FILE", path)
-	t.Setenv("LANGSMITH_PROFILE", "")
-	t.Setenv("LANGSMITH_API_KEY", "")
-	keyFile, err := json.Marshal(filepath.Join(dir, "key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`{"profiles": {"prod": {"api_key_file": `+string(keyFile)+`}}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// api_key_file is a CLI-only field: the SDK finds no credential under the
-	// profile, so the key the CLI read must still reach the request.
-	c := NewWithOptions(Options{
-		APIKey:      "file-api-key",
-		ProfileName: "prod",
-		APIURL:      ts.URL,
-	})
-	if _, err := c.SDK.Info.List(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if gotAPIKey != "file-api-key" {
-		t.Fatalf("expected the resolved key from api_key_file, got %q", gotAPIKey)
-	}
-}
-
 func TestNewWithOptions_ProfileNameTakesPrecedenceOverExplicitAPIKey(t *testing.T) {
 	var gotAPIKey string
 	var gotAuth string

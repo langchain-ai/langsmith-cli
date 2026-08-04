@@ -198,69 +198,6 @@ func TestAuthTokenRefreshesExpiredOAuthToken(t *testing.T) {
 	}
 }
 
-func TestAuthInfoReportsUnreadableKeyFile(t *testing.T) {
-	oldKey := flagAPIKey
-	oldURL := flagAPIURL
-	oldProfile := flagProfile
-	oldFormat := flagOutputFormat
-	defer func() {
-		flagAPIKey = oldKey
-		flagAPIURL = oldURL
-		flagProfile = oldProfile
-		flagOutputFormat = oldFormat
-	}()
-	flagAPIKey = ""
-	flagAPIURL = ""
-	flagProfile = ""
-	flagOutputFormat = "json"
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-	keyFile := filepath.Join(dir, "absent")
-	t.Setenv("LANGSMITH_CONFIG_FILE", path)
-	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_ENDPOINT", "")
-	t.Setenv("LANGSMITH_PROFILE", "")
-	keyFileJSON, err := json.Marshal(keyFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`{
-  "current_profile": "dev",
-  "profiles": {
-    "dev": {
-      "api_key_file": `+string(keyFileJSON)+`,
-      "workspace_id": "00000000-0000-0000-0000-000000000123"
-    }
-  }
-}
-`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, err := executeCommand(t, "--format=json", "auth", "info")
-	if err != nil {
-		t.Fatalf("auth info should report an unreadable key file, not fail: %v", err)
-	}
-
-	var result authInfoResult
-	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
-		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
-	}
-	if result.Authenticated {
-		t.Fatalf("expected authenticated=false when the key file cannot be read: %+v", result)
-	}
-	if result.Auth != "api_key" || result.AuthSource != "profile" || result.APIKeyFile != keyFile {
-		t.Fatalf("expected the configured key file to still be reported: %+v", result)
-	}
-	if result.APIKeyError == "" {
-		t.Fatal("expected api_key_error to describe the unreadable file")
-	}
-	if result.WorkspaceID != "00000000-0000-0000-0000-000000000123" {
-		t.Fatalf("expected the rest of the profile to still render: %+v", result)
-	}
-}
-
 func TestAuthInfoShowsEnvAPIKeyPrecedence(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL

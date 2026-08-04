@@ -24,8 +24,6 @@ type authInfoResult struct {
 	ProfileFound      *bool  `json:"profile_found,omitempty"`
 	ConfigFile        string `json:"config_file,omitempty"`
 	APIKey            string `json:"api_key,omitempty"`
-	APIKeyFile        string `json:"api_key_file,omitempty"`
-	APIKeyError       string `json:"api_key_error,omitempty"`
 	OAuthAccessToken  bool   `json:"oauth_access_token,omitempty"`
 	OAuthRefreshToken bool   `json:"oauth_refresh_token,omitempty"`
 	OAuthExpiresAt    string `json:"oauth_expires_at,omitempty"`
@@ -60,8 +58,6 @@ var authInfoCommand = structured.Command[struct{}]{
 			{Label: "Profile", Template: "{{.Profile}}{{if .ProfileFound}}{{if not .ProfileFound}} (not found){{end}}{{end}}", OmitEmpty: true},
 			{Label: "Config file", Template: "{{.ConfigFile}}", OmitEmpty: true},
 			{Label: "API key", Template: "{{.APIKey}}", OmitEmpty: true},
-			{Label: "API key file", Template: "{{.APIKeyFile}}", OmitEmpty: true},
-			{Label: "API key error", Template: "{{.APIKeyError}}", OmitEmpty: true},
 			{Label: "OAuth access token", Template: "{{if .OAuthAccessToken}}present{{end}}", OmitEmpty: true},
 			{Label: "OAuth refresh token", Template: "{{if .OAuthRefreshToken}}present{{end}}", OmitEmpty: true},
 			{Label: "OAuth expires at", Template: "{{.OAuthExpiresAt}}{{if .OAuthExpired}}{{if .OAuthExpired}} (expired){{end}}{{end}}", OmitEmpty: true},
@@ -171,19 +167,14 @@ func resolveAuthInfo() (authInfoResult, error) {
 
 	switch {
 	case flagAPIKey != "":
-		key, err := lsconfig.ResolveAPIKeyValue(flagAPIKey)
-		if err != nil {
-			return result, err
-		}
 		result.Auth = "api_key"
 		result.AuthSource = "flag"
-		result.APIKeyFile = lsconfig.APIKeyFilePath(flagAPIKey)
-		result.APIKey = lsconfig.MaskSecret(key)
-	case os.Getenv(lsconfig.APIKeyEnv) != "":
+		result.APIKey = lsconfig.MaskSecret(flagAPIKey)
+	case os.Getenv("LANGSMITH_API_KEY") != "":
 		result.Auth = "api_key"
 		result.AuthSource = "env"
 		result.AuthNote = "LANGSMITH_API_KEY is set and takes precedence over saved profile auth."
-		result.APIKey = lsconfig.MaskSecret(os.Getenv(lsconfig.APIKeyEnv))
+		result.APIKey = lsconfig.MaskSecret(os.Getenv("LANGSMITH_API_KEY"))
 	case hasProfile && (profile.AccessToken() != "" || profile.OAuth.RefreshToken != ""):
 		result.Auth = "oauth"
 		result.AuthSource = "profile"
@@ -194,19 +185,12 @@ func resolveAuthInfo() (authInfoResult, error) {
 			expired := !expiresAt.After(time.Now())
 			result.OAuthExpired = &expired
 		}
-	case hasProfile && profile.HasAPIKey():
+	case hasProfile && profile.APIKey != "":
 		result.Auth = "api_key"
 		result.AuthSource = "profile"
-		result.APIKeyFile = profile.APIKeyFile
-		// An unreadable key file is reported, not raised: `auth info` is the
-		// command reached for when auth is broken.
-		if key, err := profile.ResolveAPIKey(); err != nil {
-			result.APIKeyError = err.Error()
-		} else {
-			result.APIKey = lsconfig.MaskSecret(key)
-		}
+		result.APIKey = lsconfig.MaskSecret(profile.APIKey)
 	}
-	result.Authenticated = result.Auth != "none" && result.APIKeyError == ""
+	result.Authenticated = result.Auth != "none"
 
 	if result.ConfigError != "" && !result.Authenticated {
 		return result, fmt.Errorf("loading config: %s", result.ConfigError)

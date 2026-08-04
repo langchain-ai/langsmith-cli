@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 )
 
 func isolateConfig(t *testing.T) {
@@ -181,65 +179,6 @@ func TestGetAPIKey_EnvFallbackWithMalformedConfig(t *testing.T) {
 	}
 	if got := GetAPIURL(); got != "https://env.example.com" {
 		t.Fatalf("expected normalized env URL despite malformed config, got %q", got)
-	}
-}
-
-func TestGetAPIKey_FileReference(t *testing.T) {
-	isolateConfig(t)
-	old := flagAPIKey
-	defer func() { flagAPIKey = old }()
-
-	keyFile := filepath.Join(t.TempDir(), "key")
-	if err := os.WriteFile(keyFile, []byte("lsv2_pt_from_file\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	flagAPIKey = "@" + keyFile
-	if got := GetAPIKey(); got != "lsv2_pt_from_file" {
-		t.Errorf("expected key read from file, got %q", got)
-	}
-}
-
-func TestGetAPIKey_ProfileKeyFile(t *testing.T) {
-	old := flagAPIKey
-	oldProfile := flagProfile
-	defer func() {
-		flagAPIKey = old
-		flagProfile = oldProfile
-	}()
-	flagAPIKey = ""
-	flagProfile = ""
-
-	dir := t.TempDir()
-	keyFile := filepath.Join(dir, "key")
-	if err := os.WriteFile(keyFile, []byte("lsv2_pt_profile_file\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	configPath := filepath.Join(dir, "config.json")
-	cfg := &lsconfig.Config{
-		CurrentProfile: "dev",
-		Profiles:       map[string]lsconfig.Profile{"dev": {APIKeyFile: keyFile}},
-	}
-	if err := cfg.SaveTo(configPath); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
-	t.Setenv("LANGSMITH_API_KEY", "")
-	t.Setenv("LANGSMITH_PROFILE", "")
-
-	if got := GetAPIKey(); got != "lsv2_pt_profile_file" {
-		t.Errorf("expected key read from the profile's api_key_file, got %q", got)
-	}
-}
-
-func TestGetAPIKey_FileReferenceMissingFile(t *testing.T) {
-	isolateConfig(t)
-	old := flagAPIKey
-	defer func() { flagAPIKey = old }()
-
-	flagAPIKey = "@" + filepath.Join(t.TempDir(), "absent")
-	if _, err := resolveClientOptions(false); err == nil {
-		t.Fatal("expected error for missing api key file")
 	}
 }
 

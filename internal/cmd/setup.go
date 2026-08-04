@@ -163,11 +163,7 @@ func applyPositionalArgs(args []string, opts *client.Options, project *string) e
 		if flagAPIKey != "" {
 			return errors.New("pass the API key as a positional argument or --api-key, not both")
 		}
-		key, err := lsconfig.ResolveAPIKeyValue(strings.TrimSpace(args[0]))
-		if err != nil {
-			return err
-		}
-		opts.APIKey = key
+		opts.APIKey = strings.TrimSpace(args[0])
 	}
 	if len(args) >= 2 && strings.TrimSpace(args[1]) != "" {
 		if flagAPIURL != "" {

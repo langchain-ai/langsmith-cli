@@ -29,8 +29,6 @@ type profileShowItem struct {
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
 	APIKey         string `json:"api_key,omitempty"`
-	APIKeyFile     string `json:"api_key_file,omitempty"`
-	APIKeyError    string `json:"api_key_error,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
@@ -140,18 +138,14 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 		return fmt.Errorf("profile %q already exists", profileName)
 	}
 
-	apiKey, apiKeyFile, err := profileCreateAPIKey()
-	if err != nil {
-		return err
-	}
-	if apiKey == "" && apiKeyFile == "" {
+	apiKey := profileCreateAPIKey()
+	if apiKey == "" {
 		return fmt.Errorf("api key required; pass --api-key or set LANGSMITH_API_KEY")
 	}
 	apiURL := profileCreateAPIURL()
 
 	cfg.Profiles[profileName] = lsconfig.Profile{
 		APIKey:      apiKey,
-		APIKeyFile:  apiKeyFile,
 		APIURL:      apiURL,
 		WorkspaceID: workspaceID,
 	}
@@ -181,30 +175,16 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 	if workspaceID != "" {
 		result["workspace_id"] = workspaceID
 	}
-	if apiKeyFile != "" {
-		result["api_key_file"] = apiKeyFile
-	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
 }
 
-// profileCreateAPIKey resolves the key to persist, keeping a file-backed key as a path.
-func profileCreateAPIKey() (apiKey, apiKeyFile string, err error) {
-	if strings.HasPrefix(flagAPIKey, lsconfig.APIKeyFilePrefix) {
-		if _, err := lsconfig.ResolveAPIKeyValue(flagAPIKey); err != nil {
-			return "", "", err
-		}
-		abs, err := lsconfig.AbsAPIKeyFilePath(lsconfig.APIKeyFilePath(flagAPIKey))
-		if err != nil {
-			return "", "", err
-		}
-		return "", abs, nil
-	}
+func profileCreateAPIKey() string {
 	if flagAPIKey != "" {
-		return flagAPIKey, "", nil
+		return flagAPIKey
 	}
-	return os.Getenv(lsconfig.APIKeyEnv), "", nil
+	return os.Getenv("LANGSMITH_API_KEY")
 }
 
 func profileCreateAPIURL() string {
@@ -237,21 +217,12 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		Auth:           profileAuthType(profile),
 		OAuthExpiresAt: profile.OAuth.ExpiresAt,
 	}
-	if profile.HasAPIKey() {
-		item.APIKeyFile = profile.APIKeyFile
-		// An unreadable key file must not suppress the rest of the profile.
-		if key, err := profile.ResolveAPIKey(); err != nil {
-			item.APIKeyError = err.Error()
-		} else {
-			item.APIKey = lsconfig.MaskSecret(key)
-		}
+	if profile.APIKey != "" {
+		item.APIKey = lsconfig.MaskSecret(profile.APIKey)
 	}
 
 	if GetFormat() == "pretty" {
 		renderProfileShowTable(cmd, item)
-		if item.APIKeyError != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", item.APIKeyError)
-		}
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -350,7 +321,7 @@ func profileAuthType(profile lsconfig.Profile) string {
 	switch {
 	case profile.AccessToken() != "" || profile.OAuth.RefreshToken != "":
 		return "oauth"
-	case profile.HasAPIKey():
+	case profile.APIKey != "":
 		return "api_key"
 	default:
 		return "none"
@@ -387,7 +358,7 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 
 func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "API Key File", "Expires At"})
+	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
 	table.SetBorder(false)
 	table.SetColumnSeparator("  ")
 	table.SetHeaderLine(true)
@@ -403,7 +374,6 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.WorkspaceID,
 		profile.Auth,
 		profile.APIKey,
-		profile.APIKeyFile,
 		profile.OAuthExpiresAt,
 	})
 	table.Render()

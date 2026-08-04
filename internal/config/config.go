@@ -6,19 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 )
 
 const (
 	ConfigFileEnv = "LANGSMITH_CONFIG_FILE"
-	APIKeyEnv     = "LANGSMITH_API_KEY"
 	DefaultAPIURL = "https://api.smith.langchain.com"
 )
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
 	APIKey      string `json:"api_key,omitempty"`
-	APIKeyFile  string `json:"api_key_file,omitempty"`
 	APIURL      string `json:"api_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	OAuth       OAuth  `json:"oauth,omitempty"`
@@ -78,7 +78,40 @@ func LoadFrom(path string) (*Config, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]Profile)
 	}
+	if cfg.hasSecrets() {
+		warnIfGroupOrWorldReadable(path)
+	}
 	return cfg, nil
+}
+
+func (c *Config) hasSecrets() bool {
+	for _, p := range c.Profiles {
+		if p.APIKey != "" || p.OAuth.AccessToken != "" || p.OAuth.RefreshToken != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// warnedConfigs keeps the warning to once per path; a command loads the config several times.
+var warnedConfigs sync.Map
+
+func warnIfGroupOrWorldReadable(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	perm := info.Mode().Perm()
+	if perm&0o077 == 0 {
+		return
+	}
+	if _, seen := warnedConfigs.LoadOrStore(path, struct{}{}); seen {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: %s holds credentials but is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }
 
 // Save writes the config to the default config path with owner-only permissions.
@@ -145,24 +178,6 @@ func (c *Config) ResolveProfile(flagProfile, envProfile string) (string, Profile
 	}
 	p, ok := c.Profiles[name]
 	return name, p, ok
-}
-
-// HasAPIKey reports whether the profile carries API-key auth, either inline or
-// as a file reference.
-func (p Profile) HasAPIKey() bool {
-	return p.APIKey != "" || p.APIKeyFile != ""
-}
-
-// ResolveAPIKey returns the profile's API key, reading api_key_file when the
-// key is not stored inline.
-func (p Profile) ResolveAPIKey() (string, error) {
-	if p.APIKey != "" {
-		return p.APIKey, nil
-	}
-	if p.APIKeyFile == "" {
-		return "", nil
-	}
-	return readAPIKeyFile(p.APIKeyFile)
 }
 
 // AccessToken returns the OAuth access token to use for bearer auth.
