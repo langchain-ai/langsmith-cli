@@ -105,7 +105,10 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		ctx = context.Background()
 	}
 
-	oauthMeta := client.ResolveOAuth(ctx, apiURL)
+	oauthMeta, err := client.ResolveOAuth(ctx, apiURL)
+	if err != nil {
+		return err
+	}
 
 	device, err := requestDeviceCode(ctx, oauthMeta)
 	if err != nil {
@@ -325,7 +328,10 @@ func requestDeviceCode(ctx context.Context, meta *client.OAuthMetadata) (*device
 }
 
 func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
-	meta := client.ResolveOAuth(ctx, apiURL)
+	meta, err := client.ResolveOAuth(ctx, apiURL)
+	if err != nil {
+		return nil, err
+	}
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},

@@ -200,7 +200,10 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 }
 
 func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
-	meta := client.ResolveOAuth(ctx, apiURL)
+	meta, err := client.ResolveOAuth(ctx, apiURL)
+	if err != nil {
+		return nil, err
+	}
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},

@@ -3,9 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -14,6 +16,12 @@ const (
 	wellKnownOAuthPath    = "/.well-known/oauth-authorization-server"
 	oauthDiscoveryMaxBody = 1 << 20 // 1 MiB cap on the metadata document
 )
+
+// errNoOAuthMetadata means the deployment does not serve a usable discovery
+// document. It is distinct from a transport or 5xx failure, which says nothing
+// about whether the document exists and so must not trigger the legacy
+// fallback.
+var errNoOAuthMetadata = errors.New("no authorization server metadata")
 
 // OAuthMetadata holds absolute authorization server endpoints. The AS lives at
 // <origin>/oauth on SaaS and <origin>/api/oauth on self-hosted, so callers use
@@ -28,11 +36,10 @@ type OAuthMetadata struct {
 }
 
 type oauthServerMetadata struct {
-	Issuer                      string   `json:"issuer"`
-	DeviceAuthorizationEndpoint string   `json:"device_authorization_endpoint"`
-	TokenEndpoint               string   `json:"token_endpoint"`
-	RegistrationEndpoint        string   `json:"registration_endpoint"`
-	ProtectedResourcesSupported []string `json:"protected_resources_supported"`
+	Issuer                      string `json:"issuer"`
+	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
+	TokenEndpoint               string `json:"token_endpoint"`
+	RegistrationEndpoint        string `json:"registration_endpoint"`
 }
 
 // oauthDeploymentRoot strips a trailing "/api/v1" or "/api" mount segment,
@@ -64,28 +71,38 @@ func oauthDiscoveryCandidates(apiURL string) []string {
 }
 
 // DiscoverOAuth returns the endpoints from the first candidate serving a valid
-// RFC 8414 metadata document, or an error if none does.
+// RFC 8414 metadata document. A transient failure against any candidate is
+// reported in preference to errNoOAuthMetadata so callers do not mistake an
+// outage for a legacy backend.
 func DiscoverOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
-	var lastErr error
+	var transientErr error
 	for _, base := range oauthDiscoveryCandidates(apiURL) {
-		meta, err := fetchOAuthMetadata(ctx, base+wellKnownOAuthPath)
-		if err != nil {
-			lastErr = err
-			continue
+		meta, err := fetchOAuthMetadata(ctx, base+wellKnownOAuthPath, base)
+		switch {
+		case err == nil:
+			return meta, nil
+		case errors.Is(err, errNoOAuthMetadata):
+		case transientErr == nil:
+			transientErr = err
 		}
-		return meta, nil
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("no authorization server metadata found for %q", apiURL)
+	if transientErr != nil {
+		return nil, fmt.Errorf("discovering OAuth authorization server: %w", transientErr)
 	}
-	return nil, fmt.Errorf("discovering OAuth authorization server: %w", lastErr)
+	return nil, fmt.Errorf("discovering OAuth authorization server for %q: %w", apiURL, errNoOAuthMetadata)
 }
 
 // ResolveOAuth prefers discovery, falling back to <base>/oauth/* so backends
-// that serve no metadata document keep working. It never returns nil.
-func ResolveOAuth(ctx context.Context, apiURL string) *OAuthMetadata {
-	if meta, err := DiscoverOAuth(ctx, apiURL); err == nil {
-		return meta
+// that serve no metadata document keep working. Transient discovery failures
+// are returned rather than masked, because the fallback would post credentials
+// to an endpoint the deployment may not serve.
+func ResolveOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
+	meta, err := DiscoverOAuth(ctx, apiURL)
+	if err == nil {
+		return meta, nil
+	}
+	if !errors.Is(err, errNoOAuthMetadata) {
+		return nil, err
 	}
 	base := strings.TrimRight(NormalizeURL(apiURL), "/")
 	return &OAuthMetadata{
@@ -94,10 +111,10 @@ func ResolveOAuth(ctx context.Context, apiURL string) *OAuthMetadata {
 		TokenEndpoint:               base + "/oauth/token",
 		RegistrationEndpoint:        base + "/oauth/register",
 		Resource:                    base,
-	}
+	}, nil
 }
 
-func fetchOAuthMetadata(ctx context.Context, metadataURL string) (*OAuthMetadata, error) {
+func fetchOAuthMetadata(ctx context.Context, metadataURL, base string) (*OAuthMetadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
 	if err != nil {
 		return nil, err
@@ -107,31 +124,32 @@ func fetchOAuthMetadata(ctx context.Context, metadataURL string) (*OAuthMetadata
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", metadataURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%s: HTTP %d", metadataURL, resp.StatusCode)
+		if isTransientStatus(resp.StatusCode) {
+			return nil, fmt.Errorf("%s: HTTP %d", metadataURL, resp.StatusCode)
+		}
+		return nil, fmt.Errorf("%s: HTTP %d: %w", metadataURL, resp.StatusCode, errNoOAuthMetadata)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, oauthDiscoveryMaxBody))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", metadataURL, err)
 	}
 
 	var doc oauthServerMetadata
 	if err := json.Unmarshal(body, &doc); err != nil {
 		// The self-hosted SPA catch-all answers unknown paths with an HTML 200.
-		return nil, fmt.Errorf("%s: response is not authorization server metadata", metadataURL)
+		return nil, fmt.Errorf("%s: not authorization server metadata: %w", metadataURL, errNoOAuthMetadata)
 	}
 	if doc.TokenEndpoint == "" || doc.DeviceAuthorizationEndpoint == "" {
-		return nil, fmt.Errorf("%s: metadata missing required endpoints", metadataURL)
+		return nil, fmt.Errorf("%s: metadata missing required endpoints: %w", metadataURL, errNoOAuthMetadata)
 	}
-
-	resource := doc.Issuer
-	if resource == "" && len(doc.ProtectedResourcesSupported) > 0 {
-		resource = doc.ProtectedResourcesSupported[0]
+	if err := validateOAuthMetadata(&doc, base); err != nil {
+		return nil, fmt.Errorf("%s: %w: %w", metadataURL, err, errNoOAuthMetadata)
 	}
 
 	return &OAuthMetadata{
@@ -139,6 +157,38 @@ func fetchOAuthMetadata(ctx context.Context, metadataURL string) (*OAuthMetadata
 		DeviceAuthorizationEndpoint: doc.DeviceAuthorizationEndpoint,
 		TokenEndpoint:               doc.TokenEndpoint,
 		RegistrationEndpoint:        doc.RegistrationEndpoint,
-		Resource:                    resource,
+		Resource:                    doc.Issuer,
 	}, nil
+}
+
+func isTransientStatus(code int) bool {
+	return code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests
+}
+
+// validateOAuthMetadata enforces that the document describes the deployment we
+// probed: RFC 8414 requires the issuer to match the URL the well-known path was
+// built from, and every endpoint must share the issuer's origin. The CLI posts
+// refresh tokens and device codes to these URLs, so an unvalidated document
+// could redirect long-lived credentials to another host.
+func validateOAuthMetadata(doc *oauthServerMetadata, base string) error {
+	if strings.TrimRight(doc.Issuer, "/") != strings.TrimRight(base, "/") {
+		return fmt.Errorf("issuer %q does not match %q", doc.Issuer, base)
+	}
+	issuer, err := url.Parse(doc.Issuer)
+	if err != nil {
+		return fmt.Errorf("unparseable issuer %q", doc.Issuer)
+	}
+	for _, ep := range []string{doc.DeviceAuthorizationEndpoint, doc.TokenEndpoint, doc.RegistrationEndpoint} {
+		if ep == "" {
+			continue
+		}
+		u, err := url.Parse(ep)
+		if err != nil {
+			return fmt.Errorf("unparseable endpoint %q", ep)
+		}
+		if u.Scheme != issuer.Scheme || u.Host != issuer.Host {
+			return fmt.Errorf("endpoint %q is not on issuer origin %s://%s", ep, issuer.Scheme, issuer.Host)
+		}
+	}
+	return nil
 }

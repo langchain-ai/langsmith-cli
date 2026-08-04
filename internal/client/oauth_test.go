@@ -123,7 +123,10 @@ func TestResolveOAuth_FallsBackToLegacyPaths(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	meta := ResolveOAuth(context.Background(), srv.URL+"/api")
+	meta, err := ResolveOAuth(context.Background(), srv.URL+"/api")
+	if err != nil {
+		t.Fatalf("ResolveOAuth: %v", err)
+	}
 	if got, want := meta.TokenEndpoint, srv.URL+"/api/oauth/token"; got != want {
 		t.Errorf("TokenEndpoint = %q, want legacy %q", got, want)
 	}
@@ -139,8 +142,71 @@ func TestResolveOAuth_FallsBackToLegacyPaths(t *testing.T) {
 func TestResolveOAuth_PrefersDiscovery(t *testing.T) {
 	srv := selfHostedDiscoveryServer(t)
 
-	meta := ResolveOAuth(context.Background(), srv.URL)
+	meta, err := ResolveOAuth(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("ResolveOAuth: %v", err)
+	}
 	if got, want := meta.TokenEndpoint, srv.URL+"/api/oauth/token"; got != want {
 		t.Errorf("TokenEndpoint = %q, want discovered %q", got, want)
+	}
+}
+
+// metadataServer serves one metadata document at the root .well-known path.
+func metadataServer(t *testing.T, doc func(base string) map[string]any) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/oauth-authorization-server" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(doc(srv.URL))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Credentials are POSTed to these endpoints, so a document claiming an issuer
+// other than the host we probed must not be trusted.
+func TestDiscoverOAuth_RejectsIssuerMismatch(t *testing.T) {
+	srv := metadataServer(t, func(base string) map[string]any {
+		return map[string]any{
+			"issuer":                        "https://evil.example.com",
+			"device_authorization_endpoint": base + "/oauth/device/code",
+			"token_endpoint":                base + "/oauth/token",
+		}
+	})
+
+	if _, err := DiscoverOAuth(context.Background(), srv.URL); err == nil {
+		t.Fatal("expected issuer mismatch to be rejected")
+	}
+}
+
+// An endpoint pointing off-host would exfiltrate the refresh token.
+func TestDiscoverOAuth_RejectsForeignEndpointHost(t *testing.T) {
+	srv := metadataServer(t, func(base string) map[string]any {
+		return map[string]any{
+			"issuer":                        base,
+			"device_authorization_endpoint": base + "/oauth/device/code",
+			"token_endpoint":                "https://evil.example.com/oauth/token",
+		}
+	})
+
+	if _, err := DiscoverOAuth(context.Background(), srv.URL); err == nil {
+		t.Fatal("expected foreign token endpoint to be rejected")
+	}
+}
+
+// A 5xx is a transient failure, not proof the deployment lacks metadata, so
+// falling back to legacy paths would send credentials to the wrong place.
+func TestResolveOAuth_SurfacesTransientErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream down", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	if _, err := ResolveOAuth(context.Background(), srv.URL+"/api"); err == nil {
+		t.Fatal("expected 5xx during discovery to surface as an error")
 	}
 }
