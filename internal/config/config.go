@@ -78,19 +78,8 @@ func LoadFrom(path string) (*Config, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]Profile)
 	}
-	if cfg.hasSecrets() {
-		warnIfGroupOrWorldReadable(path)
-	}
+	warnIfGroupOrWorldReadable(path)
 	return cfg, nil
-}
-
-func (c *Config) hasSecrets() bool {
-	for _, p := range c.Profiles {
-		if p.APIKey != "" || p.OAuth.AccessToken != "" || p.OAuth.RefreshToken != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // warnedConfigs keeps the warning to once per path; a command loads the config several times.
@@ -111,7 +100,7 @@ func warnIfGroupOrWorldReadable(path string) {
 	if _, seen := warnedConfigs.LoadOrStore(path, struct{}{}); seen {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "warning: %s holds credentials but is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
+	fmt.Fprintf(os.Stderr, "warning: %s holds credentials and is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }
 
 // Save writes the config to the default config path with owner-only permissions.

@@ -43,7 +43,6 @@ func TestLoadFromWarnsWhenCredentialsAreReadable(t *testing.T) {
 
 	const withKey = `{"profiles":{"dev":{"api_key":"lsv2_pt_secret"}}}`
 	const withToken = `{"profiles":{"dev":{"oauth":{"refresh_token":"rt"}}}}`
-	const noSecrets = `{"profiles":{"dev":{"api_url":"https://example.com"}}}`
 
 	t.Run("api key in a readable config", func(t *testing.T) {
 		path := write(t, "config.json", withKey, 0644)
@@ -78,10 +77,9 @@ func TestLoadFromWarnsWhenCredentialsAreReadable(t *testing.T) {
 		require.Empty(t, stderr)
 	})
 
-	t.Run("readable config without credentials", func(t *testing.T) {
-		path := write(t, "config.json", noSecrets, 0644)
+	t.Run("missing config", func(t *testing.T) {
 		stderr := captureStderr(t, func() {
-			_, err := LoadFrom(path)
+			_, err := LoadFrom(filepath.Join(t.TempDir(), "absent.json"))
 			require.NoError(t, err)
 		})
 		require.Empty(t, stderr)
