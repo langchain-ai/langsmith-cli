@@ -162,6 +162,16 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		}
 	}
 
+	// An explicit --profile selection wins: conflicting env vars are ignored with a warning.
+	explicitProfile := flagProfile != "" && hasProfile
+	warnEnvIgnored := func(name string) {
+		fmt.Fprintf(os.Stderr, "warning: ignoring %s because profile %q was selected with --profile\n", name, profileName)
+	}
+
+	if explicitProfile && envProfile != "" && envProfile != flagProfile {
+		warnEnvIgnored("LANGSMITH_PROFILE")
+	}
+
 	if hasProfile {
 		if profile.APIURL != "" {
 			opts.APIURL = profile.APIURL
@@ -170,29 +180,45 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		opts.APIURL = client.NormalizeURL(v)
+		if explicitProfile && profile.APIURL != "" {
+			warnEnvIgnored("LANGSMITH_ENDPOINT")
+		} else {
+			opts.APIURL = client.NormalizeURL(v)
+		}
 	}
 	if flagAPIURL != "" {
 		opts.APIURL = client.NormalizeURL(flagAPIURL)
 	}
 
 	if v := os.Getenv("LANGSMITH_TENANT_ID"); v != "" {
-		opts.WorkspaceID = v
+		if explicitProfile && profile.WorkspaceID != "" {
+			warnEnvIgnored("LANGSMITH_TENANT_ID")
+		} else {
+			opts.WorkspaceID = v
+		}
 	}
 	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
-		opts.WorkspaceID = v
+		if explicitProfile && profile.WorkspaceID != "" {
+			warnEnvIgnored("LANGSMITH_WORKSPACE_ID")
+		} else {
+			opts.WorkspaceID = v
+		}
 	}
 	if flagWorkspaceID != "" {
 		opts.WorkspaceID = flagWorkspaceID
 	}
+
+	profileHasAuth := profile.AccessToken() != "" || profile.OAuth.RefreshToken != "" || profile.APIKey != ""
+	envAPIKey := os.Getenv("LANGSMITH_API_KEY")
+	if envAPIKey != "" && explicitProfile && profileHasAuth {
+		warnEnvIgnored("LANGSMITH_API_KEY")
+		envAPIKey = ""
+	}
 	switch {
 	case flagAPIKey != "":
 		opts.APIKey = flagAPIKey
-	case os.Getenv("LANGSMITH_API_KEY") != "":
-		if flagProfile != "" {
-			fmt.Fprintln(os.Stderr, "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
-		}
-		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
+	case envAPIKey != "":
+		opts.APIKey = envAPIKey
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
