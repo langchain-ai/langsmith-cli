@@ -52,6 +52,18 @@ func issueStatusList() string {
 	return strings.Join(names, ", ")
 }
 
+// validIssueUpdateStatus reports whether this is a state an issue can hold. It
+// uses the resource's own IssueStatus rather than the list filter's enum: the
+// question here is what an issue may become, not what may be filtered on.
+//
+// Which transitions a given caller may make is the server's decision, not the
+// CLI's — it varies by the caller's role, so a client-side allow-list here would
+// either forbid something the server permits or imply something it doesn't. This
+// only catches typos before a round-trip, the same way the list filter does.
+func validIssueUpdateStatus(status string) bool {
+	return langsmith.IssueStatus(status).IsKnown()
+}
+
 // issuePriorities mirrors the keys priorityToSeverity accepts, for its message.
 var issuePriorities = []string{"urgent", "high", "medium", "low"}
 
@@ -348,6 +360,7 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 		proposedFix string
 		evaluator   string
 		status      string
+		reason      string
 		outputFile  string
 	)
 
@@ -363,11 +376,12 @@ The issue ID is the UUID returned by 'langsmith project issues list'.
 --name and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
 --evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
---status reopens a resolved issue. The only accepted value is 'open' — closing an issue is a human action done via the UI.
+--status sets the issue's lifecycle state: open, fixing, watching, completed, or ignored ('ignored' is shown as "Incorrectly Flagged"). Pass --reason to record why; it is stored on the issue's history alongside who made the change. Which transitions you may make depends on your role — the server rejects the ones you may not.
 
 Examples:
   langsmith project issues update <id> --name "Corrected name" --description "New finding..."
   langsmith project issues update <id> --status open
+  langsmith project issues update <id> --status ignored --reason "Duplicate of 1ac6dbe2 — same root cause, one fix closes both"
   langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
   langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
   langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
@@ -377,8 +391,11 @@ Examples:
 			if name == "" && description == "" && proposedFix == "" && evaluator == "" && status == "" {
 				ExitError("at least one of --name, --description, --proposed-fix, --evaluator, or --status is required")
 			}
-			if status != "" && status != "open" {
-				ExitError("--status only accepts 'open' — closing an issue is done via the UI")
+			if status != "" && !validIssueUpdateStatus(status) {
+				ExitErrorf("invalid --status %q: must be one of %s", status, issueStatusList())
+			}
+			if reason != "" && status == "" {
+				ExitError("--reason describes a status change; pass it with --status")
 			}
 
 			c := MustGetClient()
@@ -396,6 +413,9 @@ Examples:
 			}
 			if status != "" {
 				body["status"] = status
+			}
+			if reason != "" {
+				body["reason"] = reason
 			}
 			if evaluator != "" {
 				var evalConfig map[string]any
@@ -439,7 +459,8 @@ Examples:
 	cmd.Flags().StringVar(&name, "name", "", "Corrected name (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
-	cmd.Flags().StringVar(&status, "status", "", "Reopen a resolved issue. Only 'open' is accepted — closing is done via the UI")
+	cmd.Flags().StringVar(&status, "status", "", "New lifecycle state: open, fixing, watching, completed, or ignored")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why the status changed, recorded on the issue's history. Use with --status")
 	cmd.Flags().StringVar(&evaluator, "evaluator", "", `Replace the suggested evaluator. JSON with "type" ("llm" or "code"), "display_name", and type-specific fields`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 

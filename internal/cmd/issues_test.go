@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -181,5 +182,49 @@ func TestParseAssertion_Invalid(t *testing.T) {
 		if err == nil {
 			t.Errorf("parseAssertion(%q) [%s]: expected error, got nil", tc.input, tc.desc)
 		}
+	}
+}
+
+// ==================== Update status and reason ====================
+
+// The update command used to hard-reject anything but "open" client-side, so a
+// dismissal never reached the server. Which transitions a caller may make is
+// role-dependent and belongs to the server; this only catches typos.
+func TestValidIssueUpdateStatus(t *testing.T) {
+	for _, status := range []string{"open", "fixing", "watching", "completed", "ignored"} {
+		if !validIssueUpdateStatus(status) {
+			t.Errorf("validIssueUpdateStatus(%q) = false, want true", status)
+		}
+	}
+	for _, status := range []string{"closed", "dismissed", "resolved", "Open", "", "bogus"} {
+		if validIssueUpdateStatus(status) {
+			t.Errorf("validIssueUpdateStatus(%q) = true, want false", status)
+		}
+	}
+}
+
+func TestProjectIssuesUpdateCmd_Flags(t *testing.T) {
+	cmd := newProjectIssuesUpdateCmd()
+	for _, name := range []string{"name", "description", "proposed-fix", "status", "reason", "evaluator"} {
+		if f := cmd.Flags().Lookup(name); f == nil {
+			t.Errorf("flag --%s not found", name)
+		} else if f.DefValue != "" {
+			t.Errorf("flag --%s: expected empty default, got %q", name, f.DefValue)
+		}
+	}
+}
+
+// The old help text told callers closing was UI-only. Leaving that in place
+// while the server accepts a dismissal is how the --title flag went stale for
+// months: documented, never accepted, failing quietly.
+func TestProjectIssuesUpdateCmd_HelpDocumentsDismissal(t *testing.T) {
+	cmd := newProjectIssuesUpdateCmd()
+	for _, want := range []string{"ignored", "Incorrectly Flagged", "--reason"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("update help does not mention %q", want)
+		}
+	}
+	if strings.Contains(cmd.Long, "only accepted value is 'open'") {
+		t.Error("update help still claims only 'open' is accepted")
 	}
 }
