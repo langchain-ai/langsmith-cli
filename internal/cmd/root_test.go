@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func isolateConfig(t *testing.T) {
@@ -542,4 +544,72 @@ func TestRootCmd_UnknownSubcommand(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for unknown subcommand")
 	}
+}
+
+// ---------- LANGSMITH_ENDPOINT vs explicit --profile ----------
+
+// setupEndpointProfiles isolates the package-level flag vars and writes a config
+// whose "dev" profile carries an api_url and whose "bare" profile omits one.
+func setupEndpointProfiles(t *testing.T, profile string) {
+	t.Helper()
+	oldKey, oldURL, oldProfile, oldWS := flagAPIKey, flagAPIURL, flagProfile, flagWorkspaceID
+	t.Cleanup(func() {
+		flagAPIKey, flagAPIURL, flagProfile, flagWorkspaceID = oldKey, oldURL, oldProfile, oldWS
+	})
+	flagAPIKey, flagAPIURL, flagWorkspaceID = "", "", ""
+	flagProfile = profile
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "")
+	t.Setenv("LANGSMITH_TENANT_ID", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "https://dev.api.smith.langchain.com",
+      "api_key": "dev-key"
+    },
+    "bare": {
+      "api_key": "bare-key"
+    }
+  }
+}
+`), 0600))
+}
+
+func TestResolveClientOptions_ProfileFlagIgnoresEnvEndpoint(t *testing.T) {
+	setupEndpointProfiles(t, "dev")
+
+	opts, err := resolveClientOptions(false)
+	require.NoError(t, err)
+	require.Equal(t, "https://dev.api.smith.langchain.com", opts.APIURL)
+}
+
+func TestResolveClientOptions_ProfileFlagWithoutAPIURLHonorsEnvEndpoint(t *testing.T) {
+	setupEndpointProfiles(t, "bare")
+
+	opts, err := resolveClientOptions(false)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
+}
+
+func TestResolveClientOptions_ImplicitProfileHonorsEnvEndpoint(t *testing.T) {
+	setupEndpointProfiles(t, "")
+
+	opts, err := resolveClientOptions(false)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
+}
+
+func TestResolveClientOptions_APIURLFlagBeatsProfileEndpoint(t *testing.T) {
+	setupEndpointProfiles(t, "dev")
+	flagAPIURL = "https://flag.example.com"
+
+	opts, err := resolveClientOptions(false)
+	require.NoError(t, err)
+	require.Equal(t, "https://flag.example.com", opts.APIURL)
 }
