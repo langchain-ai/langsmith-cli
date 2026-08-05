@@ -140,7 +140,11 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		opts.APIURL = client.NormalizeURL(v)
+		if flagProfile != "" && hasProfile && profile.APIURL != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: ignoring LANGSMITH_ENDPOINT because profile %q was selected with --profile\n", profileName)
+		} else {
+			opts.APIURL = client.NormalizeURL(v)
+		}
 	}
 	if v := getFlagString(cmd, "api-url"); v != "" {
 		opts.APIURL = client.NormalizeURL(v)

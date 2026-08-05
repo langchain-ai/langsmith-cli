@@ -170,7 +170,11 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		opts.APIURL = client.NormalizeURL(v)
+		if flagProfile != "" && hasProfile && profile.APIURL != "" {
+			fmt.Fprintf(os.Stderr, "warning: ignoring LANGSMITH_ENDPOINT because profile %q was selected with --profile\n", profileName)
+		} else {
+			opts.APIURL = client.NormalizeURL(v)
+		}
 	}
 	if flagAPIURL != "" {
 		opts.APIURL = client.NormalizeURL(flagAPIURL)
