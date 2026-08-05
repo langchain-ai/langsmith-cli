@@ -29,18 +29,41 @@ type appLink struct {
 	Name  string `json:"name"`
 }
 
+// Custom app visibility tiers.
+const (
+	appScopeWorkspace = "workspace"
+	appScopeOrg       = "org"
+)
+
 // customApp mirrors smith-go's /v1/platform/custom-apps JSON shape.
 type customApp struct {
-	ID          string            `json:"id"`
-	TenantID    string            `json:"tenant_id,omitempty"`
-	Name        string            `json:"name"`
-	Description *string           `json:"description,omitempty"`
-	Files       map[string]string `json:"files,omitempty"`
-	Entrypoint  string            `json:"entrypoint"`
-	IsEnabled   bool              `json:"is_enabled"`
-	CreatedAt   string            `json:"created_at,omitempty"`
-	UpdatedAt   string            `json:"updated_at,omitempty"`
-	CreatedBy   *string           `json:"created_by,omitempty"`
+	ID             string            `json:"id"`
+	TenantID       string            `json:"tenant_id,omitempty"`
+	OrganizationID string            `json:"organization_id,omitempty"`
+	Scope          string            `json:"scope,omitempty"`
+	Name           string            `json:"name"`
+	Description    *string           `json:"description,omitempty"`
+	Files          map[string]string `json:"files,omitempty"`
+	Entrypoint     string            `json:"entrypoint"`
+	IsEnabled      bool              `json:"is_enabled"`
+	CreatedAt      string            `json:"created_at,omitempty"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
+	CreatedBy      *string           `json:"created_by,omitempty"`
+}
+
+// tier reports the visibility tier.
+// Org apps have no tenant_id.
+func (a customApp) tier() string {
+	if scope := strings.ToLower(a.Scope); scope != "" {
+		if strings.HasPrefix(scope, "org") {
+			return appScopeOrg
+		}
+		return appScopeWorkspace
+	}
+	if a.TenantID == "" && a.OrganizationID != "" {
+		return appScopeOrg
+	}
+	return appScopeWorkspace
 }
 
 var appsExcludedDirs = map[string]bool{
@@ -77,13 +100,18 @@ Examples:
 
 "init" and "pull" create a new directory named after the app. Except
 init/pull/list/delete, these act on the current directory — cd into your
-app's directory first.`,
+app's directory first.
+
+Apps shared with your organization are visible from every workspace in it.
+Workspace apps win over org apps when both use the same name.`,
 	}
 	cmd.AddCommand(newAppsInitCmd())
 	cmd.AddCommand(newAppsDevCmd())
 	cmd.AddCommand(newAppsPushCmd())
 	cmd.AddCommand(newAppsPullCmd())
 	cmd.AddCommand(newAppsListCmd())
+	cmd.AddCommand(newAppsShareCmd())
+	cmd.AddCommand(newAppsClaimCmd())
 	cmd.AddCommand(newAppsDeleteCmd())
 	return cmd
 }

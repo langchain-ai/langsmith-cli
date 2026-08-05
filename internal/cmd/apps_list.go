@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -18,12 +19,12 @@ func newAppsListCmd() *cobra.Command {
 			ctx := cmd.Context()
 
 			var apps []customApp
-			if err := c.RawGet(ctx, "/api/v1/platform/custom-apps", &apps); err != nil {
+			if err := c.RawGet(ctx, client.CustomAppsPath(), &apps); err != nil {
 				return fmt.Errorf("listing custom apps: %w", err)
 			}
 
 			if outputFile == "" && GetFormat() == "pretty" {
-				columns := []string{"Name", "ID", "Entrypoint", "Enabled", "Updated"}
+				columns := []string{"Name", "Scope", "ID", "Entrypoint", "Enabled", "Updated"}
 				var rows [][]string
 				for _, a := range apps {
 					enabled := "false"
@@ -32,6 +33,7 @@ func newAppsListCmd() *cobra.Command {
 					}
 					rows = append(rows, []string{
 						a.Name,
+						a.tier(),
 						a.ID,
 						a.Entrypoint,
 						enabled,
@@ -45,12 +47,14 @@ func newAppsListCmd() *cobra.Command {
 			data := make([]map[string]any, 0, len(apps))
 			for _, a := range apps {
 				data = append(data, map[string]any{
-					"id":          a.ID,
-					"name":        a.Name,
-					"description": a.Description,
-					"entrypoint":  a.Entrypoint,
-					"is_enabled":  a.IsEnabled,
-					"updated_at":  a.UpdatedAt,
+					"id":              a.ID,
+					"name":            a.Name,
+					"description":     a.Description,
+					"entrypoint":      a.Entrypoint,
+					"is_enabled":      a.IsEnabled,
+					"updated_at":      a.UpdatedAt,
+					"scope":           a.tier(),
+					"organization_id": a.OrganizationID,
 				})
 			}
 			output.OutputJSON(data, outputFile)

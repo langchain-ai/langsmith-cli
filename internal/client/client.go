@@ -176,6 +176,32 @@ func leadingDigits(s string) string {
 	return s[:i]
 }
 
+// PlatformPathPrefixEnv overrides the platform prefix.
+// Multi-origin self-hosted needs the bare path.
+const PlatformPathPrefixEnv = "LANGSMITH_PLATFORM_PATH_PREFIX"
+
+// defaultPlatformPathPrefix suits SaaS and single-origin.
+// Single-origin nginx rewrites it to /v1/platform.
+const defaultPlatformPathPrefix = "/api/v1/platform"
+
+// PlatformPath builds a platform-service path.
+func PlatformPath(elem ...string) string {
+	prefix := strings.TrimRight(os.Getenv(PlatformPathPrefixEnv), "/")
+	if prefix == "" {
+		prefix = defaultPlatformPathPrefix
+	}
+	for _, e := range elem {
+		prefix += "/" + url.PathEscape(e)
+	}
+	return prefix
+}
+
+// CustomAppsPath is the custom-apps collection.
+func CustomAppsPath() string { return PlatformPath("custom-apps") }
+
+// CustomAppPath addresses one app.
+func CustomAppPath(appID string) string { return PlatformPath("custom-apps", appID) }
+
 // CustomAppRequest is the body of custom-app create (POST) and update (PATCH).
 // Unset pointer fields are omitted, leaving the server value untouched.
 type CustomAppRequest struct {
@@ -211,7 +237,7 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 // FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
-	path := "/api/v1/platform/custom-apps/" + url.PathEscape(appID) + "/source"
+	path := CustomAppPath(appID) + "/source"
 	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err

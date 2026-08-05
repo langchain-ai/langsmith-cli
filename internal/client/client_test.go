@@ -35,6 +35,41 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+// ---------- PlatformPath ----------
+
+func TestPlatformPath(t *testing.T) {
+	const appID = "6f1c9b0e-6b3e-4a0e-9a4a-2c1d3e4f5a6b"
+	tests := []struct {
+		name           string
+		prefix         string
+		wantCollection string
+		wantSingleApp  string
+	}{
+		{"default suits SaaS and single-origin", "", "/api/v1/platform/custom-apps", "/api/v1/platform/custom-apps/" + appID},
+		{"multi-origin self-hosted", "/v1/platform", "/v1/platform/custom-apps", "/v1/platform/custom-apps/" + appID},
+		{"trailing slash trimmed", "/v1/platform/", "/v1/platform/custom-apps", "/v1/platform/custom-apps/" + appID},
+		{"empty falls back to default", "", "/api/v1/platform/custom-apps", "/api/v1/platform/custom-apps/" + appID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(PlatformPathPrefixEnv, tt.prefix)
+			if got := CustomAppsPath(); got != tt.wantCollection {
+				t.Errorf("CustomAppsPath() = %q, want %q", got, tt.wantCollection)
+			}
+			if got := CustomAppPath(appID); got != tt.wantSingleApp {
+				t.Errorf("CustomAppPath() = %q, want %q", got, tt.wantSingleApp)
+			}
+		})
+	}
+}
+
+func TestPlatformPath_EscapesElements(t *testing.T) {
+	t.Setenv(PlatformPathPrefixEnv, "")
+	if got := CustomAppPath("a b/../c"); got != "/api/v1/platform/custom-apps/a%20b%2F..%2Fc" {
+		t.Errorf("expected the app ID escaped, got %q", got)
+	}
+}
+
 // ---------- New ----------
 
 func TestNew_CreatesClient(t *testing.T) {
