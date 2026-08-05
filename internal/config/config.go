@@ -24,7 +24,7 @@ type Profile struct {
 	OAuth       OAuth  `json:"oauth,omitempty"`
 }
 
-// OAuth stores OAuth tokens written by `langsmith login`.
+// OAuth stores OAuth tokens written by `langsmith auth login`.
 type OAuth struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`

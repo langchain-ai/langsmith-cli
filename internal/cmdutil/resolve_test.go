@@ -125,6 +125,8 @@ func TestGetClient_MissingKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing API key")
 	}
+	// "langsmith login" is not a command; the OAuth flow lives under "auth".
+	require.Contains(t, err.Error(), "langsmith auth login")
 }
 
 func TestGetClient_ProfileBearer(t *testing.T) {
