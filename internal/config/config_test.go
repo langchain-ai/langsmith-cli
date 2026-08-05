@@ -96,6 +96,31 @@ func TestSaveToRoundTripAndPermissions(t *testing.T) {
 	}
 }
 
+func TestSaveToFailureLeavesDestinationAndCleansTemporaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	err := (&Config{Profiles: map[string]Profile{"prod": {APIKey: "new"}}}).SaveTo(path)
+	if err == nil {
+		t.Fatal("expected replacement of directory to fail")
+	}
+	if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+		t.Fatalf("destination was changed after failed replacement: info=%v err=%v", info, statErr)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if len(entry.Name()) >= len(".langsmith-config-") && entry.Name()[:len(".langsmith-config-")] == ".langsmith-config-" {
+			t.Fatalf("temporary config file was not removed: %s", entry.Name())
+		}
+	}
+}
+
 func TestResolveProfile(t *testing.T) {
 	cfg := &Config{
 		CurrentProfile: "current",
