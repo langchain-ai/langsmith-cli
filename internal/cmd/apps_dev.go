@@ -743,6 +743,7 @@ const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style id="ls-theme">/* theme injected via postMessage */</style>
 <style>
