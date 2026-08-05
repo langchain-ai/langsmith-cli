@@ -151,7 +151,6 @@ Examples:
   langsmith sandbox create my-vm
   langsmith sandbox create my-vm --snapshot <id-or-name>
   langsmith sandbox create my-vm --snapshot-id <id>
-  langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
   langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json
   langsmith sandbox create my-vm --snapshot-id <id> --console`,
@@ -161,7 +160,7 @@ Examples:
 		cmd.Flags().StringVar(&in.Snapshot, "snapshot", in.Snapshot, "Snapshot ID or name to boot from")
 		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from")
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
-		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 4gb, 8gb); must be within 50% of 4gb per vCPU")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
 		cmd.Flags().BoolVar(&in.Console, "console", in.Console, "Open an interactive console once the sandbox is ready")
@@ -338,7 +337,7 @@ for the proxy config JSON format.`,
 	Input: func(cmd *cobra.Command) *sandboxUpdateInput {
 		in := &sandboxUpdateInput{}
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
-		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 4gb, 8gb); must be within 50% of 4gb per vCPU")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
 		return in
