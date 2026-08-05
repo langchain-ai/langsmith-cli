@@ -101,7 +101,7 @@ func GetClient(cmd *cobra.Command) (*client.Client, error) {
 		return nil, err
 	}
 	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
-		return nil, fmt.Errorf("not authenticated; run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key")
+		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts), nil
 }
@@ -179,7 +179,7 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 			}
 			token, err := refreshProfileToken(ctx, opts.APIURL, profile.OAuth.RefreshToken)
 			if err != nil {
-				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith login --profile %s' to reauthenticate", profileName, err, profileName)
+				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
 			applyTokenResponse(&profile, token, time.Now())
 			cfg.Profiles[profileName] = profile
