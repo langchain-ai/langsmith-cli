@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -210,6 +212,23 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 	return pkg.Scripts[name], true, nil
 }
 
+// resolveDevWorkspaceID falls back to the API when none is configured.
+func resolveDevWorkspaceID(c *client.Client) string {
+	if id := GetWorkspaceID(); id != "" {
+		return id
+	}
+	if c == nil || c.SDK == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	workspaces, err := c.SDK.Workspaces.List(ctx, langsmith.WorkspaceListParams{})
+	if err != nil || workspaces == nil || len(*workspaces) != 1 {
+		return ""
+	}
+	return (*workspaces)[0].ID
+}
+
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
@@ -223,7 +242,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	if c != nil {
 		apiURL = c.APIURL()
 	}
-	workspaceID := GetWorkspaceID()
+	workspaceID := resolveDevWorkspaceID(c)
 	webOrigin := langsmithWebOrigin(apiURL)
 
 	mux := http.NewServeMux()
