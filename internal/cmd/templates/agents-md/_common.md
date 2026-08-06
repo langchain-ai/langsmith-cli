@@ -104,6 +104,39 @@ and(eq(metadata_key, "ls_agent_purpose"), eq(metadata_value, "coding"))
 Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 `eq(name, "ChatOpenAI")`, `eq(is_root, true)`.
 
+## Linking back to LangSmith
+
+`window.langsmith.openUrl(url)` opens a LangSmith URL in a new tab — pass an
+absolute URL or a path. The app can't navigate on its own; the host resolves the
+URL and rejects anything outside LangSmith, so `<a href>` and `window.open`
+won't work.
+
+For a run or trace, ask the API for the URL rather than building one:
+
+```ts
+const { url } = await window.langsmith.call(`GET /api/v2/runs/${runId}/url`, {
+  params: { project_id: projectId, trace_id: traceId },
+});
+window.langsmith.openUrl(url);
+```
+
+Both params are required. This resolves host and workspace server-side, so it
+stays correct on self-hosted and EU.
+
+Build everything else from `metadata.host` and `metadata.workspaceId` — never
+hardcode `smith.langchain.com`:
+
+| Target | Path |
+| --- | --- |
+| Project | `/o/{workspaceId}/projects/p/{projectId}` |
+| Dataset | `/o/{workspaceId}/datasets/{datasetId}` |
+| Example | `/o/{workspaceId}/datasets/{datasetId}/e/{exampleId}` |
+| Experiment | `/o/{workspaceId}/datasets/{datasetId}/compare?selectedSessions={sessionId}` |
+| Annotation queue | `/o/{workspaceId}/annotation-queues/{queueId}` |
+
+The `/o/` segment is the workspace ID despite reading like an organization ID.
+Experiments have no standalone route — they're a compare view on their dataset.
+
 <!-- TEMPLATE-SPECIFIC -->
 
 ## More of the LangSmith API (starting points, not exhaustive)
