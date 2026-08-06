@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestOutputJSON(t *testing.T) {
@@ -118,4 +119,94 @@ func TestOutputTree(t *testing.T) {
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+const hostileTitle = "Runs\x1b]52;c;cHduZWQ=\x07"
+
+func TestOutputTableSanitizesTitleColumnsAndCells(t *testing.T) {
+	out := captureStdout(t, func() {
+		OutputTable(
+			[]string{"Name\x1b[2K", "Value"},
+			[][]string{{"row\rone", "line\ntwo"}},
+			hostileTitle,
+		)
+	})
+	assertNoControlChars(t, out)
+	if !strings.Contains(out, "cHduZWQ=") {
+		t.Errorf("expected escape payload to remain visible as text: %q", out)
+	}
+}
+
+func TestOutputTableUnderlineCountsRunes(t *testing.T) {
+	out := captureStdout(t, func() {
+		OutputTable([]string{"A"}, [][]string{{"b"}}, "Café")
+	})
+	lines := strings.Split(out, "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected a title and an underline: %q", out)
+	}
+	if got, want := utf8.RuneCountInString(lines[1]), 4; got != want {
+		t.Errorf("underline is %d runes, want %d: %q", got, want, lines[1])
+	}
+}
+
+func TestOutputTreeSanitizesLabels(t *testing.T) {
+	runs := []RunTreeData{
+		{ID: "root", Name: "parent\x1b[2K", RunType: "chain\r"},
+		{ID: "child", ParentRunID: "root", Name: "kid\nfaked", RunType: "llm", HasError: true},
+	}
+	out := captureStdout(t, func() {
+		OutputTree(runs, "root")
+	})
+	assertNoControlChars(t, out)
+	if strings.Count(out, "\n") != 2 {
+		t.Errorf("expected exactly one line per run, got %q", out)
+	}
+}
+
+func TestPrintRunsTableSanitizesValues(t *testing.T) {
+	var buf bytes.Buffer
+	runs := []map[string]any{{
+		"name":     "run\x1b]52;c;cHduZWQ=\x07",
+		"run_type": "chain\r",
+		"trace_id": "t\x1b1",
+		"run_id":   "r\n1",
+		"status":   "ok\x1b",
+	}}
+	PrintRunsTable(&buf, runs, true, hostileTitle)
+	assertNoControlChars(t, buf.String())
+}
+
+func TestPrintRunsTableTruncatesNameByRunes(t *testing.T) {
+	var buf bytes.Buffer
+	name := strings.Repeat("é", 50)
+	PrintRunsTable(&buf, []map[string]any{{"name": name}}, false, "")
+	out := buf.String()
+	if !utf8.ValidString(out) {
+		t.Fatalf("truncation split a character: %q", out)
+	}
+	if strings.Contains(out, strings.Repeat("é", 41)) {
+		t.Errorf("name was not truncated to 40 runes: %q", out)
+	}
+	if !strings.Contains(out, strings.Repeat("é", 40)) {
+		t.Errorf("expected 40 runes of the name: %q", out)
+	}
+}
+
+func TestPrintRunsTableFormatsStartTime(t *testing.T) {
+	var buf bytes.Buffer
+	PrintRunsTable(&buf, []map[string]any{{"start_time": "2024-01-02T03:04:05.123456+00:00"}}, false, "")
+	if !strings.Contains(buf.String(), "03:04:05") {
+		t.Errorf("expected clock time from start_time: %q", buf.String())
+	}
+}
+
+func TestPrintRunsTableRejectsUnparseableStartTime(t *testing.T) {
+	var buf bytes.Buffer
+	PrintRunsTable(&buf, []map[string]any{{"start_time": "éééééééééééé"}}, false, "")
+	out := buf.String()
+	assertNoControlChars(t, out)
+	if !strings.Contains(out, "N/A") {
+		t.Errorf("expected N/A for an unparseable start_time: %q", out)
+	}
 }
