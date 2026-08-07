@@ -352,6 +352,11 @@ func makeLsDevLogHandler(token string) http.HandlerFunc {
 
 var proxyPathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
 
+// Mirrors smith-frontend apiProxy.ts DENIED_PATH_SEGMENTS.
+var deniedProxyPathPattern = regexp.MustCompile(
+	`(?i)(^|/)(api-key|api-keys|members|users|identities|roles|permissions|scim|service-accounts)(/|$)`,
+)
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -369,6 +374,10 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 	pathPart, queryPart, hasQuery := strings.Cut(path, "?")
 	if !proxyPathPattern.MatchString(pathPart) || strings.ContainsAny(pathPart, `%\`) || strings.Contains(pathPart, "..") {
 		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
+		return
+	}
+	if deniedProxyPathPattern.MatchString(pathPart) {
+		http.Error(w, fmt.Sprintf("path %q is not available to custom apps", pathPart), http.StatusForbidden)
 		return
 	}
 	if len(req.Args.Params) > 0 {
