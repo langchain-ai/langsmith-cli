@@ -8,12 +8,12 @@ func TestDeniedProxyPathPattern(t *testing.T) {
 		"/api/v1/api-keys/abc",
 		"/api/v1/orgs/current/members",
 		"/api/v1/orgs/current/roles",
-		"/api/v1/workspaces/current/users/info",
 		"/api/v1/workspaces/current/identities",
+		"/api/v1/workspaces/current/users/search",
 		"/scim/v2/Users",
 	}
 	for _, path := range denied {
-		if !deniedProxyPathPattern.MatchString(path) {
+		if allowedProxyPathExceptions.MatchString(path) || !deniedProxyPathPattern.MatchString(path) {
 			t.Errorf("expected %q to be denied", path)
 		}
 	}
@@ -24,9 +24,11 @@ func TestDeniedProxyPathPattern(t *testing.T) {
 		"/api/v1/feedback",
 		"/v2/runs/query",
 		"/api/v1/annotation-queues/abc/runs",
+		"/api/v1/workspaces/current/users/info",
+		"/api/v1/workspaces/current/identities/info",
 	}
 	for _, path := range allowed {
-		if deniedProxyPathPattern.MatchString(path) {
+		if !allowedProxyPathExceptions.MatchString(path) && deniedProxyPathPattern.MatchString(path) {
 			t.Errorf("expected %q to be allowed", path)
 		}
 	}

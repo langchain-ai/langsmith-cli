@@ -357,6 +357,9 @@ var deniedProxyPathPattern = regexp.MustCompile(
 	`(?i)(^|/)(api-key|api-keys|members|users|identities|roles|permissions|scim|service-accounts)(/|$)`,
 )
 
+// Batch ID lookups; apps need these to render names.
+var allowedProxyPathExceptions = regexp.MustCompile(`(?i)/(users|identities)/info$`)
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -376,7 +379,7 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
 		return
 	}
-	if deniedProxyPathPattern.MatchString(pathPart) {
+	if !allowedProxyPathExceptions.MatchString(pathPart) && deniedProxyPathPattern.MatchString(pathPart) {
 		http.Error(w, fmt.Sprintf("path %q is not available to custom apps", pathPart), http.StatusForbidden)
 		return
 	}
