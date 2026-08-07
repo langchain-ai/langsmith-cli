@@ -704,6 +704,21 @@ func parseAssertion(s string) (exampleAssertion, error) {
 	return exampleAssertion{Key: key, Comment: comment}, nil
 }
 
+// proposeExampleBody builds the request body for examples propose. start_time
+// is omitted rather than sent empty when the flag is unset, so this release can
+// ship ahead of the server change that reads it, leaving callers that don't
+// pass the flag on exactly their current request shape.
+func proposeExampleBody(runID, startTime string, assertions []exampleAssertion) map[string]any {
+	body := map[string]any{
+		"run_id":     runID,
+		"assertions": assertions,
+	}
+	if startTime != "" {
+		body["start_time"] = startTime
+	}
+	return body
+}
+
 func newProjectIssuesProposeExampleCmd() *cobra.Command {
 	var (
 		runID      string
@@ -725,6 +740,10 @@ agent, so it usually starts earlier in the trace. The server validates the
 run_id and start_time against the runs database and resolves the trace_id
 automatically.
 
+--start-time is how the server addresses the run. It is not enforced here, so
+this build still works against servers predating that lookup, which accept a
+bare run_id for a run already linked to the issue.
+
 Each --assertion flag takes a key=comment pair. The key is a short identifier
 for the assertion (e.g. "correctness"), and the comment describes what the run
 should demonstrate. You may specify up to 10 assertions; keys must be unique.
@@ -743,8 +762,8 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if runID == "" || startTime == "" {
-				ExitError("--run-id and --start-time are required")
+			if runID == "" {
+				ExitError("--run-id is required")
 			}
 			if len(assertions) == 0 {
 				ExitError("at least one --assertion is required")
@@ -770,11 +789,7 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{
-				"run_id":     runID,
-				"start_time": startTime,
-				"assertions": parsed,
-			}
+			body := proposeExampleBody(runID, startTime, parsed)
 
 			path := fmt.Sprintf("/api/v1/platform/issues/%s/proposed-examples", issueID)
 			var result map[string]any
@@ -787,7 +802,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to propose as a regression example (required)")
-	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
+	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required by servers that resolve unlinked runs)")
 	cmd.Flags().StringArrayVar(&assertions, "assertion", nil, `Assertion in key=comment format. May be repeated up to 10 times.`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
