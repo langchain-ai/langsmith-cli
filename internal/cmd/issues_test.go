@@ -118,6 +118,7 @@ func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
 		defVal string
 	}{
 		{"run-id", ""},
+		{"start-time", ""},
 		{"output", ""},
 	}
 	for _, tc := range tests {

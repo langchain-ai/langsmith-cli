@@ -707,6 +707,7 @@ func parseAssertion(s string) (exampleAssertion, error) {
 func newProjectIssuesProposeExampleCmd() *cobra.Command {
 	var (
 		runID      string
+		startTime  string
 		assertions []string
 		outputFile string
 	)
@@ -718,6 +719,12 @@ func newProjectIssuesProposeExampleCmd() *cobra.Command {
 the run should satisfy. The issues agent uses these to generate evaluators
 and test cases for the issue.
 
+The run does not have to be linked to the issue as evidence. Evidence points a
+reviewer at where a failure is visible; an example is replayed against the
+agent, so it usually starts earlier in the trace. The server validates the
+run_id and start_time against the runs database and resolves the trace_id
+automatically.
+
 Each --assertion flag takes a key=comment pair. The key is a short identifier
 for the assertion (e.g. "correctness"), and the comment describes what the run
 should demonstrate. You may specify up to 10 assertions; keys must be unique.
@@ -725,17 +732,19 @@ should demonstrate. You may specify up to 10 assertions; keys must be unique.
 Examples:
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Response must be factually correct"
 
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Must cite sources" \
     --assertion format="Output must be valid JSON"`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
-			if runID == "" {
-				ExitError("--run-id is required")
+			if runID == "" || startTime == "" {
+				ExitError("--run-id and --start-time are required")
 			}
 			if len(assertions) == 0 {
 				ExitError("at least one --assertion is required")
@@ -763,6 +772,7 @@ Examples:
 
 			body := map[string]any{
 				"run_id":     runID,
+				"start_time": startTime,
 				"assertions": parsed,
 			}
 
@@ -777,6 +787,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to propose as a regression example (required)")
+	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required)")
 	cmd.Flags().StringArrayVar(&assertions, "assertion", nil, `Assertion in key=comment format. May be repeated up to 10 times.`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
