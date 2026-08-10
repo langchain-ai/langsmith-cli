@@ -109,6 +109,31 @@ func TestProjectIssuesProposeExampleCmd_UseField(t *testing.T) {
 	}
 }
 
+// ==================== Propose example request body ====================
+
+func TestProposeExampleBody(t *testing.T) {
+	assertions := []exampleAssertion{{Key: "must_refuse", Comment: "Does not send the email"}}
+
+	t.Run("includes start_time when set", func(t *testing.T) {
+		body := proposeExampleBody("run-1", "2026-04-10T00:00:00Z", assertions)
+		if got := body["start_time"]; got != "2026-04-10T00:00:00Z" {
+			t.Errorf("expected start_time to be sent, got %v", got)
+		}
+	})
+
+	// Older callers must keep their exact request shape so this release can
+	// ship before the server that reads the field.
+	t.Run("omits start_time when unset", func(t *testing.T) {
+		body := proposeExampleBody("run-1", "", assertions)
+		if _, ok := body["start_time"]; ok {
+			t.Error("expected start_time to be absent, not empty")
+		}
+		if body["run_id"] != "run-1" {
+			t.Errorf("expected run_id run-1, got %v", body["run_id"])
+		}
+	})
+}
+
 // ==================== Propose example flags ====================
 
 func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
@@ -118,6 +143,7 @@ func TestProjectIssuesProposeExampleCmd_Flags(t *testing.T) {
 		defVal string
 	}{
 		{"run-id", ""},
+		{"start-time", ""},
 		{"output", ""},
 	}
 	for _, tc := range tests {
