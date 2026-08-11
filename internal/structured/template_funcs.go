@@ -2,6 +2,7 @@ package structured
 
 import (
 	"fmt"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -13,8 +14,16 @@ func templateFuncs() template.FuncMap {
 		"formatBytesOrDash": formatBytesOrDash,
 		"formatCount":       formatCount,
 		"formatTime":        formatTime,
+		"joinOrDash":        joinOrDash,
 		"shortID":           shortID,
 	}
+}
+
+func joinOrDash(items []string) string {
+	if len(items) == 0 {
+		return "-"
+	}
+	return strings.Join(items, ", ")
 }
 
 func dash(s string) string {
