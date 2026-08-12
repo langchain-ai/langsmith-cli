@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -6,6 +8,11 @@ import react from '@vitejs/plugin-react';
 // self-mounting SPA. See src/entry.tsx and AGENTS.md.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   // Unlike Vite's normal app-mode build, library mode does NOT replace
   // process.env.NODE_ENV on its own — React/ReactDOM's bundled source still
   // references it internally. There's no `process` global in the sandboxed

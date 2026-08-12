@@ -1,3 +1,4 @@
+@import "./components/langsmith/design-system/theme.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

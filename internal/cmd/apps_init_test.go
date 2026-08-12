@@ -250,11 +250,14 @@ func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
 		".gitignore",
 		"vite.config.ts",
 		"tailwind.config.js",
+		"tailwind.langsmith.cjs",
+		"components.json",
 		"tsconfig.json",
 		"src/entry.tsx",
 		"src/App.tsx",
 		"src/api.ts",
 		"src/global.d.ts",
+		"src/components/langsmith/design-system/theme.css",
 	} {
 		if !writtenSet[want] {
 			t.Errorf("expected %q to be written, got %v", want, written)
