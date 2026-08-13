@@ -99,9 +99,9 @@ hand-rolling UI. Each `add` writes real source into
 `src/components/langsmith/design-system/`, so you can read and edit it.
 
 ```bash
-pnpm dlx shadcn@latest registry add @langsmith=https://smith.langchain.com/r/{name}.json
-pnpm dlx shadcn@latest list @langsmith
-pnpm dlx shadcn@latest add --overwrite @langsmith/button @langsmith/badge
+npx shadcn registry add @langsmith=https://smith.langchain.com/r/{name}.json
+npx shadcn list @langsmith
+npx shadcn add --overwrite @langsmith/button @langsmith/badge
 ```
 
 `--overwrite` is required. The scaffold ships placeholder `theme.css` and
