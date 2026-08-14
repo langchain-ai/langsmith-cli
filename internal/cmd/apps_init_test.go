@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -776,4 +777,47 @@ func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 		check(name, at.templateFS)
 	}
 	check("_shared", sharedFS)
+}
+
+func TestAppTemplatesPullDesignSystemTheme(t *testing.T) {
+	for name, at := range appTypes {
+		t.Run(name, func(t *testing.T) {
+			if len(at.registryItems) == 0 {
+				t.Fatal("template pulls no registry items; theme is required for tokens")
+			}
+			var hasTheme bool
+			for _, item := range at.registryItems {
+				if item == "theme" {
+					hasTheme = true
+				}
+			}
+			if !hasTheme {
+				t.Errorf("registryItems %v must include theme", at.registryItems)
+			}
+
+			dir := t.TempDir()
+			if _, err := scaffoldCustomAppStarter(dir, "my-app", "", at, false); err != nil {
+				t.Fatalf("scaffold: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, "components.json"))
+			if err != nil {
+				t.Fatalf("read components.json: %v", err)
+			}
+			var cfg struct {
+				Registries map[string]string `json:"registries"`
+			}
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				t.Fatalf("parse components.json: %v", err)
+			}
+			// Without this, "shadcn add" fails with Unknown registry "@langsmith".
+			if cfg.Registries[registryNamespace] == "" {
+				t.Errorf("components.json must pre-register %s, got %v", registryNamespace, cfg.Registries)
+			}
+		})
+	}
+}
+
+func TestAddRegistryComponentsIsBestEffort(t *testing.T) {
+	// No items and a nonexistent dir: must not panic or block init.
+	addRegistryComponents(filepath.Join(t.TempDir(), "missing"), nil)
 }

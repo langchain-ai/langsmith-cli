@@ -99,9 +99,16 @@ hand-rolling UI. Each `add` writes real source into
 `src/components/langsmith/design-system/`, so you can read and edit it.
 
 ```bash
-npx shadcn registry add @langsmith=https://smith.langchain.com/r/{name}.json
 npx shadcn list @langsmith
 npx shadcn add --overwrite @langsmith/button @langsmith/badge
+```
+
+`langsmith apps init` registers the `@langsmith` namespace in `components.json`
+and pulls `@langsmith/theme`, so `registry add` is not needed. If that step was
+skipped (no `npx`, or the registry was unreachable), run it manually:
+
+```bash
+npx shadcn add --overwrite --yes @langsmith/theme
 ```
 
 `--overwrite` is required. The scaffold ships placeholder `theme.css` and
