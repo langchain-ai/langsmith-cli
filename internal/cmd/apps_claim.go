@@ -33,7 +33,7 @@ you need when this workspace already has an app by that name.`,
 
 			payload := client.CustomAppRequest{Name: optionalString(as)}
 			var claimed customApp
-			if err := c.RawPost(ctx, client.CustomAppPath(app.ID)+"/claim", payload, &claimed); err != nil {
+			if err := c.RawPost(ctx, c.CustomAppPath(app.ID)+"/claim", payload, &claimed); err != nil {
 				if client.IsConflict(err) {
 					taken := as
 					if taken == "" {

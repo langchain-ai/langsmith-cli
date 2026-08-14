@@ -115,7 +115,7 @@ func resolveCustomApp(ctx context.Context, c *client.Client, nameOrID string) (*
 // Workspace tier is preferred.
 func resolveCustomAppInScope(ctx context.Context, c *client.Client, nameOrID, scope string) (*customApp, error) {
 	var apps []customApp
-	if err := c.RawGet(ctx, client.CustomAppsPath(), &apps); err != nil {
+	if err := c.RawGet(ctx, c.CustomAppsPath(), &apps); err != nil {
 		return nil, fmt.Errorf("looking up custom app %q: %w", nameOrID, err)
 	}
 

@@ -36,7 +36,7 @@ func newAppsDeleteCmd() *cobra.Command {
 				}
 			}
 
-			if err := c.RawDelete(ctx, client.CustomAppPath(id), nil); err != nil {
+			if err := c.RawDelete(ctx, c.CustomAppPath(id), nil); err != nil {
 				// Org apps can't be deleted here.
 				if client.IsNotFound(err) && app.tier() == appScopeOrg {
 					return fmt.Errorf("custom app %q (%s) is shared with the organization, so this workspace can't delete it. Claim a workspace copy with `langsmith apps claim %s` and delete that, or ask an organization admin", name, id, id)

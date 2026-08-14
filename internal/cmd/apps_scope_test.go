@@ -137,7 +137,7 @@ func TestAppsPull_ScopeFlag(t *testing.T) {
 			t.Fatalf("execute: %v", err)
 		}
 	})
-	if sourcePath != "/api/v1/platform/custom-apps/"+testOrgAppID+"/source" {
+	if sourcePath != "/v1/platform/custom-apps/"+testOrgAppID+"/source" {
 		t.Errorf("expected --scope org to pull the org app, got %q", sourcePath)
 	}
 	if !strings.Contains(out, `"scope": "org"`) {
@@ -152,7 +152,7 @@ func TestAppsPull_ScopeFlag(t *testing.T) {
 			t.Fatalf("execute: %v", err)
 		}
 	})
-	if sourcePath != "/api/v1/platform/custom-apps/"+testWorkspaceAppID+"/source" {
+	if sourcePath != "/v1/platform/custom-apps/"+testWorkspaceAppID+"/source" {
 		t.Errorf("expected the workspace app by default, got %q", sourcePath)
 	}
 }
@@ -213,7 +213,7 @@ func TestAppsShare_PromotesWorkspaceApp(t *testing.T) {
 	var sharePath string
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(collidingApps())
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/share"):
@@ -233,7 +233,7 @@ func TestAppsShare_PromotesWorkspaceApp(t *testing.T) {
 			t.Fatalf("execute: %v", err)
 		}
 	})
-	if sharePath != "/api/v1/platform/custom-apps/"+testWorkspaceAppID+"/share" {
+	if sharePath != "/v1/platform/custom-apps/"+testWorkspaceAppID+"/share" {
 		t.Errorf("expected the workspace app shared, got %q", sharePath)
 	}
 	if !strings.Contains(out, `"status": "shared"`) || !strings.Contains(out, `"scope": "org"`) {
@@ -293,7 +293,7 @@ func TestAppsShareAndClaim_AreHiddenButRunnable(t *testing.T) {
 func TestAppsDelete_PointsAtClaimForOrgApp(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]customApp{
 				{ID: testOrgAppID, Name: "shared-app", OrganizationID: testOrgID, Scope: "organization"},
@@ -323,7 +323,7 @@ func TestAppsDelete_PointsAtClaimForOrgApp(t *testing.T) {
 func TestAppsDelete_WorkspaceAppKeepsGenericNotFound(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]customApp{
 				{ID: testWorkspaceAppID, Name: "mine", TenantID: testTenantID, OrganizationID: testOrgID},
@@ -354,7 +354,7 @@ func TestAppsClaim_ClaimsOrgAppWithNameOverride(t *testing.T) {
 	var claimBody map[string]any
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(collidingApps())
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/claim"):
@@ -382,7 +382,7 @@ func TestAppsClaim_ClaimsOrgAppWithNameOverride(t *testing.T) {
 	})
 
 	// Claim targets the org app.
-	if claimPath != "/api/v1/platform/custom-apps/"+testOrgAppID+"/claim" {
+	if claimPath != "/v1/platform/custom-apps/"+testOrgAppID+"/claim" {
 		t.Errorf("expected the org app claimed, got %q", claimPath)
 	}
 	if claimBody["name"] != "my-copy" {
@@ -400,7 +400,7 @@ func TestAppsClaim_OmitsNameWhenNoOverride(t *testing.T) {
 	var claimBody map[string]any
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(collidingApps())
 		case r.Method == "POST":
@@ -429,7 +429,7 @@ func TestAppsClaim_OmitsNameWhenNoOverride(t *testing.T) {
 func TestAppsClaim_SurfacesNameConflictWithAsHint(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(collidingApps())
 		case r.Method == "POST":
@@ -486,17 +486,17 @@ func TestAppsPullThenPush_UpdatesOrgAppInPlace(t *testing.T) {
 	var sawPost bool
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]customApp{orgApp})
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps/"+testOrgAppID+"/source":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps/"+testOrgAppID+"/source":
 			w.Header().Set("Content-Type", "application/gzip")
 			_, _ = w.Write(archive)
 		case r.Method == "PATCH":
 			patchPath = r.URL.Path
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(orgApp)
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			sawPost = true
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{ID: "app_forked", Name: "shared-app"})
@@ -534,7 +534,7 @@ func TestAppsPullThenPush_UpdatesOrgAppInPlace(t *testing.T) {
 	if sawPost {
 		t.Error("expected push to update the org app, not create a workspace copy")
 	}
-	if patchPath != "/api/v1/platform/custom-apps/"+testOrgAppID {
+	if patchPath != "/v1/platform/custom-apps/"+testOrgAppID {
 		t.Errorf("expected a PATCH against the pulled app's ID, got %q", patchPath)
 	}
 	if !strings.Contains(out, `"status": "updated"`) {

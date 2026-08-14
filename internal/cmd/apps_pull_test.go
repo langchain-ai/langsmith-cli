@@ -65,12 +65,12 @@ func tarGzWithSymlink(t *testing.T, target string) []byte {
 func appsSourceServer(t *testing.T, apps []customApp, source map[string][]byte) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/platform/custom-apps", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/platform/custom-apps", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(apps)
 	})
-	mux.HandleFunc("/api/v1/platform/custom-apps/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/platform/custom-apps/"), "/source")
+	mux.HandleFunc("/v1/platform/custom-apps/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/platform/custom-apps/"), "/source")
 		archive, ok := source[id]
 		if !ok {
 			w.Header().Set("Content-Type", "application/json")
@@ -116,7 +116,7 @@ func TestAppsPull_ResolvesNameToIDAndExtracts(t *testing.T) {
 		}
 	})
 
-	if sourcePath != "/api/v1/platform/custom-apps/"+testAppID+"/source" {
+	if sourcePath != "/v1/platform/custom-apps/"+testAppID+"/source" {
 		t.Errorf("expected the name to resolve to an ID before fetching source, got %q", sourcePath)
 	}
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +18,7 @@ func newAppsListCmd() *cobra.Command {
 			ctx := cmd.Context()
 
 			var apps []customApp
-			if err := c.RawGet(ctx, client.CustomAppsPath(), &apps); err != nil {
+			if err := c.RawGet(ctx, c.CustomAppsPath(), &apps); err != nil {
 				return fmt.Errorf("listing custom apps: %w", err)
 			}
 
