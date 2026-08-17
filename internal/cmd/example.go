@@ -160,34 +160,30 @@ func newExampleCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new example in a dataset",
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
-
+		RunE: func(cmd *cobra.Command, args []string) error {
 			// Parse JSON inputs
 			var parsedInputs map[string]any
 			if err := json.Unmarshal([]byte(inputs), &parsedInputs); err != nil {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)}, "")
-				return
+				return outputJSONError(fmt.Errorf("invalid JSON for --inputs: %w", err), nil)
 			}
 
 			var parsedOutputs map[string]any
 			if outputs != "" {
 				if err := json.Unmarshal([]byte(outputs), &parsedOutputs); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)}, "")
-					return
+					return outputJSONError(fmt.Errorf("invalid JSON for --outputs: %w", err), nil)
 				}
 			}
 
 			var parsedMetadata map[string]any
 			if metadata != "" {
 				if err := json.Unmarshal([]byte(metadata), &parsedMetadata); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)}, "")
-					return
+					return outputJSONError(fmt.Errorf("invalid JSON for --metadata: %w", err), nil)
 				}
 			}
 
 			// Resolve dataset
+			c := MustGetClient()
+			ctx := context.Background()
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -221,6 +217,7 @@ func newExampleCreateCmd() *cobra.Command {
 				"inputs":     ex.Inputs,
 				"outputs":    ex.Outputs,
 			}, "")
+			return nil
 		},
 	}
 

@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -157,5 +160,52 @@ func TestExampleDeleteCmd_ExactArgs(t *testing.T) {
 	}
 	if err := cmd.Args(cmd, []string{"ex-id"}); err != nil {
 		t.Errorf("expected no error for 1 arg, got %v", err)
+	}
+}
+
+func TestExampleCreate_InvalidJSONReturnsError(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("validation should fail before API request: %s %s", r.Method, r.URL.Path)
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	tests := []struct {
+		name     string
+		flag     string
+		value    string
+		wantText string
+	}{
+		{name: "inputs", flag: "--inputs", value: "{", wantText: "invalid JSON for --inputs"},
+		{name: "outputs", flag: "--outputs", value: "{", wantText: "invalid JSON for --outputs"},
+		{name: "metadata", flag: "--metadata", value: "{", wantText: "invalid JSON for --metadata"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := []string{"--dataset", "anything", "--inputs", `{}`}
+			if tt.flag == "--inputs" {
+				args[3] = tt.value
+			} else {
+				args = append(args, tt.flag, tt.value)
+			}
+
+			var runErr error
+			out := captureStdout(t, func() {
+				cmd := newExampleCreateCmd()
+				cmd.SetArgs(args)
+				runErr = cmd.Execute()
+			})
+			if runErr == nil || !strings.Contains(runErr.Error(), tt.wantText) {
+				t.Fatalf("error = %v, want %q", runErr, tt.wantText)
+			}
+
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(out), &payload); err != nil {
+				t.Fatalf("structured error is not JSON: %v\n%s", err, out)
+			}
+			if message, _ := payload["error"].(string); !strings.Contains(message, tt.wantText) {
+				t.Errorf("error payload = %q, want %q", message, tt.wantText)
+			}
+		})
 	}
 }

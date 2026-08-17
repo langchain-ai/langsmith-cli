@@ -422,6 +422,19 @@ func resolveDataset(ctx context.Context, c *client.Client, nameOrID string) (*la
 	return &resp.Items[0], nil
 }
 
+// outputJSONError preserves the structured error payload used by scriptable
+// commands while returning the same error to Cobra so the process exits
+// non-zero. Extra fields may add context such as the conflicting resource ID.
+func outputJSONError(err error, extra map[string]any) error {
+	payload := make(map[string]any, len(extra)+1)
+	for key, value := range extra {
+		payload[key] = value
+	}
+	payload["error"] = err.Error()
+	output.OutputJSON(payload, "")
+	return err
+}
+
 // formatTimedelta formats a duration as a human-readable string.
 func formatTimedelta(seconds float64) string {
 	if seconds < 1 {
