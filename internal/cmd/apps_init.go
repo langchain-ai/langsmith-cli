@@ -58,42 +58,33 @@ type appType struct {
 	templateFS   embed.FS
 	templateRoot string
 	agentsMD     string // template-specific AGENTS.md fragment; "" = none (generic base only)
-	// Design-system registry items pulled at init. Every component item
-	// depends on "theme", so listing theme alone still installs the real
-	// tokens and Tailwind preset over the scaffold's placeholders.
-	registryItems []string
 }
 
 var appTypes = map[string]appType{
 	"blank": {
-		templateFS:    blankStarterFS,
-		templateRoot:  "templates/blank",
-		agentsMD:      "",
-		registryItems: []string{"theme"},
+		templateFS:   blankStarterFS,
+		templateRoot: "templates/blank",
+		agentsMD:     "",
 	},
 	"annotation-queue": {
-		templateFS:    annotationQueueStarterFS,
-		templateRoot:  "templates/annotation-queue",
-		agentsMD:      "annotation_queue",
-		registryItems: []string{"theme"},
+		templateFS:   annotationQueueStarterFS,
+		templateRoot: "templates/annotation-queue",
+		agentsMD:     "annotation_queue",
 	},
 	"annotation-queue-grid": {
-		templateFS:    annotationQueueGridStarterFS,
-		templateRoot:  "templates/annotation-queue-grid",
-		agentsMD:      "annotation_queue_grid",
-		registryItems: []string{"theme"},
+		templateFS:   annotationQueueGridStarterFS,
+		templateRoot: "templates/annotation-queue-grid",
+		agentsMD:     "annotation_queue_grid",
 	},
 	"coding-agent-dashboard": {
-		templateFS:    codingAgentDashboardStarterFS,
-		templateRoot:  "templates/coding-agent-dashboard",
-		agentsMD:      "coding_agent_dashboard",
-		registryItems: []string{"theme"},
+		templateFS:   codingAgentDashboardStarterFS,
+		templateRoot: "templates/coding-agent-dashboard",
+		agentsMD:     "coding_agent_dashboard",
 	},
 	"experiment-comparison": {
-		templateFS:    experimentComparisonStarterFS,
-		templateRoot:  "templates/experiment-comparison",
-		agentsMD:      "experiment_comparison",
-		registryItems: []string{"theme"},
+		templateFS:   experimentComparisonStarterFS,
+		templateRoot: "templates/experiment-comparison",
+		agentsMD:     "experiment_comparison",
 	},
 }
 
@@ -172,7 +163,6 @@ Installs dependencies as the last step, so you can cd in and run
 			if err := installAppDeps(dir); err != nil {
 				return err
 			}
-			addRegistryComponents(dir, at.registryItems)
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
@@ -232,34 +222,6 @@ func installAppDeps(dir string) error {
 
 // registryNamespace matches the "registries" key in each template's components.json.
 const registryNamespace = "@langsmith"
-
-// addRegistryComponents pulls design-system items into the scaffold. Best
-// effort: a scaffold without them still builds on the placeholder theme, so a
-// missing npx or an unreachable registry prints the manual command instead of
-// failing init.
-func addRegistryComponents(dir string, items []string) {
-	if len(items) == 0 {
-		return
-	}
-	args := []string{"shadcn", "add", "--overwrite", "--yes"}
-	for _, item := range items {
-		args = append(args, registryNamespace+"/"+item)
-	}
-	manual := "npx " + strings.Join(args, " ")
-
-	if _, err := exec.LookPath("npx"); err != nil {
-		fmt.Fprintf(os.Stderr, "note: npx not found on PATH — run %q to install design system components\n", manual)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "Adding design system components: %s\n", strings.Join(items, ", "))
-	c := exec.Command("npx", args...)
-	c.Dir = dir
-	c.Stdout = os.Stderr
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "note: design system install failed (%v) — run %q to retry\n", err, manual)
-	}
-}
 
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
 	if name == "" {

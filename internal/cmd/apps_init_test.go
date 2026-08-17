@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -779,34 +780,28 @@ func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 	check("_shared", sharedFS)
 }
 
-func TestAppTemplatesPullDesignSystemTheme(t *testing.T) {
+func TestAppTemplatesVendorDesignSystemTheme(t *testing.T) {
 	for name, at := range appTypes {
 		t.Run(name, func(t *testing.T) {
-			if len(at.registryItems) == 0 {
-				t.Fatal("template pulls no registry items; theme is required for tokens")
-			}
-			var hasTheme bool
-			for _, item := range at.registryItems {
-				if item == "theme" {
-					hasTheme = true
-				}
-			}
-			if !hasTheme {
-				t.Errorf("registryItems %v must include theme", at.registryItems)
-			}
-
 			dir := t.TempDir()
 			if _, err := scaffoldCustomAppStarter(dir, "my-app", "", at, false); err != nil {
 				t.Fatalf("scaffold: %v", err)
 			}
-			raw, err := os.ReadFile(filepath.Join(dir, "components.json"))
-			if err != nil {
-				t.Fatalf("read components.json: %v", err)
+
+			themeCSS := readTemplateFile(t, dir, "src/components/langsmith/design-system/theme.css")
+			if !strings.Contains(themeCSS, "--bg-surface-level-1") {
+				t.Errorf("theme.css is missing semantic tokens (placeholder stub?), got %d bytes", len(themeCSS))
 			}
+			preset := readTemplateFile(t, dir, "tailwind.langsmith.cjs")
+			if !strings.Contains(preset, "module.exports") || len(preset) < 1000 {
+				t.Errorf("tailwind.langsmith.cjs looks like a placeholder stub, got %d bytes", len(preset))
+			}
+
+			raw := readTemplateFile(t, dir, "components.json")
 			var cfg struct {
 				Registries map[string]string `json:"registries"`
 			}
-			if err := json.Unmarshal(raw, &cfg); err != nil {
+			if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 				t.Fatalf("parse components.json: %v", err)
 			}
 			// Without this, "shadcn add" fails with Unknown registry "@langsmith".
@@ -817,7 +812,53 @@ func TestAppTemplatesPullDesignSystemTheme(t *testing.T) {
 	}
 }
 
-func TestAddRegistryComponentsIsBestEffort(t *testing.T) {
-	// No items and a nonexistent dir: must not panic or block init.
-	addRegistryComponents(filepath.Join(t.TempDir(), "missing"), nil)
+func TestVendoredThemePresetDepsAreDeclared(t *testing.T) {
+	requireRe := regexp.MustCompile(`require\(['"]([^'"]+)['"]\)`)
+
+	for name, at := range appTypes {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, err := scaffoldCustomAppStarter(dir, "my-app", "", at, false); err != nil {
+				t.Fatalf("scaffold: %v", err)
+			}
+
+			var pkg struct {
+				Dependencies    map[string]string `json:"dependencies"`
+				DevDependencies map[string]string `json:"devDependencies"`
+			}
+			if err := json.Unmarshal([]byte(readTemplateFile(t, dir, "package.json")), &pkg); err != nil {
+				t.Fatalf("parse package.json: %v", err)
+			}
+			declared := func(mod string) bool {
+				_, inDeps := pkg.Dependencies[mod]
+				_, inDev := pkg.DevDependencies[mod]
+				return inDeps || inDev
+			}
+
+			preset := readTemplateFile(t, dir, "tailwind.langsmith.cjs")
+			var checked int
+			for _, m := range requireRe.FindAllStringSubmatch(preset, -1) {
+				mod := m[1]
+				if strings.HasPrefix(mod, ".") || mod == "tailwindcss" || strings.HasPrefix(mod, "tailwindcss/") {
+					continue
+				}
+				checked++
+				if !declared(mod) {
+					t.Errorf("tailwind.langsmith.cjs requires %q but package.json does not declare it", mod)
+				}
+			}
+			if checked == 0 {
+				t.Error("found no external requires in tailwind.langsmith.cjs; the preset or this check is wrong")
+			}
+		})
+	}
+}
+
+func readTemplateFile(t *testing.T, dir, rel string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	return string(raw)
 }

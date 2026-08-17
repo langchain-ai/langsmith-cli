@@ -100,20 +100,28 @@ hand-rolling UI. Each `add` writes real source into
 
 ```bash
 npx shadcn list @langsmith
-npx shadcn add --overwrite @langsmith/button @langsmith/badge
+npx shadcn add @langsmith/button @langsmith/badge
 ```
 
-`langsmith apps init` registers the `@langsmith` namespace in `components.json`
-and pulls `@langsmith/theme`, so `registry add` is not needed. If that step was
-skipped (no `npx`, or the registry was unreachable), run it manually:
+`components.json` already registers the `@langsmith` namespace, so `registry add`
+is not needed. `add` installs a component's npm dependencies along with its
+source — prefer it over copying files in by hand.
+
+The theme is vendored rather than fetched:
+`src/components/langsmith/design-system/theme.css` (semantic tokens) and
+`tailwind.langsmith.cjs` (the preset loaded by `tailwind.config.js`) are checked
+into the scaffold, so a fresh app is styled without network access. Being
+checked in, they can fall behind the registry. To refresh:
 
 ```bash
-npx shadcn add --overwrite --yes @langsmith/theme
+npx shadcn add --overwrite @langsmith/theme
 ```
 
-`--overwrite` is required. The scaffold ships placeholder `theme.css` and
-`tailwind.langsmith.cjs` files; without the flag `add` keeps the placeholders and
-every component renders unstyled.
+`--overwrite` is required here, because both files already exist. Afterwards,
+check `tailwind.langsmith.cjs` for any newly `require`d package and add it to
+`devDependencies` — an undeclared one fails the build with `MODULE_NOT_FOUND`.
+Diff the refresh before keeping it, so a token rename doesn't silently restyle
+the app.
 
 `components.json` and the `@/*` aliases are already wired — do not run
 `shadcn init`, which installs a competing preset and breaks the build. (If
