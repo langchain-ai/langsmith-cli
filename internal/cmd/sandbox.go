@@ -49,6 +49,7 @@ Common workflows:
 
 	// Connectivity
 	cmd.AddCommand(newSandboxExecCmd())
+	cmd.AddCommand(newSandboxRemoteRunCmd())
 	cmd.AddCommand(newSandboxConsoleCmd())
 	cmd.AddCommand(sandboxServiceURLCommand.Cobra())
 	cmd.AddCommand(newSandboxTunnelCmd())
