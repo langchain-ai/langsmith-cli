@@ -1,8 +1,33 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 )
+
+func TestParseDatasetExportRejectsNonObjectWithIndex(t *testing.T) {
+	_, err := parseDatasetExport([]byte(`[{"inputs":{"x":1}}, "bad"]`))
+	if err == nil || !strings.Contains(err.Error(), "index 1") {
+		t.Fatalf("expected indexed validation error, got %v", err)
+	}
+}
+
+func TestParseDatasetExportPreservesMetadataAndSplit(t *testing.T) {
+	items, err := parseDatasetExport([]byte(`{"version":1,"examples":[{"inputs":{"x":1},"outputs":{"y":2},"metadata":{"source":"test"},"split":["train","validation"]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Metadata["source"] != "test" || len(items[0].Split) != 2 {
+		t.Fatalf("round-trip fields not preserved: %#v", items)
+	}
+}
+
+func TestParseDatasetExportRejectsAttachmentsBeforeMutation(t *testing.T) {
+	_, err := parseDatasetExport([]byte(`{"version":1,"examples":[{"inputs":{"x":1},"attachment_urls":{"file":"https://example.com/file"}}]}`))
+	if err == nil || !strings.Contains(err.Error(), "attachments") {
+		t.Fatalf("expected attachment validation error, got %v", err)
+	}
+}
 
 // ==================== Command structure ====================
 

@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -285,15 +288,20 @@ func newDatasetExportCmd() *cobra.Command {
 				ExitErrorf("listing examples: %v", err)
 			}
 
-			var data []map[string]any
+			data := datasetExport{Version: 1, Dataset: datasetExportDataset{Name: ds.Name, Description: ds.Description}}
 			for _, ex := range allExamples {
-				data = append(data, map[string]any{
-					"inputs":  ex.Inputs,
-					"outputs": ex.Outputs,
-				})
+				item := datasetExportExample{ID: ex.ID, Inputs: ex.Inputs, Outputs: ex.Outputs, Metadata: ex.Metadata, AttachmentURLs: ex.AttachmentURLs}
+				if !ex.CreatedAt.IsZero() {
+					item.CreatedAt = ex.CreatedAt.Format(time.RFC3339Nano)
+				}
+				item.Split = exampleSplit(ex)
+				data.Examples = append(data.Examples, item)
 			}
 
-			jsonBytes, _ := json.MarshalIndent(data, "", "  ")
+			jsonBytes, err := json.MarshalIndent(data, "", "  ")
+			if err != nil {
+				ExitErrorf("encoding export: %v", err)
+			}
 			if err := os.WriteFile(outputFile, jsonBytes, 0644); err != nil {
 				ExitErrorf("writing file: %v", err)
 			}
@@ -301,7 +309,7 @@ func newDatasetExportCmd() *cobra.Command {
 			output.OutputJSON(map[string]any{
 				"status":  "exported",
 				"dataset": ds.Name,
-				"count":   len(data),
+				"count":   len(data.Examples),
 				"path":    outputFile,
 			}, "")
 		},
@@ -321,35 +329,23 @@ func newDatasetUploadCmd() *cobra.Command {
 		Use:   "upload FILE_PATH",
 		Short: "Upload a JSON file as a new dataset",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
-
-			c := MustGetClient()
-			ctx := context.Background()
 
 			fileData, err := os.ReadFile(filePath)
 			if err != nil {
-				ExitErrorf("reading file: %v", err)
+				return fmt.Errorf("reading file: %w", err)
+			}
+			items, err := parseDatasetExport(fileData)
+			if err != nil {
+				return err
+			}
+			if len(items) == 0 {
+				return fmt.Errorf("dataset export contains no examples")
 			}
 
-			var rawData any
-			if err := json.Unmarshal(fileData, &rawData); err != nil {
-				ExitErrorf("parsing JSON: %v", err)
-			}
-
-			var items []map[string]any
-			switch v := rawData.(type) {
-			case []any:
-				for _, item := range v {
-					if m, ok := item.(map[string]any); ok {
-						items = append(items, m)
-					}
-				}
-			case map[string]any:
-				items = []map[string]any{v}
-			default:
-				ExitError("JSON file must be an array or object")
-			}
+			c := MustGetClient()
+			ctx := context.Background()
 
 			// Create dataset
 			dsParams := langsmith.DatasetNewParams{
@@ -361,33 +357,37 @@ func newDatasetUploadCmd() *cobra.Command {
 
 			ds, err := c.SDK.Datasets.New(ctx, dsParams)
 			if err != nil {
-				ExitErrorf("creating dataset: %v", err)
+				return fmt.Errorf("creating dataset: %w", err)
 			}
 
-			// Create examples
-			for _, item := range items {
-				var inputs, outputs map[string]any
-				if inp, ok := item["inputs"].(map[string]any); ok {
-					inputs = inp
-				} else {
-					inputs = item
+			bodies := make([]langsmith.ExampleBulkNewParamsBody, len(items))
+			for i, item := range items {
+				body := langsmith.ExampleBulkNewParamsBody{DatasetID: langsmith.F(ds.ID), Inputs: langsmith.F(item.Inputs)}
+				if item.ID != "" {
+					body.ID = langsmith.F(item.ID)
 				}
-				if out, ok := item["outputs"].(map[string]any); ok {
-					outputs = out
+				if item.CreatedAt != "" {
+					body.CreatedAt = langsmith.F(item.CreatedAt)
 				}
-
-				exParams := langsmith.ExampleNewParams{
-					DatasetID: langsmith.F(ds.ID),
-					Inputs:    langsmith.F(inputs),
+				if item.Outputs != nil {
+					body.Outputs = langsmith.F(item.Outputs)
 				}
-				if outputs != nil {
-					exParams.Outputs = langsmith.F(outputs)
+				if item.Metadata != nil {
+					body.Metadata = langsmith.F(item.Metadata)
 				}
-
-				_, err := c.SDK.Examples.New(ctx, exParams)
-				if err != nil {
-					ExitErrorf("creating example: %v", err)
+				if len(item.Split) == 1 {
+					body.Split = langsmith.F[langsmith.ExampleBulkNewParamsBodySplitUnion](shared.UnionString(item.Split[0]))
+				} else if len(item.Split) > 1 {
+					body.Split = langsmith.F[langsmith.ExampleBulkNewParamsBodySplitUnion](langsmith.ExampleBulkNewParamsBodySplitArray(item.Split))
 				}
+				bodies[i] = body
+			}
+			if _, err := c.SDK.Examples.Bulk.New(ctx, langsmith.ExampleBulkNewParams{Body: bodies}); err != nil {
+				_, cleanupErr := c.SDK.Datasets.Delete(ctx, ds.ID)
+				if cleanupErr != nil {
+					return fmt.Errorf("creating examples: %v; cleanup dataset %s failed: %v", err, ds.ID, cleanupErr)
+				}
+				return fmt.Errorf("creating examples: %v; dataset %s was removed", err, ds.ID)
 			}
 
 			output.OutputJSON(map[string]any{
@@ -396,6 +396,7 @@ func newDatasetUploadCmd() *cobra.Command {
 				"dataset_name":  name,
 				"example_count": len(items),
 			}, "")
+			return nil
 		},
 	}
 
@@ -404,4 +405,135 @@ func newDatasetUploadCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
+}
+
+type datasetExport struct {
+	Version  int                    `json:"version"`
+	Dataset  datasetExportDataset   `json:"dataset"`
+	Examples []datasetExportExample `json:"examples"`
+}
+type datasetExportDataset struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+type datasetExportExample struct {
+	ID             string         `json:"id,omitempty"`
+	CreatedAt      string         `json:"created_at,omitempty"`
+	Inputs         map[string]any `json:"inputs"`
+	Outputs        map[string]any `json:"outputs,omitempty"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+	Split          []string       `json:"split,omitempty"`
+	AttachmentURLs map[string]any `json:"attachment_urls,omitempty"`
+}
+
+func exampleSplit(ex langsmith.Example) []string {
+	var raw struct {
+		Split any `json:"split"`
+	}
+	if json.Unmarshal([]byte(ex.JSON.RawJSON()), &raw) != nil {
+		return nil
+	}
+	switch split := raw.Split.(type) {
+	case string:
+		if split != "" {
+			return []string{split}
+		}
+	case []any:
+		values := make([]string, 0, len(split))
+		for _, value := range split {
+			if s, ok := value.(string); ok && s != "" {
+				values = append(values, s)
+			}
+		}
+		return values
+	}
+	return nil
+}
+
+func parseDatasetExport(data []byte) ([]datasetExportExample, error) {
+	var raw any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing JSON: %w", err)
+	}
+	if envelope, ok := raw.(map[string]any); ok && envelope["version"] != nil {
+		if v, ok := envelope["version"].(float64); !ok || v != 1 {
+			return nil, fmt.Errorf("unsupported dataset export version")
+		}
+		examples, ok := envelope["examples"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("dataset export examples must be an array")
+		}
+		return validateDatasetExamples(examples)
+	}
+	if arr, ok := raw.([]any); ok {
+		return validateDatasetExamples(arr)
+	}
+	if obj, ok := raw.(map[string]any); ok {
+		return validateDatasetExamples([]any{obj})
+	}
+	return nil, fmt.Errorf("JSON file must be an array or versioned export object")
+}
+
+func validateDatasetExamples(raw []any) ([]datasetExportExample, error) {
+	items := make([]datasetExportExample, len(raw))
+	for i, value := range raw {
+		obj, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("item at index %d must be an object", i)
+		}
+		encoded, _ := json.Marshal(obj)
+		var parsed struct {
+			ID             string         `json:"id,omitempty"`
+			CreatedAt      string         `json:"created_at,omitempty"`
+			Inputs         map[string]any `json:"inputs"`
+			Outputs        map[string]any `json:"outputs,omitempty"`
+			Metadata       map[string]any `json:"metadata,omitempty"`
+			Split          any            `json:"split,omitempty"`
+			AttachmentURLs map[string]any `json:"attachment_urls,omitempty"`
+		}
+		if err := json.Unmarshal(encoded, &parsed); err != nil {
+			return nil, fmt.Errorf("item at index %d: %w", i, err)
+		}
+		items[i] = datasetExportExample{ID: parsed.ID, CreatedAt: parsed.CreatedAt, Inputs: parsed.Inputs, Outputs: parsed.Outputs, Metadata: parsed.Metadata, AttachmentURLs: parsed.AttachmentURLs}
+		if items[i].Inputs == nil {
+			return nil, fmt.Errorf("item at index %d: inputs must be an object", i)
+		}
+		if items[i].AttachmentURLs != nil && len(items[i].AttachmentURLs) > 0 {
+			return nil, fmt.Errorf("item at index %d contains attachments that cannot be restored by dataset upload", i)
+		}
+		if items[i].ID != "" {
+			if _, err := uuid.Parse(items[i].ID); err != nil {
+				return nil, fmt.Errorf("item at index %d: invalid id: %w", i, err)
+			}
+		}
+		if items[i].CreatedAt != "" {
+			if _, err := time.Parse(time.RFC3339, items[i].CreatedAt); err != nil {
+				return nil, fmt.Errorf("item at index %d: invalid created_at: %w", i, err)
+			}
+		}
+		if parsed.Split != nil {
+			switch split := parsed.Split.(type) {
+			case string:
+				if split == "" {
+					return nil, fmt.Errorf("item at index %d: split must not be empty", i)
+				}
+				items[i].Split = []string{split}
+			case []any:
+				if len(split) == 0 {
+					return nil, fmt.Errorf("item at index %d: split must not be empty", i)
+				}
+				items[i].Split = make([]string, len(split))
+				for j, s := range split {
+					value, ok := s.(string)
+					if !ok {
+						return nil, fmt.Errorf("item at index %d: split values must be strings", i)
+					}
+					items[i].Split[j] = value
+				}
+			default:
+				return nil, fmt.Errorf("item at index %d: split must be a string or array", i)
+			}
+		}
+	}
+	return items, nil
 }
