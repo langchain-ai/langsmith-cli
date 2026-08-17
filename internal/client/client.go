@@ -25,6 +25,7 @@ type Client struct {
 	oauthAccessToken string
 	apiURL           string
 	workspaceID      string
+	platformPrefix   string
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
@@ -92,6 +93,7 @@ func NewWithOptions(options Options) *Client {
 		oauthAccessToken: options.OAuthAccessToken,
 		apiURL:           normalized,
 		workspaceID:      options.WorkspaceID,
+		platformPrefix:   derivePlatformPrefix(options.APIURL),
 		sessionCache:     make(map[string]string),
 	}
 }
@@ -176,6 +178,51 @@ func leadingDigits(s string) string {
 	return s[:i]
 }
 
+// Platform paths mirror the SDK: derived from the configured endpoint rather
+// than configured separately. Single-origin deployments route the /api form;
+// multi-origin routes the same path without that segment. SaaS serves both.
+const (
+	apiSegment                 = "/api"
+	apiV1Segment               = "/api/v1"
+	singleOriginPlatformPrefix = apiV1Segment + "/platform"
+)
+
+// multiOriginPlatformPrefix drops the /api segment rather than restating the
+// path, so TestHandWrittenPathsCarryAPIPrefix still guards every literal.
+func multiOriginPlatformPrefix() string {
+	return strings.TrimPrefix(singleOriginPlatformPrefix, apiSegment)
+}
+
+// derivePlatformPrefix reads the endpoint as given, before NormalizeURL strips
+// the suffix that distinguishes the two topologies.
+func derivePlatformPrefix(apiURL string) string {
+	u := strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	if strings.HasSuffix(u, apiV1Segment) || strings.HasSuffix(u, apiSegment) {
+		return singleOriginPlatformPrefix
+	}
+	return multiOriginPlatformPrefix()
+}
+
+// PlatformPath builds a platform-service path.
+func (c *Client) PlatformPath(elem ...string) string {
+	prefix := c.platformPrefix
+	if prefix == "" {
+		prefix = multiOriginPlatformPrefix()
+	}
+	for _, e := range elem {
+		prefix += "/" + url.PathEscape(e)
+	}
+	return prefix
+}
+
+// CustomAppsPath is the custom-apps collection.
+func (c *Client) CustomAppsPath() string { return c.PlatformPath("custom-apps") }
+
+// CustomAppPath addresses one app.
+func (c *Client) CustomAppPath(appID string) string {
+	return c.PlatformPath("custom-apps", appID)
+}
+
 // CustomAppRequest is the body of custom-app create (POST) and update (PATCH).
 // Unset pointer fields are omitted, leaving the server value untouched.
 type CustomAppRequest struct {
@@ -211,7 +258,7 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 // FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
-	path := "/api/v1/platform/custom-apps/" + url.PathEscape(appID) + "/source"
+	path := c.CustomAppPath(appID) + "/source"
 	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err

@@ -20,7 +20,10 @@ import (
 )
 
 func newAppsPullCmd() *cobra.Command {
-	var force bool
+	var (
+		force bool
+		scope string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "pull APP_ID_OR_NAME",
@@ -31,14 +34,20 @@ Takes an app ID or name, creates a directory named after the app in the
 current directory, and extracts the source into it. Apps pushed before
 source upload existed have no stored source — re-push them first.
 
-The target directory is replaced, not merged. Run "npm install" after.`,
+The target directory is replaced, not merged. Run "npm install" after.
+
+A name matches this workspace's own apps before those shared with its
+organization. Pass --scope to force one tier.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			nameOrID := args[0]
+			if err := validateAppScope(scope); err != nil {
+				return err
+			}
 			c := MustGetClient()
 			ctx := cmd.Context()
 
-			app, err := resolveCustomApp(ctx, c, nameOrID)
+			app, err := resolveCustomAppInScope(ctx, c, nameOrID, scope)
 			if err != nil {
 				return err
 			}
@@ -84,6 +93,7 @@ The target directory is replaced, not merged. Run "npm install" after.`,
 				"status": "pulled",
 				"app_id": app.ID,
 				"name":   app.Name,
+				"scope":  app.tier(),
 				"dir":    dest,
 				"files":  written,
 			}, "")
@@ -92,36 +102,86 @@ The target directory is replaced, not merged. Run "npm install" after.`,
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Replace the target directory without confirming")
+	cmd.Flags().StringVar(&scope, "scope", "", "Only match apps at this tier: \"workspace\" or \"org\"")
 	return cmd
 }
 
 // resolveCustomApp accepts an app ID or name.
 func resolveCustomApp(ctx context.Context, c *client.Client, nameOrID string) (*customApp, error) {
+	return resolveCustomAppInScope(ctx, c, nameOrID, "")
+}
+
+// resolveCustomAppInScope filters by tier.
+// Workspace tier is preferred.
+func resolveCustomAppInScope(ctx context.Context, c *client.Client, nameOrID, scope string) (*customApp, error) {
 	var apps []customApp
-	if err := c.RawGet(ctx, "/api/v1/platform/custom-apps", &apps); err != nil {
+	if err := c.RawGet(ctx, c.CustomAppsPath(), &apps); err != nil {
 		return nil, fmt.Errorf("looking up custom app %q: %w", nameOrID, err)
 	}
 
+	tiers := appScopeSearchOrder(scope)
+
 	if _, err := uuid.Parse(nameOrID); err == nil {
+		for _, tier := range tiers {
+			for i := range apps {
+				if apps[i].ID == nameOrID && apps[i].tier() == tier {
+					return &apps[i], nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("custom app %s not found %s (run `langsmith apps list`)", nameOrID, appScopeSearchedIn(scope))
+	}
+
+	// Nearest scope wins.
+	for _, tier := range tiers {
 		for i := range apps {
-			if apps[i].ID == nameOrID {
+			if apps[i].Name == nameOrID && apps[i].tier() == tier {
 				return &apps[i], nil
 			}
 		}
-		return nil, fmt.Errorf("custom app %s not found in this workspace (run `langsmith apps list`)", nameOrID)
 	}
+	for _, tier := range tiers {
+		for i := range apps {
+			if strings.EqualFold(apps[i].Name, nameOrID) && apps[i].tier() == tier {
+				return &apps[i], nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("no custom app named %q %s (run `langsmith apps list`)", nameOrID, appScopeSearchedIn(scope))
+}
 
-	for i := range apps {
-		if apps[i].Name == nameOrID {
-			return &apps[i], nil
-		}
+// appScopeSearchOrder lists tiers, nearest first.
+func appScopeSearchOrder(scope string) []string {
+	switch scope {
+	case appScopeOrg:
+		return []string{appScopeOrg}
+	case appScopeWorkspace:
+		return []string{appScopeWorkspace}
+	default:
+		return []string{appScopeWorkspace, appScopeOrg}
 	}
-	for i := range apps {
-		if strings.EqualFold(apps[i].Name, nameOrID) {
-			return &apps[i], nil
-		}
+}
+
+// appScopeSearchedIn describes the tiers searched.
+func appScopeSearchedIn(scope string) string {
+	switch scope {
+	case appScopeOrg:
+		return "among the apps shared with this organization"
+	case appScopeWorkspace:
+		return "in this workspace"
+	default:
+		return "in this workspace or shared with its organization"
 	}
-	return nil, fmt.Errorf("no custom app named %q in this workspace (run `langsmith apps list`)", nameOrID)
+}
+
+// validateAppScope guards the --scope value.
+func validateAppScope(scope string) error {
+	switch scope {
+	case "", appScopeOrg, appScopeWorkspace:
+		return nil
+	default:
+		return fmt.Errorf("invalid --scope %q: must be %q or %q", scope, appScopeOrg, appScopeWorkspace)
+	}
 }
 
 func customAppSourceError(err error, name string) error {

@@ -26,7 +26,7 @@ func TestAppsPush_CreatesAndWritesLink(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			sawPost = true
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &postBody)
@@ -79,7 +79,7 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			sawPost = true
 		case r.Method == "PATCH":
 			sawPatch = true
@@ -117,7 +117,7 @@ func TestAppsPush_UpdatesWhenAlreadyLinked(t *testing.T) {
 	if !sawPatch {
 		t.Fatal("expected PATCH to update the existing app")
 	}
-	if patchPath != "/api/v1/platform/custom-apps/app_existing" {
+	if patchPath != "/v1/platform/custom-apps/app_existing" {
 		t.Errorf("unexpected PATCH path: %s", patchPath)
 	}
 }
@@ -128,7 +128,7 @@ func TestAppsPush_CreatesWhenLinkedButNotYetCreated(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			sawPost = true
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &postBody)
@@ -185,12 +185,12 @@ func TestAppsPush_RecreatesWhenLinkedAppWasDeleted(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "PATCH" && r.URL.Path == "/api/v1/platform/custom-apps/app_deleted":
+		case r.Method == "PATCH" && r.URL.Path == "/v1/platform/custom-apps/app_deleted":
 			sawPatch = true
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "custom app not found"})
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			sawPost = true
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &postBody)
@@ -264,7 +264,7 @@ func TestAppsPush_ErrorsWhenEntrypointMissing(t *testing.T) {
 
 func TestAppsPush_BuildsFromPackageJSONByDefault(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps" {
+		if r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(customApp{ID: "app_new", Name: "my-app", Entrypoint: "dist/bundle.js"})
 			return
@@ -321,7 +321,7 @@ func TestAppsPush_UploadsSourceArchiveOnCreate(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &postBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -372,7 +372,7 @@ func TestAppsPush_UploadsSourceArchiveOnUpdate(t *testing.T) {
 
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "PATCH" && r.URL.Path == "/api/v1/platform/custom-apps/app_existing":
+		case r.Method == "PATCH" && r.URL.Path == "/v1/platform/custom-apps/app_existing":
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &patchBody)
 			w.Header().Set("Content-Type", "application/json")

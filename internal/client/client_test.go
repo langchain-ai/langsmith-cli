@@ -35,6 +35,62 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+// ---------- PlatformPath ----------
+
+func TestDerivePlatformPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+	}{
+		{"bare host is multi-origin", "http://localhost:1980", "/v1/platform"},
+		{"trailing slash", "http://localhost:1980/", "/v1/platform"},
+		{"api/v1 suffix is single-origin", "https://host/api/v1", "/api/v1/platform"},
+		{"api/v1 with trailing slash", "https://host/api/v1/", "/api/v1/platform"},
+		{"api suffix is single-origin", "https://host/api", "/api/v1/platform"},
+		{"saas default", "https://api.smith.langchain.com", "/v1/platform"},
+		{"empty", "", "/v1/platform"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := derivePlatformPrefix(tt.endpoint); got != tt.want {
+				t.Errorf("derivePlatformPrefix(%q) = %q, want %q", tt.endpoint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClientPlatformPaths(t *testing.T) {
+	const appID = "6f1c9b0e-6b3e-4a0e-9a4a-2c1d3e4f5a6b"
+	tests := []struct {
+		name           string
+		endpoint       string
+		wantCollection string
+		wantSingleApp  string
+	}{
+		{"multi-origin", "http://localhost:1980", "/v1/platform/custom-apps", "/v1/platform/custom-apps/" + appID},
+		{"single-origin", "https://host/api/v1", "/api/v1/platform/custom-apps", "/api/v1/platform/custom-apps/" + appID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New("k", tt.endpoint)
+			if got := c.CustomAppsPath(); got != tt.wantCollection {
+				t.Errorf("CustomAppsPath() = %q, want %q", got, tt.wantCollection)
+			}
+			if got := c.CustomAppPath(appID); got != tt.wantSingleApp {
+				t.Errorf("CustomAppPath() = %q, want %q", got, tt.wantSingleApp)
+			}
+		})
+	}
+}
+
+func TestPlatformPath_EscapesElements(t *testing.T) {
+	c := New("k", "http://localhost:1980")
+	if got := c.CustomAppPath("a b/../c"); got != "/v1/platform/custom-apps/a%20b%2F..%2Fc" {
+		t.Errorf("expected the app ID escaped, got %q", got)
+	}
+}
+
 // ---------- New ----------
 
 func TestNew_CreatesClient(t *testing.T) {
