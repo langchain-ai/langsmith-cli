@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -65,6 +66,9 @@ func newExampleListCmd() *cobra.Command {
 				Dataset: langsmith.F(ds.ID),
 				Limit:   langsmith.F(pageSize),
 			}
+			if split != "" {
+				params.Splits = langsmith.F([]string{split})
+			}
 			if offset > 0 {
 				params.Offset = langsmith.F(int64(offset))
 			}
@@ -81,31 +85,12 @@ func newExampleListCmd() *cobra.Command {
 			}
 			fmt_ := GetFormat()
 
-			// Filter by split if specified
-			if split != "" {
-				var filtered []langsmith.Example
-				for _, ex := range examples {
-					// The split field may be in metadata
-					if ex.Metadata != nil {
-						if s, ok := ex.Metadata["split"].(string); ok && s == split {
-							filtered = append(filtered, ex)
-						}
-					}
-				}
-				examples = filtered
-			}
-
 			if fmt_ == "pretty" {
 				columns := []string{"ID", "Split", "Created", "Inputs Preview"}
 				var rows [][]string
 				for _, ex := range examples {
 					id := ex.ID
-					splitVal := "N/A"
-					if ex.Metadata != nil {
-						if s, ok := ex.Metadata["split"].(string); ok {
-							splitVal = s
-						}
-					}
+					splitVal := formatExampleSplit(exampleSplit(ex))
 					created := "N/A"
 					if !ex.CreatedAt.IsZero() {
 						created = ex.CreatedAt.Format("2006-01-02")
@@ -129,6 +114,7 @@ func newExampleListCmd() *cobra.Command {
 						"inputs":     ex.Inputs,
 						"outputs":    ex.Outputs,
 						"metadata":   ex.Metadata,
+						"split":      exampleSplit(ex),
 						"created_at": formatTimeISO(ex.CreatedAt),
 					}
 					data = append(data, entry)
@@ -146,6 +132,40 @@ func newExampleListCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("dataset")
 
 	return cmd
+}
+
+// exampleSplit reads native split membership from the SDK's retained response
+// JSON. The current generated Example response does not expose a typed Split
+// field, although the API returns it and the SDK exposes typed split request
+// fields for create and list operations.
+func exampleSplit(ex langsmith.Example) any {
+	var raw struct {
+		Split any `json:"split"`
+	}
+	if err := json.Unmarshal([]byte(ex.JSON.RawJSON()), &raw); err != nil {
+		return nil
+	}
+	return raw.Split
+}
+
+func formatExampleSplit(value any) string {
+	switch split := value.(type) {
+	case string:
+		if split != "" {
+			return split
+		}
+	case []any:
+		values := make([]string, 0, len(split))
+		for _, item := range split {
+			if value, ok := item.(string); ok && value != "" {
+				values = append(values, value)
+			}
+		}
+		if len(values) > 0 {
+			return strings.Join(values, ", ")
+		}
+	}
+	return "N/A"
 }
 
 func newExampleCreateCmd() *cobra.Command {
@@ -201,12 +221,10 @@ func newExampleCreateCmd() *cobra.Command {
 				params.Outputs = langsmith.F(parsedOutputs)
 			}
 			if parsedMetadata != nil {
-				if split != "" {
-					parsedMetadata["split"] = split
-				}
 				params.Metadata = langsmith.F(parsedMetadata)
-			} else if split != "" {
-				params.Metadata = langsmith.F(map[string]any{"split": split})
+			}
+			if split != "" {
+				params.Split = langsmith.F[langsmith.ExampleNewParamsSplitUnion](shared.UnionString(split))
 			}
 
 			ex, err := c.SDK.Examples.New(ctx, params)
