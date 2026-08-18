@@ -113,7 +113,7 @@ func TestPrintRunsTable(t *testing.T) {
 		if !strings.Contains(output, "ChatOpenAI") {
 			t.Error("expected run name in output")
 		}
-		if strings.Contains(output, "Feedback") {
+		if strings.Contains(output, "Feedback") || strings.Contains(output, "FEEDBACK") {
 			t.Error("expected no Feedback column when includeFeedback is false")
 		}
 	})
