@@ -43,6 +43,7 @@ func TestRunListCmd_Flags(t *testing.T) {
 	}{
 		{"include-metadata", "false", ""},
 		{"include-io", "false", ""},
+		{"include-feedback", "false", ""},
 		{"full", "false", ""},
 		{"output", "", "o"},
 	}
@@ -94,6 +95,7 @@ func TestRunGetCmd_Flags(t *testing.T) {
 		{"project", ""},
 		{"include-metadata", "false"},
 		{"include-io", "false"},
+		{"include-feedback", "false"},
 		{"full", "false"},
 		{"output", ""},
 	}

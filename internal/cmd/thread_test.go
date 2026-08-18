@@ -149,6 +149,7 @@ func TestThreadGetCmd_Flags(t *testing.T) {
 		{"project", "", ""},
 		{"include-metadata", "false", ""},
 		{"include-io", "false", ""},
+		{"include-feedback", "false", ""},
 		{"full", "false", ""},
 		{"limit", "0", "n"},
 		{"output", "", "o"},

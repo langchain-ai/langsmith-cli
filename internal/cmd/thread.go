@@ -247,7 +247,7 @@ func newThreadGetCmd() *cobra.Command {
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				output.PrintRunsTable(os.Stdout, extracted, includeMetadata, fmt.Sprintf("Thread %s", threadID))
+				output.PrintRunsTable(os.Stdout, extracted, includeMetadata, includeFeedback, fmt.Sprintf("Thread %s", threadID))
 			} else {
 				data := map[string]any{
 					"thread_id": threadID,

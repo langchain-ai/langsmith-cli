@@ -39,6 +39,7 @@ func TestTraceListCmd_Flags(t *testing.T) {
 	}{
 		{"include-metadata", "false", ""},
 		{"include-io", "false", ""},
+		{"include-feedback", "false", ""},
 		{"full", "false", ""},
 		{"show-hierarchy", "false", ""},
 		{"output", "", "o"},
