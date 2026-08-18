@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -610,5 +613,117 @@ func TestToV2Params_OmitsUnsetFields(t *testing.T) {
 		v2.MinStartTime.Present || v2.Filter.Present || v2.IDs.Present ||
 		v2.PageSize.Present || v2.Selects.Present {
 		t.Error("expected all fields unset for empty input")
+	}
+}
+
+// ---------- queryRunsV2 pagination ----------
+
+// v2QueryPage is one canned POST /api/v2/runs/query response.
+type v2QueryPage struct {
+	ids  []string
+	next string
+}
+
+// newV2RunsQueryServer serves POST /api/v2/runs/query from pages keyed by the
+// `cursor` value in the request body, and records every observed body cursor.
+func newV2RunsQueryServer(t *testing.T, pages map[string]v2QueryPage, bodyCursors *[]string) *httptest.Server {
+	t.Helper()
+	return newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/runs/query" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		var body struct {
+			Cursor string `json:"cursor"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		*bodyCursors = append(*bodyCursors, body.Cursor)
+		page, ok := pages[body.Cursor]
+		if !ok {
+			t.Errorf("request body cursor %q does not match any page", body.Cursor)
+			http.Error(w, "unknown cursor", http.StatusBadRequest)
+			return
+		}
+		items := make([]map[string]any, 0, len(page.ids))
+		for _, id := range page.ids {
+			items = append(items, map[string]any{"id": id})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": page.next})
+	})
+}
+
+func TestQueryRunsV2_PaginatesWithBodyCursor(t *testing.T) {
+	var bodyCursors []string
+	ts := newV2RunsQueryServer(t, map[string]v2QueryPage{
+		"":         {ids: []string{"run-1", "run-2"}, next: "cursor-2"},
+		"cursor-2": {ids: []string{"run-3", "run-4"}, next: "cursor-3"},
+		"cursor-3": {ids: []string{"run-5"}},
+	}, &bodyCursors)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	runs, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 100, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got []string
+	seen := map[string]bool{}
+	for _, run := range runs {
+		if seen[run.ID] {
+			t.Errorf("run %s returned more than once", run.ID)
+		}
+		seen[run.ID] = true
+		got = append(got, run.ID)
+	}
+	want := []string{"run-1", "run-2", "run-3", "run-4", "run-5"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("runs = %v, want %v", got, want)
+	}
+	if strings.Join(bodyCursors, ",") != ",cursor-2,cursor-3" {
+		t.Errorf("body cursors = %v, want [\"\", cursor-2, cursor-3]", bodyCursors)
+	}
+}
+
+func TestQueryRunsV2_StopsAtLimit(t *testing.T) {
+	var bodyCursors []string
+	ts := newV2RunsQueryServer(t, map[string]v2QueryPage{
+		"":         {ids: []string{"run-1", "run-2"}, next: "cursor-2"},
+		"cursor-2": {ids: []string{"run-3", "run-4"}, next: "cursor-3"},
+		"cursor-3": {ids: []string{"run-5"}},
+	}, &bodyCursors)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	runs, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 3, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(runs) != 3 {
+		t.Errorf("expected 3 runs at limit 3, got %d", len(runs))
+	}
+	if len(bodyCursors) != 2 {
+		t.Errorf("expected paging to stop after 2 requests, got %d", len(bodyCursors))
+	}
+}
+
+func TestQueryRunsV2_StopsOnRepeatedCursor(t *testing.T) {
+	var bodyCursors []string
+	ts := newV2RunsQueryServer(t, map[string]v2QueryPage{
+		"":      {ids: []string{"run-1"}, next: "stuck"},
+		"stuck": {ids: []string{"run-1"}, next: "stuck"},
+	}, &bodyCursors)
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	if _, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 1000, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(bodyCursors) != 2 {
+		t.Errorf("expected paging to stop once a cursor repeats, got %d requests", len(bodyCursors))
 	}
 }

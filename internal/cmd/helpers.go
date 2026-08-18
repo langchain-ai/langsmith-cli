@@ -87,20 +87,36 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 	}
 
 	var allRuns []langsmith.RunSchema
+	seenCursors := map[string]bool{}
 
-	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params)
-	for iter.Next() {
-		if len(allRuns) >= limit {
+	// Pages are fetched one at a time instead of with QueryV2AutoPaging: the
+	// SDK's auto-pager sends the next cursor as a URL query parameter, which
+	// POST /api/v2/runs/query ignores (it reads `cursor` from the body), so
+	// auto-paging refetches the first page indefinitely.
+	for {
+		page, err := c.SDK.Runs.QueryV2(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("querying runs (v2): %w", err)
+		}
+
+		for _, item := range page.Items {
+			if len(allRuns) >= limit {
+				break
+			}
+			run := runV2ToSchema(item)
+			if minTokens > 0 && run.TotalTokens < int64(minTokens) {
+				continue
+			}
+			allRuns = append(allRuns, run)
+		}
+
+		// A repeated cursor would page forever; callers may pass an
+		// effectively unbounded limit.
+		if len(allRuns) >= limit || len(page.Items) == 0 || page.NextCursor == "" || seenCursors[page.NextCursor] {
 			break
 		}
-		run := runV2ToSchema(iter.Current())
-		if minTokens > 0 && run.TotalTokens < int64(minTokens) {
-			continue
-		}
-		allRuns = append(allRuns, run)
-	}
-	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("querying runs (v2): %w", err)
+		seenCursors[page.NextCursor] = true
+		params.Cursor = langsmith.F(page.NextCursor)
 	}
 
 	return allRuns, nil
