@@ -106,10 +106,10 @@ Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 
 ## Linking back to LangSmith
 
-`window.langsmith.openUrl(url)` opens a LangSmith URL in a new tab — pass an
-absolute URL or a path. The app can't navigate on its own; the host resolves the
-URL and rejects anything outside LangSmith, so `<a href>` and `window.open`
-won't work.
+`window.langsmith.openUrl(url)` navigates LangSmith to a URL — pass an absolute
+URL or a path. Pass `{ newTab: true }` as a second argument to open it in a new
+tab instead. The app can't navigate on its own; the host resolves the URL and
+rejects anything outside LangSmith, so `<a href>` and `window.open` won't work.
 
 For a run or trace, ask the API for the URL rather than building one:
 

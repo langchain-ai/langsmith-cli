@@ -736,8 +736,15 @@ const devHostHTMLTemplate = `<!doctype html>
         var target = new URL(String(msg.url), base);
         if (target.origin === base.origin) href = target.href;
       } catch (e) {}
-      if (href) window.open(href, '_blank', 'noopener');
-      else console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      if (!href) {
+        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      } else if (msg.newTab) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        // Prod soft-navigates in place; dev leaves the harness.
+        console.log('[langsmith apps dev] openUrl navigating away:', href);
+        window.location.assign(href);
+      }
     }
 
     if (msg.type === 'LS_LOG') {
@@ -980,8 +987,12 @@ pre, code {
     reportHeight();
   }
 
-  function openUrl(url) {
-    window.parent.postMessage({ type: 'LS_NAVIGATE', url: String(url) }, '*');
+  function openUrl(url, options) {
+    window.parent.postMessage({
+      type: 'LS_NAVIGATE',
+      url: String(url),
+      newTab: !!(options && options.newTab)
+    }, '*');
   }
 
   window.langsmith = {
