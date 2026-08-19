@@ -453,11 +453,6 @@ func TestTraceMessages_TraceIDsBoundPaginationByRequestedPages(t *testing.T) {
 		switch {
 		case r.URL.Path == "/api/v2/traces/messages":
 			pageCount++
-			var body map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			if got := fmt.Sprint(body["ids"]); got != "[trace-1 trace-2 trace-3 trace-4 missing-trace]" {
-				t.Errorf("ids = %s, want unique IDs in input order", got)
-			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{
@@ -484,7 +479,7 @@ func TestTraceMessages_TraceIDsBoundPaginationByRequestedPages(t *testing.T) {
 		cmd := newTraceMessagesCmd()
 		cmd.SetArgs([]string{
 			"--project-id", "11111111-1111-1111-1111-111111111111",
-			"--trace-ids", "trace-1,trace-2,trace-2,trace-3,trace-4,missing-trace",
+			"--trace-ids", "trace-1,trace-2,trace-3,trace-4,missing-trace",
 			"--limit", "100",
 			"--since", "2024-01-01T00:00:00Z",
 		})
@@ -495,31 +490,6 @@ func TestTraceMessages_TraceIDsBoundPaginationByRequestedPages(t *testing.T) {
 
 	if pageCount != 1 {
 		t.Fatalf("trace messages requests = %d, want 1", pageCount)
-	}
-}
-
-func TestTraceMessages_RejectsEmptyTraceIDs(t *testing.T) {
-	requestCount := 0
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
-	})
-	cleanup := setupTestEnv(t, ts.URL)
-	defer cleanup()
-
-	cmd := newTraceMessagesCmd()
-	cmd.SetArgs([]string{
-		"--project-id", "11111111-1111-1111-1111-111111111111",
-		"--trace-ids", " , , ",
-		"--since", "2024-01-01T00:00:00Z",
-	})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected empty --trace-ids to fail")
-	}
-	if requestCount != 0 {
-		t.Fatalf("requests made before validation = %d, want 0", requestCount)
 	}
 }
 
@@ -775,29 +745,5 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 	traces, _ := result["traces"].([]any)
 	if len(traces) != 0 {
 		t.Errorf("expected 0 traces, got %d", len(traces))
-	}
-}
-
-func TestClampLimitToIDs(t *testing.T) {
-	tests := []struct {
-		name  string
-		limit int
-		ids   []string
-		want  int
-	}{
-		{"more headroom than ids clamps to ids", 100, []string{"a", "b", "c", "d", "e"}, 5},
-		{"limit below id count is left alone", 3, []string{"a", "b", "c", "d", "e"}, 3},
-		{"limit equal to id count is unchanged", 5, []string{"a", "b", "c", "d", "e"}, 5},
-		{"no ids leaves the limit alone", 100, nil, 100},
-		{"empty id slice leaves the limit alone", 100, []string{}, 100},
-		{"single id collapses to one page", 100, []string{"a"}, 1},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := clampLimitToIDs(tc.limit, tc.ids); got != tc.want {
-				t.Errorf("clampLimitToIDs(%d, %d ids) = %d, want %d",
-					tc.limit, len(tc.ids), got, tc.want)
-			}
-		})
 	}
 }

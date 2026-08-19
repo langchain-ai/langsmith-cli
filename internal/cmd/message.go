@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -91,27 +90,6 @@ func attachTrajectory(trace map[string]any, traj traceTrajectory, digest traceDi
 	trace["digest"] = digest
 }
 
-// clampLimitToIDs caps the result limit to the explicit trace ID set.
-func clampLimitToIDs(limit int, ids []string) int {
-	if len(ids) > 0 && limit > len(ids) {
-		return len(ids)
-	}
-	return limit
-}
-
-func uniqueStrings(values []string) []string {
-	unique := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		unique = append(unique, value)
-	}
-	return unique
-}
-
 func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff         FilterFlags
@@ -139,12 +117,6 @@ Examples:
   langsmith trace messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
   langsmith trace messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
   langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>`,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("trace-ids") && len(splitTrim(ff.TraceIDs)) == 0 {
-				return errors.New("--trace-ids must contain at least one trace ID")
-			}
-			return nil
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
@@ -185,9 +157,11 @@ Examples:
 
 			hasTraceIDs := false
 			if ff.TraceIDs != "" {
-				ids := uniqueStrings(splitTrim(ff.TraceIDs))
+				ids := splitTrim(ff.TraceIDs)
 				body["ids"] = ids
-				ff.Limit = clampLimitToIDs(ff.Limit, ids)
+				if len(ids) > 0 && ff.Limit > len(ids) {
+					ff.Limit = len(ids)
+				}
 				hasTraceIDs = true
 			}
 
@@ -257,10 +231,6 @@ Examples:
 			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 			const maxPageSize = 10
 			remaining := ff.Limit
-			remainingIDPages := 0
-			if hasTraceIDs {
-				remainingIDPages = (ff.Limit + maxPageSize - 1) / maxPageSize
-			}
 			var allTraces []any
 
 			for {
@@ -277,15 +247,14 @@ Examples:
 
 				traces, _ := result["items"].([]any)
 				allTraces = append(allTraces, traces...)
-				remaining -= len(traces)
-				if remainingIDPages > 0 {
-					remainingIDPages--
+				if hasTraceIDs {
+					remaining -= pageSize
+				} else {
+					remaining -= len(traces)
 				}
 
-				// ID-filtered queries have a finite candidate set even when the
-				// server cursor continues across the surrounding time window.
 				next, _ := result["next_cursor"].(string)
-				if next == "" || remaining <= 0 || (hasTraceIDs && remainingIDPages == 0) {
+				if next == "" || remaining <= 0 {
 					break
 				}
 				body["cursor"] = next
