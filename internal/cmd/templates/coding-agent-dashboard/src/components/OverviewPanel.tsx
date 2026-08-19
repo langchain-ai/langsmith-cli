@@ -34,7 +34,7 @@ export function OverviewPanel({ stats, codingShare }: { stats: ProjectStats; cod
       : undefined;
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-space-4 sm:grid-cols-3 lg:grid-cols-4">
       <StatTile label="Turns" value={t?.run_count != null ? formatInt(t.run_count) : DASH} />
       <StatTile label="Threads" value={th?.group_count != null ? formatInt(th.group_count) : DASH} />
       <StatTile label="Cost" value={t?.total_cost != null ? formatCost(t.total_cost) : DASH} hint={costHint} />

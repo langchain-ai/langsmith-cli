@@ -435,6 +435,32 @@ Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands lik
 - Go 1.23+
 - golangci-lint (for linting)
 
+### Custom app templates and the design system
+
+`langsmith apps init` scaffolds from the templates in
+[`internal/cmd/templates/`](internal/cmd/templates/). They are built on the
+LangSmith design system, a snapshot of which is vendored into
+[`internal/cmd/templates/design-system/`](internal/cmd/templates/design-system/)
+and embedded in the binary — a scaffolded app is themed and componentized
+without a network round-trip at init time.
+
+`apps init` doesn't copy the whole snapshot. It resolves the import graph of the
+template's own source, copies exactly the design-system files that graph reaches,
+and derives `package.json`'s dependency lists from the bare imports in those
+files. So a template that renders a `Typeahead` gets `cmdk`, and `blank` doesn't.
+
+Refresh the snapshot from the live registry with:
+
+```bash
+make sync-design-system
+```
+
+Review the diff before committing: a token rename or a component API change
+restyles every app scaffolded from then on. `go test ./internal/cmd/` covers the
+invariants that break silently otherwise — every imported package declared, the
+Tailwind preset not shadowed by a local `theme.extend`, unused components not
+vendored.
+
 ## Releasing
 
 Releases are tag-driven. Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml),

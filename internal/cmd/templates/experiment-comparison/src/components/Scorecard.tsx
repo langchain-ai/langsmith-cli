@@ -1,6 +1,7 @@
 import type { ExampleWithRuns, ExperimentView } from '../types';
 import type { RunMetric } from '../lib/metrics';
 import { verdict } from '../lib/delta';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { StackedBar, type StackedRow } from './primitives';
 
 interface Props {
@@ -23,7 +24,7 @@ export function Scorecard({ examples, experiments, metrics }: Props) {
   if (!baseline || comparisons.length === 0) return null;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-space-4 sm:grid-cols-2 lg:grid-cols-3">
       {comparisons.map((exp) => {
         const rows: StackedRow[] = metrics.map((m) => {
           const t = tallyFor(examples, baseline.id, exp.id, m);
@@ -37,16 +38,18 @@ export function Scorecard({ examples, experiments, metrics }: Props) {
           };
         });
         return (
-          <div key={exp.id} className="rounded-lg border border-subtle p-4">
-            <div className="mb-3 flex items-center gap-1.5 text-sm font-medium text-primary">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: exp.color }} />
-              <span className="truncate" title={exp.name}>{exp.name}</span>
+          <div key={exp.id} className="rounded-lg border border-subtle p-space-4">
+            <div className="mb-space-3 flex items-center gap-1.5">
+              <span className="size-2.5 shrink-0 rounded-xs" style={{ backgroundColor: exp.color }} />
+              <Text as="span" variant="md" weight="medium" className="truncate" title={exp.name}>
+                {exp.name}
+              </Text>
             </div>
             <StackedBar rows={rows} />
           </div>
         );
       })}
-      <div className="flex items-center gap-4 text-xs text-tertiary sm:col-span-2 lg:col-span-3">
+      <div className="flex items-center gap-space-4 text-xs text-tertiary sm:col-span-2 lg:col-span-3">
         <Swatch color="var(--bg-success-strong)" label="beat baseline" />
         <Swatch color="var(--border-strong)" label="tied" />
         <Swatch color="var(--bg-error-strong)" label="lost to baseline" />
@@ -58,7 +61,7 @@ export function Scorecard({ examples, experiments, metrics }: Props) {
 function Swatch({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className="size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
+      <span className="size-2.5 shrink-0 rounded-xs" style={{ backgroundColor: color }} />
       {label}
     </span>
   );

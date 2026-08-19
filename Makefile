@@ -4,7 +4,7 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build clean test test-integration lint vet fmt install
+.PHONY: build clean test test-integration lint vet fmt install sync-design-system
 
 build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/langsmith
@@ -29,5 +29,11 @@ vet:
 
 fmt:
 	gofmt -w .
+
+# Re-vendor the LangSmith design system (theme, Tailwind preset, components)
+# from the live shadcn registry into internal/cmd/templates/design-system/.
+# Review the diff: a token rename restyles every scaffolded app.
+sync-design-system:
+	go run ./scripts/syncdesignsystem
 
 all: fmt vet test build

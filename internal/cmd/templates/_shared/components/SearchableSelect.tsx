@@ -1,24 +1,20 @@
 // Canonical single source. apps_init.go copies this into a scaffolded app's
 // src/ at generation time, and only if the template imports it — there are no
-// standing per-template copies and no sync script. Deliberately
-// self-contained (own cn()/chevron, no external icon package) so it drops
-// into any template unmodified regardless of what other dependencies that
-// template happens to have.
-import { useEffect, useRef, useState } from 'react';
+// standing per-template copies and no sync script.
+//
+// A thin wrapper over the design system's <Typeahead> that adds what a
+// workspace-scoped picker needs and the component itself deliberately leaves
+// out: server-side search (LangSmith list endpoints filter by name, so
+// filtering client-side would only ever see the first page) and paging as the
+// list is scrolled.
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-function cn(...classes: (string | false | null | undefined)[]): string {
-  return classes.filter(Boolean).join(' ');
-}
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
+import { Typeahead } from '@/components/langsmith/design-system/components/Typeahead';
 
 const PAGE_SIZE = 25;
-
-function ChevronDownIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+const SEARCH_DEBOUNCE_MS = 250;
 
 export interface SearchableSelectItem {
   id: string;
@@ -30,9 +26,9 @@ interface Props<T extends SearchableSelectItem> {
   value: string;
   onSelect: (item: T) => void;
   /** Fetches one page of results for the given search term. Called with
-   * offset 0 whenever the dropdown opens or the search term changes, and
-   * with an increasing offset as the user scrolls the list. A page shorter
-   * than PAGE_SIZE (25) is treated as the last page. */
+   * offset 0 the first time the control is focused and whenever the search
+   * term changes, and with an increasing offset as the list is scrolled. A
+   * page shorter than PAGE_SIZE (25) is treated as the last page. */
   fetchPage: (search: string, offset: number, limit: number) => Promise<T[]>;
   placeholder: string;
   searchPlaceholder?: string;
@@ -41,61 +37,56 @@ interface Props<T extends SearchableSelectItem> {
   className?: string;
 }
 
-// A native <select> can't hold a search box or paginate its own options, so
-// this is a small custom combobox: closed-state button + an open popover
-// with a search input on top and an infinite-scrolling list below. Used
-// anywhere an app picks one item from a workspace-scoped list (queues,
-// projects, datasets, ...) — see the other templates' copies of this file.
 export function SearchableSelect<T extends SearchableSelectItem>({
   id,
   value,
   onSelect,
   fetchPage,
   placeholder,
-  searchPlaceholder = 'Search by name…',
+  searchPlaceholder,
   emptyLabel = 'No results',
   disabled,
   className,
 }: Props<T>) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
   const [items, setItems] = useState<T[]>([]);
+  const [search, setSearch] = useState('');
   const [selectedItem, setSelectedItem] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  // Nothing is fetched until the control is first focused — a page of apps
+  // full of pickers shouldn't spend its rate limit before anyone clicks.
+  const [activated, setActivated] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  // Guards against a slow, stale page landing after a newer search/open.
+  // Guards against a slow, stale page landing after a newer search.
   const requestIdRef = useRef(0);
 
-  // (Re)load the first page whenever the dropdown opens or the search term
-  // changes while it's open.
+  // (Re)load the first page on activation and on every (debounced) search.
   useEffect(() => {
-    if (!open) return;
-    const myRequest = ++requestIdRef.current;
-    setLoading(true);
-    fetchPage(search, 0, PAGE_SIZE)
-      .then((page) => {
-        if (requestIdRef.current !== myRequest) return;
-        setItems(page);
-        setHasMore(page.length === PAGE_SIZE);
-      })
-      .catch((e) => console.error('Failed to load options', e))
-      .finally(() => {
-        if (requestIdRef.current === myRequest) setLoading(false);
-      });
+    if (!activated) return;
+    const timer = setTimeout(() => {
+      const myRequest = ++requestIdRef.current;
+      setLoading(true);
+      fetchPage(search, 0, PAGE_SIZE)
+        .then((page) => {
+          if (requestIdRef.current !== myRequest) return;
+          setItems(page);
+          setHasMore(page.length === PAGE_SIZE);
+        })
+        .catch((e) => console.error('Failed to load options', e))
+        .finally(() => {
+          if (requestIdRef.current === myRequest) setLoading(false);
+        });
+    }, search ? SEARCH_DEBOUNCE_MS : 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchPage identity isn't expected to change per render
-  }, [open, search]);
+  }, [activated, search]);
 
-  function loadMore() {
+  const loadMore = useCallback(() => {
     if (loadingMore || loading || !hasMore) return;
     const myRequest = requestIdRef.current;
-    const offset = items.length;
     setLoadingMore(true);
-    fetchPage(search, offset, PAGE_SIZE)
+    fetchPage(search, items.length, PAGE_SIZE)
       .then((page) => {
         if (requestIdRef.current !== myRequest) return;
         setItems((prev) => {
@@ -106,121 +97,72 @@ export function SearchableSelect<T extends SearchableSelectItem>({
       })
       .catch((e) => console.error('Failed to load more options', e))
       .finally(() => setLoadingMore(false));
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, items.length, loading, loadingMore, search]);
 
-  // Infinite scroll within the open list.
+  // Paging is driven by the footer scrolling into view inside the open list.
   useEffect(() => {
-    if (!open || !hasMore) return;
-    const root = listRef.current;
     const target = sentinelRef.current;
-    if (!root || !target) return;
+    if (!target || !hasMore) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMore();
       },
-      { root, rootMargin: '100px' }
+      { rootMargin: '100px' }
     );
     observer.observe(target);
     return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, hasMore, items.length]);
+  }, [hasMore, loadMore]);
 
-  // Close on outside click / Escape; focus the search box on open.
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    searchInputRef.current?.focus();
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  function handleToggle() {
-    if (disabled) return;
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) setSearch('');
-      return next;
-    });
-  }
-
-  function handleSelect(item: T) {
-    setSelectedItem(item);
-    onSelect(item);
-    setOpen(false);
-  }
-
-  // selectedItem is a cache for the closed-button label — if the parent
-  // resets `value` out from under us (e.g. a downstream selection clearing
-  // when an upstream one changes), only trust the cache while it still
-  // matches the current value, so the label doesn't show stale text.
-  const resolvedItem = selectedItem?.id === value ? selectedItem : null;
-  const showPlaceholder = !resolvedItem && !value;
-  const label = resolvedItem?.name ?? (value || placeholder);
+  // selectedItem is a cache for the closed-state label — if the parent resets
+  // `value` out from under us (e.g. a downstream selection clearing when an
+  // upstream one changes), only trust the cache while it still matches.
+  //
+  // With a `value` we have no object for yet (an app rendered with a
+  // preselected id, before anything has been fetched) fall back to showing the
+  // raw id, so the control never reads as empty when something is selected.
+  const resolvedItem: T | string | undefined =
+    (selectedItem?.id === value ? selectedItem : items.find((i) => i.id === value)) ??
+    (value || undefined);
 
   return (
-    <div ref={containerRef} className={cn('relative min-w-0 max-w-[420px] flex-1', className)}>
-      <button
-        id={id}
-        type="button"
-        disabled={disabled}
-        onClick={handleToggle}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-secondary bg-primary px-3 py-1.5 text-left text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-60"
-      >
-        <span className={cn('min-w-0 truncate', showPlaceholder && 'text-tertiary')}>{label}</span>
-        <ChevronDownIcon className="h-4 w-4 shrink-0 text-tertiary" />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-secondary bg-primary shadow-lg">
-          <div className="border-b border-secondary p-1.5">
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full rounded border border-secondary bg-primary px-2 py-1 text-sm text-primary focus:border-brand focus:outline-none"
-            />
+    <Typeahead<T>
+      inputId={id}
+      className={className}
+      options={items}
+      value={resolvedItem}
+      disabled={disabled}
+      placeholder={resolvedItem ? placeholder : (searchPlaceholder ?? placeholder)}
+      emptyText={loading ? 'Loading…' : emptyLabel}
+      getOptionLabel={(item) => (typeof item === 'string' ? item : item.name)}
+      getOptionValue={(item) => (typeof item === 'string' ? item : item.id)}
+      displaySelectedValueWhenInputEmpty
+      clearOnBlur
+      disableClearable
+      onFocus={() => setActivated(true)}
+      onInputChange={setSearch}
+      onChange={(next) => {
+        if (!next || typeof next === 'string') return;
+        setSelectedItem(next);
+        onSelect(next);
+      }}
+      emptyState={
+        loading ? (
+          <span className="flex items-center gap-space-2">
+            <Spinner size="xs" />
+            <Text variant="sm" color="secondary">
+              Loading…
+            </Text>
+          </span>
+        ) : undefined
+      }
+      listFooter={
+        hasMore ? (
+          <div ref={sentinelRef} className="flex items-center justify-center py-space-2">
+            {loadingMore && <Spinner size="xs" />}
           </div>
-          <div ref={listRef} className="max-h-[260px] overflow-auto py-1">
-            {loading ? (
-              <div className="px-3 py-4 text-center text-sm text-tertiary">Loading…</div>
-            ) : items.length === 0 ? (
-              <div className="px-3 py-4 text-center text-sm text-tertiary">{emptyLabel}</div>
-            ) : (
-              <>
-                {items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelect(item)}
-                    className={cn(
-                      'block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-surface-level-1-hover',
-                      item.id === value ? 'bg-selected text-primary' : 'text-secondary'
-                    )}
-                  >
-                    {item.name}
-                  </button>
-                ))}
-                {hasMore && (
-                  <div ref={sentinelRef} className="px-3 py-2 text-center text-xs text-tertiary">
-                    {loadingMore ? 'Loading more…' : ''}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+        ) : null
+      }
+    />
   );
 }

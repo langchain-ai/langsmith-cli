@@ -1,3 +1,4 @@
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { fetchProjects } from '../api';
 import type { Project } from '../types';
 import { SearchableSelect } from './SearchableSelect';
@@ -14,18 +15,22 @@ export function ProjectBar({ selectedProjectId, onSelect }: Props) {
   const done = Boolean(selectedProjectId);
 
   return (
-    <div className="flex gap-4 bg-surface-level-1 px-4 py-4">
+    <div className="flex gap-space-4 bg-surface-level-1 px-space-4 py-space-4">
       <span
         className={`flex size-7 shrink-0 items-center justify-center rounded-full border-2 text-sm font-semibold ${
-          done ? 'border-brand bg-brand text-brand-on-fill' : 'border-brand text-brand-primary bg-surface-level-1'
+          done ? 'border-brand bg-brand text-brand-on-fill' : 'border-brand bg-surface-level-1 text-brand-primary'
         }`}
       >
         {done ? '✓' : 1}
       </span>
       <div className="flex flex-1 flex-col gap-1.5">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-sm font-semibold text-primary">Select a tracing project</span>
-          <span className="text-xs text-tertiary">Every stat below is scoped to it.</span>
+        <div className="flex flex-wrap items-baseline gap-x-space-2 gap-y-0.5">
+          <Text as="span" variant="md" weight="semibold">
+            Select a tracing project
+          </Text>
+          <Text as="span" variant="sm" color="tertiary">
+            Every stat below is scoped to it.
+          </Text>
         </div>
         <SearchableSelect<Project>
           id="ls-project-select"

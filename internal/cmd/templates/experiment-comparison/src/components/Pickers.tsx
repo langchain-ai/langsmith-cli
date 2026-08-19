@@ -1,4 +1,7 @@
 import { useCallback, type ReactNode } from 'react';
+import { Checkbox } from '@/components/langsmith/design-system/components/Checkbox';
+import { Divider } from '@/components/langsmith/design-system/components/Divider';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { fetchDatasets, fetchExperiments } from '../api';
 import type { Dataset, Experiment } from '../types';
 import { SearchableSelect } from './SearchableSelect';
@@ -45,7 +48,7 @@ export function Pickers({
   const step3Status: StepStatus = !baselineId ? 'disabled' : comparisonIds.length > 0 ? 'done' : 'active';
 
   return (
-    <div className="flex flex-col bg-surface-level-1 px-4 py-4">
+    <div className="flex flex-col bg-surface-level-1 px-space-4 py-space-4">
       <Step number={1} status={datasetId ? 'done' : 'active'} title="Choose a dataset" last={false}>
         <SearchableSelect<Dataset>
           id="ec-dataset"
@@ -96,17 +99,15 @@ export function Pickers({
         ) : others.length === 0 ? (
           <Hint>No other experiments in this dataset.</Hint>
         ) : (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-space-4 gap-y-1.5">
             {others.map((x) => (
-              <label key={x.id} className="flex items-center gap-1.5 text-sm text-primary">
-                <input
-                  type="checkbox"
-                  checked={comparisonIds.includes(x.id)}
-                  onChange={() => onToggleComparison(x.id)}
-                  className="accent-[var(--bg-brand)]"
-                />
-                <span className="truncate">{x.name}</span>
-              </label>
+              <Checkbox
+                key={x.id}
+                size="sm"
+                checked={comparisonIds.includes(x.id)}
+                onCheckedChange={() => onToggleComparison(x.id)}
+                label={<span className="truncate">{x.name}</span>}
+              />
             ))}
           </div>
         )}
@@ -116,7 +117,11 @@ export function Pickers({
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <span className="text-sm text-tertiary">{children}</span>;
+  return (
+    <Text as="span" variant="md" color="tertiary">
+      {children}
+    </Text>
+  );
 }
 
 const BADGE_CLASS: Record<StepStatus, string> = {
@@ -147,7 +152,7 @@ function Step({
   children: ReactNode;
 }) {
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-space-4">
       <div className="flex flex-col items-center">
         <span
           className={cn(
@@ -157,12 +162,21 @@ function Step({
         >
           {status === 'done' ? '✓' : number}
         </span>
-        {!last && <span className="my-1 w-px flex-1 bg-border-subtle" style={{ minHeight: 12 }} />}
+        {/* w-px keeps the rule hairline-wide: the component's own self-stretch
+            would otherwise widen it to the badge column and push the line off
+            center. */}
+        {!last && <Divider orientation="vertical" className="my-space-1 w-px flex-1" style={{ minHeight: 12 }} />}
       </div>
-      <div className={cn('flex flex-1 flex-col gap-1.5', last ? 'pb-0' : 'pb-4')}>
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className={cn('text-sm font-semibold', TITLE_CLASS[status])}>{title}</span>
-          {subtitle && <span className="text-xs text-tertiary">{subtitle}</span>}
+      <div className={cn('flex flex-1 flex-col gap-1.5', last ? 'pb-0' : 'pb-space-4')}>
+        <div className="flex flex-wrap items-baseline gap-x-space-2 gap-y-0.5">
+          <Text as="span" variant="md" weight="semibold" className={TITLE_CLASS[status]}>
+            {title}
+          </Text>
+          {subtitle && (
+            <Text as="span" variant="sm" color="tertiary">
+              {subtitle}
+            </Text>
+          )}
         </div>
         {children}
       </div>

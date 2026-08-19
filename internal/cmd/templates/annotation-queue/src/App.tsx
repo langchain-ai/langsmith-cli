@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { LinearProgress } from '@/components/langsmith/design-system/components/LinearProgress';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { FeedbackPanel } from './components/FeedbackPanel';
-import { LinearProgress } from './components/LinearProgress';
 import { QueueBar } from './components/QueueBar';
 import { RunList } from './components/RunList';
 import { RunViewer } from './components/RunViewer';
@@ -138,9 +139,9 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">
+          <Text variant="md" color="tertiary">
             Select an annotation queue to start reviewing.
-          </span>
+          </Text>
         </div>
       </div>
     );
@@ -161,7 +162,7 @@ export function App({ queueId: initialQueueId }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="m-4 mt-3 flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary">
+      <div className="m-space-4 mt-space-3 flex min-h-0 flex-1 overflow-hidden rounded-lg border border-default">
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
           <RunList
             needsReview={needsReview}
@@ -191,12 +192,12 @@ export function App({ queueId: initialQueueId }: Props) {
             )
           ) : (
             <div className="flex flex-1 items-center justify-center">
-              <span className="text-sm text-tertiary">Select an item to review</span>
+              <Text variant="md" color="tertiary">Select an item to review</Text>
             </div>
           )}
         </div>
 
-        <div className="flex h-full w-[450px] min-w-[450px] max-w-[450px] flex-col border-l border-secondary">
+        <div className="flex h-full w-[450px] min-w-[450px] max-w-[450px] flex-col border-l border-default">
           <FeedbackPanel
             queue={queue}
             itemType={selectedItem?.item_type}

@@ -28,10 +28,16 @@ export function RunsTable({ runs }: { runs: Run[] }) {
             const thread = threadOf(r);
             const repo = repoOf(r);
             return (
-              <tr key={r.id} className="border-t border-secondary">
+              <tr key={r.id} className="border-t border-default">
                 <td className="max-w-[220px] truncate py-1.5 pr-2 text-primary" title={r.name ?? ''}>
                   <span className="inline-flex items-center gap-1.5">
-                    {r.error && <span className="size-1.5 shrink-0 rounded-full bg-error-strong" title={r.error} />}
+                    {r.error && (
+                      <span
+                        className="size-1.5 shrink-0 rounded-full bg-error-strong"
+                        title={r.error}
+                        aria-label="This turn errored"
+                      />
+                    )}
                     {r.name ?? 'run'}
                   </span>
                 </td>

@@ -7,7 +7,9 @@ import { Scorecard } from './components/Scorecard';
 import { DeltaHistogram } from './components/DeltaHistogram';
 import { ScatterPlot } from './components/ScatterPlot';
 import { Section } from './components/primitives';
-import { Spinner } from './components/Spinner';
+import { Select } from '@/components/langsmith/design-system/components/Select';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { fetchComparison, fetchExperiments, fetchFeedbackConfigs } from './api';
 import { costOf, latencyMs, scoreFor } from './lib/delta';
 import { buildMetrics, comparisonColor, letterFor } from './lib/metrics';
@@ -176,7 +178,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
           )
         }
       />
-      <div className="flex-1 p-6">{renderBody()}</div>
+      <div className="flex-1 p-space-6">{renderBody()}</div>
     </div>
   );
 
@@ -233,7 +235,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     return (
       <div
         className={cn(
-          'mx-auto flex max-w-6xl flex-col gap-8 motion-safe:transition-opacity motion-safe:duration-normal',
+          'mx-auto flex max-w-6xl flex-col gap-space-6 motion-safe:transition-opacity motion-safe:duration-normal',
           examplesLoading && 'pointer-events-none opacity-50'
         )}
       >
@@ -246,8 +248,10 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
 
         {selectedMetric && (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold text-primary">Focus metric</h2>
+            <div className="flex flex-wrap items-center justify-between gap-space-2">
+              <Text variant="h3" as="h2">
+                Focus metric
+              </Text>
               {metricSelect()}
             </div>
 
@@ -278,20 +282,18 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
 
   function metricSelect() {
     return (
-      <label className="flex items-center gap-2 text-xs text-tertiary">
-        Metric
-        <select
+      <div className="flex items-center gap-space-2">
+        <Text variant="sm" color="tertiary">
+          Metric
+        </Text>
+        <Select
+          size="sm"
           value={metricId}
-          onChange={(e) => setMetricId(e.target.value)}
-          className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
-        >
-          {metrics.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={(value) => value && setMetricId(value)}
+          triggerClassName="w-[200px]"
+          options={metrics.map((m) => ({ value: m.id, label: m.label }))}
+        />
+      </div>
     );
   }
 }
@@ -313,9 +315,9 @@ function GuideState({
   tone?: 'error';
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-space-3 py-24 text-center">
       {spinner ? (
-        <Spinner size="md" />
+        <Spinner size="md" className="text-icon-tertiary" />
       ) : step != null ? (
         <span
           className={cn(
@@ -326,9 +328,15 @@ function GuideState({
           {step}
         </span>
       ) : null}
-      <div className="flex flex-col gap-1">
-        <span className={cn('text-base font-semibold', tone === 'error' ? 'text-error-primary' : 'text-primary')}>{heading}</span>
-        {subtext && <span className="max-w-md text-sm text-tertiary">{subtext}</span>}
+      <div className="flex flex-col gap-space-1">
+        <Text variant="h3" color={tone === 'error' ? 'error' : 'primary'}>
+          {heading}
+        </Text>
+        {subtext && (
+          <Text variant="md" color="tertiary" className="max-w-md">
+            {subtext}
+          </Text>
+        )}
       </div>
     </div>
   );

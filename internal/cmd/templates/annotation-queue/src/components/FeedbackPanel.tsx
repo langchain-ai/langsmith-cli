@@ -8,10 +8,18 @@ import {
   XIcon,
 } from '@langchain/untitled-ui-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ErrorBanner } from './ErrorBanner';
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Banner } from '@/components/langsmith/design-system/components/Banner';
+import { Button } from '@/components/langsmith/design-system/components/Button';
+import { Icon } from '@/components/langsmith/design-system/components/Icon';
+import { IconButton } from '@/components/langsmith/design-system/components/IconButton';
+import { Input } from '@/components/langsmith/design-system/components/Input';
+import { Kbd, KbdGroup } from '@/components/langsmith/design-system/components/Kbd';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
+import { Textarea } from '@/components/langsmith/design-system/components/Textarea';
 import { FeedbackChip } from './FeedbackChip';
 import { ReviewerNotes } from './ReviewerNotes';
-import { Spinner } from './Spinner';
 import type {
   AnnotationQueue,
   FeedbackConfig,
@@ -48,6 +56,36 @@ interface Props {
   completing: boolean;
   completeError: string | null;
   totalNeedsReview: number;
+}
+
+// ── Empty state ──────────────────────────────────────────────────────────────
+
+// Hand-composed from <Icon> + <Text> rather than the design system's
+// <EmptyState>: that component's optional call-to-action is a <Link>, which
+// imports react-router-dom — a router this single-view sandboxed app has no
+// other use for.
+function PanelEmptyState({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-space-3 rounded-xl bg-surface-level-2 px-space-5 py-space-7">
+      <Icon icon={icon} size="md" color="brand" rounded />
+      <div className="flex flex-col gap-space-1 text-center">
+        <Text variant="md" weight="semibold" color="secondary">
+          {title}
+        </Text>
+        <Text variant="md" color="tertiary">
+          {body}
+        </Text>
+      </div>
+    </div>
+  );
 }
 
 // ── Rubric item card ─────────────────────────────────────────────────────────
@@ -171,14 +209,14 @@ function RubricCard({
   const feedbackValue = existingFeedback?.value;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-secondary p-3">
+    <div className="flex flex-col gap-space-2 rounded-lg border border-default p-space-3">
       {/* Header row */}
       <button
         type="button"
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-center gap-space-2 text-left"
         onClick={onToggleExpand}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-space-2">
           <FeedbackChip
             feedbackKey={item.feedback_key}
             score={feedbackScore}
@@ -186,32 +224,40 @@ function RubricCard({
             isLoading={saving}
           />
           {isFilled && !saving && (
-            <CheckCircleBrokenIcon className="h-4 w-4 shrink-0 text-success-primary" />
+            <CheckCircleBrokenIcon className="size-4 shrink-0 text-icon-success" />
           )}
           {item.is_required && (
-            <span className="inline-flex items-center rounded-sm border border-warning bg-warning px-1.5 py-0.5 text-xs font-medium text-warning-primary">
+            <Badge color="warning" size="xs" rounded="xs">
               Required
-            </span>
+            </Badge>
           )}
         </div>
         {expanded ? (
-          <ChevronDownIcon className="h-4 w-4 shrink-0 text-tertiary" />
+          <ChevronDownIcon className="size-4 shrink-0 text-icon-tertiary" />
         ) : (
-          <ChevronRightIcon className="h-4 w-4 shrink-0 text-tertiary" />
+          <ChevronRightIcon className="size-4 shrink-0 text-icon-tertiary" />
         )}
       </button>
 
       {expanded && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-space-2">
           {item.description && (
-            <p className="text-sm text-quaternary">{item.description}</p>
+            <Text variant="md" color="quaternary">
+              {item.description}
+            </Text>
           )}
 
-          {error && <ErrorBanner error={error} />}
+          {error && (
+            <Banner intent="error" title="Couldn't save">
+              {error}
+            </Banner>
+          )}
 
-          {/* Category options */}
+          {/* Category options. Deliberately buttons rather than <RadioCard>:
+              clicking the selected option again clears the feedback, which a
+              radio group has no way to express. */}
           {isCategorical && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-space-2">
               {config!.categories!.map((cat) => {
                 const label = cat.label ?? String(cat.value);
                 const isSelected = score === cat.value;
@@ -226,10 +272,10 @@ function RubricCard({
                     key={cat.value}
                     type="button"
                     className={cn(
-                      'flex w-full cursor-pointer flex-col gap-1 rounded-md border p-3 text-left',
+                      'flex w-full cursor-pointer flex-col gap-space-1 rounded-md border p-space-3 text-left transition-colors duration-fast',
                       isSelected
                         ? 'border-brand bg-brand-muted'
-                        : 'border-secondary hover:bg-secondary/50'
+                        : 'border-default hover:bg-surface-level-2'
                     )}
                     onClick={() => {
                       if (isSelected) {
@@ -242,13 +288,23 @@ function RubricCard({
                     }}
                     disabled={saving}
                   >
-                    <span className={cn('text-sm font-medium', saving && 'opacity-0')}>
+                    <Text
+                      as="span"
+                      variant="md"
+                      weight="medium"
+                      className={cn(saving && 'opacity-0')}
+                    >
                       {label}
-                    </span>
+                    </Text>
                     {description && (
-                      <span className="line-clamp-2 whitespace-normal break-words text-sm text-tertiary">
+                      <Text
+                        as="span"
+                        variant="md"
+                        color="tertiary"
+                        className="line-clamp-2 whitespace-normal break-words"
+                      >
                         {description}
-                      </span>
+                      </Text>
                     )}
                   </button>
                 );
@@ -258,43 +314,34 @@ function RubricCard({
 
           {/* Numeric input */}
           {isContinuous && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-space-2">
               {(config?.min != null || config?.max != null) && (
-                <div className="text-xs text-quaternary">
+                <Text variant="sm" color="quaternary">
                   {config?.min != null && config?.max != null
                     ? `Min: ${config.min}, Max: ${config.max}`
                     : config?.min != null
                       ? `Min: ${config.min}`
                       : `Max: ${config?.max}`}
-                </div>
+                </Text>
               )}
-              <div className="flex gap-2">
-                <input
+              <div className="flex gap-space-2">
+                <Input
                   type="number"
                   step="any"
                   min={config?.min ?? undefined}
                   max={config?.max ?? undefined}
-                  value={score ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value === '' ? null : Number(e.target.value);
-                    setScore(val);
-                  }}
+                  className="min-w-0 flex-1"
+                  value={score == null ? '' : String(score)}
+                  debounceMs={0}
+                  onChange={(value) => setScore(value === '' ? null : Number(value))}
                   onBlur={() => save(score, null)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                   }}
                   placeholder="Enter score"
-                  className="min-w-0 flex-1 rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
                 />
                 {existingFeedback && (
-                  <button
-                    type="button"
-                    className="shrink-0 self-start rounded p-1 text-quaternary hover:bg-secondary"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={handleDelete}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </button>
+                  <ClearButton onClear={handleDelete} label="Clear score" />
                 )}
               </div>
             </div>
@@ -302,10 +349,12 @@ function RubricCard({
 
           {/* Freeform text */}
           {isFreeform && (
-            <div className="flex gap-2">
-              <textarea
+            <div className="flex gap-space-2">
+              <Textarea
+                className="flex-1"
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                debounceMs={0}
+                onChange={setComment}
                 onBlur={() => {
                   if (comment.trim()) save(null, null, comment);
                   else if (existingFeedback) handleDelete();
@@ -317,23 +366,31 @@ function RubricCard({
                 }}
                 placeholder="Enter text"
                 rows={3}
-                className="flex-1 resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
+                resize="none"
               />
-              {existingFeedback && (
-                <button
-                  type="button"
-                  className="self-start rounded p-1 text-quaternary hover:bg-secondary"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={handleDelete}
-                >
-                  <XIcon className="h-4 w-4" />
-                </button>
-              )}
+              {existingFeedback && <ClearButton onClear={handleDelete} label="Clear note" />}
             </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+// onMouseDown preventDefault keeps the click from blurring the field first,
+// which would fire the field's own save on the way out.
+function ClearButton({ onClear, label }: { onClear: () => void; label: string }) {
+  return (
+    <IconButton
+      size="xs"
+      color="secondary"
+      variant="plain"
+      icon={XIcon}
+      label={label}
+      className="shrink-0 self-start"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClear}
+    />
   );
 }
 
@@ -478,52 +535,50 @@ export function FeedbackPanel({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Scrollable content */}
-      <div className="flex-1 overflow-auto px-4 py-4">
-        <div className="flex flex-col gap-10">
+      <div className="flex-1 overflow-auto px-space-4 py-space-4">
+        <div className="flex flex-col gap-space-7">
           {/* Instructions section */}
-          <div className="flex flex-col gap-2">
-            <div className="text-base font-medium text-primary">Instructions</div>
+          <div className="flex flex-col gap-space-2">
+            <Text variant="h3">Instructions</Text>
             {queue?.rubric_instructions ? (
-              <div className="text-sm text-secondary">{queue.rubric_instructions}</div>
+              <Text variant="md" color="secondary">
+                {queue.rubric_instructions}
+              </Text>
             ) : (
-              <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary px-6 py-12">
-                <div className="rounded-full bg-brand-subtle p-2">
-                  <InfoCircleIcon className="h-4 w-4 text-brand-primary" />
-                </div>
-                <div className="flex flex-col gap-1 text-center">
-                  <div className="text-sm font-semibold text-secondary">No instructions yet</div>
-                  <div className="text-sm text-tertiary">
-                    Contact your administrator to create a clear annotation rubric.
-                  </div>
-                </div>
-              </div>
+              <PanelEmptyState
+                icon={InfoCircleIcon}
+                title="No instructions yet"
+                body="Contact your administrator to create a clear annotation rubric."
+              />
             )}
           </div>
 
           {/* Feedback section */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-space-2">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="text-base font-medium text-primary">Feedback</div>
-                {feedbackLoading && <Spinner size="md" className="opacity-50" />}
+              <div className="flex items-center gap-space-2">
+                <Text variant="h3">Feedback</Text>
+                {feedbackLoading && <Spinner size="sm" className="text-icon-tertiary" />}
               </div>
               {queue && (
-                <button
-                  type="button"
+                <Button
+                  size="xs"
+                  color="secondary"
+                  variant="outlined"
+                  leftDecorator={PlusIcon}
                   onClick={() => setAddingKey(true)}
-                  className="inline-flex items-center gap-1 rounded-md border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-secondary"
                 >
-                  <PlusIcon className="h-3.5 w-3.5" />
                   Add
-                </button>
+                </Button>
               )}
             </div>
 
             {addingKey && (
-              <input
+              <Input
                 autoFocus
                 value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
+                debounceMs={0}
+                onChange={setNewKeyName}
                 onBlur={handleAddKey}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -533,28 +588,23 @@ export function FeedbackPanel({
                   }
                 }}
                 placeholder="Feedback key"
-                className="w-full rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
               />
             )}
 
             {!queue ? (
-              <div className="flex items-center justify-center py-8">
-                <span className="text-sm text-tertiary">Loading rubric…</span>
+              <div className="flex items-center justify-center py-space-6">
+                <Text variant="md" color="tertiary">
+                  Loading rubric…
+                </Text>
               </div>
             ) : !hasRubricItems ? (
-              <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary px-6 py-12">
-                <div className="rounded-full bg-brand-subtle p-2">
-                  <Edit03Icon className="h-4 w-4 text-brand-primary" />
-                </div>
-                <div className="flex flex-col gap-1 text-center">
-                  <div className="text-sm font-semibold text-secondary">No feedback rubrics yet</div>
-                  <div className="text-sm text-tertiary">
-                    Add an existing rubric or set up one for future use.
-                  </div>
-                </div>
-              </div>
+              <PanelEmptyState
+                icon={Edit03Icon}
+                title="No feedback rubrics yet"
+                body="Add an existing rubric or set up one for future use."
+              />
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-space-3">
                 {visibleRubricItems.map((item, idx) => (
                   <RubricCard
                     key={item.feedback_key}
@@ -597,26 +647,32 @@ export function FeedbackPanel({
 
       {/* Sticky footer */}
       {itemId && (itemType === 'THREAD' ? feedbackThreadId : runId) && (
-        <div className="sticky bottom-0 border-t border-secondary bg-primary px-4 pb-20 pt-4">
-          {completeError && <ErrorBanner error={completeError} />}
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
+        <div className="sticky bottom-0 flex flex-col gap-space-2 border-t border-default bg-surface-level-1 px-space-4 pb-20 pt-space-4">
+          {completeError && (
+            <Banner intent="error" title="Couldn't mark this item complete">
+              {completeError}
+            </Banner>
+          )}
+          <Button
+            size="md"
+            className="w-full"
             onClick={onComplete}
+            loading={completing}
             disabled={completing || !allRequiredFilled}
             title={!allRequiredFilled ? 'Fill in all required rubric items' : undefined}
           >
             {completing ? (
               'Saving…'
             ) : (
-              <>
+              <span className="inline-flex items-center gap-space-2">
                 {totalNeedsReview > 1 ? 'Next' : 'Done'}
-                <span className="flex items-center gap-0.5 text-xs opacity-70">
-                  <span>⌘</span><span>↵</span>
-                </span>
-              </>
+                <KbdGroup>
+                  <Kbd variant="inherit">⌘</Kbd>
+                  <Kbd variant="inherit">↵</Kbd>
+                </KbdGroup>
+              </span>
             )}
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -1,47 +1,7 @@
+/* Semantic tokens + base element styles, vendored from the LangSmith
+   design-system registry. See AGENTS.md for how to refresh it. */
 @import "./components/langsmith/design-system/theme.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@layer base {
-  body {
-    background-color: var(--bg-surface-level-1);
-    color: var(--text-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    min-height: 100vh;
-  }
-
-  :root {
-    /* series (categorical chart slots, light; 1–4 CVD-safe, 5–8 extended) */
-    --series-1: #2a78d6;
-    --series-2: #008300;
-    --series-3: #e87ba4;
-    --series-4: #eda100;
-    --series-5: #7c3aed;
-    --series-6: #0d9488;
-    --series-7: #dc2626;
-    --series-8: #a16207;
-  }
-
-  html.dark {
-    /* series stepped for the dark surface (1–4 core, 5–8 extended) */
-    --series-1: #3987e5;
-    --series-2: #008300;
-    --series-3: #d55181;
-    --series-4: #c98500;
-    --series-5: #a78bfa;
-    --series-6: #2dd4bf;
-    --series-7: #f87171;
-    --series-8: #d4a017;
-  }
-}
-
-@keyframes linear-progress-indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(800%);
-  }
-}

@@ -707,8 +707,8 @@ func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
 		writtenSet[w] = true
 	}
 	for _, sharedRelPath := range []string{
+		"src/components/DesignSystemProvider.tsx",
 		"src/components/SearchableSelect.tsx",
-		"src/components/Spinner.tsx",
 		"src/lib/utils.ts",
 	} {
 		if !writtenSet[sharedRelPath] {
@@ -742,7 +742,11 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	for _, w := range written {
 		writtenSet[w] = true
 	}
-	for _, wanted := range []string{"src/components/SearchableSelect.tsx", "src/components/Spinner.tsx", "src/lib/utils.ts"} {
+	for _, wanted := range []string{
+		"src/components/DesignSystemProvider.tsx",
+		"src/components/SearchableSelect.tsx",
+		"src/lib/utils.ts",
+	} {
 		if !writtenSet[wanted] {
 			t.Errorf("expected %q to be pulled in, got %v", wanted, written)
 		}

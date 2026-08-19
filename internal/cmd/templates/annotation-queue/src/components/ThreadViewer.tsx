@@ -1,5 +1,7 @@
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import type { StandardMessage } from '../types';
-import { Spinner } from './Spinner';
 
 interface Props {
   messages: StandardMessage[] | undefined;
@@ -55,13 +57,13 @@ function bubbleClass(role: string): string {
     case 'human':
       return 'ml-8 border-brand bg-brand-muted';
     case 'ai':
-      return 'mr-8 border-secondary bg-surface-level-2';
+      return 'mr-8 border-default bg-surface-level-2';
     case 'system':
-      return 'border-dashed border-secondary bg-transparent';
+      return 'border-dashed border-default bg-transparent';
     case 'tool':
-      return 'mr-4 border-secondary bg-surface-level-1';
+      return 'mr-4 border-default bg-surface-level-1';
     default:
-      return 'border-secondary bg-surface-level-1';
+      return 'border-default bg-surface-level-1';
   }
 }
 
@@ -70,40 +72,43 @@ export function ThreadViewer({ messages, threadId, loading }: Props) {
   if (loading && (!messages || messages.length === 0)) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Spinner size="md" />
+        <Spinner size="sm" className="text-icon-tertiary" />
       </div>
     );
   }
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6">
-        <span className="text-sm text-tertiary">No messages in this thread</span>
+      <div className="flex flex-1 flex-col items-center justify-center gap-space-1 p-space-5">
+        <Text variant="md" color="tertiary">
+          No messages in this thread
+        </Text>
         {threadId && (
-          <span className="font-mono text-xs text-quaternary">{threadId}</span>
+          <Text variant="sm" color="quaternary" className="font-mono">
+            {threadId}
+          </Text>
         )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3 overflow-auto p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-tertiary">
-        Thread · {messages.length} message{messages.length === 1 ? '' : 's'}
-      </div>
+    <div className="flex flex-1 flex-col gap-space-3 overflow-auto p-space-4">
+      <Text variant="xs" weight="medium" color="tertiary" className="uppercase tracking-wide">
+        {`Thread · ${messages.length} message${messages.length === 1 ? '' : 's'}`}
+      </Text>
       {messages.map((msg, index) => {
         const text = contentToText(msg.content);
         if (!text.trim()) return null;
         return (
           <div
             key={msg.id ?? `${msg.role}-${index}`}
-            className={`flex flex-col gap-1 rounded-lg border p-3 ${bubbleClass(msg.role)}`}
+            className={`flex flex-col items-start gap-space-1 rounded-lg border p-space-3 ${bubbleClass(msg.role)}`}
           >
-            <span className="text-xs font-medium uppercase tracking-wide text-tertiary">
-              {roleLabel(msg.role)}
-              {msg.name ? ` · ${msg.name}` : ''}
-            </span>
-            <pre className="whitespace-pre-wrap break-words font-sans text-sm text-primary">
+            <Badge size="xxs" rounded="xs" className="uppercase">
+              {roleLabel(msg.role) + (msg.name ? ` · ${msg.name}` : '')}
+            </Badge>
+            <pre className="w-full whitespace-pre-wrap break-words font-sans text-sm text-primary">
               {text}
             </pre>
           </div>

@@ -1,3 +1,4 @@
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { fetchQueues } from '../api';
 import type { AnnotationQueue } from '../types';
 import { SearchableSelect } from './SearchableSelect';
@@ -12,12 +13,13 @@ interface Props {
 // name server-side via fetchQueues' name_contains.
 export function QueueBar({ selectedQueueId, onSelect }: Props) {
   return (
-    <div className="flex items-center gap-2 bg-surface-level-1 px-4 py-2">
-      <label htmlFor="ls-queue-select" className="shrink-0 text-sm font-medium text-secondary">
+    <div className="flex items-center gap-space-2 bg-surface-level-1 px-space-4 py-space-2">
+      <Text as="label" variant="md" weight="medium" color="secondary" htmlFor="ls-queue-select" className="shrink-0">
         Annotation queue
-      </label>
+      </Text>
       <SearchableSelect<AnnotationQueue>
         id="ls-queue-select"
+        className="min-w-0 max-w-[420px] flex-1"
         value={selectedQueueId}
         onSelect={(queue) => onSelect(queue.id)}
         fetchPage={fetchQueues}

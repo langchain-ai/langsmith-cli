@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Select } from '@/components/langsmith/design-system/components/Select';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import type { ExampleWithRuns, ExperimentRun, ExperimentView } from '../types';
 import { improvementDelta, verdict, verdictClass } from '../lib/delta';
 import type { RunMetric } from '../lib/metrics';
@@ -36,41 +38,45 @@ export function ExampleTable({ examples, experiments, metric }: Props) {
   }, [examples, sort, metric, baseline, comparisons]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-space-2">
       {comparisons.length > 0 && metric && (
-        <div className="flex items-center gap-2 text-xs text-tertiary">
-          <span>Sort</span>
-          <select
+        <div className="flex items-center gap-space-2">
+          <Text variant="sm" color="tertiary">
+            Sort
+          </Text>
+          <Select
+            size="sm"
             value={sort}
-            onChange={(e) => setSort(e.target.value as Sort)}
-            className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
-          >
-            <option value="default">Default order</option>
-            <option value="regression">Worst {metric.label} regressions</option>
-            <option value="improvement">Best {metric.label} improvements</option>
-          </select>
+            onChange={(value) => value && setSort(value as Sort)}
+            triggerClassName="w-[260px]"
+            options={[
+              { value: 'default', label: 'Default order' },
+              { value: 'regression', label: `Worst ${metric.label} regressions` },
+              { value: 'improvement', label: `Best ${metric.label} improvements` },
+            ]}
+          />
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-secondary">
+      <div className="overflow-x-auto rounded-lg border border-default">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-secondary bg-surface-level-2">
-              <th className="px-3 py-2 text-left font-medium text-tertiary">Input</th>
+            <tr className="border-b border-default bg-surface-level-2">
+              <th className="px-space-3 py-space-2 text-left font-medium text-tertiary">Input</th>
               {experiments.map((x) => (
-                <th key={x.id} colSpan={2} className="px-3 py-2 text-left font-medium text-primary">
+                <th key={x.id} colSpan={2} className="px-space-3 py-space-2 text-left font-medium text-primary">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: x.color }} />
+                    <span className="size-2.5 shrink-0 rounded-xs" style={{ backgroundColor: x.color }} />
                     <span className="truncate" title={x.name}>{x.name}</span>
                     {x.isBaseline && <span className="text-xs text-tertiary">(baseline)</span>}
                   </span>
                 </th>
               ))}
             </tr>
-            <tr className="border-b border-secondary bg-surface-level-2 text-xs text-tertiary">
-              <th className="px-3 py-1.5 text-left font-normal" />
+            <tr className="border-b border-default bg-surface-level-2 text-xs text-tertiary">
+              <th className="px-space-3 py-1.5 text-left font-normal" />
               {experiments.map((x) => (
-                <th key={x.id} colSpan={2} className="px-3 py-1.5 text-left font-normal">
+                <th key={x.id} colSpan={2} className="px-space-3 py-1.5 text-left font-normal">
                   output · {metric?.label ?? 'value'}
                 </th>
               ))}
@@ -80,9 +86,9 @@ export function ExampleTable({ examples, experiments, metric }: Props) {
             {rows.map((ex) => {
               const baseVal = metric ? metric.value(runFor(ex, baseline?.id ?? '')) : null;
               return (
-                <tr key={ex.id} className="border-b border-secondary align-top last:border-0">
+                <tr key={ex.id} className="border-b border-default align-top last:border-0">
                   <td
-                    className="max-w-[240px] truncate px-3 py-2 text-secondary"
+                    className="max-w-[240px] truncate px-space-3 py-space-2 text-secondary"
                     title={truncate(ex.inputs, 500)}
                   >
                     {truncate(ex.inputs)}
@@ -115,10 +121,10 @@ export function ExampleTable({ examples, experiments, metric }: Props) {
 function FragmentCells(props: { output: string; value: string; valueClass: string }) {
   return (
     <>
-      <td className="max-w-[240px] truncate px-3 py-2 text-primary" title={props.output}>
+      <td className="max-w-[240px] truncate px-space-3 py-space-2 text-primary" title={props.output}>
         {props.output}
       </td>
-      <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${props.valueClass}`}>{props.value}</td>
+      <td className={`whitespace-nowrap px-space-3 py-space-2 tabular-nums ${props.valueClass}`}>{props.value}</td>
     </>
   );
 }

@@ -1,9 +1,13 @@
 import { Trash02Icon } from '@langchain/untitled-ui-icons';
 import { useEffect, useState } from 'react';
+import { Banner } from '@/components/langsmith/design-system/components/Banner';
+import { Button } from '@/components/langsmith/design-system/components/Button';
+import { IconButton } from '@/components/langsmith/design-system/components/IconButton';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
+import { Textarea } from '@/components/langsmith/design-system/components/Textarea';
 import { deleteFeedback, fetchFeedbacksForRun, submitFeedback } from '../api';
 import type { FeedbackItem } from '../types';
-import { ErrorBanner } from './ErrorBanner';
-import { Spinner } from './Spinner';
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -85,57 +89,64 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
   if (!runId) return null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-tertiary">
+    <div className="flex flex-col gap-space-3">
+      <Text variant="xs" weight="medium" color="tertiary" className="uppercase tracking-wide">
         Reviewer notes
-      </div>
-      {error && <ErrorBanner error={error} />}
-      <div className="flex flex-col gap-2">
-        <textarea
-          className="resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-50"
+      </Text>
+      {error && (
+        <Banner intent="error" title="Couldn't save that note" dismissible onDismiss={() => setError(null)}>
+          {error}
+        </Banner>
+      )}
+      <div className="flex flex-col gap-space-2">
+        <Textarea
           rows={3}
+          resize="none"
           placeholder="Leave a note for other reviewers…"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={setDraft}
           disabled={submitting}
         />
-        <button
-          type="button"
-          className="self-end rounded-md border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-secondary disabled:opacity-50"
+        <Button
+          size="sm"
+          color="secondary"
+          variant="outlined"
+          className="self-end"
           onClick={handleAddNote}
+          loading={submitting}
           disabled={submitting || !draft.trim()}
         >
           {submitting ? 'Adding…' : 'Add note'}
-        </button>
+        </Button>
       </div>
       {loading ? (
-        <div className="flex justify-center py-2">
-          <Spinner size="sm" />
+        <div className="flex justify-center py-space-2">
+          <Spinner size="xs" className="text-icon-tertiary" />
         </div>
       ) : (
         notes.length > 0 && (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-space-2">
             {notes.map((note) => (
               <li
                 key={note.id}
-                className="flex flex-col gap-1 rounded-md border border-secondary px-3 py-2"
+                className="flex flex-col gap-space-1 rounded-md border border-default px-space-3 py-space-2"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-primary">
+                <div className="flex items-start justify-between gap-space-2">
+                  <Text variant="md" className="min-w-0 flex-1 whitespace-pre-wrap">
                     {note.comment}
-                  </p>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1 text-quaternary hover:bg-secondary"
+                  </Text>
+                  <IconButton
+                    size="xs"
+                    color="secondary"
+                    variant="plain"
+                    icon={Trash02Icon}
+                    label="Delete note"
                     onClick={() => handleDeleteNote(note)}
-                    aria-label="Delete note"
-                  >
-                    <Trash02Icon className="h-3.5 w-3.5" />
-                  </button>
+                  />
                 </div>
-                <span className="text-xs text-quaternary">
+                <Text variant="sm" color="quaternary">
                   {new Date(note.created_at).toLocaleString()}
-                </span>
+                </Text>
               </li>
             ))}
           </ul>

@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { CornerDownRightIcon, Maximize01Icon, Minimize01Icon } from '@langchain/untitled-ui-icons';
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Banner } from '@/components/langsmith/design-system/components/Banner';
+import { Button } from '@/components/langsmith/design-system/components/Button';
+import { IconButton } from '@/components/langsmith/design-system/components/IconButton';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import type { IOMode } from '../types';
 import {
   maybeGetMessages,
@@ -12,9 +18,6 @@ import {
   toYamlish,
   type NormalizedToolCall,
 } from '../lib/messages';
-import { cn } from '../lib/utils';
-import { ErrorBanner } from './ErrorBanner';
-import { Spinner } from './Spinner';
 
 interface Props {
   inputs: Record<string, unknown> | null;
@@ -23,31 +26,29 @@ interface Props {
   loading?: boolean;
 }
 
-// ── Shared card chrome ───────────────────────────────────────────────────────
-
-function RoleBadge({ role }: { role: string }) {
-  return (
-    <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-secondary">
-      {role}
-    </span>
-  );
-}
-
 // ── Tool call cards, nested beneath an AI message ───────────────────────────
 
 function ToolCallItem({ toolCall }: { toolCall: NormalizedToolCall }) {
   return (
-    <div className="ml-4 mt-2 flex items-start gap-2">
-      <CornerDownRightIcon className="mt-3 size-4 shrink-0 text-tertiary" />
-      <div className="flex-1 rounded-lg border border-secondary bg-primary">
-        <div className="flex items-center gap-2 px-4 py-2">
-          <RoleBadge role="Tool call" />
+    <div className="ml-space-4 mt-space-2 flex items-start gap-space-2">
+      <CornerDownRightIcon className="mt-3 size-4 shrink-0 text-icon-tertiary" />
+      <div className="flex-1 rounded-lg border border-default bg-surface-level-1">
+        <div className="flex items-center gap-space-2 px-space-4 py-space-2">
+          <Badge size="xxs" rounded="xs" className="uppercase">
+            Tool call
+          </Badge>
           {toolCall.name && (
-            <span className="font-mono text-xs font-medium text-primary">{toolCall.name}</span>
+            <Text as="span" variant="sm" weight="medium" className="font-mono">
+              {toolCall.name}
+            </Text>
           )}
-          {toolCall.id && <span className="font-mono text-xs text-quaternary">{toolCall.id}</span>}
+          {toolCall.id && (
+            <Text as="span" variant="sm" color="quaternary" className="font-mono">
+              {toolCall.id}
+            </Text>
+          )}
         </div>
-        <div className="px-4 pb-4">
+        <div className="px-space-4 pb-space-4">
           <pre className="whitespace-pre-wrap break-words font-mono text-xs text-secondary">
             {toYamlish(toolCall.args)}
           </pre>
@@ -86,13 +87,23 @@ function ToolMessageCard({ message }: { message: unknown }) {
   })();
 
   return (
-    <div className="rounded-lg border border-secondary bg-primary">
-      <div className="flex items-center gap-2 px-4 py-2">
-        <RoleBadge role="Tool" />
-        {toolName && <span className="font-mono text-xs font-medium text-primary">{toolName}</span>}
-        {toolCallId && <span className="font-mono text-xs text-quaternary">{toolCallId}</span>}
+    <div className="rounded-lg border border-default bg-surface-level-1">
+      <div className="flex items-center gap-space-2 px-space-4 py-space-2">
+        <Badge size="xxs" rounded="xs" className="uppercase">
+          Tool
+        </Badge>
+        {toolName && (
+          <Text as="span" variant="sm" weight="medium" className="font-mono">
+            {toolName}
+          </Text>
+        )}
+        {toolCallId && (
+          <Text as="span" variant="sm" color="quaternary" className="font-mono">
+            {toolCallId}
+          </Text>
+        )}
       </div>
-      <div className="px-4 pb-4">
+      <div className="px-space-4 pb-space-4">
         <pre className="whitespace-pre-wrap break-words font-mono text-xs text-secondary">
           {typeof parsedContent === 'string' ? parsedContent : toYamlish(parsedContent)}
         </pre>
@@ -116,15 +127,21 @@ function MessageCard({ message }: { message: unknown }) {
 
   return (
     <div className="flex flex-col">
-      <div className="rounded-lg border border-secondary bg-primary">
-        <div className="flex items-center gap-2 px-4 py-2">
-          <RoleBadge role={getDisplayRole(message)} />
+      <div className="rounded-lg border border-default bg-surface-level-1">
+        <div className="flex items-center gap-space-2 px-space-4 py-space-2">
+          <Badge size="xxs" rounded="xs" className="uppercase">
+            {getDisplayRole(message)}
+          </Badge>
         </div>
-        <div className="px-4 pb-4">
+        <div className="px-space-4 pb-space-4">
           {text ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">{text}</p>
+            <Text variant="body" className="whitespace-pre-wrap break-words leading-relaxed">
+              {text}
+            </Text>
           ) : (
-            <p className="text-xs italic text-quaternary">Empty</p>
+            <Text variant="sm" color="quaternary" className="italic">
+              Empty
+            </Text>
           )}
         </div>
       </div>
@@ -140,7 +157,7 @@ function DataView({ data }: { data: Record<string, unknown> }) {
 
   if (messages && messages.length > 0) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-space-3">
         {messages.map((msg, i) => (
           <MessageCard key={i} message={msg} />
         ))}
@@ -149,16 +166,18 @@ function DataView({ data }: { data: Record<string, unknown> }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-space-4">
       {Object.entries(data).map(([key, value]) => (
-        <div key={key} className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-secondary">{key}</span>
+        <div key={key} className="flex flex-col gap-space-1">
+          <Text variant="sm" weight="medium" color="secondary">
+            {key}
+          </Text>
           {typeof value === 'string' ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">
+            <Text variant="body" className="whitespace-pre-wrap break-words leading-relaxed">
               {value}
-            </p>
+            </Text>
           ) : (
-            <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
+            <pre className="whitespace-pre-wrap break-words rounded-lg border border-default bg-surface-level-2 p-space-3 text-xs text-primary">
               {JSON.stringify(value, null, 2)}
             </pre>
           )}
@@ -195,64 +214,71 @@ function CollapsibleSection({
     <div className="group flex flex-col">
       {/* Header */}
       <div
-        className="flex cursor-pointer items-center justify-between border-b border-secondary bg-secondary px-6 py-2"
+        className="flex cursor-pointer items-center justify-between border-b border-default bg-surface-level-2 px-space-5 py-space-2"
         onClick={() => onModeChange(mode === 'collapsed' ? 'expanded' : 'collapsed')}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-tertiary">
+        <div className="flex min-w-0 flex-1 items-center gap-space-4">
+          <Text
+            as="span"
+            variant="xs"
+            weight="medium"
+            color="tertiary"
+            className="shrink-0 uppercase tracking-wide"
+          >
             {title}
-          </span>
+          </Text>
           {loading ? (
-            <Spinner size="sm" />
+            <Spinner size="xs" className="text-icon-tertiary" />
           ) : (
             mode === 'collapsed' &&
             preview && (
-              <span className="line-clamp-1 min-w-0 flex-1 text-sm text-quaternary">
+              <Text as="span" variant="md" color="quaternary" className="line-clamp-1 min-w-0 flex-1">
                 {preview}
-              </span>
+              </Text>
             )
           )}
         </div>
         {!loading && (
           <div
-            className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100"
+            className="flex shrink-0 items-center gap-space-2 opacity-0 transition-opacity duration-fast group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             {showRawButton && mode !== 'collapsed' && (
-              <button
-                type="button"
-                className={cn(
-                  'rounded px-2 py-1 text-xs text-quaternary',
-                  mode === 'raw' ? 'bg-tertiary' : 'bg-transparent hover:bg-secondary'
-                )}
+              <Button
+                size="xs"
+                color="secondary"
+                variant={mode === 'raw' ? 'outlined' : 'plain'}
                 onClick={() => onModeChange(mode === 'raw' ? 'expanded' : 'raw')}
               >
                 RAW
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              className="rounded p-1 text-quaternary hover:bg-tertiary"
+            <IconButton
+              size="xs"
+              color="secondary"
+              variant="plain"
+              icon={mode === 'collapsed' ? Maximize01Icon : Minimize01Icon}
+              label={mode === 'collapsed' ? `Expand ${title.toLowerCase()}` : `Collapse ${title.toLowerCase()}`}
               onClick={() => onModeChange(mode === 'collapsed' ? 'expanded' : 'collapsed')}
-            >
-              {mode === 'collapsed' ? (
-                <Maximize01Icon className="h-3.5 w-3.5" />
-              ) : (
-                <Minimize01Icon className="h-3.5 w-3.5" />
-              )}
-            </button>
+            />
           </div>
         )}
       </div>
 
       {/* Content */}
       {!loading && mode !== 'collapsed' && (
-        <div className="border-b border-secondary p-4">
-          {error && <ErrorBanner error={error} />}
+        <div className="flex flex-col gap-space-3 border-b border-default p-space-4">
+          {error && (
+            <Banner intent="error" title="Error">
+              {error}
+            </Banner>
+          )}
           {!hasData ? (
-            <p className="text-sm text-tertiary">—</p>
+            <Text variant="md" color="tertiary">
+              —
+            </Text>
           ) : mode === 'raw' ? (
-            <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
+            <pre className="whitespace-pre-wrap break-words rounded-lg border border-default bg-surface-level-2 p-space-3 text-xs text-primary">
               {JSON.stringify(data, null, 2)}
             </pre>
           ) : (

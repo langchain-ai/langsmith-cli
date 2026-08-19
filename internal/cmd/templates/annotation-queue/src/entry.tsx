@@ -1,6 +1,7 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { StrictMode } from 'react';
 import { App } from './App';
+import { DesignSystemProvider } from './components/DesignSystemProvider';
 // `?inline` gets the fully-processed (Tailwind + autoprefixer) CSS as a plain
 // string instead of Vite emitting a separate stylesheet asset — there's no
 // way to <link> a second file into this sandbox; everything has to be in the
@@ -30,7 +31,9 @@ export default {
     // this Tailwind UI themes without branching; passed to App.
     root.render(
       <StrictMode>
-        <App queueId={data?.queueId ?? ''} metadata={metadata} />
+        <DesignSystemProvider>
+          <App queueId={data?.queueId ?? ''} metadata={metadata} />
+        </DesignSystemProvider>
       </StrictMode>
     );
   },

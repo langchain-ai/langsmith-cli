@@ -94,38 +94,104 @@ re-check it every render, since it can change without a remount.
 
 ## Design system
 
-LangSmith's own components are published as a shadcn registry. Prefer them over
-hand-rolling UI. Each `add` writes real source into
-`src/components/langsmith/design-system/`, so you can read and edit it.
+This app is built on LangSmith's design system — the same components and tokens
+the LangSmith product uses, published as a shadcn registry. Part of it is
+already vendored into `src/components/langsmith/design-system/`: the theme, the
+Tailwind preset, and every component this template renders. It's ordinary source
+you can read and edit.
+
+**A component before a raw element.** Check what's already in
+`src/components/langsmith/design-system/components/` before writing a `<button>`,
+`<input>`, `<span>` of text, or a chip. If what you need isn't there yet, add it
+rather than hand-rolling it:
 
 ```bash
-npx shadcn list @langsmith
-npx shadcn add @langsmith/button @langsmith/badge
+npx shadcn list @langsmith                       # everything available
+npx shadcn add @langsmith/dialog @langsmith/tabs # source + npm deps
 ```
 
 `components.json` already registers the `@langsmith` namespace, so `registry add`
-is not needed. `add` installs a component's npm dependencies along with its
-source — prefer it over copying files in by hand.
+is not needed, and `add` installs a component's npm dependencies along with its
+source — always prefer it to copying files in by hand. Do **not** run
+`shadcn init`: it installs a competing preset and breaks the build. (If
+`smith.langchain.com` is unreachable, use `$LANGSMITH_ENDPOINT` as the base.)
 
-The theme is vendored rather than fetched:
-`src/components/langsmith/design-system/theme.css` (semantic tokens) and
-`tailwind.langsmith.cjs` (the preset loaded by `tailwind.config.js`) are checked
-into the scaffold, so a fresh app is styled without network access. Being
-checked in, they can fall behind the registry. To refresh:
+Easy-to-miss mappings, by capability rather than name:
+
+| You want | Use |
+| --- | --- |
+| Any text | `Text` (`as="span"` inside buttons/links) |
+| Searchable single/multi-select, free-solo input | `Typeahead` |
+| Plain dropdown of known options | `Select` |
+| Icon-only action | `IconButton` (its `label` becomes the tooltip) |
+| Icon with optional tooltip | `Icon` |
+| Status chip, count, tag | `Badge` |
+| Inline alert | `Banner`; richer error payloads → `ErrorMessage` |
+| Loading | `Spinner`, `Skeleton`, `LinearProgress`, `CircularProgress` |
+| Overlay / sheet | `Dialog`, `Pane` |
+| View switching | `Tabs`, `GroupedTabs` |
+| Keyboard shortcut chips | `Kbd` / `KbdGroup` |
+
+Icons come from `@langchain/untitled-ui-icons` — not heroicons or lucide.
+
+`<Tooltip>` is Radix-based and needs a provider above it; the scaffold already
+mounts one in `entry.tsx` (`DesignSystemProvider`). Keep it — `IconButton` and
+`Icon label=…` render tooltips, so removing it crashes them at runtime.
+
+### Tokens, not literals
+
+Never write a hex/rgb color, a primitive var (`--neutral-100`), a primitive
+utility (`bg-neutral-100`), or a hardcoded `z-10`. The preset defines semantic
+Tailwind classes for everything:
+
+| Situation | Token |
+| --- | --- |
+| Page background | `bg-surface-level-1` |
+| Card, panel, sidebar | `bg-surface-level-2` |
+| Nested container / deepest fill | `bg-surface-level-3` / `-4` |
+| Popover, tooltip, dropdown | `bg-elevated` |
+| Selected row | `bg-selected` |
+| Brand fill (non-Button) | `bg-brand`; tinted `bg-brand-subtle` |
+| Intent fills | `bg-success` / `bg-error` / `bg-warning` (+ `-subtle`, `-strong`) |
+| Body / label / helper / faint text | `text-primary` / `-secondary` / `-tertiary` / `-quaternary` |
+| Placeholder, disabled text | `text-placeholder`, `text-disabled` |
+| Standalone icon | `text-icon-primary` (…`-tertiary`, `-error`, `-success`) |
+| Borders | `border-default`, `border-subtle`, `border-focus`, `border-error` |
+| Run/system status | `text-status-green/orange/yellow/red` |
+| Chart series | `var(--chart-categorical-line-1…8)` (fills: `…-fill-1…8`) |
+
+Pair intent color with an icon or text — never color alone.
+
+Spacing is the 4-point `space-*` scale (`gap-space-2`, `px-space-4`,
+`p-space-5` for card padding): 1=4px, 2=8px, 3=12px, 4=16px, 5=24px, 6=32px,
+7=40px, 8=48px, 9=64px. Radius `rounded-xs…xl`/`rounded-full`, elevation
+`shadow-sm/md/lg`, motion `duration-fast/normal/slow/slower`. Prefer flex +
+`gap` over margins, and honor `prefers-reduced-motion` (`motion-safe:`).
+
+Do **not** add a `theme.extend` for any of these in `tailwind.config.js`: a
+local key of the same name overrides the preset's, which silently restyles every
+design-system component.
+
+### Refreshing the vendored copy
+
+The theme and components are checked in, so they can fall behind the registry:
 
 ```bash
 npx shadcn add --overwrite @langsmith/theme
 ```
 
-`--overwrite` is required here, because both files already exist. Afterwards,
-check `tailwind.langsmith.cjs` for any newly `require`d package and add it to
+`--overwrite` is required because both files already exist. Afterwards, check
+`tailwind.langsmith.cjs` for any newly `require`d package and add it to
 `devDependencies` — an undeclared one fails the build with `MODULE_NOT_FOUND`.
 Diff the refresh before keeping it, so a token rename doesn't silently restyle
 the app.
 
-`components.json` and the `@/*` aliases are already wired — do not run
-`shadcn init`, which installs a competing preset and breaks the build. (If
-`smith.langchain.com` is unreachable, use `$LANGSMITH_ENDPOINT` as the base.)
+### Before you call it done
+
+Run `npm run typecheck` and `npm run build`, and look at the result in
+`langsmith apps dev` — in both light and dark, and in the loading, empty, and
+error states, not just the happy path. Don't claim visual correctness from types
+alone.
 
 ## Filter DSL for metadata equality
 
