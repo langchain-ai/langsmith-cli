@@ -447,6 +447,82 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 	}
 }
 
+func TestTraceMessages_TraceIDsBoundPaginationByRequestedPages(t *testing.T) {
+	pageCount := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v2/traces/messages":
+			pageCount++
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if got := fmt.Sprint(body["ids"]); got != "[trace-1 trace-2 trace-3 trace-4 missing-trace]" {
+				t.Errorf("ids = %s, want unique IDs in input order", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"trace_id": "trace-1", "groups": []any{}},
+					{"trace_id": "trace-2", "groups": []any{}},
+					{"trace_id": "trace-3", "groups": []any{}},
+					{"trace_id": "trace-4", "groups": []any{}},
+				},
+				"next_cursor": "cursor-over-root-scan",
+			})
+		case r.URL.Path == "/api/v2/runs/query":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{
+			"--project-id", "11111111-1111-1111-1111-111111111111",
+			"--trace-ids", "trace-1,trace-2,trace-2,trace-3,trace-4,missing-trace",
+			"--limit", "100",
+			"--since", "2024-01-01T00:00:00Z",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if pageCount != 1 {
+		t.Fatalf("trace messages requests = %d, want 1", pageCount)
+	}
+}
+
+func TestTraceMessages_RejectsEmptyTraceIDs(t *testing.T) {
+	requestCount := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	cmd := newTraceMessagesCmd()
+	cmd.SetArgs([]string{
+		"--project-id", "11111111-1111-1111-1111-111111111111",
+		"--trace-ids", " , , ",
+		"--since", "2024-01-01T00:00:00Z",
+	})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected empty --trace-ids to fail")
+	}
+	if requestCount != 0 {
+		t.Fatalf("requests made before validation = %d, want 0", requestCount)
+	}
+}
+
 func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 	callCount := 0
 	var receivedBody map[string]any
@@ -702,13 +778,6 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 	}
 }
 
-// ==================== --limit clamping for --trace-ids ====================
-
-// Passing --trace-ids with a larger --limit used to leave the pagination loop
-// with headroom it could never fill: each page returns at most len(ids) traces
-// while next_cursor keeps tracking the server's root-run scan, so the loop kept
-// issuing requests long after every requested trace had come back. Production
-// saw 9 batches of 5 ids turn into 154 requests.
 func TestClampLimitToIDs(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -730,14 +799,5 @@ func TestClampLimitToIDs(t *testing.T) {
 					tc.limit, len(tc.ids), got, tc.want)
 			}
 		})
-	}
-}
-
-// splitTrim can yield zero entries for whitespace-only input; the clamp must
-// not then pin the limit to 0 and starve the pagination loop entirely.
-func TestClampLimitToIDs_WhitespaceOnlyIDsDoNotZeroTheLimit(t *testing.T) {
-	ids := splitTrim("   ,  , ")
-	if got := clampLimitToIDs(50, ids); got == 0 {
-		t.Fatalf("clamp produced a zero limit from %d parsed ids; loop would fetch nothing", len(ids))
 	}
 }
