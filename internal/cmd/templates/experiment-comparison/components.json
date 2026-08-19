@@ -17,5 +17,7 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "registries": {}
+  "registries": {
+    "@langsmith": "https://smith.langchain.com/r/{name}.json"
+  }
 }
