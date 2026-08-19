@@ -210,7 +210,9 @@ func newRunExportCmd() *cobra.Command {
 			}
 
 			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-			output.OutputJSONL(data, outputFile)
+			if err := output.OutputJSONL(data, outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

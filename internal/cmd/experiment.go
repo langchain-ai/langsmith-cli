@@ -185,9 +185,13 @@ func newExperimentGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			} else {
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}

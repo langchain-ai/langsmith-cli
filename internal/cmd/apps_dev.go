@@ -122,10 +122,12 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if !noOpen {
 		_ = openBrowser(previewURL)
 	}
-	output.OutputJSON(map[string]any{
+	if err := output.OutputJSON(map[string]any{
 		"status": "serving",
 		"url":    previewURL,
-	}, "")
+	}, ""); err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "Serving %s at %s (sandboxed) — press Ctrl+C to stop\n", dir, previewURL)
 	fmt.Fprintln(os.Stderr, appsDevLogModeBanner())
 

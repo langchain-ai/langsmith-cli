@@ -43,12 +43,11 @@ func newAppsDeleteCmd() *cobra.Command {
 				}
 				return fmt.Errorf("deleting custom app %s: %w", id, err)
 			}
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"app_id": id,
 				"name":   name,
 			}, "")
-			return nil
 		},
 	}
 
