@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { DataGrid } from './components/DataGrid';
 import { QueueBar } from './components/QueueBar';
 import {
@@ -231,9 +232,9 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">
+          <Text variant="md" color="tertiary">
             Select an annotation queue to start reviewing.
-          </span>
+          </Text>
         </div>
       </div>
     );
@@ -242,7 +243,7 @@ export function App({ queueId: initialQueueId }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="flex min-h-0 flex-1 flex-col p-4">
+      <div className="flex min-h-0 flex-1 flex-col p-space-4">
         <DataGrid
           queue={queue}
           columns={columns}

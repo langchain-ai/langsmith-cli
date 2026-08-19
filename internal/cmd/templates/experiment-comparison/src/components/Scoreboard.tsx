@@ -29,7 +29,7 @@ export function Scoreboard({ experiments, aggregates, metric }: Props) {
   const baseValue = aggregateValue(aggregates[baseline.id], metric);
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-space-3 sm:grid-cols-3 lg:grid-cols-4">
       <StatTile
         label={`${baseline.letter} · ${baseline.name}`}
         value={metric.format(baseValue)}

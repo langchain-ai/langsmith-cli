@@ -9,12 +9,16 @@ import {
   MessageChatCircleIcon,
   ZapIcon,
 } from '@langchain/untitled-ui-icons';
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Skeleton } from '@/components/langsmith/design-system/components/Skeleton';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
+import { Tooltip } from '@/components/langsmith/design-system/components/Tooltip';
 import type { QueueItem } from '../types';
 import { itemLabel } from '../types';
 import type { ItemSection as ItemSectionData } from '../hooks/useItemSection';
 import { getCollapsedPreview } from '../lib/messages';
 import { cn } from '../lib/utils';
-import { Spinner } from './Spinner';
 
 const SKELETON_WIDTH_PAIRS: [string, string][] = [
   ['w-[35%]', 'w-[45%]'],
@@ -33,10 +37,10 @@ function RunListSkeletons() {
       {SKELETON_WIDTH_PAIRS.map(([nameW, previewW], i) => (
         <div
           key={i}
-          className="flex items-center gap-2 border-b border-secondary px-3 py-2.5"
+          className="flex items-center gap-space-2 border-b border-default px-space-3 py-2.5"
         >
-          <div className={cn('my-0 h-3.5 shrink-0 animate-pulse rounded bg-secondary', nameW)} />
-          <div className={cn('my-0 h-3 min-w-0 animate-pulse rounded bg-secondary opacity-60', previewW)} />
+          <Skeleton className={cn('h-3.5 shrink-0', nameW)} />
+          <Skeleton className={cn('h-3 min-w-0 opacity-60', previewW)} />
         </div>
       ))}
     </div>
@@ -60,60 +64,57 @@ function ItemListRow({ item, isSelected, onClick, numReviewersPerItem }: ItemLis
   const isFullyReserved =
     !!numReviewersPerItem && reservedCount >= numReviewersPerItem;
   const showProgress = !!numReviewersPerItem && numReviewersPerItem > 1 && completedCount > 0;
-  const TypeIcon = item.item_type === 'THREAD' ? MessageChatCircleIcon : ZapIcon;
+  const isThread = item.item_type === 'THREAD';
+  const TypeIcon = isThread ? MessageChatCircleIcon : ZapIcon;
 
   return (
     <button
       type="button"
       className={cn(
-        'flex w-full items-center gap-2 border-b border-secondary px-3 py-2.5 text-left transition-colors',
-        isSelected ? 'bg-tertiary' : 'hover:bg-secondary'
+        'flex w-full items-center gap-space-2 border-b border-default px-space-3 py-2.5 text-left transition-colors duration-fast',
+        isSelected ? 'bg-selected' : 'hover:bg-surface-level-2'
       )}
       onClick={onClick}
     >
-      <span
-        className={cn(
-          'inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold uppercase',
-          item.item_type === 'THREAD'
-            ? 'bg-brand-muted text-brand-primary'
-            : 'bg-secondary text-tertiary'
-        )}
-        title={item.item_type}
+      <Badge
+        size="xxs"
+        rounded="xs"
+        color={isThread ? 'primary' : 'secondary'}
+        leftDecorator={TypeIcon}
+        className="shrink-0 uppercase"
       >
-        <TypeIcon className="h-3 w-3" />
-        {item.item_type === 'THREAD' ? 'Thread' : 'Run'}
-      </span>
-      <span
-        className={cn(
-          'shrink-0 truncate text-sm',
-          isFullyReserved ? 'text-quaternary' : 'text-primary'
-        )}
+        {isThread ? 'Thread' : 'Run'}
+      </Badge>
+      <Text
+        as="span"
+        variant="md"
+        color={isFullyReserved ? 'quaternary' : 'primary'}
+        className="shrink-0 truncate"
       >
         {itemLabel(item)}
-      </span>
+      </Text>
       {preview && (
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate text-xs',
-            isFullyReserved ? 'text-quaternary' : 'text-tertiary'
-          )}
+        <Text
+          as="span"
+          variant="sm"
+          color={isFullyReserved ? 'quaternary' : 'tertiary'}
+          className="min-w-0 flex-1 truncate"
         >
           {preview}
-        </span>
+        </Text>
       )}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {showProgress && (
-          <span className="flex items-center gap-0.5 rounded bg-secondary px-1 py-0.5">
-            <CheckCircleIcon className="h-3 w-3 text-tertiary" />
-            <span className="text-xs leading-3 text-tertiary">
-              {completedCount}/{numReviewersPerItem}
-            </span>
-          </span>
+          <Badge size="xxs" rounded="xs" leftDecorator={CheckCircleIcon}>
+            {`${completedCount}/${numReviewersPerItem}`}
+          </Badge>
         )}
         {isFullyReserved && (
-          <span className="flex items-center rounded bg-secondary px-1 py-0.5">
-            <Lock01Icon className="h-3 w-3 text-tertiary" />
-          </span>
+          <Tooltip title="Already picked up by the maximum number of reviewers">
+            <Badge size="xxs" rounded="xs" aria-label="Fully reserved">
+              <Lock01Icon className="size-3" />
+            </Badge>
+          </Tooltip>
         )}
       </div>
     </button>
@@ -166,22 +167,26 @@ function ItemSection({
       <button
         type="button"
         className={cn(
-          'flex shrink-0 items-center gap-2 bg-secondary px-3 py-2 hover:bg-tertiary',
-          open && 'border-b border-secondary',
-          !open && isLast && 'border-b border-secondary'
+          'flex shrink-0 items-center gap-space-2 bg-surface-level-2 px-space-3 py-space-2 transition-colors duration-fast hover:bg-surface-level-3',
+          open && 'border-b border-default',
+          !open && isLast && 'border-b border-default'
         )}
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
-          <ChevronDownIcon className="h-3.5 w-3.5 text-tertiary" />
+          <ChevronDownIcon className="size-3.5 text-icon-tertiary" />
         ) : (
-          <ChevronRightIcon className="h-3.5 w-3.5 text-tertiary" />
+          <ChevronRightIcon className="size-3.5 text-icon-tertiary" />
         )}
-        <Icon className="h-3.5 w-3.5 text-tertiary" />
-        <span className="text-sm font-medium text-secondary">{label}</span>
+        <Icon className="size-3.5 text-icon-tertiary" />
+        <Text as="span" variant="md" weight="medium" color="secondary">
+          {label}
+        </Text>
         <div className="ml-auto flex items-center gap-1.5">
-          {loading && <Spinner size="sm" />}
-          <span className="text-xs text-tertiary">{Math.max(total, items.length)}</span>
+          {loading && <Spinner size="xs" className="text-icon-tertiary" />}
+          <Text as="span" variant="sm" color="tertiary">
+            {String(Math.max(total, items.length))}
+          </Text>
         </div>
       </button>
 
@@ -190,8 +195,10 @@ function ItemSection({
           {loading ? (
             <RunListSkeletons />
           ) : items.length === 0 ? (
-            <div className="flex items-center justify-center px-3 py-6">
-              <span className="text-xs text-tertiary">No items</span>
+            <div className="flex items-center justify-center px-space-3 py-space-5">
+              <Text variant="sm" color="tertiary">
+                No items
+              </Text>
             </div>
           ) : (
             <>
@@ -205,8 +212,8 @@ function ItemSection({
                 />
               ))}
               {hasMore && (
-                <div ref={sentinelRef} className="flex items-center justify-center py-3">
-                  {loadingMore && <Spinner size="sm" />}
+                <div ref={sentinelRef} className="flex items-center justify-center py-space-3">
+                  {loadingMore && <Spinner size="xs" className="text-icon-tertiary" />}
                 </div>
               )}
             </>
@@ -237,7 +244,7 @@ export function RunList({
   const showNeedsOthersReview = (numReviewersPerItem ?? 0) > 1;
 
   return (
-    <div className="flex h-full flex-col divide-y divide-secondary overflow-hidden border-r border-secondary">
+    <div className="flex h-full flex-col divide-y divide-default overflow-hidden border-r border-default">
       <ItemSection
         label="Needs Review"
         icon={LayersTwo01Icon}

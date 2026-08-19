@@ -90,15 +90,18 @@ export function histogram(values: number[], binCount = 9): HistogramBin[] {
 // max series with a distinct color slot (1–4 CVD-safe).
 export const SERIES_CAP = 8;
 
+// The design system's categorical chart ramp (theme.css), light/dark aware.
+// Use the "line" ramp for marks read against the page background — bars, dots,
+// swatches; "fill" is the softer companion for large filled areas.
 const SERIES_VARS = [
-  'var(--series-1)',
-  'var(--series-2)',
-  'var(--series-3)',
-  'var(--series-4)',
-  'var(--series-5)',
-  'var(--series-6)',
-  'var(--series-7)',
-  'var(--series-8)',
+  'var(--chart-categorical-line-1)',
+  'var(--chart-categorical-line-2)',
+  'var(--chart-categorical-line-3)',
+  'var(--chart-categorical-line-4)',
+  'var(--chart-categorical-line-5)',
+  'var(--chart-categorical-line-6)',
+  'var(--chart-categorical-line-7)',
+  'var(--chart-categorical-line-8)',
 ];
 
 // A, B, C… for the ordered experiments.

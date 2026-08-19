@@ -1,7 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@langchain/untitled-ui-icons';
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Banner } from '@/components/langsmith/design-system/components/Banner';
+import { Button } from '@/components/langsmith/design-system/components/Button';
+import { Checkbox, getCheckedState } from '@/components/langsmith/design-system/components/Checkbox';
+import { Spinner } from '@/components/langsmith/design-system/components/Spinner';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 import { GridCell } from './GridCell';
-import { Spinner } from './Spinner';
 import { ThreadViewer } from './ThreadViewer';
 import type {
   AnnotationQueue,
@@ -63,7 +68,7 @@ function prettyIO(value: Record<string, unknown> | null): string {
 // Name/Inputs/Outputs cells — the whole column, not just its text, opens
 // the expanded row.
 const expandableCellClass =
-  'cursor-pointer truncate px-3 py-1.5 align-middle hover:bg-surface-level-2';
+  'cursor-pointer truncate px-space-3 py-1.5 align-middle hover:bg-surface-level-2';
 
 const CHECKBOX_COL_WIDTH = 40;
 const COMPLETE_COL_WIDTH = 140;
@@ -117,7 +122,6 @@ export function DataGrid({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   const [containerWidth, setContainerWidth] = useState(0);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
@@ -251,18 +255,12 @@ export function DataGrid({
     }
   }, [rows.length, hasMore, rowsLoading, loadingMore, onLoadMore]);
 
-  // Reflect partial selection as the native indeterminate visual — plain
-  // HTML has no attribute for this, it's set imperatively on the node.
-  useEffect(() => {
-    if (!selectAllRef.current) return;
-    selectAllRef.current.indeterminate =
-      selectedItemIds.size > 0 && selectedItemIds.size < rows.length;
-  }, [selectedItemIds.size, rows.length]);
-
   if (!queue) {
     return (
-      <div className="flex flex-1 items-center justify-center rounded-lg border border-secondary">
-        <span className="text-sm text-tertiary">Loading queue…</span>
+      <div className="flex flex-1 items-center justify-center rounded-lg border border-default">
+        <Text variant="md" color="tertiary">
+          Loading queue…
+        </Text>
       </div>
     );
   }
@@ -320,32 +318,29 @@ export function DataGrid({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-secondary">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-default">
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-base font-medium text-primary">{queue.name}</span>
-          <span className="text-sm text-tertiary">
-            {Math.max(total, rows.length)} to review ·{' '}
-            {/* ←/→ only matter with multiple rubric columns. */}
-            {columns.length > 1 ? '↑/↓/←/→' : '↑/↓'} to move between cells
-          </span>
+      <div className="flex items-center justify-between gap-space-4 border-b border-default px-space-4 py-space-3">
+        <div className="flex items-baseline gap-space-2">
+          <Text variant="h3">{queue.name}</Text>
+          <Text variant="md" color="tertiary">
+            {`${Math.max(total, rows.length)} to review · ${
+              /* ←/→ only matter with multiple rubric columns. */
+              columns.length > 1 ? '↑/↓/←/→' : '↑/↓'
+            } to move between cells`}
+          </Text>
         </div>
         {selectedItemIds.size > 0 && (
-          <button
-            type="button"
-            onClick={onBulkComplete}
-            className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover"
-          >
-            Mark {selectedItemIds.size} Completed
-          </button>
+          <Button size="sm" onClick={onBulkComplete}>
+            {`Mark ${selectedItemIds.size} Completed`}
+          </Button>
         )}
       </div>
 
       {completeError && (
-        <div role="alert" className="border-b border-secondary bg-error px-4 py-2 text-xs text-error-secondary">
-          Failed to mark complete: {completeError}
-        </div>
+        <Banner intent="error" flush title="Failed to mark complete">
+          {completeError}
+        </Banner>
       )}
 
       {/* Grid */}
@@ -357,16 +352,18 @@ export function DataGrid({
       >
         {columns.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-sm text-tertiary">This queue has no rubric items to score.</span>
+            <Text variant="md" color="tertiary">
+              This queue has no rubric items to score.
+            </Text>
           </div>
         ) : rows.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-sm text-tertiary">
-              {/* hasMore here means the auto-fetch effect above is already
-                  loading the next page — never flash "nothing left" when
-                  we know there's more coming. */}
-                  {rowsLoading || loadingMore || hasMore ? 'Loading items…' : 'Nothing left to review 🎉'}
-            </span>
+            {/* hasMore here means the auto-fetch effect above is already
+                loading the next page — never flash "nothing left" when
+                we know there's more coming. */}
+            <Text variant="md" color="tertiary">
+              {rowsLoading || loadingMore || hasMore ? 'Loading items…' : 'Nothing left to review 🎉'}
+            </Text>
           </div>
         ) : (
           <table className="w-full table-fixed border-collapse text-left">
@@ -379,42 +376,42 @@ export function DataGrid({
             </colgroup>
             <thead className="sticky top-0 z-10 bg-surface-level-2">
               <tr>
-                <th className="border-b border-secondary px-3 py-2">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={rows.length > 0 && selectedItemIds.size === rows.length}
-                    onChange={onToggleSelectAll}
+                <th className="border-b border-default px-space-3 py-space-2">
+                  <Checkbox
+                    checked={getCheckedState(
+                      rows.length > 0 && selectedItemIds.size === rows.length,
+                      selectedItemIds.size > 0
+                    )}
+                    onCheckedChange={onToggleSelectAll}
                     aria-label="Select all rows"
-                    className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                   />
                 </th>
-                <th className="relative border-b border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-default px-space-3 py-space-2 text-xs font-medium text-tertiary">
                   Item
                   {resizeHandle('name', 'inputs')}
                 </th>
-                <th className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-l border-default px-space-3 py-space-2 text-xs font-medium text-tertiary">
                   Inputs
                   {resizeHandle('inputs', 'outputs')}
                 </th>
-                <th className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary">
+                <th className="relative border-b border-l border-default px-space-3 py-space-2 text-xs font-medium text-tertiary">
                   Outputs
                   {resizeHandle('outputs', columns[0]?.feedback_key ?? null)}
                 </th>
                 {columns.map((col, colIndex) => (
                   <th
                     key={col.feedback_key}
-                    className="relative border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary"
+                    className="relative border-b border-l border-default px-space-3 py-space-2 text-xs font-medium text-tertiary"
                     title={col.description ?? undefined}
                   >
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-space-1">
                       {col.feedback_key}
                       {col.is_required && <span className="text-error-primary">*</span>}
                     </span>
                     {resizeHandle(col.feedback_key, columns[colIndex + 1]?.feedback_key ?? null)}
                   </th>
                 ))}
-                <th className="border-b border-l border-secondary px-3 py-2 text-xs font-medium text-tertiary" />
+                <th className="border-b border-l border-default px-space-3 py-space-2 text-xs font-medium text-tertiary" />
               </tr>
             </thead>
             <tbody>
@@ -436,21 +433,19 @@ export function DataGrid({
                       onClick={() => onActivateRow(index)}
                       className={cn(
                         'cursor-pointer',
-                        !isExpanded && 'border-b border-secondary',
+                        !isExpanded && 'border-b border-default',
                         isActive
                           ? 'bg-selected'
                           : index % 2 === 1
-                            ? 'bg-secondary/30 hover:bg-surface-level-1-hover'
+                            ? 'bg-surface-level-2/30 hover:bg-surface-level-1-hover'
                             : 'hover:bg-surface-level-1-hover'
                       )}
                     >
-                      <td className="px-3 py-1.5 align-middle" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
+                      <td className="px-space-3 py-1.5 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
                           checked={isSelected}
-                          onChange={() => onToggleRowSelected(item.id)}
+                          onCheckedChange={() => onToggleRowSelected(item.id)}
                           aria-label={`Select ${label}`}
-                          className="h-4 w-4 cursor-pointer accent-[var(--bg-brand)]"
                         />
                       </td>
                       <td
@@ -466,23 +461,21 @@ export function DataGrid({
                           ) : (
                             <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-tertiary" />
                           )}
-                          <span
-                            className={cn(
-                              'shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase',
-                              isThread
-                                ? 'bg-brand-muted text-brand-primary'
-                                : 'bg-secondary text-tertiary'
-                            )}
+                          <Badge
+                            size="xxs"
+                            rounded="xs"
+                            color={isThread ? 'primary' : 'secondary'}
+                            className="shrink-0 uppercase"
                           >
                             {isThread ? 'Thread' : 'Run'}
-                          </span>
+                          </Badge>
                           <span className="min-w-0 truncate" title={label}>
                             {label}
                           </span>
                         </div>
                       </td>
                       <td
-                        className={cn(expandableCellClass, 'border-l border-secondary font-mono text-xs text-tertiary')}
+                        className={cn(expandableCellClass, 'border-l border-default font-mono text-xs text-tertiary')}
                         title={inputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -492,7 +485,7 @@ export function DataGrid({
                         {inputsPreview || '—'}
                       </td>
                       <td
-                        className={cn(expandableCellClass, 'border-l border-secondary font-mono text-xs text-tertiary')}
+                        className={cn(expandableCellClass, 'border-l border-default font-mono text-xs text-tertiary')}
                         title={outputsPreview}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -504,7 +497,7 @@ export function DataGrid({
                       {columns.map((col, colIndex) => (
                         <td
                           key={col.feedback_key}
-                          className="border-l border-secondary px-1 py-1 align-middle"
+                          className="border-l border-default p-space-1 align-middle"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <GridCell
@@ -526,10 +519,10 @@ export function DataGrid({
                           />
                         </td>
                       ))}
-                      <td className="border-l border-secondary px-2 py-1 text-center align-middle">
+                      <td className="border-l border-default px-space-2 py-space-1 text-center align-middle">
                         {selectedItemIds.size === 0 && (
-                          <button
-                            type="button"
+                          <Button
+                            size="xs"
                             onClick={(e) => {
                               e.stopPropagation();
                               onComplete(index);
@@ -540,16 +533,15 @@ export function DataGrid({
                                 ? 'Fill all required (*) columns first'
                                 : undefined
                             }
-                            className="rounded-md bg-brand px-3 py-1 text-xs font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
                           >
                             Mark Completed
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr className="border-b border-secondary bg-surface-level-1">
-                        <td colSpan={colSpan} className="px-3 py-3">
+                      <tr className="border-b border-default bg-surface-level-1">
+                        <td colSpan={colSpan} className="p-space-3">
                           {isThread ? (
                             <div className="max-h-[360px] overflow-auto">
                               <ThreadViewer
@@ -559,18 +551,22 @@ export function DataGrid({
                               />
                             </div>
                           ) : (
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="flex flex-col gap-1">
-                                <span className="text-xs font-medium text-tertiary">Inputs</span>
-                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                            <div className="grid grid-cols-2 gap-space-4">
+                              <div className="flex flex-col gap-space-1">
+                                <Text variant="sm" weight="medium" color="tertiary">
+                                  Inputs
+                                </Text>
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-space-2 font-mono text-xs text-secondary">
                                   {expandLoading && !item.inputs
                                     ? 'Loading…'
                                     : prettyIO(item.inputs ?? null)}
                                 </pre>
                               </div>
-                              <div className="flex flex-col gap-1">
-                                <span className="text-xs font-medium text-tertiary">Outputs</span>
-                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                              <div className="flex flex-col gap-space-1">
+                                <Text variant="sm" weight="medium" color="tertiary">
+                                  Outputs
+                                </Text>
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-space-2 font-mono text-xs text-secondary">
                                   {expandLoading && !item.outputs
                                     ? 'Loading…'
                                     : prettyIO(item.outputs ?? null)}
@@ -586,7 +582,7 @@ export function DataGrid({
               })}
               {hasMore && (
                 <tr>
-                  <td colSpan={colSpan} className="px-3 py-3">
+                  <td colSpan={colSpan} className="p-space-3">
                     <div ref={sentinelRef} className="flex items-center justify-center">
                       {loadingMore && <Spinner size="sm" />}
                     </div>

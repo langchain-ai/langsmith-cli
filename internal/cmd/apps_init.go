@@ -35,7 +35,7 @@ var experimentComparisonStarterFS embed.FS
 //go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
-// Small files shared across templates (SearchableSelect, Spinner, cn(), ...);
+// Small files shared across templates (SearchableSelect, cn(), ...);
 // scaffoldCustomAppStarter copies in only the ones a template actually imports.
 //
 //go:embed all:templates/_shared
@@ -43,57 +43,72 @@ var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
 
-// One package.json rendered for every template; deps that vary per template
-// (currently just the icon set) are toggled by customAppStarterVars.
+// One package.json rendered for every template; its dependency lists are
+// resolved per template from what the scaffolded source actually imports.
 //
 //go:embed templates/package.json.tmpl
 var sharedPackageJSONTmpl string
 
-const iconsImportSpecifier = "@langchain/untitled-ui-icons"
+// Packages a template's own source (not the vendored design system) may import.
+// Versions come from the registry snapshot, so a template and the design-system
+// components it sits next to never disagree on an icon set version.
+var templateOnlyPackages = []string{"@langchain/untitled-ui-icons", "@radix-ui/react-tooltip"}
 
-const cnUtilsImportSpecifier = "lib/utils"
+// The toolchain every scaffolded app builds with, regardless of template.
+// Design-system packages are added on top, resolved from what the template
+// actually imports — see apps_design_system.go.
+// React 19: the design-system components are authored against @types/react 19
+// (`useRef<T | null>` yielding a nullable RefObject, and so on), so a scaffolded
+// app on 18 fails `tsc` the moment `shadcn add` pulls one in.
+var baseDependencies = []npmDependency{
+	{Name: "react", Version: "^19.2.0"},
+	{Name: "react-dom", Version: "^19.2.0"},
+}
+
+var baseDevDependencies = []npmDependency{
+	{Name: "@types/react", Version: "^19.2.0"},
+	{Name: "@types/react-dom", Version: "^19.2.0"},
+	{Name: "@vitejs/plugin-react", Version: "^4.3.1"},
+	{Name: "autoprefixer", Version: "^10.4.19"},
+	{Name: "postcss", Version: "^8.4.39"},
+	{Name: "shadcn", Version: "^4.18.0"},
+	{Name: "tailwindcss", Version: "^3.4.4"},
+	{Name: "typescript", Version: "^5.5.3"},
+	{Name: "vite", Version: "^5.4.0"},
+}
 
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
 	templateFS   embed.FS
 	templateRoot string
 	agentsMD     string // template-specific AGENTS.md fragment; "" = none (generic base only)
-	// Design-system registry items pulled at init. Every component item
-	// depends on "theme", so listing theme alone still installs the real
-	// tokens and Tailwind preset over the scaffold's placeholders.
-	registryItems []string
 }
 
 var appTypes = map[string]appType{
 	"blank": {
-		templateFS:    blankStarterFS,
-		templateRoot:  "templates/blank",
-		agentsMD:      "",
-		registryItems: []string{"theme"},
+		templateFS:   blankStarterFS,
+		templateRoot: "templates/blank",
+		agentsMD:     "",
 	},
 	"annotation-queue": {
-		templateFS:    annotationQueueStarterFS,
-		templateRoot:  "templates/annotation-queue",
-		agentsMD:      "annotation_queue",
-		registryItems: []string{"theme"},
+		templateFS:   annotationQueueStarterFS,
+		templateRoot: "templates/annotation-queue",
+		agentsMD:     "annotation_queue",
 	},
 	"annotation-queue-grid": {
-		templateFS:    annotationQueueGridStarterFS,
-		templateRoot:  "templates/annotation-queue-grid",
-		agentsMD:      "annotation_queue_grid",
-		registryItems: []string{"theme"},
+		templateFS:   annotationQueueGridStarterFS,
+		templateRoot: "templates/annotation-queue-grid",
+		agentsMD:     "annotation_queue_grid",
 	},
 	"coding-agent-dashboard": {
-		templateFS:    codingAgentDashboardStarterFS,
-		templateRoot:  "templates/coding-agent-dashboard",
-		agentsMD:      "coding_agent_dashboard",
-		registryItems: []string{"theme"},
+		templateFS:   codingAgentDashboardStarterFS,
+		templateRoot: "templates/coding-agent-dashboard",
+		agentsMD:     "coding_agent_dashboard",
 	},
 	"experiment-comparison": {
-		templateFS:    experimentComparisonStarterFS,
-		templateRoot:  "templates/experiment-comparison",
-		agentsMD:      "experiment_comparison",
-		registryItems: []string{"theme"},
+		templateFS:   experimentComparisonStarterFS,
+		templateRoot: "templates/experiment-comparison",
+		agentsMD:     "experiment_comparison",
 	},
 }
 
@@ -111,10 +126,10 @@ func appTypeNames() []string {
 }
 
 type customAppStarterVars struct {
-	Name        string
-	Description string
-	NeedsIcons  bool
-	NeedsCn     bool
+	Name            string
+	Description     string
+	Dependencies    []npmDependency
+	DevDependencies []npmDependency
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -172,7 +187,6 @@ Installs dependencies as the last step, so you can cd in and run
 			if err := installAppDeps(dir); err != nil {
 				return err
 			}
-			addRegistryComponents(dir, at.registryItems)
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
 			output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
@@ -233,34 +247,6 @@ func installAppDeps(dir string) error {
 // registryNamespace matches the "registries" key in each template's components.json.
 const registryNamespace = "@langsmith"
 
-// addRegistryComponents pulls design-system items into the scaffold. Best
-// effort: a scaffold without them still builds on the placeholder theme, so a
-// missing npx or an unreachable registry prints the manual command instead of
-// failing init.
-func addRegistryComponents(dir string, items []string) {
-	if len(items) == 0 {
-		return
-	}
-	args := []string{"shadcn", "add", "--overwrite", "--yes"}
-	for _, item := range items {
-		args = append(args, registryNamespace+"/"+item)
-	}
-	manual := "npx " + strings.Join(args, " ")
-
-	if _, err := exec.LookPath("npx"); err != nil {
-		fmt.Fprintf(os.Stderr, "note: npx not found on PATH — run %q to install design system components\n", manual)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "Adding design system components: %s\n", strings.Join(items, ", "))
-	c := exec.Command("npx", args...)
-	c.Dir = dir
-	c.Stdout = os.Stderr
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "note: design system install failed (%v) — run %q to retry\n", err, manual)
-	}
-}
-
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
 	if name == "" {
 		return nil, fmt.Errorf("--name is required")
@@ -289,12 +275,26 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		vars.Description = "TODO: one-sentence description of what this app does."
 	}
 
-	src, err := concatenatedTemplateSource(at)
+	sharedPaths, err := usedSharedFiles(at)
 	if err != nil {
 		return nil, err
 	}
-	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
-	vars.NeedsCn = strings.Contains(src, cnUtilsImportSpecifier)
+	// The design system is resolved against the shared files too — they are
+	// what a template's picker or spinner actually imports it through.
+	src, err := templateSourceWithShared(at, sharedPaths)
+	if err != nil {
+		return nil, err
+	}
+
+	ds, err := loadDesignSystem()
+	if err != nil {
+		return nil, err
+	}
+	dsFiles, err := ds.selectDesignSystemFiles(src)
+	if err != nil {
+		return nil, err
+	}
+	vars.Dependencies, vars.DevDependencies = resolveAppDependencies(ds, dsFiles, src)
 
 	var written []string
 	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
@@ -356,11 +356,17 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	}
 	written = append(written, "package.json")
 
-	sharedWritten, err := writeUsedSharedFiles(dir, at)
+	sharedWritten, err := writeSharedFiles(dir, sharedPaths)
 	if err != nil {
 		return nil, err
 	}
 	written = append(written, sharedWritten...)
+
+	dsWritten, err := writeDesignSystemFiles(dir, dsFiles)
+	if err != nil {
+		return nil, err
+	}
+	written = append(written, dsWritten...)
 
 	agentsMD, err := assembleAgentsMD(at.agentsMD)
 	if err != nil {
@@ -380,9 +386,76 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	return written, nil
 }
 
-// writeUsedSharedFiles copies whichever templates/_shared/ files this
-// template's source actually imports into dir/src/.
-func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
+// writeDesignSystemFiles copies the selected registry snapshot files into the
+// scaffolded app, at the same paths `npx shadcn add @langsmith/...` would use —
+// so a later `add` lands beside them instead of duplicating them.
+func writeDesignSystemFiles(dir string, files []string) ([]string, error) {
+	written := make([]string, 0, len(files))
+	for _, rel := range files {
+		raw, err := designSystemFS.ReadFile(designSystemSnapshotRoot + "/" + rel)
+		if err != nil {
+			return nil, fmt.Errorf("reading vendored design-system file %s: %w", rel, err)
+		}
+		dest := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return nil, fmt.Errorf("creating directory for %s: %w", rel, err)
+		}
+		if err := os.WriteFile(dest, raw, 0o644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", rel, err)
+		}
+		written = append(written, rel)
+	}
+	return written, nil
+}
+
+// resolveAppDependencies builds the package.json dependency lists: the fixed
+// toolchain, plus whatever the vendored design-system files and the template's
+// own source import.
+func resolveAppDependencies(ds *designSystemManifest, dsFiles []string, src string) (deps, devDeps []npmDependency) {
+	runtime, build := ds.designSystemPackages(dsFiles)
+
+	deps = append(deps, baseDependencies...)
+	deps = append(deps, runtime...)
+	for _, pkg := range templateOnlyPackages {
+		if !strings.Contains(src, "'"+pkg+"'") && !strings.Contains(src, "\""+pkg+"\"") {
+			continue
+		}
+		deps = append(deps, npmDependency{Name: pkg, Version: ds.Versions[pkg]})
+	}
+
+	devDeps = append(devDeps, baseDevDependencies...)
+	devDeps = append(devDeps, build...)
+	// Unconditionally, not just for what this template vendors: `shadcn add`
+	// installs a component's runtime packages but never their @types, so an
+	// app that adds a design-system component later would otherwise fail
+	// typecheck on a package that ships no types of its own.
+	for pkg, version := range typesPackages {
+		devDeps = append(devDeps, npmDependency{Name: "@types/" + pkg, Version: version})
+	}
+
+	return dedupeDependencies(deps), dedupeDependencies(devDeps)
+}
+
+// dedupeDependencies sorts by name and drops repeats (react-dom is in the base
+// list; the Tailwind preset also requires tailwindcss, and so on).
+func dedupeDependencies(deps []npmDependency) []npmDependency {
+	sort.Slice(deps, func(i, j int) bool { return deps[i].Name < deps[j].Name })
+	out := deps[:0]
+	for i, dep := range deps {
+		if i > 0 && deps[i-1].Name == dep.Name {
+			continue
+		}
+		if dep.Version == "" {
+			dep.Version = "*"
+		}
+		out = append(out, dep)
+	}
+	return out
+}
+
+// usedSharedFiles returns the templates/_shared/ files this template pulls in,
+// following imports from shared file to shared file until the set stops growing.
+func usedSharedFiles(at appType) ([]string, error) {
 	sharedPaths, err := allSharedFilePaths()
 	if err != nil {
 		return nil, err
@@ -391,24 +464,47 @@ func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 		return nil, nil
 	}
 
-	src, err := concatenatedTemplateSource(at)
+	src, err := templateSource(at)
 	if err != nil {
 		return nil, err
 	}
 
-	var written []string
-	for _, relPath := range sharedPaths {
-		used := false
-		for _, spec := range sharedFileImportSpecifiers(relPath) {
-			if strings.Contains(src, "'"+spec+"'") || strings.Contains(src, "\""+spec+"\"") {
-				used = true
+	used := map[string]bool{}
+	for grew := true; grew; {
+		grew = false
+		for _, relPath := range sharedPaths {
+			if used[relPath] {
+				continue
+			}
+			for _, spec := range sharedFileImportSpecifiers(relPath) {
+				if !strings.Contains(src, "'"+spec+"'") && !strings.Contains(src, "\""+spec+"\"") {
+					continue
+				}
+				raw, err := sharedFS.ReadFile(sharedRoot + "/" + relPath)
+				if err != nil {
+					return nil, fmt.Errorf("reading embedded shared file %s: %w", relPath, err)
+				}
+				used[relPath] = true
+				// A newly pulled-in shared file's own imports count too.
+				src += "\n" + string(raw)
+				grew = true
 				break
 			}
 		}
-		if !used {
-			continue
-		}
+	}
 
+	out := make([]string, 0, len(used))
+	for relPath := range used {
+		out = append(out, relPath)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// writeSharedFiles copies the given templates/_shared/ files into dir/src/.
+func writeSharedFiles(dir string, sharedPaths []string) ([]string, error) {
+	var written []string
+	for _, relPath := range sharedPaths {
 		raw, err := sharedFS.ReadFile(sharedRoot + "/" + relPath)
 		if err != nil {
 			return nil, fmt.Errorf("reading embedded shared file %s: %w", relPath, err)
@@ -424,6 +520,26 @@ func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 		written = append(written, filepath.ToSlash(destRel))
 	}
 	return written, nil
+}
+
+// templateSourceWithShared is every line of TypeScript that will end up in the
+// scaffolded app's src/, template and shared alike.
+func templateSourceWithShared(at appType, sharedPaths []string) (string, error) {
+	src, err := templateSource(at)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(src)
+	for _, relPath := range sharedPaths {
+		raw, err := sharedFS.ReadFile(sharedRoot + "/" + relPath)
+		if err != nil {
+			return "", fmt.Errorf("reading embedded shared file %s: %w", relPath, err)
+		}
+		b.WriteByte('\n')
+		b.Write(raw)
+	}
+	return b.String(), nil
 }
 
 // allSharedFilePaths lists files under templates/_shared/, relative to that root.
@@ -445,8 +561,8 @@ func allSharedFilePaths() ([]string, error) {
 	return paths, nil
 }
 
-// concatenatedTemplateSource concatenates every .ts/.tsx file in the template.
-func concatenatedTemplateSource(at appType) (string, error) {
+// templateSource concatenates every .ts/.tsx file in the template.
+func templateSource(at appType) (string, error) {
 	var out strings.Builder
 	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {

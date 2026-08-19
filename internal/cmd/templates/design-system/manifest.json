@@ -1,0 +1,1557 @@
+{
+  "source": "https://smith.langchain.com/r",
+  "syncedAt": "2026-08-17",
+  "items": {
+    "avatar": {
+      "type": "registry:ui",
+      "title": "Avatar",
+      "entry": "components/Avatar",
+      "files": [
+        "src/components/langsmith/design-system/components/Avatar/Avatar.tsx",
+        "src/components/langsmith/design-system/components/Avatar/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "badge": {
+      "type": "registry:ui",
+      "title": "Badge",
+      "entry": "components/Badge",
+      "files": [
+        "src/components/langsmith/design-system/components/Badge/Badge.tsx",
+        "src/components/langsmith/design-system/components/Badge/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "banner": {
+      "type": "registry:ui",
+      "title": "Banner",
+      "entry": "components/Banner",
+      "files": [
+        "src/components/langsmith/design-system/components/Banner/Banner.tsx",
+        "src/components/langsmith/design-system/components/Banner/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/icon-button",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "button": {
+      "type": "registry:ui",
+      "title": "Button",
+      "entry": "components/Button",
+      "files": [
+        "src/components/langsmith/design-system/components/Button/Button.tsx",
+        "src/components/langsmith/design-system/components/Button/constants.ts",
+        "src/components/langsmith/design-system/components/Button/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/badge",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "button-group": {
+      "type": "registry:ui",
+      "title": "ButtonGroup",
+      "entry": "components/ButtonGroup",
+      "files": [
+        "src/components/langsmith/design-system/components/ButtonGroup/ButtonGroup.tsx",
+        "src/components/langsmith/design-system/components/ButtonGroup/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/icon-button",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "chart-card": {
+      "type": "registry:ui",
+      "title": "ChartCard",
+      "entry": "components/ChartCard",
+      "files": [
+        "src/components/langsmith/design-system/components/ChartCard/ChartCard.tsx",
+        "src/components/langsmith/design-system/components/ChartCard/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/dropdown-menu",
+        "@langsmith/empty-state",
+        "@langsmith/icon-button",
+        "@langsmith/skeleton",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "chart-legend": {
+      "type": "registry:ui",
+      "title": "ChartLegend",
+      "entry": "components/ChartLegend",
+      "files": [
+        "src/components/langsmith/design-system/components/ChartLegend/ChartLegend.tsx",
+        "src/components/langsmith/design-system/components/ChartLegend/index.ts",
+        "src/components/langsmith/design-system/components/ChartLegend/utils.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/badge",
+        "@langsmith/button",
+        "@langsmith/icon",
+        "@langsmith/popover",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "chart-tooltip": {
+      "type": "registry:ui",
+      "title": "ChartTooltip",
+      "entry": "components/ChartTooltip",
+      "files": [
+        "src/components/langsmith/design-system/components/ChartTooltip/ChartTooltip.tsx",
+        "src/components/langsmith/design-system/components/ChartTooltip/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "checkbox": {
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "entry": "components/Checkbox",
+      "files": [
+        "src/components/langsmith/design-system/components/Checkbox/Checkbox.tsx",
+        "src/components/langsmith/design-system/components/Checkbox/constants.ts",
+        "src/components/langsmith/design-system/components/Checkbox/getCheckedState.ts",
+        "src/components/langsmith/design-system/components/Checkbox/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "circular-progress": {
+      "type": "registry:ui",
+      "title": "CircularProgress",
+      "entry": "components/CircularProgress",
+      "files": [
+        "src/components/langsmith/design-system/components/CircularProgress/CircularProgress.tsx",
+        "src/components/langsmith/design-system/components/CircularProgress/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "command": {
+      "type": "registry:ui",
+      "title": "Command",
+      "entry": "components/Command",
+      "files": [
+        "src/components/langsmith/design-system/components/Command/Command.tsx",
+        "src/components/langsmith/design-system/components/Command/CommandMenu.tsx",
+        "src/components/langsmith/design-system/components/Command/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/input",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "context-menu": {
+      "type": "registry:ui",
+      "title": "ContextMenu",
+      "entry": "components/ContextMenu",
+      "files": [
+        "src/components/langsmith/design-system/components/ContextMenu/ContextMenu.tsx",
+        "src/components/langsmith/design-system/components/ContextMenu/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "copy-button": {
+      "type": "registry:ui",
+      "title": "CopyButton",
+      "entry": "components/CopyButton",
+      "files": [
+        "src/components/langsmith/design-system/components/CopyButton/CopyButton.tsx",
+        "src/components/langsmith/design-system/components/CopyButton/copyToClipboard.tsx",
+        "src/components/langsmith/design-system/components/CopyButton/index.ts",
+        "src/components/langsmith/design-system/components/CopyButton/useCopy.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/icon-button",
+        "@langsmith/text",
+        "@langsmith/theme"
+      ]
+    },
+    "dialog": {
+      "type": "registry:ui",
+      "title": "Dialog",
+      "entry": "components/Dialog",
+      "files": [
+        "src/components/langsmith/design-system/components/Dialog/index.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/icon-button",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "divider": {
+      "type": "registry:ui",
+      "title": "Divider",
+      "entry": "components/Divider",
+      "files": [
+        "src/components/langsmith/design-system/components/Divider/Divider.tsx",
+        "src/components/langsmith/design-system/components/Divider/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "dropdown-menu": {
+      "type": "registry:ui",
+      "title": "DropdownMenu",
+      "entry": "components/DropdownMenu",
+      "files": [
+        "src/components/langsmith/design-system/components/DropdownMenu/DropdownMenu.tsx",
+        "src/components/langsmith/design-system/components/DropdownMenu/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "empty-state": {
+      "type": "registry:ui",
+      "title": "EmptyState",
+      "entry": "components/EmptyState",
+      "files": [
+        "src/components/langsmith/design-system/components/EmptyState/EmptyState.tsx",
+        "src/components/langsmith/design-system/components/EmptyState/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/link",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "error-message": {
+      "type": "registry:ui",
+      "title": "ErrorMessage",
+      "entry": "components/ErrorMessage",
+      "files": [
+        "src/components/langsmith/design-system/components/ErrorMessage/ErrorMessage.tsx",
+        "src/components/langsmith/design-system/components/ErrorMessage/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/copy-button",
+        "@langsmith/icon",
+        "@langsmith/icon-button",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "error-state": {
+      "type": "registry:ui",
+      "title": "ErrorState",
+      "entry": "components/ErrorState",
+      "files": [
+        "src/components/langsmith/design-system/components/ErrorState/ErrorState.tsx",
+        "src/components/langsmith/design-system/components/ErrorState/NoMatchBackground.svg",
+        "src/components/langsmith/design-system/components/ErrorState/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "grouped-tabs": {
+      "type": "registry:ui",
+      "title": "GroupedTabs",
+      "entry": "components/GroupedTabs",
+      "files": [
+        "src/components/langsmith/design-system/components/GroupedTabs/GroupedTabs.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "hover-card": {
+      "type": "registry:ui",
+      "title": "HoverCard",
+      "files": [
+        "src/components/langsmith/design-system/components/HoverCard.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/popover",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "icon": {
+      "type": "registry:ui",
+      "title": "Icon",
+      "entry": "components/Icon",
+      "files": [
+        "src/components/langsmith/design-system/components/Icon/Icon.tsx",
+        "src/components/langsmith/design-system/components/Icon/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "icon-button": {
+      "type": "registry:ui",
+      "title": "IconButton",
+      "entry": "components/IconButton",
+      "files": [
+        "src/components/langsmith/design-system/components/IconButton/IconButton.tsx",
+        "src/components/langsmith/design-system/components/IconButton/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/theme",
+        "@langsmith/tooltip",
+        "@langsmith/utils"
+      ]
+    },
+    "input": {
+      "type": "registry:ui",
+      "title": "Input",
+      "entry": "components/Input",
+      "files": [
+        "src/components/langsmith/design-system/components/Input/Input.tsx",
+        "src/components/langsmith/design-system/components/Input/index.ts",
+        "src/components/langsmith/design-system/components/Input/inputStyles.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon-button",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "kbd": {
+      "type": "registry:ui",
+      "title": "Kbd",
+      "entry": "components/Kbd",
+      "files": [
+        "src/components/langsmith/design-system/components/Kbd/Kbd.tsx",
+        "src/components/langsmith/design-system/components/Kbd/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "linear-progress": {
+      "type": "registry:ui",
+      "title": "LinearProgress",
+      "entry": "components/LinearProgress",
+      "files": [
+        "src/components/langsmith/design-system/components/LinearProgress/LinearProgress.tsx",
+        "src/components/langsmith/design-system/components/LinearProgress/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "link": {
+      "type": "registry:ui",
+      "title": "Link",
+      "entry": "components/Link",
+      "files": [
+        "src/components/langsmith/design-system/components/Link/Link.tsx",
+        "src/components/langsmith/design-system/components/Link/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/icon",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "pane": {
+      "type": "registry:ui",
+      "title": "Pane",
+      "entry": "components/Pane",
+      "files": [
+        "src/components/langsmith/design-system/components/Pane/Pane.tsx",
+        "src/components/langsmith/design-system/components/Pane/Pane.utils.tsx",
+        "src/components/langsmith/design-system/components/Pane/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/dialog",
+        "@langsmith/icon-button",
+        "@langsmith/portal-slot",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/unsaved-changes-dialog",
+        "@langsmith/utils"
+      ]
+    },
+    "popover": {
+      "type": "registry:ui",
+      "title": "Popover",
+      "entry": "components/Popover",
+      "files": [
+        "src/components/langsmith/design-system/components/Popover/Popover.tsx",
+        "src/components/langsmith/design-system/components/Popover/constants.ts",
+        "src/components/langsmith/design-system/components/Popover/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/dialog",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "portal-slot": {
+      "type": "registry:ui",
+      "title": "PortalSlot",
+      "files": [
+        "src/components/langsmith/design-system/components/PortalSlot.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme"
+      ]
+    },
+    "progress-bar": {
+      "type": "registry:ui",
+      "title": "ProgressBar",
+      "entry": "components/ProgressBar",
+      "files": [
+        "src/components/langsmith/design-system/components/ProgressBar/ProgressBar.tsx",
+        "src/components/langsmith/design-system/components/ProgressBar/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "radio-button": {
+      "type": "registry:ui",
+      "title": "RadioButton",
+      "entry": "components/RadioButton",
+      "files": [
+        "src/components/langsmith/design-system/components/RadioButton/RadioButton.tsx",
+        "src/components/langsmith/design-system/components/RadioButton/constants.ts",
+        "src/components/langsmith/design-system/components/RadioButton/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "radio-card": {
+      "type": "registry:ui",
+      "title": "RadioCard",
+      "entry": "components/RadioCard",
+      "files": [
+        "src/components/langsmith/design-system/components/RadioCard/RadioCard.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/radio-button",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "radio-group": {
+      "type": "registry:ui",
+      "title": "RadioGroup",
+      "entry": "components/RadioGroup",
+      "files": [
+        "src/components/langsmith/design-system/components/RadioGroup/RadioGroup.tsx",
+        "src/components/langsmith/design-system/components/RadioGroup/RadioGroupItem.tsx",
+        "src/components/langsmith/design-system/components/RadioGroup/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "select": {
+      "type": "registry:ui",
+      "title": "Select",
+      "entry": "components/Select",
+      "files": [
+        "src/components/langsmith/design-system/components/Select/Select.tsx",
+        "src/components/langsmith/design-system/components/Select/SelectPrimitive.tsx",
+        "src/components/langsmith/design-system/components/Select/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/command",
+        "@langsmith/popover",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "skeleton": {
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "entry": "components/Skeleton",
+      "files": [
+        "src/components/langsmith/design-system/components/Skeleton/Skeleton.tsx",
+        "src/components/langsmith/design-system/components/Skeleton/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "slider": {
+      "type": "registry:ui",
+      "title": "Slider",
+      "entry": "components/Slider",
+      "files": [
+        "src/components/langsmith/design-system/components/Slider/Slider.tsx",
+        "src/components/langsmith/design-system/components/Slider/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "spinner": {
+      "type": "registry:ui",
+      "title": "Spinner",
+      "entry": "components/Spinner",
+      "files": [
+        "src/components/langsmith/design-system/components/Spinner/Spinner.tsx",
+        "src/components/langsmith/design-system/components/Spinner/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "switch": {
+      "type": "registry:ui",
+      "title": "Switch",
+      "entry": "components/Switch",
+      "files": [
+        "src/components/langsmith/design-system/components/Switch/Switch.tsx",
+        "src/components/langsmith/design-system/components/Switch/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "tabs": {
+      "type": "registry:ui",
+      "title": "Tabs",
+      "entry": "components/Tabs",
+      "files": [
+        "src/components/langsmith/design-system/components/Tabs/index.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/badge",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "text": {
+      "type": "registry:ui",
+      "title": "Text",
+      "entry": "components/Text",
+      "files": [
+        "src/components/langsmith/design-system/components/Text/Text.tsx",
+        "src/components/langsmith/design-system/components/Text/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "textarea": {
+      "type": "registry:ui",
+      "title": "Textarea",
+      "entry": "components/Textarea",
+      "files": [
+        "src/components/langsmith/design-system/components/Textarea/Textarea.tsx",
+        "src/components/langsmith/design-system/components/Textarea/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "theme": {
+      "type": "registry:style",
+      "title": "LangSmith Design System Theme",
+      "files": [
+        "src/components/langsmith/design-system/theme.css",
+        "tailwind.langsmith.cjs"
+      ]
+    },
+    "toast": {
+      "type": "registry:ui",
+      "title": "Toast",
+      "entry": "components/Toast",
+      "files": [
+        "src/components/langsmith/design-system/components/Toast/ToastContext.tsx",
+        "src/components/langsmith/design-system/components/Toast/index.tsx",
+        "src/components/langsmith/design-system/components/Toast/useToast.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/copy-button",
+        "@langsmith/icon",
+        "@langsmith/icon-button",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "tooltip": {
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "entry": "components/Tooltip",
+      "files": [
+        "src/components/langsmith/design-system/components/Tooltip/Tooltip.tsx",
+        "src/components/langsmith/design-system/components/Tooltip/index.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "typeahead": {
+      "type": "registry:ui",
+      "title": "Typeahead",
+      "entry": "components/Typeahead",
+      "files": [
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.tsx",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types.ts",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.utils.ts",
+        "src/components/langsmith/design-system/components/Typeahead/TypeaheadParts.tsx",
+        "src/components/langsmith/design-system/components/Typeahead/TypeaheadView.tsx",
+        "src/components/langsmith/design-system/components/Typeahead/index.ts",
+        "src/components/langsmith/design-system/components/Typeahead/useTypeaheadDomSync.ts",
+        "src/components/langsmith/design-system/components/Typeahead/useTypeaheadUncontrolledInput.ts"
+      ],
+      "registryDependencies": [
+        "@langsmith/badge",
+        "@langsmith/command",
+        "@langsmith/icon",
+        "@langsmith/icon-button",
+        "@langsmith/popover",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/utils"
+      ]
+    },
+    "unsaved-changes-dialog": {
+      "type": "registry:ui",
+      "title": "UnsavedChangesDialog",
+      "files": [
+        "src/components/langsmith/design-system/components/UnsavedChangesDialog.tsx"
+      ],
+      "registryDependencies": [
+        "@langsmith/button",
+        "@langsmith/dialog",
+        "@langsmith/text",
+        "@langsmith/theme",
+        "@langsmith/tooltip"
+      ]
+    },
+    "utils": {
+      "type": "registry:lib",
+      "title": "LangSmith Design System Utilities",
+      "files": [
+        "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/index.tsx",
+        "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/useScrollParent.ts",
+        "src/components/langsmith/design-system/utils/ZIndexContext.tsx",
+        "src/components/langsmith/design-system/utils/cn.tsx",
+        "src/components/langsmith/design-system/utils/get-color-by-string.tsx",
+        "src/components/langsmith/design-system/utils/merge-refs.tsx",
+        "src/components/langsmith/design-system/utils/prettify-error-payload.ts",
+        "src/components/langsmith/design-system/utils/spacing.ts",
+        "src/components/langsmith/design-system/utils/useZIndex.ts",
+        "src/components/langsmith/design-system/utils/zIndices.ts"
+      ]
+    }
+  },
+  "files": {
+    "src/components/langsmith/design-system/components/Avatar/Avatar.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/get-color-by-string"
+      ],
+      "packages": [
+        "@braintree/sanitize-url"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Avatar/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Avatar/Avatar"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Badge/Badge.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Badge/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Badge/Badge"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Banner/Banner.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Banner/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Banner/Banner"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Button/Button.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Badge",
+        "src/components/langsmith/design-system/components/Button/constants",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Button/constants.ts": {},
+    "src/components/langsmith/design-system/components/Button/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button/Button"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ButtonGroup/ButtonGroup.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ButtonGroup/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ButtonGroup/ButtonGroup"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartCard/ChartCard.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/DropdownMenu",
+        "src/components/langsmith/design-system/components/EmptyState",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Skeleton",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartCard/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ChartCard/ChartCard"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartLegend/ChartLegend.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Badge",
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/ChartLegend/utils",
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/Popover",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/spacing"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartLegend/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ChartLegend/ChartLegend"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartLegend/utils.ts": {},
+    "src/components/langsmith/design-system/components/ChartTooltip/ChartTooltip.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ChartTooltip/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ChartTooltip/ChartTooltip"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Checkbox/Checkbox.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Checkbox/constants",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-checkbox"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Checkbox/constants.ts": {},
+    "src/components/langsmith/design-system/components/Checkbox/getCheckedState.ts": {
+      "packages": [
+        "@radix-ui/react-checkbox"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Checkbox/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Checkbox/Checkbox",
+        "src/components/langsmith/design-system/components/Checkbox/getCheckedState"
+      ]
+    },
+    "src/components/langsmith/design-system/components/CircularProgress/CircularProgress.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/CircularProgress/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/CircularProgress/CircularProgress"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Command/Command.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Input/inputStyles",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "cmdk"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Command/CommandMenu.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Command/Command",
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/Input/inputStyles",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Command/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Command/Command",
+        "src/components/langsmith/design-system/components/Command/CommandMenu"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ContextMenu/ContextMenu.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@radix-ui/react-context-menu"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ContextMenu/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ContextMenu/ContextMenu"
+      ]
+    },
+    "src/components/langsmith/design-system/components/CopyButton/CopyButton.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/CopyButton/useCopy",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Text"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/CopyButton/copyToClipboard.tsx": {},
+    "src/components/langsmith/design-system/components/CopyButton/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/CopyButton/CopyButton",
+        "src/components/langsmith/design-system/components/CopyButton/copyToClipboard",
+        "src/components/langsmith/design-system/components/CopyButton/useCopy"
+      ]
+    },
+    "src/components/langsmith/design-system/components/CopyButton/useCopy.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/CopyButton/copyToClipboard"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Dialog/index.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/merge-refs",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-dialog"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Divider/Divider.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Divider/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Divider/Divider"
+      ]
+    },
+    "src/components/langsmith/design-system/components/DropdownMenu/DropdownMenu.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@radix-ui/react-dropdown-menu",
+        "@radix-ui/react-use-controllable-state"
+      ]
+    },
+    "src/components/langsmith/design-system/components/DropdownMenu/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/DropdownMenu/DropdownMenu"
+      ]
+    },
+    "src/components/langsmith/design-system/components/EmptyState/EmptyState.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/Link",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/EmptyState/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/EmptyState/EmptyState"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ErrorMessage/ErrorMessage.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/CopyButton",
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/prettify-error-payload"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-use-controllable-state"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ErrorMessage/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ErrorMessage/ErrorMessage"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ErrorState/ErrorState.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/ErrorState/NoMatchBackground.svg?react",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "react-router-dom"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ErrorState/NoMatchBackground.svg": {},
+    "src/components/langsmith/design-system/components/ErrorState/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ErrorState/ErrorState"
+      ]
+    },
+    "src/components/langsmith/design-system/components/GroupedTabs/GroupedTabs.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon/Icon",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/HoverCard.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Popover/constants",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@radix-ui/react-hover-card"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Icon/Icon.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Icon/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon/Icon"
+      ]
+    },
+    "src/components/langsmith/design-system/components/IconButton/IconButton.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button/constants",
+        "src/components/langsmith/design-system/components/Tooltip",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/IconButton/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/IconButton/IconButton"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Input/Input.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Input/inputStyles",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/merge-refs"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "use-debounce"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Input/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Input/Input"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Input/inputStyles.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Kbd/Kbd.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Kbd/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Kbd/Kbd"
+      ]
+    },
+    "src/components/langsmith/design-system/components/LinearProgress/LinearProgress.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/LinearProgress/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/LinearProgress/LinearProgress"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Link/Link.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "react-router-dom"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Link/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Link/Link"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Pane/Pane.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Dialog",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Pane/Pane.utils",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/UnsavedChangesDialog",
+        "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext",
+        "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/useScrollParent",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/merge-refs",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-dialog"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Pane/Pane.utils.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/PortalSlot"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Pane/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Pane/Pane",
+        "src/components/langsmith/design-system/components/Pane/Pane.utils"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Popover/Popover.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Dialog",
+        "src/components/langsmith/design-system/components/Popover/constants",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@radix-ui/react-popover"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Popover/constants.ts": {},
+    "src/components/langsmith/design-system/components/Popover/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Popover/Popover"
+      ]
+    },
+    "src/components/langsmith/design-system/components/PortalSlot.tsx": {},
+    "src/components/langsmith/design-system/components/ProgressBar/ProgressBar.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/ProgressBar/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/ProgressBar/ProgressBar"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioButton/RadioButton.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/RadioButton/constants",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-radio-group"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioButton/constants.ts": {},
+    "src/components/langsmith/design-system/components/RadioButton/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/RadioButton/RadioButton"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioCard/RadioCard.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/RadioButton/constants",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-radio-group"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioGroup/RadioGroup.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-radio-group"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioGroup/RadioGroupItem.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-radio-group"
+      ]
+    },
+    "src/components/langsmith/design-system/components/RadioGroup/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/RadioGroup/RadioGroup",
+        "src/components/langsmith/design-system/components/RadioGroup/RadioGroupItem"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Select/Select.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/Command/CommandMenu",
+        "src/components/langsmith/design-system/components/Popover",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Select/SelectPrimitive.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-select",
+        "@radix-ui/react-use-controllable-state"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Select/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Select/Select",
+        "src/components/langsmith/design-system/components/Select/SelectPrimitive"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Skeleton/Skeleton.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Skeleton/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Skeleton/Skeleton"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Slider/Slider.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-slider"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Slider/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Slider/Slider"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Spinner/Spinner.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Spinner/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Spinner/Spinner"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Switch/Switch.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@radix-ui/react-switch"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Switch/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Switch/Switch"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Tabs/index.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Badge",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@headlessui/react"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Text/Text.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/cn"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Text/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text/Text"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Textarea/Textarea.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/merge-refs"
+      ],
+      "packages": [
+        "use-debounce"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Textarea/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Textarea/Textarea"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Toast/ToastContext.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Toast"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Toast/index.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/CopyButton",
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Toast/ToastContext",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "@radix-ui/react-toast"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Toast/useToast.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Toast/ToastContext"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Tooltip/Tooltip.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/utils/ZIndexContext",
+        "src/components/langsmith/design-system/utils/cn",
+        "src/components/langsmith/design-system/utils/useZIndex",
+        "src/components/langsmith/design-system/utils/zIndices"
+      ],
+      "packages": [
+        "@radix-ui/react-tooltip"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Tooltip/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Tooltip/Tooltip"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/Typeahead.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.utils",
+        "src/components/langsmith/design-system/components/Typeahead/TypeaheadView",
+        "src/components/langsmith/design-system/components/Typeahead/useTypeaheadDomSync",
+        "src/components/langsmith/design-system/components/Typeahead/useTypeaheadUncontrolledInput"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/Typeahead.types.ts": {},
+    "src/components/langsmith/design-system/components/Typeahead/Typeahead.utils.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/TypeaheadParts.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Badge",
+        "src/components/langsmith/design-system/components/Icon",
+        "src/components/langsmith/design-system/components/IconButton",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.utils",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/TypeaheadView.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Command",
+        "src/components/langsmith/design-system/components/Popover",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.utils",
+        "src/components/langsmith/design-system/components/Typeahead/TypeaheadParts",
+        "src/components/langsmith/design-system/utils/cn"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons",
+        "cmdk"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/index.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead",
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types"
+      ]
+    },
+    "src/components/langsmith/design-system/components/Typeahead/useTypeaheadDomSync.ts": {},
+    "src/components/langsmith/design-system/components/Typeahead/useTypeaheadUncontrolledInput.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Typeahead/Typeahead.types"
+      ]
+    },
+    "src/components/langsmith/design-system/components/UnsavedChangesDialog.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/components/Button",
+        "src/components/langsmith/design-system/components/Dialog",
+        "src/components/langsmith/design-system/components/Text",
+        "src/components/langsmith/design-system/components/Tooltip"
+      ],
+      "packages": [
+        "@langchain/untitled-ui-icons"
+      ]
+    },
+    "src/components/langsmith/design-system/theme.css": {},
+    "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/index.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/useScrollParent"
+      ]
+    },
+    "src/components/langsmith/design-system/utils/VirtuosoCustomScrollParentContext/useScrollParent.ts": {},
+    "src/components/langsmith/design-system/utils/ZIndexContext.tsx": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/useZIndex"
+      ]
+    },
+    "src/components/langsmith/design-system/utils/cn.tsx": {
+      "packages": [
+        "clsx",
+        "tailwind-merge"
+      ]
+    },
+    "src/components/langsmith/design-system/utils/get-color-by-string.tsx": {
+      "packages": [
+        "d3-scale-chromatic"
+      ]
+    },
+    "src/components/langsmith/design-system/utils/merge-refs.tsx": {},
+    "src/components/langsmith/design-system/utils/prettify-error-payload.ts": {},
+    "src/components/langsmith/design-system/utils/spacing.ts": {},
+    "src/components/langsmith/design-system/utils/useZIndex.ts": {
+      "relative": [
+        "src/components/langsmith/design-system/utils/zIndices"
+      ]
+    },
+    "src/components/langsmith/design-system/utils/zIndices.ts": {},
+    "tailwind.langsmith.cjs": {
+      "packages": [
+        "@headlessui/tailwindcss",
+        "@radix-ui/colors",
+        "@tailwindcss/container-queries",
+        "@tailwindcss/forms",
+        "@tailwindcss/typography",
+        "tailwindcss",
+        "tailwindcss-animate"
+      ]
+    }
+  },
+  "versions": {
+    "@braintree/sanitize-url": "^7.1.2",
+    "@headlessui/react": "^2.2.10",
+    "@headlessui/tailwindcss": "^0.1.3",
+    "@langchain/untitled-ui-icons": "1.1.3",
+    "@radix-ui/colors": "^1.0.0",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-context-menu": "^2.2.16",
+    "@radix-ui/react-dialog": "1.1.23",
+    "@radix-ui/react-dropdown-menu": "2.1.24",
+    "@radix-ui/react-hover-card": "1.1.23",
+    "@radix-ui/react-popover": "1.1.23",
+    "@radix-ui/react-radio-group": "^1.3.4",
+    "@radix-ui/react-select": "^2.3.7",
+    "@radix-ui/react-slider": "^1.3.6",
+    "@radix-ui/react-switch": "^1.1.0",
+    "@radix-ui/react-toast": "1.2.23",
+    "@radix-ui/react-tooltip": "^1.2.6",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.7",
+    "@tailwindcss/typography": "^0.5.9",
+    "clsx": "^1.2.1",
+    "cmdk": "^1.1.1",
+    "d3-scale-chromatic": "^3.0.0",
+    "react-router-dom": "^7.18.2",
+    "tailwind-merge": "^2.6",
+    "tailwindcss": "*",
+    "tailwindcss-animate": "^1.0.7",
+    "use-debounce": "^9.0.4"
+  },
+  "themeFiles": [
+    "src/components/langsmith/design-system/theme.css",
+    "tailwind.langsmith.cjs"
+  ]
+}

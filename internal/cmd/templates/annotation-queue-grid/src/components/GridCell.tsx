@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon } from '@langchain/untitled-ui-icons';
+// The container/element split the design system's <Input> is built from. A
+// spreadsheet cell can't be an <Input>: DataGrid moves focus between cells by
+// querying for the focusable element that carries the row/col data attributes,
+// and every cell has to stay a plain focusable control. Borrowing the styling
+// helpers keeps these cells pixel-identical to a real Input anyway.
+import {
+  getInputContainerClasses,
+  getInputElementClasses,
+} from '@/components/langsmith/design-system/components/Input/inputStyles';
 import { patchFeedback, submitFeedback, deleteFeedback } from '../api';
 import type { FeedbackConfig, FeedbackItem, QueueItemType, RubricItem } from '../types';
 import { cn } from '../lib/utils';
@@ -123,18 +132,18 @@ export function GridCell({
 
   // Deliberately spreadsheet-like: a persistent visible box (not a
   // hover-only/transparent border) so every fillable cell reads as
-  // "editable" at rest, with a bold same-color glow on focus mimicking a
+  // "editable" at rest, with the design system's focus ring standing in for a
   // selected spreadsheet cell.
-  const cellInput = cn(
-    'w-full rounded-none border border-secondary bg-surface-level-1 px-2 py-1 text-sm text-primary transition-colors',
-    'hover:border-strong hover:bg-surface-level-1-hover',
-    'focus:border-brand focus:bg-primary focus:outline-none focus:shadow-[0_0_0_1px_var(--border-brand)]',
-    error && 'border-error-strong'
+  const containerClass = cn(
+    getInputContainerClasses({ size: 'sm', variant: 'outlined', isError: !!error, disabled: saving }),
+    'bg-surface-level-1',
+    saving && 'opacity-50'
   );
+  const elementClass = getInputElementClasses({ size: 'sm', disabled: saving, className: 'text-primary' });
 
   if (isCategorical) {
     return (
-      <div className="relative">
+      <div className={cn(containerClass, 'relative')} title={error ?? undefined}>
         <select
           value={score ?? ''}
           disabled={saving}
@@ -149,10 +158,12 @@ export function GridCell({
             setScore(val);
             save(val, cat?.label ?? String(val));
           }}
-          title={error ?? undefined}
           data-row-index={rowIndex}
           data-col-index={colIndex}
-          className={cn(cellInput, 'appearance-none pr-6', 'cursor-pointer', saving && 'opacity-50')}
+          // bg-none drops the arrow @tailwindcss/forms paints onto every
+          // <select>; appearance-none alone doesn't remove a background image,
+          // and it would sit next to the chevron below.
+          className={cn(elementClass, 'cursor-pointer appearance-none bg-none pr-space-4')}
         >
           <option value="">—</option>
           {config!.categories!.map((cat) => (
@@ -161,56 +172,58 @@ export function GridCell({
             </option>
           ))}
         </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+        <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-icon-tertiary" />
       </div>
     );
   }
 
   if (isContinuous) {
     return (
-      <input
-        type="number"
-        step="any"
-        min={config?.min ?? undefined}
-        max={config?.max ?? undefined}
-        value={score ?? ''}
-        disabled={saving}
-        onChange={(e) => setScore(e.target.value === '' ? null : Number(e.target.value))}
-        onBlur={() => {
-          if (score == null && existingFeedback) handleDelete();
-          else if (score != null) save(score, null);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-        placeholder="—"
-        title={error ?? undefined}
-        data-row-index={rowIndex}
-        data-col-index={colIndex}
-        className={cn(cellInput, saving && 'opacity-50')}
-      />
+      <div className={containerClass} title={error ?? undefined}>
+        <input
+          type="number"
+          step="any"
+          min={config?.min ?? undefined}
+          max={config?.max ?? undefined}
+          value={score ?? ''}
+          disabled={saving}
+          onChange={(e) => setScore(e.target.value === '' ? null : Number(e.target.value))}
+          onBlur={() => {
+            if (score == null && existingFeedback) handleDelete();
+            else if (score != null) save(score, null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          placeholder="—"
+          data-row-index={rowIndex}
+          data-col-index={colIndex}
+          className={elementClass}
+        />
+      </div>
     );
   }
 
   // Freeform
   return (
-    <input
-      type="text"
-      value={comment}
-      disabled={saving}
-      onChange={(e) => setComment(e.target.value)}
-      onBlur={() => {
-        if (comment.trim()) save(null, null, comment);
-        else if (existingFeedback) handleDelete();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
-      placeholder="—"
-      title={error ?? undefined}
-      data-row-index={rowIndex}
-      data-col-index={colIndex}
-      className={cn(cellInput, saving && 'opacity-50')}
-    />
+    <div className={containerClass} title={error ?? undefined}>
+      <input
+        type="text"
+        value={comment}
+        disabled={saving}
+        onChange={(e) => setComment(e.target.value)}
+        onBlur={() => {
+          if (comment.trim()) save(null, null, comment);
+          else if (existingFeedback) handleDelete();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        placeholder="—"
+        data-row-index={rowIndex}
+        data-col-index={colIndex}
+        className={elementClass}
+      />
+    </div>
   );
 }

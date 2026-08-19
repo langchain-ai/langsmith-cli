@@ -1,13 +1,21 @@
 import type { ReactNode } from 'react';
+import { Badge } from '@/components/langsmith/design-system/components/Badge';
+import { Text } from '@/components/langsmith/design-system/components/Text';
 
 const SURFACE = 'var(--bg-surface-level-1)';
 
 export function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-secondary p-5">
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-semibold text-primary">{title}</h2>
-        {note && <span className="text-xs text-tertiary">{note}</span>}
+    <section className="flex flex-col gap-space-3 rounded-lg border border-default p-space-5">
+      <div className="flex flex-col gap-space-1">
+        <Text variant="md" weight="semibold" as="h2">
+          {title}
+        </Text>
+        {note && (
+          <Text variant="sm" color="tertiary">
+            {note}
+          </Text>
+        )}
       </div>
       {children}
     </section>
@@ -15,7 +23,11 @@ export function Section({ title, note, children }: { title: string; note?: strin
 }
 
 export function Empty({ label = 'No data' }: { label?: string }) {
-  return <span className="py-4 text-center text-xs text-tertiary">{label}</span>;
+  return (
+    <Text variant="sm" color="tertiary" className="py-space-4 text-center">
+      {label}
+    </Text>
+  );
 }
 
 export interface StatDelta {
@@ -23,10 +35,12 @@ export interface StatDelta {
   tone: 'good' | 'bad' | 'neutral';
 }
 
-const DELTA_TONE_CLASS: Record<StatDelta['tone'], string> = {
-  good: 'bg-success-subtle text-success-primary',
-  bad: 'bg-error-subtle text-error-primary',
-  neutral: 'bg-surface-level-2 text-tertiary',
+// The delta pill's color is a verdict (did it beat the baseline?), which maps
+// straight onto the Badge intent colors.
+const DELTA_TONE_COLOR: Record<StatDelta['tone'], 'success' | 'error' | 'secondary'> = {
+  good: 'success',
+  bad: 'error',
+  neutral: 'secondary',
 };
 
 // Value uses proportional figures (not tabular-nums) — this is a standalone
@@ -45,20 +59,33 @@ export function StatTile({
   accent?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-secondary p-4">
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-tertiary">
-        {accent && <span className="size-2 shrink-0 rounded-[2px]" style={{ backgroundColor: accent }} />}
-        <span className="truncate" title={label}>{label}</span>
+    <div className="flex flex-col gap-1.5 rounded-lg border border-default p-space-4">
+      <span className="inline-flex items-center gap-1.5">
+        {accent && <span className="size-2 shrink-0 rounded-xs" style={{ backgroundColor: accent }} />}
+        <Text
+          as="span"
+          variant="xs"
+          weight="medium"
+          color="tertiary"
+          className="truncate uppercase tracking-wide"
+          title={label}
+        >
+          {label}
+        </Text>
       </span>
       <span className="text-2xl font-semibold text-primary">{value}</span>
       {(delta || hint) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {delta && (
-            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${DELTA_TONE_CLASS[delta.tone]}`}>
+            <Badge size="xs" color={DELTA_TONE_COLOR[delta.tone]}>
               {delta.text}
-            </span>
+            </Badge>
           )}
-          {hint && <span className="text-xs text-tertiary">{hint}</span>}
+          {hint && (
+            <Text as="span" variant="sm" color="tertiary">
+              {hint}
+            </Text>
+          )}
         </div>
       )}
     </div>
@@ -98,7 +125,7 @@ export function BarList({ items, labelWidth = 'w-32' }: { items: BarItem[]; labe
   if (items.length === 0) return <Empty />;
   const max = items.reduce((m, x) => Math.max(m, x.value ?? 0), 0);
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-space-2">
       {items.map((it) => (
         <li key={it.key} className="flex items-center gap-3 text-sm" title={it.hint ?? `${it.label}: ${it.display}`}>
           <span className={`${labelWidth} shrink-0 truncate text-secondary`} title={it.label}>
@@ -139,7 +166,7 @@ export function StackedBar({ rows, format = (n: number) => String(n) }: { rows: 
   if (rows.length === 0) return <Empty />;
   const max = rows.reduce((m, r) => Math.max(m, r.segments.reduce((s, x) => s + x.value, 0)), 0);
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-space-2">
       {rows.map((r) => {
         const total = r.segments.reduce((s, x) => s + x.value, 0);
         return (
