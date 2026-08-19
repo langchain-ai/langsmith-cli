@@ -502,6 +502,13 @@ func TestSandboxDownloadURLCmd_RendersNeverExpires(t *testing.T) {
 	assert.Contains(t, out, "never")
 }
 
+func TestSandboxDownloadURLCmd_RejectsUnknownDisposition(t *testing.T) {
+	_, err := executeCommand(t, "--api-key", "test-key", "sandbox", "generate-download-url", "my-vm", "--path", "/tmp/f", "--content-disposition", "sideways")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--content-disposition must be attachment or inline")
+}
+
 func TestSandboxDownloadURLCmd_RejectsNonPositiveExpiry(t *testing.T) {
 	_, err := executeCommand(t, "--api-key", "test-key", "sandbox", "generate-download-url", "my-vm", "--path", "/tmp/f", "--expires-in-seconds", "0")
 

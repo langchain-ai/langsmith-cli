@@ -296,6 +296,11 @@ The link carries its own token, so anyone with the URL can fetch that one file
 with no LangSmith credential. It is pinned to the sandbox and the exact path,
 and cannot be repointed at another file. Fetching wakes a stopped sandbox.
 
+Do not modify the file after minting a link for it. The link is pinned to a
+path, not to a snapshot of the contents, so a later write to that path may or
+may not be reflected in what the link serves. Write a new file and mint a new
+link when the contents change.
+
 Without --expires-in-seconds the link never expires.
 
 Examples:
@@ -315,6 +320,11 @@ Examples:
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxDownloadURLInput, args []string) (any, error) {
 		if cmd.Flags().Changed("expires-in-seconds") && in.ExpiresInSeconds < 1 {
 			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
+		}
+		switch in.ContentDisposition {
+		case "", "attachment", "inline":
+		default:
+			return nil, fmt.Errorf("--content-disposition must be attachment or inline (got %q)", in.ContentDisposition)
 		}
 
 		c, err := cmdutil.GetClient(cmd)
