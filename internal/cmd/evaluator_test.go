@@ -584,6 +584,28 @@ func TestEvaluatorUploadCmd_ExactArgs(t *testing.T) {
 	}
 }
 
+func TestEvaluatorUploadCmd_InvalidTargetReturnsReportedError(t *testing.T) {
+	cmd := newEvaluatorUploadCmd()
+	_ = cmd.Flags().Set("dataset", "dataset")
+	_ = cmd.Flags().Set("project", "project")
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runTestCommand(t, cmd, []string{"evaluator.py"})
+	})
+	if !IsReportedError(runErr) {
+		t.Fatalf("expected reported error, got %v", runErr)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("parse output JSON: %v\noutput: %s", err, out)
+	}
+	if !contains(result["error"].(string), "cannot specify both") {
+		t.Errorf("unexpected error: %v", result["error"])
+	}
+}
+
 // ---------- evaluator delete flags ----------
 
 func TestEvaluatorDeleteCmd_Flags(t *testing.T) {
@@ -628,7 +650,7 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -673,7 +695,7 @@ func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if len(out) > 0 && out[0] == '[' {
@@ -700,7 +722,7 @@ func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -722,7 +744,7 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 
 	captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if receivedKey != "test-api-key" {
@@ -791,7 +813,7 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, []string{evaluatorFile})
+		_ = runTestCommand(t, cmd, []string{evaluatorFile})
 	})
 
 	if sawDelete {
@@ -896,7 +918,7 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if sawDelete {
@@ -977,7 +999,7 @@ func TestEvaluatorGetCmd_Execute_CodeEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result map[string]any
@@ -1027,7 +1049,7 @@ func TestEvaluatorGetCmd_Execute_LLMEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"relevance"})
+		_ = runTestCommand(t, cmd, []string{"relevance"})
 	})
 
 	var result map[string]any
@@ -1059,10 +1081,14 @@ func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
+	var runErr error
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"nonexistent"})
+		runErr = runTestCommand(t, cmd, []string{"nonexistent"})
 	})
+	if !IsReportedError(runErr) {
+		t.Fatalf("expected reported error, got %v", runErr)
+	}
 
 	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
@@ -1103,7 +1129,7 @@ func TestEvaluatorGetCmd_Execute_FilterBySessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -1148,7 +1174,7 @@ func TestEvaluatorGetCmd_Execute_FilterByNameAndSessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result map[string]any
@@ -1178,7 +1204,7 @@ func TestEvaluatorGetCmd_Execute_MultipleMatches(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result []map[string]any

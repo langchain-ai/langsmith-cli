@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -134,6 +136,47 @@ func TestExampleCreateCmd_RequiredFlags(t *testing.T) {
 		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
 			t.Errorf("flag --%s not marked as required", name)
 		}
+	}
+}
+
+func TestExampleCreateCmd_InvalidJSONReturnsReportedError(t *testing.T) {
+	tests := []struct {
+		name      string
+		flag      string
+		value     string
+		wantError string
+	}{
+		{name: "inputs", flag: "inputs", value: "{", wantError: "Invalid JSON for --inputs"},
+		{name: "outputs", flag: "outputs", value: "{", wantError: "Invalid JSON for --outputs"},
+		{name: "metadata", flag: "metadata", value: "{", wantError: "Invalid JSON for --metadata"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupTestEnv(t, "http://127.0.0.1:1")
+			defer cleanup()
+
+			cmd := newExampleCreateCmd()
+			_ = cmd.Flags().Set("dataset", "anything")
+			_ = cmd.Flags().Set("inputs", `{}`)
+			_ = cmd.Flags().Set(tt.flag, tt.value)
+
+			var runErr error
+			out := captureStdout(t, func() {
+				runErr = runTestCommand(t, cmd, nil)
+			})
+			if !IsReportedError(runErr) {
+				t.Fatalf("expected reported error, got %v", runErr)
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal([]byte(out), &result); err != nil {
+				t.Fatalf("parse output JSON: %v\noutput: %s", err, out)
+			}
+			if !strings.Contains(result["error"].(string), tt.wantError) {
+				t.Errorf("error = %q, want substring %q", result["error"], tt.wantError)
+			}
+		})
 	}
 }
 
