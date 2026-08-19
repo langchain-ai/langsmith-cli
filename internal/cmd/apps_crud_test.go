@@ -82,6 +82,21 @@ func TestAppsListCmd_HasOutputFlag(t *testing.T) {
 	}
 }
 
+func TestAppsList_ReturnsOutputWriteError(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	})
+	defer setupTestEnv(t, srv.URL)()
+	flagOutputFormat = "json"
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"list", "--output", t.TempDir()})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected output write error")
+	}
+}
+
 func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
 	const id = "11111111-1111-1111-1111-111111111111"
 	var sawDelete bool

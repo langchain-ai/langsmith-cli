@@ -14,45 +14,67 @@ import (
 
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
-func OutputJSON(data any, filePath string) {
+func OutputJSON(data any, filePath string) error {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		PrintError(fmt.Sprintf("JSON encoding error: %v", err))
-		return
+		return fmt.Errorf("encode JSON: %w", err)
 	}
 
 	if filePath != "" {
 		if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
+			return fmt.Errorf("write JSON to %q: %w", filePath, err)
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
+		if _, err := fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath); err != nil {
+			return fmt.Errorf("write status: %w", err)
+		}
 	} else {
-		fmt.Println(string(jsonBytes))
+		if _, err := fmt.Fprintln(os.Stdout, string(jsonBytes)); err != nil {
+			return fmt.Errorf("write JSON: %w", err)
+		}
 	}
+	return nil
 }
 
 // OutputJSONL writes items as JSONL (one JSON object per line).
-func OutputJSONL(items []map[string]any, filePath string) {
+func OutputJSONL(items []map[string]any, filePath string) error {
 	if filePath != "" {
 		f, err := os.Create(filePath)
 		if err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
+			return fmt.Errorf("create JSONL file %q: %w", filePath, err)
 		}
-		defer f.Close()
 		for _, item := range items {
-			line, _ := json.Marshal(item)
-			_, _ = f.Write(line)
-			_, _ = f.WriteString("\n")
+			line, err := json.Marshal(item)
+			if err != nil {
+				_ = f.Close()
+				return fmt.Errorf("encode JSONL item: %w", err)
+			}
+			if _, err := f.Write(line); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("write JSONL to %q: %w", filePath, err)
+			}
+			if _, err := f.WriteString("\n"); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("write JSONL to %q: %w", filePath, err)
+			}
 		}
-		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("close JSONL file %q: %w", filePath, err)
+		}
+		if _, err := fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items)); err != nil {
+			return fmt.Errorf("write status: %w", err)
+		}
 	} else {
 		for _, item := range items {
-			line, _ := json.Marshal(item)
-			fmt.Println(string(line))
+			line, err := json.Marshal(item)
+			if err != nil {
+				return fmt.Errorf("encode JSONL item: %w", err)
+			}
+			if _, err := fmt.Fprintln(os.Stdout, string(line)); err != nil {
+				return fmt.Errorf("write JSONL: %w", err)
+			}
 		}
 	}
+	return nil
 }
 
 // OutputTable prints a table to stdout using tablewriter.
@@ -139,17 +161,25 @@ func addChildren(node treeprint.Tree, parentID string, childrenMap map[string][]
 }
 
 // PrintOutput dispatches to JSON or pretty output.
-func PrintOutput(data any, format string, filePath string) {
+func PrintOutput(data any, format string, filePath string) error {
 	if format == "pretty" {
 		// Pretty mode: just pretty-print JSON to stdout
-		jsonBytes, _ := json.MarshalIndent(data, "", "  ")
-		if filePath != "" {
-			_ = os.WriteFile(filePath, jsonBytes, 0644)
-		} else {
-			fmt.Println(string(jsonBytes))
+		jsonBytes, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode JSON: %w", err)
 		}
+		if filePath != "" {
+			if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
+				return fmt.Errorf("write JSON to %q: %w", filePath, err)
+			}
+		} else {
+			if _, err := fmt.Fprintln(os.Stdout, string(jsonBytes)); err != nil {
+				return fmt.Errorf("write JSON: %w", err)
+			}
+		}
+		return nil
 	} else {
-		OutputJSON(data, filePath)
+		return OutputJSON(data, filePath)
 	}
 }
 
