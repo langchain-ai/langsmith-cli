@@ -41,9 +41,6 @@ you need when this workspace already has an app by that name.`,
 					}
 					return fmt.Errorf("this workspace already has a custom app named %q — claim it under a different name with `langsmith apps claim %q --as \"New Name\"`", taken, args[0])
 				}
-				if client.IsForbidden(err) {
-					return fmt.Errorf("you don't have permission to claim custom apps into this workspace — ask a workspace admin")
-				}
 				return fmt.Errorf("claiming custom app %s: %w", app.ID, err)
 			}
 
