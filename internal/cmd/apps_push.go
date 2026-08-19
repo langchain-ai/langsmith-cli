@@ -96,15 +96,6 @@ same app too.
 					updated = true
 				case isSourceArchiveRejection(err):
 					return sourceArchiveRejectionError(err)
-				case client.IsConflict(err):
-					conflictName := name
-					if conflictName == "" {
-						conflictName = link.Name
-					}
-					if conflictName == "" {
-						conflictName = link.AppID
-					}
-					return fmt.Errorf("a custom app named %q already exists in this workspace", conflictName)
 				case client.IsNotFound(err):
 					// Stale link (app deleted server-side) — recreate instead of failing.
 					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
@@ -139,11 +130,8 @@ same app too.
 					if isSourceArchiveRejection(err) {
 						return sourceArchiveRejectionError(err)
 					}
-					if client.IsForbidden(err) {
-						return fmt.Errorf("this workspace doesn't support custom apps — ask a workspace admin to enable them, then try again")
-					}
 					if client.IsConflict(err) {
-						return fmt.Errorf("a custom app named %q already exists in this workspace. try `langsmith apps push --name \"New Name\"` instead", appName)
+						return fmt.Errorf("%w — try `langsmith apps push --name \"New Name\"` instead", err)
 					}
 					return fmt.Errorf("creating custom app: %w", err)
 				}

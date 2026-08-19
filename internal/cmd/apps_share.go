@@ -31,9 +31,6 @@ workspaces can copy one into their own with "langsmith apps claim".`,
 			}
 
 			if err := c.RawPost(ctx, c.CustomAppPath(app.ID)+"/share", nil, nil); err != nil {
-				if client.IsForbidden(err) {
-					return fmt.Errorf("you don't have permission to share custom app %q — ask an organization admin to share it", app.Name)
-				}
 				if client.IsConflict(err) {
 					return fmt.Errorf("another custom app named %q is already shared with this organization; rename this one with `langsmith apps push --name \"New Name\"` first", app.Name)
 				}
