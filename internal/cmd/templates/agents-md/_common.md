@@ -92,6 +92,26 @@ before every render, so Tailwind/token-based UIs theme for free with no
 branching. Only branch on it yourself if you're using inline styles — and
 re-check it every render, since it can change without a remount.
 
+## Design system
+
+LangSmith's own components are published as a shadcn registry. Prefer them over
+hand-rolling UI. Each `add` writes real source into
+`src/components/langsmith/design-system/`, so you can read and edit it.
+
+```bash
+npx shadcn registry add @langsmith=https://smith.langchain.com/r/{name}.json
+npx shadcn list @langsmith
+npx shadcn add --overwrite @langsmith/button @langsmith/badge
+```
+
+`--overwrite` is required. The scaffold ships placeholder `theme.css` and
+`tailwind.langsmith.cjs` files; without the flag `add` keeps the placeholders and
+every component renders unstyled.
+
+`components.json` and the `@/*` aliases are already wired — do not run
+`shadcn init`, which installs a competing preset and breaks the build. (If
+`smith.langchain.com` is unreachable, use `$LANGSMITH_ENDPOINT` as the base.)
+
 ## Filter DSL for metadata equality
 
 Query endpoints take a `filter` string. Metadata equality is **two paired

@@ -17,6 +17,7 @@ const spaceScale = {
 
 /** @type {import('tailwindcss').Config} */
 export default {
+  presets: [require('./tailwind.langsmith.cjs')],
   content: ['./src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
