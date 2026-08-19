@@ -701,3 +701,43 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 		t.Errorf("expected 0 traces, got %d", len(traces))
 	}
 }
+
+// ==================== --limit clamping for --trace-ids ====================
+
+// Passing --trace-ids with a larger --limit used to leave the pagination loop
+// with headroom it could never fill: each page returns at most len(ids) traces
+// while next_cursor keeps tracking the server's root-run scan, so the loop kept
+// issuing requests long after every requested trace had come back. Production
+// saw 9 batches of 5 ids turn into 154 requests.
+func TestClampLimitToIDs(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		ids   []string
+		want  int
+	}{
+		{"more headroom than ids clamps to ids", 100, []string{"a", "b", "c", "d", "e"}, 5},
+		{"limit below id count is left alone", 3, []string{"a", "b", "c", "d", "e"}, 3},
+		{"limit equal to id count is unchanged", 5, []string{"a", "b", "c", "d", "e"}, 5},
+		{"no ids leaves the limit alone", 100, nil, 100},
+		{"empty id slice leaves the limit alone", 100, []string{}, 100},
+		{"single id collapses to one page", 100, []string{"a"}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := clampLimitToIDs(tc.limit, tc.ids); got != tc.want {
+				t.Errorf("clampLimitToIDs(%d, %d ids) = %d, want %d",
+					tc.limit, len(tc.ids), got, tc.want)
+			}
+		})
+	}
+}
+
+// splitTrim can yield zero entries for whitespace-only input; the clamp must
+// not then pin the limit to 0 and starve the pagination loop entirely.
+func TestClampLimitToIDs_WhitespaceOnlyIDsDoNotZeroTheLimit(t *testing.T) {
+	ids := splitTrim("   ,  , ")
+	if got := clampLimitToIDs(50, ids); got == 0 {
+		t.Fatalf("clamp produced a zero limit from %d parsed ids; loop would fetch nothing", len(ids))
+	}
+}

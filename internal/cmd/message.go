@@ -90,6 +90,15 @@ func attachTrajectory(trace map[string]any, traj traceTrajectory, digest traceDi
 	trace["digest"] = digest
 }
 
+// clampLimitToIDs caps a requested page limit to the number of explicitly
+// requested trace ids. Returns limit unchanged when no ids were supplied.
+func clampLimitToIDs(limit int, ids []string) int {
+	if len(ids) > 0 && limit > len(ids) {
+		return len(ids)
+	}
+	return limit
+}
+
 func newTraceMessagesCmd() *cobra.Command {
 	var (
 		ff         FilterFlags
@@ -158,6 +167,15 @@ Examples:
 			if ff.TraceIDs != "" {
 				ids := splitTrim(ff.TraceIDs)
 				body["ids"] = ids
+				// The result set cannot exceed the ids asked for, so cap the
+				// limit to that. Without this the pagination loop below keeps
+				// following next_cursor while `remaining` still has headroom —
+				// the cursor tracks the server's root-run scan over the whole
+				// time window, not the id filter, so it stays non-empty long
+				// after every requested trace has been returned. A caller
+				// passing 5 ids with --limit 100 issued ~17 requests instead
+				// of one, each an independent expensive query.
+				ff.Limit = clampLimitToIDs(ff.Limit, ids)
 			}
 
 			if ff.RunType != "" {
