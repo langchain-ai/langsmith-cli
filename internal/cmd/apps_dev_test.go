@@ -443,7 +443,8 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 	fakeNpmOnPath(t, marker)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	if started := startWatchProcess(ctx, dir); !started {
+	started, done := startWatchProcess(ctx, dir)
+	if !started {
 		t.Fatal("expected startWatchProcess to report started=true")
 	}
 
@@ -460,7 +461,11 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 
 	// ctx cancellation should kill the process, not hang.
 	cancel()
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch process did not exit after context cancellation")
+	}
 }
 
 func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
@@ -469,7 +474,7 @@ func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	if started := startWatchProcess(context.Background(), dir); started {
+	if started, _ := startWatchProcess(context.Background(), dir); started {
 		t.Error("expected started=false when package.json has no \"watch\" script")
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -484,7 +489,7 @@ func TestStartWatchProcess_NoPackageJSONDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	if started := startWatchProcess(context.Background(), dir); started {
+	if started, _ := startWatchProcess(context.Background(), dir); started {
 		t.Error("expected started=false when there's no package.json")
 	}
 	time.Sleep(100 * time.Millisecond)

@@ -110,7 +110,7 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if info, statErr := os.Stat(entrypointPath); statErr == nil {
 		prevBuildTime = info.ModTime()
 	}
-	if startWatchProcess(ctx, dir) {
+	if started, _ := startWatchProcess(ctx, dir); started {
 		// Build tools empty their output dir before rebuilding, which would
 		// briefly hide an existing entrypoint — wait for a fresh build first.
 		waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
@@ -146,22 +146,23 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 }
 
 // startWatchProcess runs package.json's "watch" script tied to ctx. Never
-// fails runAppsDev — returns false (with a note) if it can't start one.
-func startWatchProcess(ctx context.Context, dir string) bool {
+// fails runAppsDev — returns false (with a note) if it can't start one. The
+// returned channel closes after a successfully started watcher exits.
+func startWatchProcess(ctx context.Context, dir string) (bool, <-chan struct{}) {
 	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: couldn't read package.json to find a \"watch\" script: %v\n", err)
-		return false
+		return false, nil
 	}
 	if script == "" {
 		if pkgJSONExists {
 			fmt.Fprintln(os.Stderr, `note: no "watch" script in package.json — start your own build/watch process to see live updates`)
 		}
-		return false
+		return false, nil
 	}
 	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
 		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm run watch" yourself to see live updates`)
-		return false
+		return false, nil
 	}
 
 	fmt.Fprintln(os.Stderr, "Starting build watcher: npm run watch")
@@ -169,12 +170,17 @@ func startWatchProcess(ctx context.Context, dir string) bool {
 	watchCmd.Dir = dir
 	watchCmd.Stdout = os.Stderr
 	watchCmd.Stderr = os.Stderr
+	watchCmd.Cancel = func() error { return terminateWatchProcess(watchCmd.Process) }
 	if startErr := watchCmd.Start(); startErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
-		return false
+		return false, nil
 	}
-	go func() { _ = watchCmd.Wait() }()
-	return true
+	done := make(chan struct{})
+	go func() {
+		_ = watchCmd.Wait()
+		close(done)
+	}()
+	return true, done
 }
 
 // waitForFreshEntrypoint blocks until path's mtime is newer than after, ctx
