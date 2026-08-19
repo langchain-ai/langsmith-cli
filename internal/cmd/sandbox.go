@@ -33,6 +33,9 @@ Common workflows:
   # Generate an authenticated HTTP URL for a service inside the sandbox
   langsmith sandbox service-url my-vm --port 8000
 
+  # Generate a credential-free link that downloads one file from the sandbox
+  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf
+
   # Set up SSH access (writes ~/.ssh/config so "ssh sandbox-my-vm" works)
   # Requires sshd to be installed in your Docker image.
   langsmith sandbox ssh-setup my-vm`,
@@ -51,6 +54,7 @@ Common workflows:
 	cmd.AddCommand(newSandboxExecCmd())
 	cmd.AddCommand(newSandboxConsoleCmd())
 	cmd.AddCommand(sandboxServiceURLCommand.Cobra())
+	cmd.AddCommand(sandboxDownloadURLCommand.Cobra())
 	cmd.AddCommand(newSandboxTunnelCmd())
 	cmd.AddCommand(newSandboxSSHSetupCmd())
 

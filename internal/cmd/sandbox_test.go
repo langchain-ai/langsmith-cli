@@ -90,7 +90,8 @@ func TestSandboxCmd_FlatSubcommands(t *testing.T) {
 	expected := map[string]bool{
 		"create": false, "list": false, "get": false, "update": false,
 		"delete": false, "start": false, "stop": false,
-		"exec": false, "console": false, "service-url": false, "tunnel": false, "ssh-setup": false,
+		"exec": false, "console": false, "service-url": false, "generate-download-url": false,
+		"tunnel": false, "ssh-setup": false,
 		"snapshot": false,
 	}
 	for _, sub := range cmd.Commands() {
@@ -446,6 +447,66 @@ func TestSandboxServiceURLCmd_RejectsInvalidPort(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--port must be between 1 and 65535")
+}
+
+func TestSandboxDownloadURLCmd_Flags(t *testing.T) {
+	cmd := sandboxDownloadURLCommand.Cobra()
+
+	require.NotNil(t, cmd.Flags().Lookup("path"))
+	require.NotNil(t, cmd.Flags().Lookup("expires-in-seconds"))
+	require.NotNil(t, cmd.Flags().Lookup("content-type"))
+	require.NotNil(t, cmd.Flags().Lookup("content-disposition"))
+}
+
+func TestSandboxDownloadURLCmd_GeneratesDownloadURL(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/api/v2/sandboxes/boxes/my-vm/download-url", r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"download_url":"https://box--dl.example/tok","token":"tok","expires_at":"2026-05-27T12:00:00Z"}`))
+		require.NoError(t, err)
+	})
+
+	out, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "generate-download-url", "my-vm",
+		"--path", "/tmp/report.pdf", "--expires-in-seconds", "3600", "--content-type", "application/pdf", "--content-disposition", "inline")
+
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/report.pdf", body["path"])
+	assert.Equal(t, float64(3600), body["expires_in_seconds"])
+	assert.Equal(t, "application/pdf", body["content_type"])
+	assert.Equal(t, "inline", body["content_disposition"])
+	assert.Contains(t, out, "Download URL:")
+	assert.Contains(t, out, "https://box--dl.example/tok")
+	assert.Contains(t, out, `curl -LO "https://box--dl.example/tok"`)
+}
+
+func TestSandboxDownloadURLCmd_RendersNeverExpires(t *testing.T) {
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"download_url":"https://box--dl.example/tok","token":"tok","expires_at":null}`))
+		require.NoError(t, err)
+	})
+
+	out, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL, "sandbox", "generate-download-url", "my-vm", "--path", "/tmp/report.pdf")
+
+	require.NoError(t, err)
+	assert.NotContains(t, body, "expires_in_seconds")
+	assert.NotContains(t, body, "content_type")
+	assert.NotContains(t, body, "content_disposition")
+	assert.Contains(t, out, "never")
+}
+
+func TestSandboxDownloadURLCmd_RejectsNonPositiveExpiry(t *testing.T) {
+	_, err := executeCommand(t, "--api-key", "test-key", "sandbox", "generate-download-url", "my-vm", "--path", "/tmp/f", "--expires-in-seconds", "0")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--expires-in-seconds must be greater than 0")
 }
 
 func TestSnapshotBuildCmd_CapacityFlag(t *testing.T) {
