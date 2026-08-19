@@ -170,7 +170,9 @@ func newThreadListCmd() *cobra.Command {
 						"max_start_time": t.MaxStartTime,
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -254,7 +256,9 @@ func newThreadGetCmd() *cobra.Command {
 					"run_count": len(extracted),
 					"runs":      extracted,
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -352,7 +356,9 @@ Examples:
 			if fmt_ == "pretty" {
 				printThreadMessages(result)
 			} else {
-				output.OutputJSON(result, outputFile)
+				if err := output.OutputJSON(result, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}

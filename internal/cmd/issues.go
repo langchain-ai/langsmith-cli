@@ -192,7 +192,9 @@ Examples:
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
 			} else {
-				output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile)
+				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -229,8 +231,9 @@ Examples:
 			if err != nil {
 				ExitErrorf("getting issue: %v", err)
 			}
-
-			output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile)
+			if err := output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -340,7 +343,9 @@ Examples:
 					}
 					data = append(data, m)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -451,8 +456,9 @@ Examples:
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
 				ExitErrorf("updating issue: %v", err)
 			}
-
-			output.OutputJSON(issueToMap(issue), outputFile)
+			if err := output.OutputJSON(issueToMap(issue), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -796,8 +802,9 @@ Examples:
 			if err := c.RawPost(ctx, path, body, &result); err != nil {
 				ExitErrorf("proposing example: %v", err)
 			}
-
-			output.OutputJSON(result, outputFile)
+			if err := output.OutputJSON(result, outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

@@ -39,11 +39,13 @@ func newHubDeleteCmd() *cobra.Command {
 			if err := c.SDK.Repos.Directories.Delete(ctx, owner, name, langsmith.RepoDirectoryDeleteParams{}); err != nil {
 				return fmt.Errorf("deleting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
 				"repo":   name,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

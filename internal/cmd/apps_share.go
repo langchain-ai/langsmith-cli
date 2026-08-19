@@ -37,13 +37,12 @@ workspaces can copy one into their own with "langsmith apps claim".`,
 				return fmt.Errorf("sharing custom app %s: %w", app.ID, err)
 			}
 
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "shared",
 				"app_id": app.ID,
 				"name":   app.Name,
 				"scope":  appScopeOrg,
 			}, "")
-			return nil
 		},
 	}
 	return cmd

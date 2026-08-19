@@ -92,7 +92,7 @@ func newHubPushCmd() *cobra.Command {
 				paths = append(paths, k)
 			}
 			sort.Strings(paths)
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":      "pushed",
 				"owner":       owner,
 				"repo":        name,
@@ -101,7 +101,9 @@ func newHubPushCmd() *cobra.Command {
 				"commit_hash": resp.Commit.CommitHash,
 				"created_at":  resp.Commit.CreatedAt,
 				"files":       paths,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

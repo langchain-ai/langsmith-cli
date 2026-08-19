@@ -141,13 +141,17 @@ func newTraceListCmd() *cobra.Command {
 							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO, includeFeedback),
 						})
 					}
-					output.OutputJSON(result, outputFile)
+					if err := output.OutputJSON(result, outputFile); err != nil {
+						ExitErrorf("%v", err)
+					}
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					if flaggedByTrace != nil {
 						annotateFlagged(data, flaggedByTrace)
 					}
-					output.OutputJSON(data, outputFile)
+					if err := output.OutputJSON(data, outputFile); err != nil {
+						ExitErrorf("%v", err)
+					}
 				}
 			}
 		},
@@ -224,7 +228,9 @@ func newTraceGetCmd() *cobra.Command {
 					"run_count": len(runs),
 					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback),
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -336,12 +342,13 @@ func newTraceExportCmd() *cobra.Command {
 				f.Close()
 				exported++
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":     "exported",
 				"count":      exported,
 				"output_dir": outputDir,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

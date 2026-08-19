@@ -110,7 +110,9 @@ func newExperimentListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}

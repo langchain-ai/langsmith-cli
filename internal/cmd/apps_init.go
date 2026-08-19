@@ -164,14 +164,13 @@ Installs dependencies as the last step, so you can cd in and run
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
 				"name":     name,
 				"template": templateName,
 				"files":    written,
 			}, "")
-			return nil
 		},
 	}
 
