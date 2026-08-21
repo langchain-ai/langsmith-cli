@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -216,6 +218,23 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 	return pkg.Scripts[name], true, nil
 }
 
+// resolveDevWorkspaceID falls back to the API when none is configured.
+func resolveDevWorkspaceID(c *client.Client) string {
+	if id := GetWorkspaceID(); id != "" {
+		return id
+	}
+	if c == nil || c.SDK == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	workspaces, err := c.SDK.Workspaces.List(ctx, langsmith.WorkspaceListParams{})
+	if err != nil || workspaces == nil || len(*workspaces) != 1 {
+		return ""
+	}
+	return (*workspaces)[0].ID
+}
+
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
@@ -224,6 +243,13 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	if err != nil {
 		return nil, nil, "", err
 	}
+
+	var apiURL string
+	if c != nil {
+		apiURL = c.APIURL()
+	}
+	workspaceID := resolveDevWorkspaceID(c)
+	webOrigin := langsmithWebOrigin(apiURL)
 
 	mux := http.NewServeMux()
 
@@ -244,7 +270,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -528,9 +554,11 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint, token string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
+	workspaceIDJSON, _ := json.Marshal(workspaceID)
+	webOriginJSON, _ := json.Marshal(webOrigin)
 
 	inner := strings.NewReplacer(
 		"__FILES_JSON__", escapeForScript(filesJSON),
@@ -540,6 +568,8 @@ func renderDevHostHTML(files map[string]string, entrypoint, token string) string
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
 		"__LS_DEV_TOKEN__", token,
+		"__LS_WORKSPACE_ID_JSON__", escapeForScript(workspaceIDJSON),
+		"__LS_WEB_ORIGIN_JSON__", escapeForScript(webOriginJSON),
 	).Replace(devHostHTMLTemplate)
 }
 
@@ -665,8 +695,13 @@ const devHostHTMLTemplate = `<!doctype html>
     if (darkBtn) darkBtn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
   }
 
+  var webOrigin = __LS_WEB_ORIGIN_JSON__;
+
   function postMetadata() {
-    post({ type: 'LANGSMITH_METADATA', metadata: { mode: mode } });
+    post({
+      type: 'LANGSMITH_METADATA',
+      metadata: { mode: mode, workspaceId: __LS_WORKSPACE_ID_JSON__, host: webOrigin },
+    });
   }
 
   function setMode(next) {
@@ -698,6 +733,24 @@ const devHostHTMLTemplate = `<!doctype html>
 
     if (msg.type === 'LS_MUTATION') {
       console.log('[langsmith apps dev] setData (not persisted locally):', msg.patch);
+    }
+
+    if (msg.type === 'LS_NAVIGATE') {
+      var href = '';
+      try {
+        var base = new URL(webOrigin);
+        var target = new URL(String(msg.url), base);
+        if (target.origin === base.origin) href = target.href;
+      } catch (e) {}
+      if (!href) {
+        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      } else if (msg.newTab) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        // Prod soft-navigates in place; dev leaves the harness.
+        console.log('[langsmith apps dev] openUrl navigating away:', href);
+        window.location.assign(href);
+      }
     }
 
     if (msg.type === 'LS_LOG') {
@@ -940,9 +993,18 @@ pre, code {
     reportHeight();
   }
 
+  function openUrl(url, options) {
+    window.parent.postMessage({
+      type: 'LS_NAVIGATE',
+      url: String(url),
+      newTab: !!(options && options.newTab)
+    }, '*');
+  }
+
   window.langsmith = {
     call: call,
     setData: setData,
+    openUrl: openUrl,
     feedback: {
       create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
     }

@@ -132,6 +132,17 @@ func customAppWebURL(apiURL, workspaceID, appID string) string {
 	return u.Scheme + "://" + host + "/o/" + workspaceID + "/custom-apps/" + appID
 }
 
+// langsmithWebOrigin maps an API URL to its UI origin.
+func langsmithWebOrigin(apiURL string) string {
+	u, err := url.Parse(apiURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := strings.TrimPrefix(u.Host, "api.")
+	host = strings.Replace(host, ".api.", ".", 1)
+	return u.Scheme + "://" + host
+}
+
 // readAppLink returns (nil, nil) if not linked yet.
 func readAppLink(dir string) (*appLink, error) {
 	path := filepath.Join(dir, appsLinkDir, appsLinkFile)
