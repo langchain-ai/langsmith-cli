@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,7 +63,7 @@ Examples:
   langsmith evaluator get --session-id <session-id>
   langsmith evaluator get accuracy --session-id <session-id>`,
 		Args: cobra.MaximumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			name := ""
 			if len(args) > 0 {
 				name = args[0]
@@ -93,10 +94,7 @@ Examples:
 			}
 
 			if len(matching) == 0 {
-				output.OutputJSON(map[string]any{
-					"error": "no matching evaluators found",
-				}, "")
-				return
+				return errors.New("no matching evaluators found")
 			}
 
 			var data []map[string]any
@@ -124,9 +122,9 @@ Examples:
 			}
 
 			if len(data) == 1 {
-				output.OutputJSON(data[0], outputFile)
+				return output.OutputJSON(data[0], outputFile)
 			} else {
-				output.OutputJSON(data, outputFile)
+				return output.OutputJSON(data, outputFile)
 			}
 		},
 	}
@@ -183,7 +181,9 @@ func newEvaluatorListCmd() *cobra.Command {
 						"session_id":    nilStr(rule.SessionID),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -208,12 +208,11 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		Use:   "upload EVALUATOR_FILE",
 		Short: "Upload an evaluator function to LangSmith",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			evaluatorFile := args[0]
 
 			if err := validateEvaluatorTargetFlags(targetDataset, targetProject); err != nil {
-				output.OutputJSON(map[string]any{"error": err.Error()}, "")
-				return
+				return err
 			}
 
 			c := MustGetClient()
@@ -292,11 +291,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			existing := findEvaluator(*rules, name, datasetID, projectID)
 			if existing != nil {
 				if !replace {
-					output.OutputJSON(map[string]any{
-						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
-						"id":    existing.ID,
-					}, "")
-					return
+					return fmt.Errorf("Evaluator '%s' already exists (use --replace to overwrite)", name)
 				}
 				if !yes {
 					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
@@ -321,7 +316,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			if datasetID != "" {
 				targetLabel = "dataset"
 			}
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "uploaded",
 				"id":     result["id"],
 				"name":   name,
@@ -374,7 +369,7 @@ Examples:
     --prompt prompt.json --schema schema.json --model-config model.json
   langsmith evaluator create-llm --name relevance --project my-app \
     --hub-ref my-org/relevance:latest --model-config model.json`,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			c := MustGetClient()
 			ctx := context.Background()
 
@@ -399,8 +394,7 @@ Examples:
 					ExitError("aborted")
 				}
 				if existing != nil {
-					output.OutputJSON(map[string]any{"error": err.Error(), "id": existing.ID}, "")
-					return
+					return err
 				}
 				ExitErrorf("%v", err)
 			}
@@ -417,7 +411,7 @@ Examples:
 			if target.datasetID != "" {
 				targetLabel = "dataset"
 			}
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "created", "type": "llm",
 				"id": result["id"], "name": name, "target": targetLabel,
 			}, "")
@@ -449,7 +443,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 		Use:   "delete NAME",
 		Short: "Delete an evaluator rule by its display name",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
 			c := MustGetClient()
@@ -468,8 +462,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 			}
 
 			if len(matching) == 0 {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Evaluator '%s' not found", name)}, "")
-				return
+				return fmt.Errorf("Evaluator '%s' not found", name)
 			}
 
 			if !yes {
@@ -488,8 +481,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 				}
 				deleted++
 			}
-
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"name":   name,
 				"count":  deleted,

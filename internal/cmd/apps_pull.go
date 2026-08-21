@@ -89,7 +89,7 @@ organization. Pass --scope to force one tier.`,
 
 			fmt.Fprintf(os.Stderr, "Pulled %q into %s (%d files).\n", app.Name, dest, len(written))
 			fmt.Fprintf(os.Stderr, "Next: cd %s && npm install && langsmith apps dev.\n", dirName)
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "pulled",
 				"app_id": app.ID,
 				"name":   app.Name,
@@ -97,7 +97,6 @@ organization. Pass --scope to force one tier.`,
 				"dir":    dest,
 				"files":  written,
 			}, "")
-			return nil
 		},
 	}
 

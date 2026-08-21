@@ -133,7 +133,9 @@ func newExampleListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -160,34 +162,30 @@ func newExampleCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new example in a dataset",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			c := MustGetClient()
 			ctx := context.Background()
 
 			// Parse JSON inputs
 			var parsedInputs map[string]any
 			if err := json.Unmarshal([]byte(inputs), &parsedInputs); err != nil {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)}, "")
-				return
+				return fmt.Errorf("Invalid JSON for --inputs: %v", err)
 			}
 
 			var parsedOutputs map[string]any
 			if outputs != "" {
 				if err := json.Unmarshal([]byte(outputs), &parsedOutputs); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)}, "")
-					return
+					return fmt.Errorf("Invalid JSON for --outputs: %v", err)
 				}
 			}
 
 			var parsedMetadata map[string]any
 			if metadata != "" {
 				if err := json.Unmarshal([]byte(metadata), &parsedMetadata); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)}, "")
-					return
+					return fmt.Errorf("Invalid JSON for --metadata: %v", err)
 				}
 			}
 
-			// Resolve dataset
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -213,8 +211,7 @@ func newExampleCreateCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("creating example: %v", err)
 			}
-
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status":     "created",
 				"id":         ex.ID,
 				"dataset_id": ex.DatasetID,
@@ -261,11 +258,12 @@ func newExampleDeleteCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("deleting example: %v", err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"id":     exampleID,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

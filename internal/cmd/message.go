@@ -218,12 +218,15 @@ Examples:
 				if fmt_ == "pretty" {
 					printTraceMessages(combined)
 				} else {
-					output.OutputJSON(combined, outputFile)
+					if err := output.OutputJSON(combined, outputFile); err != nil {
+						ExitErrorf("%v", err)
+
+						// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
+					}
 				}
 				return
 			}
 
-			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 			const maxPageSize = 10
 			remaining := ff.Limit
 			var allTraces []any
@@ -274,7 +277,9 @@ Examples:
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
-				output.OutputJSON(combined, outputFile)
+				if err := output.OutputJSON(combined, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}

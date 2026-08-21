@@ -55,13 +55,12 @@ you need when this workspace already has an app by that name.`,
 					name = as
 				}
 			}
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status": "claimed",
 				"app_id": id,
 				"name":   name,
 				"scope":  appScopeWorkspace,
 			}, "")
-			return nil
 		},
 	}
 

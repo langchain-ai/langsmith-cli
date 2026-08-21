@@ -160,7 +160,9 @@ same app too.
 				"entrypoint": app.Entrypoint,
 				"files":      paths,
 			}
-			output.OutputJSON(result, "")
+			if err := output.OutputJSON(result, ""); err != nil {
+				return err
+			}
 
 			workspaceID := app.TenantID
 			if workspaceID == "" {

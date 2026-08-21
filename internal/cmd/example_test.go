@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -134,6 +135,36 @@ func TestExampleCreateCmd_RequiredFlags(t *testing.T) {
 		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
 			t.Errorf("flag --%s not marked as required", name)
 		}
+	}
+}
+
+func TestExampleCreateCmd_InvalidJSONReturnsError(t *testing.T) {
+	tests := []struct {
+		name      string
+		flag      string
+		value     string
+		wantError string
+	}{
+		{name: "inputs", flag: "inputs", value: "{", wantError: "Invalid JSON for --inputs"},
+		{name: "outputs", flag: "outputs", value: "{", wantError: "Invalid JSON for --outputs"},
+		{name: "metadata", flag: "metadata", value: "{", wantError: "Invalid JSON for --metadata"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupTestEnv(t, "http://127.0.0.1:1")
+			defer cleanup()
+
+			cmd := newExampleCreateCmd()
+			_ = cmd.Flags().Set("dataset", "anything")
+			_ = cmd.Flags().Set("inputs", `{}`)
+			_ = cmd.Flags().Set(tt.flag, tt.value)
+
+			runErr := runTestCommand(t, cmd, nil)
+			if runErr == nil || !strings.Contains(runErr.Error(), tt.wantError) {
+				t.Fatalf("error = %v, want substring %q", runErr, tt.wantError)
+			}
+		})
 	}
 }
 

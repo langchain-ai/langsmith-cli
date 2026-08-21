@@ -56,8 +56,7 @@ func newAppsListCmd() *cobra.Command {
 					"organization_id": a.OrganizationID,
 				})
 			}
-			output.OutputJSON(data, outputFile)
-			return nil
+			return output.OutputJSON(data, outputFile)
 		},
 	}
 

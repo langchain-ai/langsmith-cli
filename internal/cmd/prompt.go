@@ -148,7 +148,9 @@ func newPromptListCmd() *cobra.Command {
 				for _, r := range repos {
 					data = append(data, repoToMap(r))
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -193,9 +195,13 @@ func newPromptGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			} else {
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -234,8 +240,9 @@ func newPromptCreateCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("creating prompt: %v", err)
 			}
-
-			output.OutputJSON(repoToMap(resp.Repo), "")
+			if err := output.OutputJSON(repoToMap(resp.Repo), ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -277,12 +284,13 @@ func newPromptDeleteCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("deleting prompt %s/%s: %v", owner, repo, err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
 				"repo":   repo,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -332,9 +340,13 @@ func newPromptPullCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			} else {
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -396,15 +408,16 @@ func newPromptPushCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("pushing commit to %s/%s: %v", owner, repo, err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":      "pushed",
 				"owner":       owner,
 				"repo":        repo,
 				"commit_hash": resp.Commit.CommitHash,
 				"commit_id":   resp.Commit.ID,
 				"created_at":  formatTimeISO(resp.Commit.CreatedAt),
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -485,7 +498,9 @@ func newPromptCommitsCmd() *cobra.Command {
 						"created_at":         formatTimeISO(c.CreatedAt),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -570,7 +585,9 @@ func newPromptTagListCmd() *cobra.Command {
 						"updated_at":  t.UpdatedAt,
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -607,13 +624,14 @@ func newPromptTagCreateCmd() *cobra.Command {
 			if err := c.RawPost(ctx, path, body, &tag); err != nil {
 				ExitErrorf("creating tag %q: %v", tagName, err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":      "created",
 				"tag_name":    tag.TagName,
 				"commit_id":   tag.CommitID,
 				"commit_hash": tag.CommitHash,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -650,13 +668,14 @@ func newPromptTagUpdateCmd() *cobra.Command {
 			if err := c.RawPost(ctx, path, body, &tag); err != nil {
 				ExitErrorf("updating tag %q: %v", tagName, err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":      "updated",
 				"tag_name":    tag.TagName,
 				"commit_id":   tag.CommitID,
 				"commit_hash": tag.CommitHash,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

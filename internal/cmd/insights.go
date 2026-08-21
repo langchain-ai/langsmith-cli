@@ -100,7 +100,9 @@ for full details including the executive summary and category breakdown.`,
 				for _, job := range jobs {
 					data = append(data, insightJobToMap(job))
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -155,7 +157,9 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 				printInsightPretty(detail)
 			} else {
 				data := buildInsightDetailJSON(detail)
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
