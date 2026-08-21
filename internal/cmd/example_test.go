@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -139,7 +138,7 @@ func TestExampleCreateCmd_RequiredFlags(t *testing.T) {
 	}
 }
 
-func TestExampleCreateCmd_InvalidJSONReturnsReportedError(t *testing.T) {
+func TestExampleCreateCmd_InvalidJSONReturnsError(t *testing.T) {
 	tests := []struct {
 		name      string
 		flag      string
@@ -161,20 +160,9 @@ func TestExampleCreateCmd_InvalidJSONReturnsReportedError(t *testing.T) {
 			_ = cmd.Flags().Set("inputs", `{}`)
 			_ = cmd.Flags().Set(tt.flag, tt.value)
 
-			var runErr error
-			out := captureStdout(t, func() {
-				runErr = runTestCommand(t, cmd, nil)
-			})
-			if !IsReportedError(runErr) {
-				t.Fatalf("expected reported error, got %v", runErr)
-			}
-
-			var result map[string]any
-			if err := json.Unmarshal([]byte(out), &result); err != nil {
-				t.Fatalf("parse output JSON: %v\noutput: %s", err, out)
-			}
-			if !strings.Contains(result["error"].(string), tt.wantError) {
-				t.Errorf("error = %q, want substring %q", result["error"], tt.wantError)
+			runErr := runTestCommand(t, cmd, nil)
+			if runErr == nil || !strings.Contains(runErr.Error(), tt.wantError) {
+				t.Fatalf("error = %v, want substring %q", runErr, tt.wantError)
 			}
 		})
 	}

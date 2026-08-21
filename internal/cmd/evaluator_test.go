@@ -584,25 +584,14 @@ func TestEvaluatorUploadCmd_ExactArgs(t *testing.T) {
 	}
 }
 
-func TestEvaluatorUploadCmd_InvalidTargetReturnsReportedError(t *testing.T) {
+func TestEvaluatorUploadCmd_InvalidTargetReturnsError(t *testing.T) {
 	cmd := newEvaluatorUploadCmd()
 	_ = cmd.Flags().Set("dataset", "dataset")
 	_ = cmd.Flags().Set("project", "project")
 
-	var runErr error
-	out := captureStdout(t, func() {
-		runErr = runTestCommand(t, cmd, []string{"evaluator.py"})
-	})
-	if !IsReportedError(runErr) {
-		t.Fatalf("expected reported error, got %v", runErr)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("parse output JSON: %v\noutput: %s", err, out)
-	}
-	if !contains(result["error"].(string), "cannot specify both") {
-		t.Errorf("unexpected error: %v", result["error"])
+	runErr := runTestCommand(t, cmd, []string{"evaluator.py"})
+	if runErr == nil || !contains(runErr.Error(), "cannot specify both") {
+		t.Fatalf("unexpected error: %v", runErr)
 	}
 }
 
@@ -1081,21 +1070,10 @@ func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
-	var runErr error
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorGetCmd()
-		runErr = runTestCommand(t, cmd, []string{"nonexistent"})
-	})
-	if !IsReportedError(runErr) {
-		t.Fatalf("expected reported error, got %v", runErr)
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["error"] == nil {
-		t.Error("expected error for not found evaluator")
+	cmd := newEvaluatorGetCmd()
+	runErr := runTestCommand(t, cmd, []string{"nonexistent"})
+	if runErr == nil || !contains(runErr.Error(), "no matching evaluators found") {
+		t.Fatalf("unexpected error: %v", runErr)
 	}
 }
 

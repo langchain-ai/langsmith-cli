@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,9 +94,7 @@ Examples:
 			}
 
 			if len(matching) == 0 {
-				return reportJSONError(map[string]any{
-					"error": "no matching evaluators found",
-				})
+				return errors.New("no matching evaluators found")
 			}
 
 			var data []map[string]any
@@ -213,7 +212,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			evaluatorFile := args[0]
 
 			if err := validateEvaluatorTargetFlags(targetDataset, targetProject); err != nil {
-				return reportJSONError(map[string]any{"error": err.Error()})
+				return err
 			}
 
 			c := MustGetClient()
@@ -292,10 +291,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			existing := findEvaluator(*rules, name, datasetID, projectID)
 			if existing != nil {
 				if !replace {
-					return reportJSONError(map[string]any{
-						"error": fmt.Sprintf("Evaluator '%s' already exists (use --replace to overwrite)", name),
-						"id":    existing.ID,
-					})
+					return fmt.Errorf("Evaluator '%s' already exists (use --replace to overwrite)", name)
 				}
 				if !yes {
 					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
@@ -398,7 +394,7 @@ Examples:
 					ExitError("aborted")
 				}
 				if existing != nil {
-					return reportJSONError(map[string]any{"error": err.Error(), "id": existing.ID})
+					return err
 				}
 				ExitErrorf("%v", err)
 			}
@@ -466,7 +462,7 @@ func newEvaluatorDeleteCmd() *cobra.Command {
 			}
 
 			if len(matching) == 0 {
-				return reportJSONError(map[string]any{"error": fmt.Sprintf("Evaluator '%s' not found", name)})
+				return fmt.Errorf("Evaluator '%s' not found", name)
 			}
 
 			if !yes {

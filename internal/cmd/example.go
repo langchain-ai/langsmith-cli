@@ -169,20 +169,20 @@ func newExampleCreateCmd() *cobra.Command {
 			// Parse JSON inputs
 			var parsedInputs map[string]any
 			if err := json.Unmarshal([]byte(inputs), &parsedInputs); err != nil {
-				return reportJSONError(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)})
+				return fmt.Errorf("Invalid JSON for --inputs: %v", err)
 			}
 
 			var parsedOutputs map[string]any
 			if outputs != "" {
 				if err := json.Unmarshal([]byte(outputs), &parsedOutputs); err != nil {
-					return reportJSONError(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)})
+					return fmt.Errorf("Invalid JSON for --outputs: %v", err)
 				}
 			}
 
 			var parsedMetadata map[string]any
 			if metadata != "" {
 				if err := json.Unmarshal([]byte(metadata), &parsedMetadata); err != nil {
-					return reportJSONError(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)})
+					return fmt.Errorf("Invalid JSON for --metadata: %v", err)
 				}
 			}
 
