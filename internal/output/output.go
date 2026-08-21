@@ -24,9 +24,7 @@ func OutputJSON(data any, filePath string) error {
 		if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
 			return fmt.Errorf("write JSON to %q: %w", filePath, err)
 		}
-		if _, err := fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath); err != nil {
-			return fmt.Errorf("write status: %w", err)
-		}
+		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
 	} else {
 		if _, err := fmt.Fprintln(os.Stdout, string(jsonBytes)); err != nil {
 			return fmt.Errorf("write JSON: %w", err)
@@ -38,31 +36,10 @@ func OutputJSON(data any, filePath string) error {
 // OutputJSONL writes items as JSONL (one JSON object per line).
 func OutputJSONL(items []map[string]any, filePath string) error {
 	if filePath != "" {
-		f, err := os.Create(filePath)
-		if err != nil {
-			return fmt.Errorf("create JSONL file %q: %w", filePath, err)
+		if err := writeJSONLFile(items, filePath); err != nil {
+			return err
 		}
-		for _, item := range items {
-			line, err := json.Marshal(item)
-			if err != nil {
-				_ = f.Close()
-				return fmt.Errorf("encode JSONL item: %w", err)
-			}
-			if _, err := f.Write(line); err != nil {
-				_ = f.Close()
-				return fmt.Errorf("write JSONL to %q: %w", filePath, err)
-			}
-			if _, err := f.WriteString("\n"); err != nil {
-				_ = f.Close()
-				return fmt.Errorf("write JSONL to %q: %w", filePath, err)
-			}
-		}
-		if err := f.Close(); err != nil {
-			return fmt.Errorf("close JSONL file %q: %w", filePath, err)
-		}
-		if _, err := fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items)); err != nil {
-			return fmt.Errorf("write status: %w", err)
-		}
+		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
 	} else {
 		for _, item := range items {
 			line, err := json.Marshal(item)
@@ -72,6 +49,29 @@ func OutputJSONL(items []map[string]any, filePath string) error {
 			if _, err := fmt.Fprintln(os.Stdout, string(line)); err != nil {
 				return fmt.Errorf("write JSONL: %w", err)
 			}
+		}
+	}
+	return nil
+}
+
+func writeJSONLFile(items []map[string]any, filePath string) (err error) {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("create JSONL file %q: %w", filePath, err)
+	}
+	defer func() {
+		if closeErr := f.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close JSONL file %q: %w", filePath, closeErr)
+		}
+	}()
+
+	for _, item := range items {
+		line, err := json.Marshal(item)
+		if err != nil {
+			return fmt.Errorf("encode JSONL item: %w", err)
+		}
+		if _, err := fmt.Fprintln(f, string(line)); err != nil {
+			return fmt.Errorf("write JSONL to %q: %w", filePath, err)
 		}
 	}
 	return nil
