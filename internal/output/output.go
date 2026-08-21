@@ -26,9 +26,7 @@ func OutputJSON(data any, filePath string) error {
 		}
 		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
 	} else {
-		if _, err := fmt.Fprintln(os.Stdout, string(jsonBytes)); err != nil {
-			return fmt.Errorf("write JSON: %w", err)
-		}
+		fmt.Println(string(jsonBytes))
 	}
 	return nil
 }
@@ -46,9 +44,7 @@ func OutputJSONL(items []map[string]any, filePath string) error {
 			if err != nil {
 				return fmt.Errorf("encode JSONL item: %w", err)
 			}
-			if _, err := fmt.Fprintln(os.Stdout, string(line)); err != nil {
-				return fmt.Errorf("write JSONL: %w", err)
-			}
+			fmt.Println(string(line))
 		}
 	}
 	return nil
@@ -173,9 +169,7 @@ func PrintOutput(data any, format string, filePath string) error {
 				return fmt.Errorf("write JSON to %q: %w", filePath, err)
 			}
 		} else {
-			if _, err := fmt.Fprintln(os.Stdout, string(jsonBytes)); err != nil {
-				return fmt.Errorf("write JSON: %w", err)
-			}
+			fmt.Println(string(jsonBytes))
 		}
 		return nil
 	} else {
