@@ -14,6 +14,59 @@ func TestParseDatasetUpload_RejectsInvalidItemWithIndex(t *testing.T) {
 	}
 }
 
+func TestParseDatasetUpload_AcceptsLegacySingleObject(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want any
+	}{
+		{name: "wrapped example", data: `{"inputs":{"x":1},"outputs":{"y":2}}`, want: float64(1)},
+		{name: "plain inputs", data: `{"question":"hello"}`, want: "hello"},
+		{name: "plain inputs array", data: `[{"question":"hello"}]`, want: "hello"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDatasetUpload([]byte(tt.data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d examples, want 1", len(got))
+			}
+			key := "x"
+			if tt.name != "wrapped example" {
+				key = "question"
+			}
+			if got[0].Inputs[key] != tt.want {
+				t.Fatalf("inputs = %#v", got[0].Inputs)
+			}
+		})
+	}
+}
+
+func TestParseDatasetUpload_PreservesLegacyPlainObjectOutputs(t *testing.T) {
+	got, err := parseDatasetUpload([]byte(`{"question":"hello","outputs":{"answer":"hi"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Inputs["question"] != "hello" || got[0].Outputs["answer"] != "hi" {
+		t.Fatalf("legacy example semantics changed: %#v", got[0])
+	}
+}
+
+func TestParseDatasetUpload_RejectsMalformedVersionedExport(t *testing.T) {
+	tests := []string{
+		`{"version":2,"examples":[]}`,
+		`{"version":1}`,
+		`{"version":1,"examples":null}`,
+	}
+	for _, data := range tests {
+		if _, err := parseDatasetUpload([]byte(data)); err == nil {
+			t.Fatalf("expected %s to be rejected", data)
+		}
+	}
+}
+
 func TestDatasetTransfer_RoundTripsMetadataAndSplits(t *testing.T) {
 	want := datasetTransferFile{Version: datasetExportVersion, Examples: []datasetTransferExample{{
 		Inputs: map[string]any{"x": "y"}, Outputs: map[string]any{"answer": "yes"},

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -432,29 +433,74 @@ func uploadExamplesWithCleanup(ctx context.Context, sdk *langsmith.Client, datas
 }
 
 func parseDatasetUpload(data []byte) ([]datasetTransferExample, error) {
-	var envelope datasetTransferFile
-	if err := json.Unmarshal(data, &envelope); err == nil && envelope.Version != 0 {
-		if envelope.Version != datasetExportVersion {
-			return nil, fmt.Errorf("unsupported dataset export version %d", envelope.Version)
-		}
-		return validateDatasetTransferExamples(envelope.Examples)
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("expected a versioned dataset export, an example object, or an array of examples")
 	}
-	var rawItems []json.RawMessage
-	if err := json.Unmarshal(data, &rawItems); err != nil {
-		return nil, fmt.Errorf("expected a versioned dataset export or an array of examples: %w", err)
-	}
-	items := make([]datasetTransferExample, 0, len(rawItems))
-	for i, raw := range rawItems {
-		var item datasetTransferExample
-		if err := json.Unmarshal(raw, &item); err != nil {
-			return nil, fmt.Errorf("example at index %d must be an object: %w", i, err)
+
+	switch data[0] {
+	case '{':
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return nil, err
 		}
-		if len(raw) == 0 || raw[0] != '{' {
-			return nil, fmt.Errorf("example at index %d must be an object", i)
+		if _, versioned := fields["version"]; versioned {
+			if _, ok := fields["examples"]; !ok {
+				return nil, fmt.Errorf("versioned dataset export must contain an examples array")
+			}
+			var envelope datasetTransferFile
+			if err := json.Unmarshal(data, &envelope); err != nil {
+				return nil, fmt.Errorf("invalid versioned dataset export: %w", err)
+			}
+			if envelope.Version != datasetExportVersion {
+				return nil, fmt.Errorf("unsupported dataset export version %d", envelope.Version)
+			}
+			if envelope.Examples == nil {
+				return nil, fmt.Errorf("versioned dataset export must contain an examples array")
+			}
+			return validateDatasetTransferExamples(envelope.Examples)
 		}
-		items = append(items, item)
+		item, err := parseLegacyDatasetExample(data, 0)
+		if err != nil {
+			return nil, err
+		}
+		return []datasetTransferExample{item}, nil
+	case '[':
+		var rawItems []json.RawMessage
+		if err := json.Unmarshal(data, &rawItems); err != nil {
+			return nil, err
+		}
+		items := make([]datasetTransferExample, 0, len(rawItems))
+		for i, raw := range rawItems {
+			item, err := parseLegacyDatasetExample(raw, i)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+		}
+		return validateDatasetTransferExamples(items)
+	default:
+		return nil, fmt.Errorf("expected a versioned dataset export, an example object, or an array of examples")
 	}
-	return validateDatasetTransferExamples(items)
+}
+
+func parseLegacyDatasetExample(data []byte, index int) (datasetTransferExample, error) {
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil || object == nil {
+		return datasetTransferExample{}, fmt.Errorf("example at index %d must be an object", index)
+	}
+	if _, wrapped := object["inputs"].(map[string]any); wrapped {
+		item := datasetTransferExample{Inputs: object["inputs"].(map[string]any)}
+		if outputs, ok := object["outputs"].(map[string]any); ok {
+			item.Outputs = outputs
+		}
+		return item, nil
+	}
+	item := datasetTransferExample{Inputs: object}
+	if outputs, ok := object["outputs"].(map[string]any); ok {
+		item.Outputs = outputs
+	}
+	return item, nil
 }
 
 func validateDatasetTransferExamples(items []datasetTransferExample) ([]datasetTransferExample, error) {
