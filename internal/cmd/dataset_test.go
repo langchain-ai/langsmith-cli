@@ -1,8 +1,60 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 )
+
+func TestParseDatasetUpload_RejectsInvalidItemWithIndex(t *testing.T) {
+	_, err := parseDatasetUpload([]byte(`[{"inputs":{"x":1}}, "bad"]`))
+	if err == nil || !strings.Contains(err.Error(), "index 1") {
+		t.Fatalf("expected indexed validation error, got %v", err)
+	}
+}
+
+func TestDatasetTransfer_RoundTripsMetadataAndSplits(t *testing.T) {
+	want := datasetTransferFile{Version: datasetExportVersion, Examples: []datasetTransferExample{{
+		Inputs: map[string]any{"x": "y"}, Outputs: map[string]any{"answer": "yes"},
+		Metadata: map[string]any{"owner": "me"}, Splits: []string{"test", "regression"},
+	}}}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := parseDatasetUpload(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Metadata["owner"] != "me" || len(got[0].Splits) != 2 {
+		t.Fatalf("round trip lost fields: %#v", got)
+	}
+}
+
+func TestUploadExamplesWithCleanup_DeletesDatasetAfterBulkFailure(t *testing.T) {
+	deleted := false
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/examples/bulk" && r.Method == http.MethodPost:
+			http.Error(w, "bulk failed", http.StatusInternalServerError)
+		case r.URL.Path == "/api/v1/datasets/dataset-id" && r.Method == http.MethodDelete:
+			deleted = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+	err := uploadExamplesWithCleanup(t.Context(), MustGetClient().SDK, "dataset-id", []datasetTransferExample{{Inputs: map[string]any{"x": 1}}})
+	if err == nil || !strings.Contains(err.Error(), "was removed") {
+		t.Fatalf("expected cleaned-up bulk error, got %v", err)
+	}
+	if !deleted {
+		t.Fatal("dataset delete was not attempted")
+	}
+}
 
 // ==================== Command structure ====================
 
