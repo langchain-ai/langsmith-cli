@@ -26,6 +26,16 @@ func TestExampleParams_UseNativeSplitFields(t *testing.T) {
 	}
 }
 
+func TestExampleSplitDisplay_UsesAPIDatasetSplitNotUserMetadata(t *testing.T) {
+	metadata := map[string]any{
+		"dataset_split": []any{"test", "regression"},
+		"split":         "metadata-only",
+	}
+	if got := exampleSplitDisplay(metadata); got != "test, regression" {
+		t.Fatalf("split display = %q", got)
+	}
+}
+
 // ==================== Command structure ====================
 
 func TestExampleCmd_Subcommands(t *testing.T) {

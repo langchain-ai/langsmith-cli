@@ -77,10 +77,11 @@ func newExampleListCmd() *cobra.Command {
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				columns := []string{"ID", "Created", "Inputs Preview"}
+				columns := []string{"ID", "Split", "Created", "Inputs Preview"}
 				var rows [][]string
 				for _, ex := range examples {
 					id := ex.ID
+					splitVal := exampleSplitDisplay(ex.Metadata)
 					created := "N/A"
 					if !ex.CreatedAt.IsZero() {
 						created = ex.CreatedAt.Format("2006-01-02")
@@ -93,7 +94,7 @@ func newExampleListCmd() *cobra.Command {
 							inputsPreview = inputsPreview[:60] + "..."
 						}
 					}
-					rows = append(rows, []string{id, created, inputsPreview})
+					rows = append(rows, []string{id, splitVal, created, inputsPreview})
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Examples in %s", ds.Name))
 			} else {
@@ -123,6 +124,33 @@ func newExampleListCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("dataset")
 
 	return cmd
+}
+
+func exampleSplitDisplay(metadata map[string]any) string {
+	if metadata == nil {
+		return "N/A"
+	}
+	switch splits := metadata["dataset_split"].(type) {
+	case []any:
+		values := make([]string, 0, len(splits))
+		for _, split := range splits {
+			if value, ok := split.(string); ok {
+				values = append(values, value)
+			}
+		}
+		if len(values) > 0 {
+			return strings.Join(values, ", ")
+		}
+	case []string:
+		if len(splits) > 0 {
+			return strings.Join(splits, ", ")
+		}
+	case string:
+		if splits != "" {
+			return splits
+		}
+	}
+	return "N/A"
 }
 
 func newExampleCreateCmd() *cobra.Command {
