@@ -1,8 +1,30 @@
 package cmd
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestExampleParams_UseNativeSplitFields(t *testing.T) {
+	list := exampleListParams("dataset-id", 20, 0, "test")
+	if got := list.URLQuery().Get("splits"); got != "test" {
+		t.Fatalf("list split query = %q, want test", got)
+	}
+	metadata := map[string]any{"split": "metadata-value", "owner": "me"}
+	create := exampleCreateParams("dataset-id", map[string]any{"x": 1}, nil, metadata, "test")
+	body, err := json.Marshal(create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonBody := string(body)
+	if !strings.Contains(jsonBody, `"split":"test"`) {
+		t.Fatalf("native split missing from create body: %s", jsonBody)
+	}
+	if metadata["split"] != "metadata-value" {
+		t.Fatalf("metadata split was overwritten: %#v", metadata)
+	}
+}
 
 // ==================== Command structure ====================
 
