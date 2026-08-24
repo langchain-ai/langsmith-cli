@@ -48,11 +48,15 @@ var snapshotListCommand = structured.Command[struct{}]{
 			return nil, err
 		}
 
-		resp, err := c.SDK.Sandboxes.Snapshots.List(ctx, langsmith.SandboxSnapshotListParams{})
-		if err != nil {
+		var snapshots []langsmith.SnapshotResponse
+		pager := c.SDK.Sandboxes.Snapshots.ListAutoPaging(ctx, langsmith.SandboxSnapshotListParams{})
+		for pager.Next() {
+			snapshots = append(snapshots, pager.Current())
+		}
+		if err := pager.Err(); err != nil {
 			return nil, fmt.Errorf("listing snapshots: %w", err)
 		}
-		return resp.Snapshots, nil
+		return snapshots, nil
 	},
 	Render: structured.Table{
 		Title: "Snapshots",

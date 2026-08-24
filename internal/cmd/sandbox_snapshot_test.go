@@ -36,15 +36,41 @@ func TestSplitSnapshotRef(t *testing.T) {
 	}
 }
 
+func TestSnapshotRenderDescription(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		want        string
+	}{
+		{name: "empty is dangling", description: "", want: "Description: -"},
+		{name: "set", description: "Python 3.12 with uv", want: "Description: Python 3.12 with uv"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+
+			err := snapshotGetCommand.Render.RenderText(&out, langsmith.SnapshotResponse{
+				ID:          "snap-1",
+				Name:        "my-snap",
+				Description: tc.description,
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, out.String(), tc.want)
+		})
+	}
+}
+
 func TestJoinOrDashRendersSnapshotTags(t *testing.T) {
 	tests := []struct {
 		name string
 		tags []string
 		want string
 	}{
-		{name: "no tags is dangling", tags: nil, want: "Tags:    -"},
-		{name: "one tag", tags: []string{"latest"}, want: "Tags:    latest"},
-		{name: "many tags", tags: []string{"latest", "v2"}, want: "Tags:    latest, v2"},
+		{name: "no tags is dangling", tags: nil, want: "Tags:        -"},
+		{name: "one tag", tags: []string{"latest"}, want: "Tags:        latest"},
+		{name: "many tags", tags: []string{"latest", "v2"}, want: "Tags:        latest, v2"},
 	}
 
 	for _, tc := range tests {
