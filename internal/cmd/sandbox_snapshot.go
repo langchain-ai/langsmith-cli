@@ -73,6 +73,7 @@ type snapshotBuildInput struct {
 	DockerImage string
 	Capacity    string
 	RegistryID  string
+	Description string
 }
 
 var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
@@ -86,7 +87,8 @@ Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
 	Examples:
 	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
 	  langsmith sandbox snapshot build my-snap:v2 --docker-image ubuntu:24.04
-	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb`,
+	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb
+	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --description "Python 3.12 with uv and ruff"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotBuildInput {
 		in := &snapshotBuildInput{
@@ -95,6 +97,7 @@ Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
 		cmd.Flags().StringVar(&in.DockerImage, "docker-image", in.DockerImage, "Docker image to build from (required)")
 		cmd.Flags().StringVar(&in.Capacity, "capacity", in.Capacity, "Filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.RegistryID, "registry-id", in.RegistryID, "Registry ID for private images")
+		cmd.Flags().StringVar(&in.Description, "description", in.Description, "What the snapshot's image can do, for handing to an agent (max 1024 chars)")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *snapshotBuildInput, args []string) (any, error) {
@@ -124,6 +127,9 @@ Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
 		if in.RegistryID != "" {
 			params.RegistryID = langsmith.F(in.RegistryID)
 		}
+		if in.Description != "" {
+			params.Description = langsmith.F(in.Description)
+		}
 
 		resp, err := c.SDK.Sandboxes.Snapshots.New(ctx, params)
 		if err != nil {
@@ -132,19 +138,21 @@ Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Tags:    {{joinOrDash .Tags}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
 type snapshotCaptureInput struct {
-	BoxName    string
-	Checkpoint string
+	BoxName     string
+	Checkpoint  string
+	Description string
 }
 
 var snapshotCaptureCommand = structured.Command[*snapshotCaptureInput]{
@@ -159,12 +167,14 @@ An omitted tag means "latest".
 	Examples:
 	  langsmith sandbox snapshot capture my-snap --box my-vm
 	  langsmith sandbox snapshot capture my-snap:2026081101 --box my-vm
-	  langsmith sandbox snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z`,
+	  langsmith sandbox snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z
+	  langsmith sandbox snapshot capture my-snap --box my-vm --description "repo cloned, deps installed"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotCaptureInput {
 		in := &snapshotCaptureInput{}
 		cmd.Flags().StringVar(&in.BoxName, "box", in.BoxName, "Sandbox name to capture from (required)")
 		cmd.Flags().StringVar(&in.Checkpoint, "checkpoint", in.Checkpoint, "Checkpoint timestamp to use (omit for fresh checkpoint)")
+		cmd.Flags().StringVar(&in.Description, "description", in.Description, "What the snapshot's image can do, for handing to an agent (max 1024 chars)")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *snapshotCaptureInput, args []string) (any, error) {
@@ -187,6 +197,9 @@ An omitted tag means "latest".
 		if in.Checkpoint != "" {
 			params.Checkpoint = langsmith.F(in.Checkpoint)
 		}
+		if in.Description != "" {
+			params.Description = langsmith.F(in.Description)
+		}
 
 		resp, err := c.SDK.Sandboxes.Boxes.NewSnapshot(ctx, in.BoxName, params)
 		if err != nil {
@@ -195,13 +208,14 @@ An omitted tag means "latest".
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Tags:    {{joinOrDash .Tags}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
@@ -222,13 +236,14 @@ var snapshotGetCommand = structured.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Tags:    {{joinOrDash .Tags}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
