@@ -363,11 +363,15 @@ var sandboxListCommand = structured.Command[struct{}]{
 			return nil, err
 		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{})
-		if err != nil {
+		var sandboxes []langsmith.SandboxResponse
+		pager := c.SDK.Sandboxes.Boxes.ListAutoPaging(ctx, langsmith.SandboxBoxListParams{})
+		for pager.Next() {
+			sandboxes = append(sandboxes, pager.Current())
+		}
+		if err := pager.Err(); err != nil {
 			return nil, fmt.Errorf("listing sandboxes: %w", err)
 		}
-		return resp.Sandboxes, nil
+		return sandboxes, nil
 	},
 	Render: structured.Table{
 		Title: "Sandboxes",
