@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,7 +22,10 @@ const (
 // document. It is distinct from a transport or 5xx failure, which says nothing
 // about whether the document exists and so must not trigger the legacy
 // fallback.
-var errNoOAuthMetadata = errors.New("no authorization server metadata")
+var (
+	errNoOAuthMetadata      = errors.New("no authorization server metadata")
+	errInvalidOAuthMetadata = errors.New("invalid authorization server metadata")
+)
 
 // OAuthMetadata holds absolute authorization server endpoints. The AS lives at
 // <origin>/oauth on SaaS and <origin>/api/oauth on self-hosted, so callers use
@@ -75,19 +79,19 @@ func oauthDiscoveryCandidates(apiURL string) []string {
 // reported in preference to errNoOAuthMetadata so callers do not mistake an
 // outage for a legacy backend.
 func DiscoverOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
-	var transientErr error
+	var discoveryErr error
 	for _, base := range oauthDiscoveryCandidates(apiURL) {
 		meta, err := fetchOAuthMetadata(ctx, base+wellKnownOAuthPath, base)
 		switch {
 		case err == nil:
 			return meta, nil
 		case errors.Is(err, errNoOAuthMetadata):
-		case transientErr == nil:
-			transientErr = err
+		case discoveryErr == nil:
+			discoveryErr = err
 		}
 	}
-	if transientErr != nil {
-		return nil, fmt.Errorf("discovering OAuth authorization server: %w", transientErr)
+	if discoveryErr != nil {
+		return nil, fmt.Errorf("discovering OAuth authorization server: %w", discoveryErr)
 	}
 	return nil, fmt.Errorf("discovering OAuth authorization server for %q: %w", apiURL, errNoOAuthMetadata)
 }
@@ -115,6 +119,10 @@ func ResolveOAuth(ctx context.Context, apiURL string) (*OAuthMetadata, error) {
 }
 
 func fetchOAuthMetadata(ctx context.Context, metadataURL, base string) (*OAuthMetadata, error) {
+	return fetchOAuthMetadataWithDelegation(ctx, metadataURL, base, true)
+}
+
+func fetchOAuthMetadataWithDelegation(ctx context.Context, metadataURL, base string, allowDelegation bool) (*OAuthMetadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
 	if err != nil {
 		return nil, err
@@ -148,6 +156,25 @@ func fetchOAuthMetadata(ctx context.Context, metadataURL, base string) (*OAuthMe
 	if doc.TokenEndpoint == "" || doc.DeviceAuthorizationEndpoint == "" {
 		return nil, fmt.Errorf("%s: metadata missing required endpoints: %w", metadataURL, errNoOAuthMetadata)
 	}
+	if strings.TrimRight(doc.Issuer, "/") != strings.TrimRight(base, "/") {
+		if !allowDelegation {
+			return nil, fmt.Errorf("%s: issuer %q does not match %q: %w", metadataURL, doc.Issuer, base, errInvalidOAuthMetadata)
+		}
+		if err := validateDelegatedOAuthMetadata(&doc); err != nil {
+			return nil, fmt.Errorf("%s: %v: %w", metadataURL, err, errInvalidOAuthMetadata)
+		}
+		issuer := strings.TrimRight(doc.Issuer, "/")
+		canonical, err := fetchOAuthMetadataWithDelegation(ctx, issuer+wellKnownOAuthPath, issuer, false)
+		if err != nil {
+			return nil, fmt.Errorf("validating delegated OAuth issuer %q: %v: %w", issuer, err, errInvalidOAuthMetadata)
+		}
+		if canonical.DeviceAuthorizationEndpoint != doc.DeviceAuthorizationEndpoint ||
+			canonical.TokenEndpoint != doc.TokenEndpoint ||
+			canonical.RegistrationEndpoint != doc.RegistrationEndpoint {
+			return nil, fmt.Errorf("%s: delegated metadata does not match issuer metadata: %w", metadataURL, errInvalidOAuthMetadata)
+		}
+		return canonical, nil
+	}
 	if err := validateOAuthMetadata(&doc, base); err != nil {
 		return nil, fmt.Errorf("%s: %w: %w", metadataURL, err, errNoOAuthMetadata)
 	}
@@ -159,6 +186,21 @@ func fetchOAuthMetadata(ctx context.Context, metadataURL, base string) (*OAuthMe
 		RegistrationEndpoint:        doc.RegistrationEndpoint,
 		Resource:                    doc.Issuer,
 	}, nil
+}
+
+func validateDelegatedOAuthMetadata(doc *oauthServerMetadata) error {
+	issuer, err := validateOAuthEndpointOrigins(doc)
+	if err != nil {
+		return err
+	}
+	if issuer.Scheme == "https" {
+		return nil
+	}
+	ip := net.ParseIP(issuer.Hostname())
+	if issuer.Scheme == "http" && (issuer.Hostname() == "localhost" || ip != nil && ip.IsLoopback()) {
+		return nil
+	}
+	return fmt.Errorf("delegated issuer %q must use HTTPS", doc.Issuer)
 }
 
 func isTransientStatus(code int) bool {
@@ -174,9 +216,14 @@ func validateOAuthMetadata(doc *oauthServerMetadata, base string) error {
 	if strings.TrimRight(doc.Issuer, "/") != strings.TrimRight(base, "/") {
 		return fmt.Errorf("issuer %q does not match %q", doc.Issuer, base)
 	}
+	_, err := validateOAuthEndpointOrigins(doc)
+	return err
+}
+
+func validateOAuthEndpointOrigins(doc *oauthServerMetadata) (*url.URL, error) {
 	issuer, err := url.Parse(doc.Issuer)
-	if err != nil {
-		return fmt.Errorf("unparseable issuer %q", doc.Issuer)
+	if err != nil || issuer.Scheme == "" || issuer.Host == "" || issuer.User != nil || issuer.Fragment != "" || issuer.RawQuery != "" {
+		return nil, fmt.Errorf("unparseable issuer %q", doc.Issuer)
 	}
 	for _, ep := range []string{doc.DeviceAuthorizationEndpoint, doc.TokenEndpoint, doc.RegistrationEndpoint} {
 		if ep == "" {
@@ -184,11 +231,11 @@ func validateOAuthMetadata(doc *oauthServerMetadata, base string) error {
 		}
 		u, err := url.Parse(ep)
 		if err != nil {
-			return fmt.Errorf("unparseable endpoint %q", ep)
+			return nil, fmt.Errorf("unparseable endpoint %q", ep)
 		}
 		if u.Scheme != issuer.Scheme || u.Host != issuer.Host {
-			return fmt.Errorf("endpoint %q is not on issuer origin %s://%s", ep, issuer.Scheme, issuer.Host)
+			return nil, fmt.Errorf("endpoint %q is not on issuer origin %s://%s", ep, issuer.Scheme, issuer.Host)
 		}
 	}
-	return nil
+	return issuer, nil
 }
