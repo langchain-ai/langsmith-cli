@@ -177,7 +177,7 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			token, err := refreshProfileToken(ctx, opts.APIURL, profile.OAuth.RefreshToken)
+			token, err := refreshProfileToken(ctx, opts.APIURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
 			if err != nil {
 				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
@@ -203,8 +203,12 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	return opts, nil
 }
 
-func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
-	meta, err := client.ResolveOAuth(ctx, apiURL)
+func refreshProfileToken(ctx context.Context, apiURL, issuer, refreshToken string) (*oauthTokenResponse, error) {
+	oauthURL := apiURL
+	if issuer != "" {
+		oauthURL = issuer
+	}
+	meta, err := client.ResolveOAuth(ctx, oauthURL)
 	if err != nil {
 		return nil, err
 	}

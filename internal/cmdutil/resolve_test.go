@@ -417,6 +417,65 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	}
 }
 
+func TestResolveClientOptionsRefreshesThroughPinnedIssuer(t *testing.T) {
+	dataPlane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("refresh unexpectedly contacted data plane at %s", r.URL.Path)
+	}))
+	defer dataPlane.Close()
+
+	var authServer *httptest.Server
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                        authServer.URL,
+				"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+				"token_endpoint":                authServer.URL + "/oauth/token",
+			})
+		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+				t.Fatalf("unexpected refresh token %q", got)
+			}
+			assertOAuthResource(t, r)
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{AccessToken: "new-access-token"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer authServer.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+dataPlane.URL+`",
+      "oauth": {
+        "issuer": "`+authServer.URL+`",
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, err := ResolveClientOptions(newTestCmd(), true)
+	if err != nil {
+		t.Fatalf("ResolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
 func assertOAuthResource(t *testing.T, r *http.Request) {
 	t.Helper()
 	expected := "http://" + r.Host

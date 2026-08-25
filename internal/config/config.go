@@ -29,6 +29,7 @@ type OAuth struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresAt    string `json:"expires_at,omitempty"`
+	Issuer       string `json:"issuer,omitempty"`
 }
 
 // Config is the on-disk LangSmith CLI config.

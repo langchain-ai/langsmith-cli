@@ -200,7 +200,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
-			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.RefreshToken)
+			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
 			if err != nil {
 				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
