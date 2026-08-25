@@ -1,0 +1,48 @@
+internal/cmd/evaluator_test.go
+  s_645752ad610eb7::t_f23456be4b3285 598
+  s_645752ad610eb7::t_0272890c7d02ea 374-378,381-384,387,392
+internal/cmd/thread.go
+  s_645752ad610eb7::t_cdf50fbe75d071 67-71,162
+  s_645752ad610eb7::t_75c43eea75690a 49,63,180,192,217,261,275,307,357
+internal/cmd/filters.go
+  s_645752ad610eb7::t_75c43eea75690a 37
+  s_645752ad610eb7::t_0cfcbe5cfb3bfb 35-36,38-49,54
+internal/cmd/issues.go
+  s_645752ad610eb7::t_75c43eea75690a 102,135-148,201,210,267,292,294-299,330,362
+internal/cmd/trace.go
+  s_645752ad610eb7::t_75c43eea75690a 236
+internal/cmd/evaluator.go
+  s_645752ad610eb7::t_75c43eea75690a 197-205,215,230-231,333-334,351,380,428-429
+internal/cmd/project_id_flag_test.go
+  s_645752ad610eb7::t_2d223cab145f30 1-67,69-88
+  s_645752ad610eb7::t_75c43eea75690a 68
+README.md
+  s_645752ad610eb7::t_a66f7f897015b3 101-120
+internal/cmd/evaluator_llm.go
+  s_645752ad610eb7::t_75c43eea75690a 97-105,107-108,114-115,126-127
+internal/cmd/helpers.go
+  s_645752ad610eb7::t_7dc077d647b08e 29
+  s_645752ad610eb7::t_da8a4eaee6f2f0 38-48
+AGENTS.md
+  s_645752ad610eb7::t_faa02044f0b66c 26-27
+internal/cmd/insights.go
+  s_645752ad610eb7::t_75c43eea75690a 42,62,106,116,136,159
+internal/cmd/run.go
+  s_645752ad610eb7::t_75c43eea75690a 63,104,129,165,205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "48231ab7ae9b160bb7149a9412c27a6a0c76572e",
+  "prompts": {},
+  "sessions": {
+    "s_645752ad610eb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f015d40c-5965-4453-a814-6932aef1d155",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
