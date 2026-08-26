@@ -94,19 +94,25 @@ func parseVariableMapping(raw string) (map[string]string, error) {
 	return mapping, nil
 }
 
-func validateEvaluatorTargetFlags(dataset, project string) error {
-	if dataset == "" && project == "" {
-		return fmt.Errorf("must specify --dataset or --project (global evaluators not supported)")
+func validateEvaluatorTargetFlags(dataset, project, projectID string) error {
+	set := 0
+	for _, v := range []string{dataset, project, projectID} {
+		if v != "" {
+			set++
+		}
 	}
-	if dataset != "" && project != "" {
-		return fmt.Errorf("cannot specify both --dataset and --project")
+	if set == 0 {
+		return fmt.Errorf("must specify --dataset, --project, or --project-id (global evaluators not supported)")
+	}
+	if set > 1 {
+		return fmt.Errorf("specify only one of --dataset, --project, or --project-id")
 	}
 	return nil
 }
 
 // Finds the dataset or project this evaluator should run on.
-func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, project string) (llmEvaluatorTarget, error) {
-	if err := validateEvaluatorTargetFlags(dataset, project); err != nil {
+func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, project, projectID string) (llmEvaluatorTarget, error) {
+	if err := validateEvaluatorTargetFlags(dataset, project, projectID); err != nil {
 		return llmEvaluatorTarget{}, err
 	}
 	var target llmEvaluatorTarget
@@ -117,8 +123,8 @@ func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, p
 		}
 		target.datasetID = ds.ID
 	}
-	if project != "" {
-		sid, err := c.ResolveSessionID(ctx, project)
+	if project != "" || projectID != "" {
+		sid, err := resolveSessionID(ctx, c, project, projectID, "evaluator llm create")
 		if err != nil {
 			return llmEvaluatorTarget{}, err
 		}

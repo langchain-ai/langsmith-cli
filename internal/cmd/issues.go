@@ -99,6 +99,7 @@ Examples:
 func newProjectIssuesListCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		status     string
 		priority   string
 		limit      int
@@ -131,13 +132,20 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			params := langsmith.IssueListParams{
-				SessionName: langsmith.F(projectName),
+			params := langsmith.IssueListParams{}
+			projectLabel := projectID
+			if projectID != "" {
+				id, err := validateProjectID(projectID)
+				if err != nil {
+					ExitErrorf("%v", err)
+				}
+				params.SessionID = langsmith.F(id)
+			} else {
+				projectLabel = ResolveProject(project)
+				if projectLabel == "" {
+					ExitError("--project or --project-id is required (or set LANGSMITH_PROJECT)")
+				}
+				params.SessionName = langsmith.F(projectLabel)
 			}
 			// Validate both filters before sending: an unknown --status used to
 			// cost a round-trip and return a server 400, and an unknown
@@ -190,7 +198,7 @@ Examples:
 						formatIssueTimestamp(issue.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectLabel))
 			} else {
 				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
 					ExitErrorf("%v", err)
@@ -199,7 +207,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open, fixing, watching, completed, or ignored")
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: urgent, high, medium, or low")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Page size (server-side; max 500)")
@@ -256,6 +264,7 @@ type issueEvent struct {
 func newProjectIssuesEventsCmd() *cobra.Command {
 	var (
 		project         string
+		projectID       string
 		lookBackMinutes int
 		limit           int
 		outputFile      string
@@ -280,14 +289,14 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "project issues events")
 			if err != nil {
-				ExitErrorf("resolving project %q: %v", projectName, err)
+				ExitErrorf("%v", err)
+			}
+			// Name the board by whichever identifier the caller gave.
+			projectLabel := ResolveProject(project)
+			if projectLabel == "" {
+				projectLabel = sessionID
 			}
 
 			path := fmt.Sprintf("/api/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
@@ -318,7 +327,7 @@ Examples:
 						formatIssueTime(e.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectLabel))
 			} else {
 				data := []map[string]any{}
 				for _, e := range events {
@@ -350,7 +359,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVar(&lookBackMinutes, "look-back-minutes", 10080, "Look-back window in minutes (default 10080 = 7 days)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")

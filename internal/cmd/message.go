@@ -286,9 +286,7 @@ Examples:
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVar(&ff.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }

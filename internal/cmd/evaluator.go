@@ -194,14 +194,15 @@ func newEvaluatorListCmd() *cobra.Command {
 
 func newEvaluatorUploadCmd() *cobra.Command {
 	var (
-		name          string
-		funcName      string
-		targetDataset string
-		targetProject string
-		samplingRate  float64
-		traceFilter   string
-		replace       bool
-		yes           bool
+		name            string
+		funcName        string
+		targetDataset   string
+		targetProject   string
+		targetProjectID string
+		samplingRate    float64
+		traceFilter     string
+		replace         bool
+		yes             bool
 	)
 
 	cmd := &cobra.Command{
@@ -211,7 +212,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			evaluatorFile := args[0]
 
-			if err := validateEvaluatorTargetFlags(targetDataset, targetProject); err != nil {
+			if err := validateEvaluatorTargetFlags(targetDataset, targetProject, targetProjectID); err != nil {
 				return err
 			}
 
@@ -226,8 +227,8 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				}
 				datasetID = ds.ID
 			}
-			if targetProject != "" {
-				sid, err := c.ResolveSessionID(ctx, targetProject)
+			if targetProject != "" || targetProjectID != "" {
+				sid, err := resolveSessionID(ctx, c, targetProject, targetProjectID, "evaluator upload")
 				if err != nil {
 					ExitErrorf("%v", err)
 				}
@@ -329,6 +330,8 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&funcName, "function", "", "Name of the function to upload (required)")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
+	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
+	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
 	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
 	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
@@ -345,6 +348,7 @@ func newEvaluatorCreateLLMCmd() *cobra.Command {
 		name            string
 		targetDataset   string
 		targetProject   string
+		targetProjectID string
 		samplingRate    float64
 		traceFilter     string
 		hubRef          string
@@ -373,7 +377,7 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject)
+			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject, targetProjectID)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -421,6 +425,8 @@ Examples:
 	cmd.Flags().StringVar(&name, "name", "", "Display name (required)")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name")
+	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
+	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
 	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
 	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "Prompt Hub reference; replaces --prompt and --schema (e.g. my-org/prompt:latest)")

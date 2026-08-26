@@ -371,20 +371,25 @@ func TestValidateEvaluatorTargetFlags(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		dataset string
-		project string
-		wantErr string
+		name      string
+		dataset   string
+		project   string
+		projectID string
+		wantErr   string
 	}{
 		{name: "requires one target", wantErr: "must specify"},
-		{name: "rejects both targets", dataset: "ds", project: "proj", wantErr: "cannot specify both"},
+		{name: "rejects dataset and project", dataset: "ds", project: "proj", wantErr: "only one of"},
+		{name: "rejects dataset and project-id", dataset: "ds", projectID: "id", wantErr: "only one of"},
+		{name: "rejects project and project-id", project: "proj", projectID: "id", wantErr: "only one of"},
+		{name: "rejects all three", dataset: "ds", project: "proj", projectID: "id", wantErr: "only one of"},
 		{name: "dataset only", dataset: "ds"},
 		{name: "project only", project: "proj"},
+		{name: "project-id only", projectID: "id"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateEvaluatorTargetFlags(tt.dataset, tt.project)
+			err := validateEvaluatorTargetFlags(tt.dataset, tt.project, tt.projectID)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -590,7 +595,7 @@ func TestEvaluatorUploadCmd_InvalidTargetReturnsError(t *testing.T) {
 	_ = cmd.Flags().Set("project", "project")
 
 	runErr := runTestCommand(t, cmd, []string{"evaluator.py"})
-	if runErr == nil || !contains(runErr.Error(), "cannot specify both") {
+	if runErr == nil || !contains(runErr.Error(), "only one of") {
 		t.Fatalf("unexpected error: %v", runErr)
 	}
 }
