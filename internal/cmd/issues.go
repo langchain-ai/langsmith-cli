@@ -84,7 +84,8 @@ Examples:
   langsmith project issues list --project my-app
   langsmith project issues get <issue-id>
   langsmith project issues list --project my-app --status open --priority high
-  langsmith project issues events --project my-app`,
+  langsmith project issues events --project my-app
+  langsmith project issues overview pull --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
@@ -93,6 +94,7 @@ Examples:
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
 	cmd.AddCommand(newProjectIssuesExamplesCmd())
+	cmd.AddCommand(newProjectIssuesOverviewCmd())
 	return cmd
 }
 
