@@ -1,0 +1,26 @@
+internal/cmd/install_method.go
+  s_8770a26f3ed671::t_dc623f4b56bfd3 94-100
+  s_8770a26f3ed671::t_4b08484440a3a0 26-39
+  s_8770a26f3ed671::t_2bee447eb4b12b 40
+internal/cmd/install_method_test.go
+  s_8770a26f3ed671::t_239ec5d9f52f5b 141-145,147-190
+internal/cmd/update.go
+  s_8770a26f3ed671::t_09d18a806f336e 165-171,173-174,178-179
+  s_8770a26f3ed671::t_dfaefb5489dd57 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5a7799ecc30bfd6dcd0082e5443d34d2f6f4b7de",
+  "prompts": {},
+  "sessions": {
+    "s_8770a26f3ed671": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "834f91b0-931b-4574-928c-85becfe2258d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Dariel Dato-on <293921406+darieldatoon@users.noreply.github.com>"
+    }
+  }
+}

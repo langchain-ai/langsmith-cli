@@ -1,0 +1,28 @@
+internal/cmd/helpers.go
+  s_39792dbf56ee4e::t_7473226cfcc77f 112,125
+internal/client/client_test.go
+  s_39792dbf56ee4e::t_7473226cfcc77f 729,753-754
+internal/client/client.go
+  s_39792dbf56ee4e::t_7473226cfcc77f 34,124-126,132-133,140
+  s_39792dbf56ee4e::t_72fb1a27f45964 137
+  s_39792dbf56ee4e::t_339e55f2739477 122-123
+  s_39792dbf56ee4e::t_be9db68eaa4bef 32-33
+internal/cmd/testutil_test.go
+  s_39792dbf56ee4e::t_0fc04aadef2ac1 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7e28fc2005e978a3410827045554a24f9bd0d1fc",
+  "prompts": {},
+  "sessions": {
+    "s_39792dbf56ee4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c18796d-44ea-403f-99d1-e5ad9027a69c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}

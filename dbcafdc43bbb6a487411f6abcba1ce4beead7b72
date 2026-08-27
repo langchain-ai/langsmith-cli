@@ -1,0 +1,20 @@
+internal/config/config.go
+  s_6764a5ab39be4a::t_2b05ee654888bf 22-23
+  s_6764a5ab39be4a::t_bc8d8d2351e4ca 19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "dbcafdc43bbb6a487411f6abcba1ce4beead7b72",
+  "prompts": {},
+  "sessions": {
+    "s_6764a5ab39be4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ece988e2-4e42-49eb-8516-398ff75b652c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+internal/cmd/thread.go
+  s_39792dbf56ee4e::t_85c1ae5dba4038 73-76,79-86,90-92,94-96,99,101-105
+  s_39792dbf56ee4e::t_382ed2d0abd531 233-235,241
+  s_39792dbf56ee4e::t_3f758bb78d531a 311-312
+  s_39792dbf56ee4e::t_5bae24e7aad32a 7
+internal/cmd/run.go
+  s_39792dbf56ee4e::t_e5c63c5b0bbb85 68-70,72
+  s_39792dbf56ee4e::t_3dbd57ca12d421 203-205,207
+  s_39792dbf56ee4e::t_c2043fe17a7cac 131-134,136-139
+internal/cmd/run_test.go
+  s_39792dbf56ee4e::t_779e069097a8a5 214-216
+internal/cmd/testutil_test.go
+  s_39792dbf56ee4e::t_8042bc20349e0c 52-55,58-65
+  s_39792dbf56ee4e::t_6dc72c59197f4e 5,13-28
+  s_39792dbf56ee4e::t_51003d032ff0e0 29
+README.md
+  s_39792dbf56ee4e::t_b4b049796d30b2 171
+internal/cmd/message_test.go
+  s_39792dbf56ee4e::t_f2f731d7fa8480 602,604
+  s_39792dbf56ee4e::t_68091beec87712 103-104,106
+internal/cmd/helpers.go
+  s_39792dbf56ee4e::t_9ee90dccab7f5e 123-131,133-134,136-137,139-146,148-149,151-152,154-175
+  s_39792dbf56ee4e::t_26ba6aff6265ef 109-116,118-119,121
+internal/cmd/trace.go
+  s_39792dbf56ee4e::t_78f8792d435013 99,102-109
+  s_39792dbf56ee4e::t_2447a5faa6668b 121-122,125-135
+  s_39792dbf56ee4e::t_54b79fa45e0e8f 80
+  s_39792dbf56ee4e::t_68980b852547cf 213
+  s_39792dbf56ee4e::t_501bbb7f3818a6 290-291
+  s_39792dbf56ee4e::t_4d45a13bb7b479 307-310
+internal/client/client_test.go
+  s_39792dbf56ee4e::t_53abf1d510b339 726-757
+internal/cmd/helpers_test.go
+  s_39792dbf56ee4e::t_b0562404adddca 553-614
+internal/cmd/message.go
+  s_39792dbf56ee4e::t_c167abd48726fd 136-138
+  s_39792dbf56ee4e::t_1633c16e8be44c 347-352,357
+internal/client/client.go
+  s_39792dbf56ee4e::t_75d94fba6d82ab 13
+  s_39792dbf56ee4e::t_42cd843dd170eb 31-34
+  s_39792dbf56ee4e::t_160ca9e3e6f5c4 119-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a9c1a94070797eb03a37632c2535af2147d37013",
+  "prompts": {},
+  "sessions": {
+    "s_39792dbf56ee4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c18796d-44ea-403f-99d1-e5ad9027a69c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
