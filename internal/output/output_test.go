@@ -101,8 +101,6 @@ func TestFormatDuration(t *testing.T) {
 }
 
 func TestPrintRunsTable(t *testing.T) {
-	var buf bytes.Buffer
-
 	runs := []map[string]any{
 		{
 			"start_time": "2024-01-15T10:30:00Z",
@@ -110,17 +108,103 @@ func TestPrintRunsTable(t *testing.T) {
 			"run_type":   "llm",
 			"trace_id":   "abc123def456789012",
 			"run_id":     "run123def456789012",
+			"feedback_stats": map[string]map[string]any{
+				"correctness": {"avg": 0.8, "n": 5},
+				"helpfulness": {"avg": 1.0, "n": 2},
+			},
+		},
+		{
+			"start_time": "2024-01-15T10:31:00Z",
+			"name":       "ToolCall",
+			"run_type":   "tool",
+			"trace_id":   "abc123def456789012",
+			"run_id":     "run456def456789012",
 		},
 	}
 
-	PrintRunsTable(&buf, runs, false, "Test Runs")
+	t.Run("without feedback flag", func(t *testing.T) {
+		var buf bytes.Buffer
+		PrintRunsTable(&buf, runs, false, false, "Test Runs")
+		output := buf.String()
 
-	output := buf.String()
-	if !strings.Contains(output, "Test Runs") {
-		t.Error("expected title in output")
+		if !strings.Contains(output, "Test Runs") {
+			t.Error("expected title in output")
+		}
+		if !strings.Contains(output, "ChatOpenAI") {
+			t.Error("expected run name in output")
+		}
+		if strings.Contains(output, "Feedback") || strings.Contains(output, "FEEDBACK") {
+			t.Error("expected no Feedback column when includeFeedback is false")
+		}
+	})
+
+	t.Run("with feedback flag", func(t *testing.T) {
+		var buf bytes.Buffer
+		PrintRunsTable(&buf, runs, false, true, "Test Runs")
+		output := buf.String()
+
+		if !strings.Contains(output, "FEEDBACK") && !strings.Contains(output, "Feedback") {
+			t.Error("expected Feedback column when includeFeedback is true")
+		}
+		if !strings.Contains(output, "correctness: 0.80 (5)") {
+			t.Errorf("expected formatted correctness feedback stats in output, got:\n%s", output)
+		}
+		if !strings.Contains(output, "helpfulness: 1.00 (2)") {
+			t.Errorf("expected formatted helpfulness feedback stats in output, got:\n%s", output)
+		}
+		if !strings.Contains(output, "N/A") {
+			t.Error("expected N/A for run without feedback stats")
+		}
+	})
+}
+
+func TestFormatFeedbackStats(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{
+			name:     "nil",
+			input:    nil,
+			expected: "N/A",
+		},
+		{
+			name:     "empty map",
+			input:    map[string]any{},
+			expected: "N/A",
+		},
+		{
+			name: "single key with avg and n",
+			input: map[string]map[string]any{
+				"correctness": {"avg": 0.8, "n": 5},
+			},
+			expected: "correctness: 0.80 (5)",
+		},
+		{
+			name: "multiple keys sorted alphabetically",
+			input: map[string]map[string]any{
+				"helpfulness": {"avg": 1.0, "n": 2},
+				"accuracy":    {"avg": 0.95, "n": 10},
+			},
+			expected: "accuracy: 0.95 (10), helpfulness: 1.00 (2)",
+		},
+		{
+			name: "feedback stats with count instead of n",
+			input: map[string]map[string]interface{}{
+				"relevance": {"avg": 0.75, "count": float64(4)},
+			},
+			expected: "relevance: 0.75 (4)",
+		},
 	}
-	if !strings.Contains(output, "ChatOpenAI") {
-		t.Error("expected run name in output")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatFeedbackStats(tt.input)
+			if got != tt.expected {
+				t.Errorf("FormatFeedbackStats() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }
 

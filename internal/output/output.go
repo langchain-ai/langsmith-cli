@@ -183,7 +183,7 @@ func PrintError(msg string) {
 }
 
 // PrintRunsTable prints a table of runs in pretty format.
-func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, title string) {
+func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, includeFeedback bool, title string) {
 	if title != "" {
 		fmt.Fprintln(w, title)
 		fmt.Fprintln(w, strings.Repeat("─", len(title)))
@@ -192,6 +192,9 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 	columns := []string{"Time", "Name", "Type", "Trace ID", "Run ID"}
 	if includeMetadata {
 		columns = append(columns, "Duration", "Status", "Tokens")
+	}
+	if includeFeedback {
+		columns = append(columns, "Feedback")
 	}
 
 	table := tablewriter.NewWriter(w)
@@ -238,10 +241,107 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 			row = append(row, duration, status, tokens)
 		}
 
+		if includeFeedback {
+			row = append(row, FormatFeedbackStats(r["feedback_stats"]))
+		}
+
 		table.Append(row)
 	}
 
 	table.Render()
+}
+
+// FormatFeedbackStats formats feedback_stats into a readable string.
+func FormatFeedbackStats(v any) string {
+	if v == nil {
+		return "N/A"
+	}
+
+	statsMap := make(map[string]map[string]any)
+	switch m := v.(type) {
+	case map[string]map[string]any:
+		statsMap = m
+	case map[string]any:
+		for k, inner := range m {
+			if innerMap, ok := inner.(map[string]any); ok {
+				statsMap[k] = innerMap
+			}
+		}
+	default:
+		return "N/A"
+	}
+
+	if len(statsMap) == 0 {
+		return "N/A"
+	}
+
+	keys := make([]string, 0, len(statsMap))
+	for k := range statsMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var parts []string
+	for _, k := range keys {
+		inner := statsMap[k]
+		avgStr := formatStatNum(inner["avg"])
+		countStr := formatStatCount(inner)
+		if avgStr != "" && countStr != "" {
+			parts = append(parts, fmt.Sprintf("%s: %s (%s)", k, avgStr, countStr))
+		} else if avgStr != "" {
+			parts = append(parts, fmt.Sprintf("%s: %s", k, avgStr))
+		} else if countStr != "" {
+			parts = append(parts, fmt.Sprintf("%s: (%s)", k, countStr))
+		} else {
+			parts = append(parts, k)
+		}
+	}
+
+	if len(parts) == 0 {
+		return "N/A"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatStatNum(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch n := v.(type) {
+	case float64:
+		return fmt.Sprintf("%.2f", n)
+	case float32:
+		return fmt.Sprintf("%.2f", n)
+	case int:
+		return fmt.Sprintf("%d", n)
+	case int64:
+		return fmt.Sprintf("%d", n)
+	case json.Number:
+		if f, err := n.Float64(); err == nil {
+			return fmt.Sprintf("%.2f", f)
+		}
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+func formatStatCount(inner map[string]any) string {
+	for _, countKey := range []string{"n", "count"} {
+		if val, ok := inner[countKey]; ok && val != nil {
+			switch n := val.(type) {
+			case float64:
+				return fmt.Sprintf("%.0f", n)
+			case float32:
+				return fmt.Sprintf("%.0f", n)
+			case int, int64:
+				return fmt.Sprintf("%d", n)
+			case json.Number:
+				return n.String()
+			default:
+				return fmt.Sprintf("%v", n)
+			}
+		}
+	}
+	return ""
 }
 
 // FormatDuration formats milliseconds as human-readable duration.
