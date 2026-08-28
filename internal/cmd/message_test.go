@@ -447,6 +447,52 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 	}
 }
 
+func TestTraceMessages_TraceIDsBoundPaginationByRequestedPages(t *testing.T) {
+	pageCount := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v2/traces/messages":
+			pageCount++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"trace_id": "trace-1", "groups": []any{}},
+					{"trace_id": "trace-2", "groups": []any{}},
+					{"trace_id": "trace-3", "groups": []any{}},
+					{"trace_id": "trace-4", "groups": []any{}},
+				},
+				"next_cursor": "cursor-over-root-scan",
+			})
+		case r.URL.Path == "/api/v2/runs/query":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{
+			"--project-id", "11111111-1111-1111-1111-111111111111",
+			"--trace-ids", "trace-1,trace-2,trace-3,trace-4,missing-trace",
+			"--limit", "100",
+			"--since", "2024-01-01T00:00:00Z",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if pageCount != 1 {
+		t.Fatalf("trace messages requests = %d, want 1", pageCount)
+	}
+}
+
 func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 	callCount := 0
 	var receivedBody map[string]any
