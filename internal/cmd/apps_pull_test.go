@@ -209,6 +209,76 @@ func TestAppsPull_SurfacesNoSourceArchive404(t *testing.T) {
 	}
 }
 
+func TestAppsPull_InvalidArchivePreservesExistingDestination(t *testing.T) {
+	mux := appsSourceServer(t,
+		[]customApp{{ID: testAppID, Name: "my-app"}},
+		map[string][]byte{testAppID: []byte("not a gzip archive")},
+	)
+	srv := newTestServer(t, mux.ServeHTTP)
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	seedFile(t, dir, "my-app/src/App.tsx", "known-good")
+	seedFile(t, dir, "my-app/keep.txt", "keep this")
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"pull", "my-app", "--force"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not a valid gzip") {
+		t.Fatalf("expected invalid archive error, got %v", err)
+	}
+	for rel, want := range map[string]string{
+		"src/App.tsx": "known-good",
+		"keep.txt":    "keep this",
+	} {
+		got, readErr := os.ReadFile(filepath.Join(dir, "my-app", filepath.FromSlash(rel)))
+		if readErr != nil || string(got) != want {
+			t.Errorf("existing %s was not preserved: %q (%v)", rel, got, readErr)
+		}
+	}
+	if entries, readErr := os.ReadDir(dir); readErr != nil {
+		t.Fatalf("read working directory: %v", readErr)
+	} else {
+		for _, entry := range entries {
+			if strings.Contains(entry.Name(), ".pull-") {
+				t.Errorf("staging directory leaked after failure: %s", entry.Name())
+			}
+		}
+	}
+}
+
+func TestAppsPull_UnsafeArchivePreservesExistingDestination(t *testing.T) {
+	archive := tarGz(t, map[string]string{
+		"../escaped.txt": "must not extract",
+		"src/App.tsx":    "new app",
+	})
+	mux := appsSourceServer(t,
+		[]customApp{{ID: testAppID, Name: "my-app"}},
+		map[string][]byte{testAppID: archive},
+	)
+	srv := newTestServer(t, mux.ServeHTTP)
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+	seedFile(t, dir, "my-app/src/App.tsx", "known-good")
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"pull", "my-app", "--force"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "refusing to extract") {
+		t.Fatalf("expected unsafe archive error, got %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "my-app", "src", "App.tsx"))
+	if readErr != nil || string(got) != "known-good" {
+		t.Errorf("existing app was not preserved: %q (%v)", got, readErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "escaped.txt")); !os.IsNotExist(statErr) {
+		t.Errorf("unsafe archive wrote outside destination: %v", statErr)
+	}
+}
+
 func TestAppsPull_RefusesNonEmptyDirWithoutForce(t *testing.T) {
 	archive := tarGz(t, map[string]string{"src/App.tsx": "fresh"})
 	mux := appsSourceServer(t,
