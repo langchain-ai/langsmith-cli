@@ -78,7 +78,7 @@ func newRunListCmd() *cobra.Command {
 
 			if fmt_ == "pretty" {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-				output.PrintRunsTable(os.Stdout, data, includeMetadata, "Runs")
+				output.PrintRunsTable(os.Stdout, data, includeMetadata, includeFeedback, "Runs")
 			} else {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 				if err := output.OutputJSON(data, outputFile); err != nil {

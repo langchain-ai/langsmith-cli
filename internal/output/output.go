@@ -183,7 +183,7 @@ func PrintError(msg string) {
 }
 
 // PrintRunsTable prints a table of runs in pretty format.
-func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, title string) {
+func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata, includeFeedback bool, title string) {
 	if title != "" {
 		fmt.Fprintln(w, title)
 		fmt.Fprintln(w, strings.Repeat("─", len(title)))
@@ -192,6 +192,9 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 	columns := []string{"Time", "Name", "Type", "Trace ID", "Run ID"}
 	if includeMetadata {
 		columns = append(columns, "Duration", "Status", "Tokens")
+	}
+	if includeFeedback {
+		columns = append(columns, "Feedback")
 	}
 
 	table := tablewriter.NewWriter(w)
@@ -238,10 +241,76 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 			row = append(row, duration, status, tokens)
 		}
 
+		if includeFeedback {
+			feedback := "N/A"
+			if fb, ok := r["feedback_stats"].(map[string]map[string]interface{}); ok {
+				feedback = formatFeedbackStats(fb)
+			}
+			row = append(row, feedback)
+		}
+
 		table.Append(row)
 	}
 
 	table.Render()
+}
+
+// formatFeedbackStats renders a compact, single-line summary of a run's
+// feedback_stats for the table's "Feedback" column: "key=avg (n=N)" for
+// numeric feedback, or "key{label=count,...}" for categorical feedback.
+// Multiple keys are joined with "; ". Keys with no recorded feedback points
+// are skipped.
+func formatFeedbackStats(fb map[string]map[string]interface{}) string {
+	if len(fb) == 0 {
+		return "N/A"
+	}
+
+	keys := make([]string, 0, len(fb))
+	for k := range fb {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		stat := fb[k]
+
+		if values, ok := stat["values"].(map[string]interface{}); ok && len(values) > 0 {
+			labels := make([]string, 0, len(values))
+			for label := range values {
+				labels = append(labels, label)
+			}
+			sort.Strings(labels)
+
+			counts := make([]string, 0, len(labels))
+			for _, label := range labels {
+				counts = append(counts, fmt.Sprintf("%s=%v", label, values[label]))
+			}
+			parts = append(parts, fmt.Sprintf("%s{%s}", k, strings.Join(counts, ",")))
+			continue
+		}
+
+		n := feedbackStatFloat(stat, "n")
+		if n == 0 {
+			continue
+		}
+		avg := feedbackStatFloat(stat, "avg")
+		parts = append(parts, fmt.Sprintf("%s=%.2g (n=%d)", k, avg, int64(n)))
+	}
+
+	if len(parts) == 0 {
+		return "N/A"
+	}
+	return strings.Join(parts, "; ")
+}
+
+// feedbackStatFloat safely reads a numeric field out of a single feedback
+// key's loosely-typed stats map, returning 0 if absent or non-numeric.
+func feedbackStatFloat(stat map[string]interface{}, key string) float64 {
+	if v, ok := stat[key].(float64); ok {
+		return v
+	}
+	return 0
 }
 
 // FormatDuration formats milliseconds as human-readable duration.

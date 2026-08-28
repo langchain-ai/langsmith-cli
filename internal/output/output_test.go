@@ -113,7 +113,7 @@ func TestPrintRunsTable(t *testing.T) {
 		},
 	}
 
-	PrintRunsTable(&buf, runs, false, "Test Runs")
+	PrintRunsTable(&buf, runs, false, false, "Test Runs")
 
 	output := buf.String()
 	if !strings.Contains(output, "Test Runs") {
@@ -121,6 +121,114 @@ func TestPrintRunsTable(t *testing.T) {
 	}
 	if !strings.Contains(output, "ChatOpenAI") {
 		t.Error("expected run name in output")
+	}
+	if strings.Contains(output, "Feedback") {
+		t.Error("did not expect a Feedback column when includeFeedback is false")
+	}
+}
+
+func TestPrintRunsTable_WithFeedback(t *testing.T) {
+	var buf bytes.Buffer
+
+	runs := []map[string]any{
+		{
+			"start_time": "2024-01-15T10:30:00Z",
+			"name":       "ChatOpenAI",
+			"run_type":   "llm",
+			"trace_id":   "abc123def456789012",
+			"run_id":     "run123def456789012",
+			"feedback_stats": map[string]map[string]interface{}{
+				"correctness": {
+					"avg": 0.75,
+					"n":   float64(4),
+				},
+				"category": {
+					"n": float64(2),
+					"values": map[string]interface{}{
+						"good": float64(1),
+						"bad":  float64(1),
+					},
+				},
+			},
+		},
+		{
+			"start_time": "2024-01-15T10:31:00Z",
+			"name":       "NoFeedbackRun",
+			"run_type":   "llm",
+			"trace_id":   "abc123def456789099",
+			"run_id":     "run123def456789099",
+		},
+	}
+
+	PrintRunsTable(&buf, runs, false, true, "Test Runs With Feedback")
+
+	output := buf.String()
+	if !strings.Contains(output, "Feedback") {
+		t.Error("expected a Feedback column header when includeFeedback is true")
+	}
+	if !strings.Contains(output, "correctness=0.75 (n=4)") {
+		t.Errorf("expected numeric feedback summary in output, got: %s", output)
+	}
+	if !strings.Contains(output, "category{bad=1,good=1}") {
+		t.Errorf("expected categorical feedback summary in output, got: %s", output)
+	}
+	if !strings.Contains(output, "NoFeedbackRun") {
+		t.Error("expected run with no feedback_stats to still be printed")
+	}
+}
+
+func TestFormatFeedbackStats(t *testing.T) {
+	tests := []struct {
+		name     string
+		fb       map[string]map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "empty map",
+			fb:       map[string]map[string]interface{}{},
+			expected: "N/A",
+		},
+		{
+			name: "numeric feedback",
+			fb: map[string]map[string]interface{}{
+				"correctness": {"avg": 0.5, "n": float64(2)},
+			},
+			expected: "correctness=0.5 (n=2)",
+		},
+		{
+			name: "categorical feedback",
+			fb: map[string]map[string]interface{}{
+				"tone": {"n": float64(3), "values": map[string]interface{}{
+					"friendly": float64(2),
+					"neutral":  float64(1),
+				}},
+			},
+			expected: "tone{friendly=2,neutral=1}",
+		},
+		{
+			name: "multiple keys are sorted and joined",
+			fb: map[string]map[string]interface{}{
+				"zeta":  {"avg": 1.0, "n": float64(1)},
+				"alpha": {"avg": 2.0, "n": float64(1)},
+			},
+			expected: "alpha=2 (n=1); zeta=1 (n=1)",
+		},
+		{
+			name: "key with no recorded points is skipped",
+			fb: map[string]map[string]interface{}{
+				"empty": {"n": float64(0)},
+			},
+			expected: "N/A",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatFeedbackStats(tt.fb)
+			if got != tt.expected {
+				t.Errorf("formatFeedbackStats(%v) = %q, want %q", tt.fb, got, tt.expected)
+			}
+		})
 	}
 }
 

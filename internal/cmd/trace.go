@@ -113,7 +113,7 @@ func newTraceListCmd() *cobra.Command {
 					}
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-					output.PrintRunsTable(os.Stdout, data, includeMetadata, "Traces")
+					output.PrintRunsTable(os.Stdout, data, includeMetadata, includeFeedback, "Traces")
 				}
 			} else {
 				if showHierarchy {
