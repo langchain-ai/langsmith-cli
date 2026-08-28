@@ -98,17 +98,50 @@ Use --copy to copy instead of symlink.`,
 				return fmt.Errorf("%q is not a skill", skillName)
 			}
 
-			// Wipe before writing so removed upstream files don't linger.
-			if err := os.RemoveAll(canonicalDir); err != nil {
-				return fmt.Errorf("cleaning %s: %w", canonicalDir, err)
+			for filePath, entry := range resp.Files {
+				if entry.Type != "file" {
+					continue
+				}
+				if err := validateHubFilePath(filePath); err != nil {
+					return err
+				}
 			}
+
+			canonicalAbs, err := filepath.Abs(canonicalDir)
+			if err != nil {
+				return fmt.Errorf("resolving canonical path: %w", err)
+			}
+
+			// Stage every write in a temporary sibling directory first, and
+			// only wipe + replace canonicalDir once every file has been
+			// written successfully. This mirrors hub pull: writing directly
+			// into canonicalDir after wiping it would leave a previously
+			// installed skill half-wiped if any single write failed partway
+			// through (disk full, permission error, etc.).
+			parent := filepath.Dir(canonicalAbs)
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				return fmt.Errorf("creating %s: %w", parent, err)
+			}
+			staging, err := os.MkdirTemp(parent, ".skill-pull-*")
+			if err != nil {
+				return fmt.Errorf("creating staging directory: %w", err)
+			}
+			replaced := false
+			defer func() {
+				if !replaced {
+					os.RemoveAll(staging)
+				}
+			}()
 
 			var written []string
 			for filePath, entry := range resp.Files {
 				if entry.Type != "file" {
 					continue
 				}
-				dest := filepath.Join(canonicalDir, filePath)
+				dest := filepath.Join(staging, filepath.FromSlash(filePath))
+				if rel, relErr := filepath.Rel(staging, dest); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					return fmt.Errorf("path %q would escape %s", filePath, canonicalDir)
+				}
 				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 					return fmt.Errorf("creating directory for %s: %w", filePath, err)
 				}
@@ -119,10 +152,15 @@ Use --copy to copy instead of symlink.`,
 			}
 			sort.Strings(written)
 
-			canonicalAbs, err := filepath.Abs(canonicalDir)
-			if err != nil {
-				return fmt.Errorf("resolving canonical path: %w", err)
+			// Every file staged successfully; now replace canonicalDir.
+			// Wipe before writing so removed upstream files don't linger.
+			if err := os.RemoveAll(canonicalDir); err != nil {
+				return fmt.Errorf("cleaning %s: %w", canonicalDir, err)
 			}
+			if err := os.Rename(staging, canonicalDir); err != nil {
+				return fmt.Errorf("replacing %s: %w", canonicalDir, err)
+			}
+			replaced = true
 
 			var linked []string
 			for _, agent := range agents {
