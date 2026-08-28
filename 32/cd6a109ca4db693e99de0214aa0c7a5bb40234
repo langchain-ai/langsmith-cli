@@ -1,0 +1,34 @@
+internal/cmd/overview.go
+  s_1a20d2e2d35251::t_c6034c157b2b2a 49-110
+  s_6faab73940b13c::t_ddb22757ebc831 1-30,33,37-38,40-48,111-162
+  s_1a20d2e2d35251::t_7ef7d8bf39b89f 31-32,34-36,39
+internal/cmd/issues.go
+  s_1a20d2e2d35251::t_fc33ced45d34c2 88
+  s_1a20d2e2d35251::t_c1e990f1da907b 87,97
+internal/cmd/overview_test.go
+  s_1a20d2e2d35251::t_fd4600e8b4e023 1-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "32cd6a109ca4db693e99de0214aa0c7a5bb40234",
+  "prompts": {},
+  "sessions": {
+    "s_1a20d2e2d35251": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7eb734d-3f83-47f6-844f-850a1c243974",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    },
+    "s_6faab73940b13c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "deb48119-9f04-4199-b367-482a926a6b05",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Anirudh Sriram <ani@langchain.dev>"
+    }
+  }
+}
