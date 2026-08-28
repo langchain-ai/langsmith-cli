@@ -102,19 +102,36 @@ func writeFilesToDirectory(dest string, files map[string]hubFileEntry, yes bool)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolving %s: %w", dest, err)
 	}
-	if err := os.RemoveAll(dest); err != nil {
-		return nil, nil, fmt.Errorf("cleaning %s: %w", dest, err)
+
+	// Stage every write in a temporary sibling directory first. dest is
+	// only wiped and replaced once every file has been written
+	// successfully, so a mid-write failure (disk full, permission error,
+	// interrupted process, etc.) can never leave dest half-wiped or
+	// containing only a partial set of files: the pre-existing dest is
+	// left untouched on any error, and the staging directory is cleaned
+	// up.
+	parent := filepath.Dir(absDest)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return nil, nil, fmt.Errorf("creating %s: %w", parent, err)
 	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return nil, nil, fmt.Errorf("creating %s: %w", dest, err)
+	staging, err := os.MkdirTemp(parent, ".hub-pull-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating staging directory: %w", err)
 	}
+	replaced := false
+	defer func() {
+		if !replaced {
+			os.RemoveAll(staging)
+		}
+	}()
+
 	for path, entry := range files {
 		if entry.Type != "file" {
 			linked = append(linked, fmt.Sprintf("%s (%s)", path, entry.Type))
 			continue
 		}
-		out := filepath.Join(absDest, filepath.FromSlash(path))
-		if rel, relErr := filepath.Rel(absDest, out); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		out := filepath.Join(staging, filepath.FromSlash(path))
+		if rel, relErr := filepath.Rel(staging, out); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return nil, nil, fmt.Errorf("path %q would escape %s", path, dest)
 		}
 		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
@@ -125,6 +142,16 @@ func writeFilesToDirectory(dest string, files map[string]hubFileEntry, yes bool)
 		}
 		written = append(written, path)
 	}
+
+	// Every file staged successfully; now replace dest.
+	if err := os.RemoveAll(dest); err != nil {
+		return nil, nil, fmt.Errorf("cleaning %s: %w", dest, err)
+	}
+	if err := os.Rename(staging, dest); err != nil {
+		return nil, nil, fmt.Errorf("replacing %s: %w", dest, err)
+	}
+	replaced = true
+
 	return written, linked, nil
 }
 

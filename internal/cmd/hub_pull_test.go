@@ -192,3 +192,63 @@ func TestHubPull_AcceptsNonHubDirWithYes(t *testing.T) {
 		t.Errorf("SKILL.md should be written: %v", err)
 	}
 }
+
+// TestHubPull_PreservesExistingDirOnMidWriteFailure exercises the case where
+// a file write fails partway through pulling a new set of files (here,
+// triggered deterministically by a path collision: "bad" is requested as
+// both a file and, via "bad/x", a directory). Before staging writes in a
+// temporary sibling directory, this used to leave dest wiped-but-incomplete
+// since files were written directly into dest after it was removed and
+// recreated. The pre-existing dest contents must survive untouched, and the
+// command must report an error rather than a partial success.
+func TestHubPull_PreservesExistingDirOnMidWriteFailure(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"commit_hash": "h1",
+			"files": map[string]any{
+				"good.txt": map[string]any{"type": "file", "content": "fine"},
+				"bad/x":    map[string]any{"type": "file", "content": "will fail"},
+				"bad":      map[string]any{"type": "file", "content": "collides with bad/x's parent dir"},
+			},
+		})
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("original content"), 0o644); err != nil {
+		t.Fatalf("seed SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "old.txt"), []byte("old file"), 0o644); err != nil {
+		t.Fatalf("seed old.txt: %v", err)
+	}
+
+	cmd := newHubCmd()
+	cmd.SetArgs([]string{"pull", "my-skill", "--dir", dir, "--yes"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected an error from the colliding paths, got nil")
+	}
+
+	if data, err := os.ReadFile(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Errorf("original SKILL.md should be preserved: %v", err)
+	} else if string(data) != "original content" {
+		t.Errorf("SKILL.md content = %q, want %q", string(data), "original content")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old.txt")); err != nil {
+		t.Errorf("original old.txt should be preserved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "good.txt")); !os.IsNotExist(err) {
+		t.Errorf("good.txt should NOT have been partially applied to dest, got err=%v", err)
+	}
+
+	// No leftover staging directory next to dir.
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		t.Fatalf("reading parent dir: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != filepath.Base(dir) && strings.HasPrefix(e.Name(), ".hub-pull-") {
+			t.Errorf("leftover staging directory not cleaned up: %s", e.Name())
+		}
+	}
+}
