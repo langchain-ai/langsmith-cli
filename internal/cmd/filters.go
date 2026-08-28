@@ -169,9 +169,11 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (substring search)
+	// Name filter (exact match). The backend runs/query validator rejects the
+	// SEARCH comparator on the `name` attribute with a 400, and the --name flag
+	// is documented as an exact-match filter, so use eq rather than search.
 	if f.Name != "" {
-		parts = append(parts, fmt.Sprintf("search(name, %q)", f.Name))
+		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
 	}
 
 	// Latency filters
