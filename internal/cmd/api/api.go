@@ -64,6 +64,9 @@ Make requests:
 			if err != nil {
 				return err
 			}
+			if err := confirmTracingProjectDelete(cmd.Context(), c, method, path, cmd.InOrStdin(), cmd.ErrOrStderr()); err != nil {
+				return err
+			}
 
 			w := cmd.OutOrStdout()
 			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, w)
