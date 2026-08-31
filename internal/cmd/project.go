@@ -29,10 +29,12 @@ Note: This lists tracing projects only (not experiments). Use
 Examples:
   langsmith project list                        # first 20 projects, most recently active first
   langsmith project list --limit 10             # first 10 projects
-  langsmith project list --name-contains chatbot`,
+  langsmith project list --name-contains chatbot
+  langsmith project delete --project-id <uuid>`,
 	}
 
 	cmd.AddCommand(newProjectListCmd())
+	cmd.AddCommand(newProjectDeleteCmd())
 	cmd.AddCommand(newProjectIssuesCmd())
 	return cmd
 }

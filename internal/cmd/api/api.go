@@ -64,7 +64,7 @@ Make requests:
 			if err != nil {
 				return err
 			}
-			if err := confirmTracingProjectDelete(cmd.Context(), c, method, path, cmd.InOrStdin(), cmd.ErrOrStderr()); err != nil {
+			if err := blockRawTracingProjectDelete(c.APIURL(), method, path); err != nil {
 				return err
 			}
 

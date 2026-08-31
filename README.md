@@ -120,7 +120,7 @@ lookup, saving a round-trip.
 
 ## Command Reference
 
-### `project` — List tracing projects
+### `project` — List and delete tracing projects
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
@@ -136,6 +136,9 @@ langsmith project list --name-contains chatbot
 
 # Machine-readable JSON
 langsmith --format=json project list
+
+# Permanently delete a project and all of its traces (requires confirmation)
+langsmith project delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 ```
 
 ### `trace` — Query and export traces
