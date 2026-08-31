@@ -68,7 +68,7 @@ func matchTracingProjectDelete(apiURL, method, path string) (tracingProjectDelet
 	}
 
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	sessionsIndex := -1
+	var sessionsIndex int
 	switch {
 	case len(parts) >= 3 && parts[len(parts)-3] == "api" && parts[len(parts)-2] == "v1" && parts[len(parts)-1] == "sessions":
 		sessionsIndex = len(parts) - 1
