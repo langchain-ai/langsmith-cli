@@ -135,9 +135,29 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 		return nil, err
 	}
 	if useV2 {
+		// total_tokens is filterable on the v2 (SmithDB) path, so push the bound
+		// into the query and skip the client-side pass. v1 does not accept it,
+		// and an attribute it does not recognise fails the whole query rather
+		// than being ignored — so the clause must not reach that path. useV2API
+		// routes v1 only below 0.16, which is also below any release that
+		// accepts the attribute, so nothing is lost by gating on v2.
+		if minTokens > 0 {
+			addFilterClause(&params, fmt.Sprintf("gte(total_tokens, %d)", minTokens))
+			minTokens = 0
+		}
 		return queryRunsV2(ctx, c, toV2Params(params, v2Selects), sessionID, limit, minTokens)
 	}
 	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
+}
+
+// addFilterClause ANDs clause into params.Filter, preserving anything already
+// there from buildFilterDSL.
+func addFilterClause(params *langsmith.RunQueryParams, clause string) {
+	if params.Filter.Present && params.Filter.Value != "" {
+		params.Filter = langsmith.F(fmt.Sprintf("and(%s, %s)", params.Filter.Value, clause))
+		return
+	}
+	params.Filter = langsmith.F(clause)
 }
 
 // toV2Params translates canonical v1 RunQueryParams to v2. Order is dropped (no

@@ -182,8 +182,10 @@ func buildFilterDSL(f *FilterFlags) string {
 		parts = append(parts, fmt.Sprintf("lte(latency, %g)", f.MaxLatency))
 	}
 
-	// Note: total_tokens is not accepted as a server-side filter attribute.
-	// --min-tokens filtering is applied client-side in queryRuns().
+	// Note: --min-tokens is not emitted here. total_tokens is filterable on the
+	// v2 (SmithDB) path but not on v1, and buildFilterDSL cannot see which
+	// backend a deployment uses. queryRunsAuto adds the clause when v2 is in
+	// play and falls back to the client-side bound otherwise.
 
 	// Tags
 	if f.Tags != "" {
