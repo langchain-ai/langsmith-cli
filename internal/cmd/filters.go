@@ -167,8 +167,13 @@ func buildFilterDSL(f *FilterFlags) string {
 		parts = append(parts, fmt.Sprintf("lte(latency, %g)", f.MaxLatency))
 	}
 
-	// Note: total_tokens is not accepted as a server-side filter attribute.
-	// --min-tokens filtering is applied client-side in queryRuns().
+	// Token filter. total_tokens became a server-side filter attribute in
+	// smith-backend #32503 (V1/ClickHouse). queryRuns/queryRunsV2 still apply
+	// the same bound client-side, which is a no-op when the server honours this
+	// clause and keeps results correct if it does not.
+	if f.MinTokens > 0 {
+		parts = append(parts, fmt.Sprintf("gte(total_tokens, %d)", f.MinTokens))
+	}
 
 	// Tags
 	if f.Tags != "" {
