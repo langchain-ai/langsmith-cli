@@ -128,10 +128,7 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 				langsmith.RunStatsQueryParamsSelectTotalTokens,
 				langsmith.RunStatsQueryParamsSelectPromptTokens,
 				langsmith.RunStatsQueryParamsSelectCompletionTokens,
-				// total_cost is intentionally excluded: the API returns it as a JSON number
-				// (e.g. 8.2e-6) but the SDK models it as string. The type mismatch causes the
-				// union discriminator to pick RunStatsResponseMap instead of RunStatsResponseRunStats,
-				// yielding all-zero results. Excluding it keeps the flat-object response decodable.
+				langsmith.RunStatsQueryParamsSelectTotalCost,
 				langsmith.RunStatsQueryParamsSelectErrorRate,
 				langsmith.RunStatsQueryParamsSelectFeedbackStats,
 			}),
