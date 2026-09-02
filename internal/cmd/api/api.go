@@ -64,7 +64,7 @@ Make requests:
 			if err != nil {
 				return err
 			}
-			if err := blockRawTracingProjectDelete(c.APIURL(), method, path); err != nil {
+			if err := blockRawDelete(c.APIURL(), method, path); err != nil {
 				return err
 			}
 

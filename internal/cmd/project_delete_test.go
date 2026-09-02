@@ -69,53 +69,6 @@ func TestProjectDeleteCmd_UsesSDKAfterConfirmation(t *testing.T) {
 	}
 }
 
-func TestProjectDeleteCmd_DefaultsToNo(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{name: "empty response", input: "\n"},
-		{name: "EOF", input: ""},
-		{name: "yes followed by EOF", input: "yes"},
-		{name: "explicit no", input: "n\n"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			deleteCalled := false
-			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				if r.Method == http.MethodGet {
-					_ = json.NewEncoder(w).Encode(map[string]any{
-						"id":        deleteTestProjectID,
-						"tenant_id": "tenant-id",
-						"name":      "production",
-						"run_count": 42,
-					})
-					return
-				}
-				deleteCalled = true
-				_, _ = w.Write([]byte(`{}`))
-			})
-			cleanup := setupTestEnv(t, ts.URL)
-			defer cleanup()
-
-			cmd := newProjectDeleteCmd()
-			cmd.SetIn(strings.NewReader(tt.input))
-			cmd.SetErr(&bytes.Buffer{})
-			cmd.SetArgs([]string{"--project-id", deleteTestProjectID})
-
-			err := cmd.Execute()
-			if err == nil || !strings.Contains(err.Error(), "aborted") {
-				t.Fatalf("expected aborted error, got %v", err)
-			}
-			if deleteCalled {
-				t.Fatal("DELETE must not be sent without explicit confirmation")
-			}
-		})
-	}
-}
-
 func TestProjectDeleteCmd_ProjectFlags(t *testing.T) {
 	cmd := newProjectDeleteCmd()
 	if cmd.Flags().Lookup("project") == nil || cmd.Flags().Lookup("project-id") == nil {

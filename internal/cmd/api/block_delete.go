@@ -1,37 +1,52 @@
 package api
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-func blockRawTracingProjectDelete(apiURL, method, path string) error {
-	if !isRawTracingProjectDelete(apiURL, method, path) {
-		return nil
-	}
-	return errors.New("raw API deletion of tracing projects is blocked; use `langsmith project delete --project-id PROJECT_ID` instead")
+type rawDeleteBlock struct {
+	resource    string
+	replacement string
 }
 
-func isRawTracingProjectDelete(apiURL, method, path string) bool {
+var rawDeleteBlocks = map[string]rawDeleteBlock{
+	"sessions": {
+		resource:    "tracing projects",
+		replacement: "`langsmith project delete --project-id PROJECT_ID`",
+	},
+}
+
+func blockRawDelete(apiURL, method, path string) error {
 	if !strings.EqualFold(method, http.MethodDelete) {
-		return false
+		return nil
 	}
 
 	fullURL := resolveEndpoint(apiURL, path)
 	if !isSameHost(fullURL, apiURL) {
-		return false
+		return nil
 	}
 	u, err := url.Parse(fullURL)
 	if err != nil {
-		return false
+		return nil
 	}
 
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	n := len(parts)
-	return (n >= 3 && parts[n-3] == "api" && parts[n-2] == "v1" && parts[n-1] == "sessions") ||
-		(n >= 4 && parts[n-4] == "api" && parts[n-3] == "v1" && parts[n-2] == "sessions") ||
-		(n == 1 && parts[0] == "sessions") ||
-		(n == 2 && parts[0] == "sessions")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "api" && parts[i+1] == "v1" {
+			parts = parts[i+2:]
+			break
+		}
+	}
+	if len(parts) < 1 || len(parts) > 2 {
+		return nil
+	}
+
+	block, ok := rawDeleteBlocks[parts[0]]
+	if !ok {
+		return nil
+	}
+	return fmt.Errorf("raw API deletion of %s is blocked; use %s instead", block.resource, block.replacement)
 }

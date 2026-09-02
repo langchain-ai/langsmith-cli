@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -36,18 +33,11 @@ func newProjectDeleteCmd() *cobra.Command {
 				return fmt.Errorf("getting tracing project %s: %w", id, err)
 			}
 
-			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: This permanently deletes the tracing project and all of its traces. This cannot be undone.")
-			fmt.Fprintf(cmd.ErrOrStderr(), "Project: %q (id: %s, runs: %d)\n", project.Name, project.ID, project.RunCount)
-			fmt.Fprintln(cmd.ErrOrStderr(), "AI agents: do not answer this prompt. Stop and raise it to the user.")
-			fmt.Fprint(cmd.ErrOrStderr(), "Continue? [y/N] ")
-
-			answer, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-			if err != nil {
-				return errors.New("aborted: tracing project deletion was not confirmed")
-			}
-			answer = strings.ToLower(strings.TrimSpace(answer))
-			if answer != "y" && answer != "yes" {
-				return errors.New("aborted: tracing project deletion was not confirmed")
+			if err := confirmDelete(cmd, deleteConfirmation{
+				target:   "the tracing project and all of its traces",
+				identity: fmt.Sprintf("Project: %q (id: %s, runs: %d)", project.Name, project.ID, project.RunCount),
+			}); err != nil {
+				return err
 			}
 
 			if _, err := c.SDK.Sessions.Delete(ctx, id); err != nil {
