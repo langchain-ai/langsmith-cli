@@ -167,13 +167,10 @@ func buildFilterDSL(f *FilterFlags) string {
 		parts = append(parts, fmt.Sprintf("lte(latency, %g)", f.MaxLatency))
 	}
 
-	// Token filter. total_tokens became a server-side filter attribute in
-	// smith-backend #32503 (V1/ClickHouse). queryRuns/queryRunsV2 still apply
-	// the same bound client-side, which is a no-op when the server honours this
-	// clause and keeps results correct if it does not.
-	if f.MinTokens > 0 {
-		parts = append(parts, fmt.Sprintf("gte(total_tokens, %d)", f.MinTokens))
-	}
+	// Note: --min-tokens is not emitted here. total_tokens is filterable on the
+	// v2 (SmithDB) path but not on v1, and buildFilterDSL cannot see which
+	// backend a deployment uses. queryRunsAuto adds the clause when v2 is in
+	// play and falls back to the client-side bound otherwise.
 
 	// Tags
 	if f.Tags != "" {

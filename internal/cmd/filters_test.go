@@ -70,11 +70,12 @@ func TestBuildFilterDSL_MultipleTags(t *testing.T) {
 }
 
 func TestBuildFilterDSL_TokenFilter(t *testing.T) {
+	// --min-tokens is applied by queryRunsAuto (server-side on v2, client-side
+	// on v1), not by buildFilterDSL.
 	f := &FilterFlags{MinTokens: 1000}
 	result := buildFilterDSL(f)
-	expected := "gte(total_tokens, 1000)"
-	if result != expected {
-		t.Errorf("expected %q, got %q", expected, result)
+	if result != "" {
+		t.Errorf("expected empty filter DSL for MinTokens, got %q", result)
 	}
 }
 

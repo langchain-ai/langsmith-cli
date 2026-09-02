@@ -612,3 +612,23 @@ func TestToV2Params_OmitsUnsetFields(t *testing.T) {
 		t.Error("expected all fields unset for empty input")
 	}
 }
+
+func TestAddFilterClause(t *testing.T) {
+	t.Run("empty existing filter", func(t *testing.T) {
+		var params langsmith.RunQueryParams
+		addFilterClause(&params, "gte(total_tokens, 500)")
+		if got := params.Filter.Value; got != "gte(total_tokens, 500)" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("ANDs into an existing filter", func(t *testing.T) {
+		var params langsmith.RunQueryParams
+		params.Filter = langsmith.F(`eq(status, "error")`)
+		addFilterClause(&params, "gte(total_tokens, 500)")
+		want := `and(eq(status, "error"), gte(total_tokens, 500))`
+		if got := params.Filter.Value; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+}
