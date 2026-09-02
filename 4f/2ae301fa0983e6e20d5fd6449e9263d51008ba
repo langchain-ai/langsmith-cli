@@ -1,0 +1,21 @@
+internal/cmd/filters.go
+  s_c1f0522499347a::t_c6462e8567f144 170-176
+internal/cmd/filters_test.go
+  s_c1f0522499347a::t_369a9212924f48 75-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "4f2ae301fa0983e6e20d5fd6449e9263d51008ba",
+  "prompts": {},
+  "sessions": {
+    "s_c1f0522499347a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61bc2e16-1bec-44b7-906d-bb759ec31293",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
