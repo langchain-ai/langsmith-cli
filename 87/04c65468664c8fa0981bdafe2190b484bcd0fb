@@ -1,0 +1,181 @@
+.github/dependabot.yml
+  s_c9c86bc40a995c::t_6468b2781553f9 1-11
+.github/workflows/ci.yml
+  s_c9c86bc40a995c::t_c4df4da187bdfd 18,21,24,29,31,56,76,78,80,82-83
+.github/workflows/release.yml
+  s_c9c86bc40a995c::t_ad95a248eb3447 15,19,24,27
+AGENTS.md
+  s_c9c86bc40a995c::t_7d32c8caec6959 26-27
+README.md
+  s_c9c86bc40a995c::t_c2b1211a5e6224 101-120
+cmd/langsmith/main.go
+  s_c9c86bc40a995c::t_c98ac5989710e4 19
+go.mod
+  s_c9c86bc40a995c::t_35eb973aafd156 3,7-9,11-12,14-15,21-23,28,30-36,49-51
+go.sum
+  s_c9c86bc40a995c::t_0e5267d96a86dc 5-9,11-12,28-31,34-49,54-57,60-61,94-105
+internal/client/client.go
+  s_c9c86bc40a995c::t_9b58fe9ba704d2 28,96,181-225,261
+internal/client/client_test.go
+  s_c9c86bc40a995c::t_1c9b587680b1dc 38-93
+internal/client/oauth.go
+  s_c9c86bc40a995c::t_184032c061d7a0 9,25-28,82,89-90,93-94,122-125,159-177,191-205,219-223,225-226,234,237,240
+internal/client/oauth_test.go
+  s_c9c86bc40a995c::t_50f027fe6cd6f1 106-174,239-240
+internal/cmd/api/ls.go
+  s_c9c86bc40a995c::t_de92b95795e3ba 10,69,71-76
+internal/cmd/apps.go
+  s_c9c86bc40a995c::t_dc795685728912 32-37,40-66,103-106,113-114,135-145
+internal/cmd/apps_claim.go
+  s_c9c86bc40a995c::t_b32104da18e032 1-69
+internal/cmd/apps_crud_test.go
+  s_c9c86bc40a995c::t_ef09251ba6d785 85-99,105,108,137,159
+internal/cmd/apps_delete.go
+  s_c9c86bc40a995c::t_b7f409b40b7a26 8,39-43,46
+internal/cmd/apps_dev.go
+  s_c9c86bc40a995c::t_b8146acff0ecc5 25-26,115,127,130-132,153-155,159,165,169,177,180-187,223-239,249-255,275,389-396,416-419,559,562-563,573-574,700-701,703-706,740-757,819,998-1005,1009
+internal/cmd/apps_dev_denylist_test.go
+  s_c9c86bc40a995c::t_0430d7aaf0d810 1-35
+internal/cmd/apps_dev_test.go
+  s_c9c86bc40a995c::t_90fb1f99b9566d 446-447,464-468,477,492
+internal/cmd/apps_init.go
+  s_c9c86bc40a995c::t_f04742b5c975d7 167
+internal/cmd/apps_list.go
+  s_c9c86bc40a995c::t_18bc29b7a80d6e 21,26,35,49-56,59
+internal/cmd/apps_pull.go
+  s_c9c86bc40a995c::t_e16abf700c2f08 23-26,37-40,44-46,50,92,96,104,110-115,117,121-122,124-128,131,134-139,142-146,149-183
+internal/cmd/apps_pull_test.go
+  s_c9c86bc40a995c::t_4dc8ab28b2312f 68,72-73,119
+internal/cmd/apps_push.go
+  s_c9c86bc40a995c::t_d1f9e17a946a18 93,129,134,163-165
+internal/cmd/apps_push_test.go
+  s_c9c86bc40a995c::t_4bbf511c6aa467 29,82,120,131,188,193,267,324,375
+internal/cmd/apps_scope_test.go
+  s_c9c86bc40a995c::t_94e6adfc95d540 1-546
+internal/cmd/apps_share.go
+  s_c9c86bc40a995c::t_6b666cc6e00357 1-49
+internal/cmd/auth.go
+  s_c9c86bc40a995c::t_589486e1b6151c 104
+internal/cmd/dataset.go
+  s_c9c86bc40a995c::t_87e6e677bd0a41 116-118,157-159,161-163,197,203-205,246,250-252,311,316-318,405,410-412
+internal/cmd/evaluator.go
+  s_c9c86bc40a995c::t_a93bafcd4d30c1 5,66,97,125,127,184-186,197-205,212,215-216,230-231,295,320,333-334,351,376,380,401,418,428-429,452,471,490
+internal/cmd/evaluator_llm.go
+  s_c9c86bc40a995c::t_50625759d6eebf 97-105,107-108,114-115,126-127
+internal/cmd/evaluator_test.go
+  s_c9c86bc40a995c::t_1efd328ac65a1f 374-378,381-384,387,392,592-602,647,692,719,741,810,915,996,1046,1078-1081,1115,1160,1190
+internal/cmd/example.go
+  s_c9c86bc40a995c::t_825e8d353aaf87 12,65,84,112-114,129-155,168,175,181,188,197,203,224-248,275,278-280
+internal/cmd/example_test.go
+  s_c9c86bc40a995c::t_86a7419b476115 4-5,9-38,172-201
+internal/cmd/experiment.go
+  s_c9c86bc40a995c::t_49faabed6e2bd0 113-115,190-192,194-196
+internal/cmd/filters.go
+  s_c9c86bc40a995c::t_049aeabd25e21a 35-49,54
+internal/cmd/helpers.go
+  s_c9c86bc40a995c::t_81176666f19613 29,38-48
+internal/cmd/helpers_test.go
+  s_820656d39429c3::t_53526f724084de 5-6,637-701
+internal/cmd/hub_delete.go
+  s_c9c86bc40a995c::t_90f5df945d2b0d 11,38-39,42,46-48
+internal/cmd/hub_get.go
+  s_c9c86bc40a995c::t_4cfb351e172b12 28-30
+internal/cmd/hub_init.go
+  s_c9c86bc40a995c::t_853ef049fd600b 39,45-47
+internal/cmd/hub_list.go
+  s_c9c86bc40a995c::t_07abcddff6ec92 88,91-93
+internal/cmd/hub_pull.go
+  s_c9c86bc40a995c::t_942f24542b73fd 73-75
+internal/cmd/hub_push.go
+  s_c9c86bc40a995c::t_5934f8d22a1bec 95,104-106
+internal/cmd/insights.go
+  s_c9c86bc40a995c::t_a872e20357bf87 42,62,99-101,106,116,136,152-154,159
+internal/cmd/issues.go
+  s_c9c86bc40a995c::t_d0fcc72f7f88ac 102,135-148,201,203-205,210,242-244,267,292,294-299,330,355-357,362,468-470,722-736,740,752-761,769,774,807,814-816,821
+internal/cmd/issues_test.go
+  s_c9c86bc40a995c::t_64af5c3559575c 112-136,146
+internal/cmd/login.go
+  s_c9c86bc40a995c::t_ebcd8654eb3ed7 153,331-336
+internal/cmd/login_test.go
+  s_c9c86bc40a995c::t_4810ce913e93be 134-136,470,479-517,531
+internal/cmd/message.go
+  s_c9c86bc40a995c::t_ea96412f576912 221-225,280-282
+internal/cmd/profile.go
+  s_c9c86bc40a995c::t_b19a50950b658f 12,336,342,351,355,360,369
+internal/cmd/project.go
+  s_c9c86bc40a995c::t_ce6486b7906a16 127-129
+internal/cmd/project_id_flag_test.go
+  s_c9c86bc40a995c::t_1eb2533fd0f2b9 1-88
+internal/cmd/prompt.go
+  s_c9c86bc40a995c::t_80f8a73033f2a4 151-153,198-200,202-204,243-245,287,291-293,343-345,347-349,411,418-420,501-503,588-590,627,632-634,671,676-678
+internal/cmd/root.go
+  s_c9c86bc40a995c::t_7b987f6d24db8f 203
+internal/cmd/run.go
+  s_c9c86bc40a995c::t_16bc82d15e0fb4 63,84-86,104,129,154-156,158-160,165,205,220-222
+internal/cmd/sandbox.go
+  s_c9c86bc40a995c::t_915811fa5f1865 36-38,57
+internal/cmd/sandbox_box.go
+  s_c9c86bc40a995c::t_c9de024c9838eb 61-67,144,157-160,281-356,366-371,374
+internal/cmd/sandbox_snapshot.go
+  s_c9c86bc40a995c::t_e1ac9bbea6362d 23-26,30-31,51-56,59,67,80,84,88-90,93-95,104,108,128-130,134-136,145-152,157-159,163,169-170,173-175,181,185,198-200,204-206,215-222,227-228,243-250,255-256,274-280
+internal/cmd/sandbox_snapshot_test.go
+  s_c9c86bc40a995c::t_071b36474dafcf 1-90
+internal/cmd/sandbox_test.go
+  s_c9c86bc40a995c::t_6681b9ab9c16cc 93-94,452-518
+internal/cmd/templates/agents-md/_common.md
+  s_c9c86bc40a995c::t_be942dfabb17b6 107-139
+internal/cmd/templates/package.json.tmpl
+  s_c9c86bc40a995c::t_3209f3eac9ddef 20,25
+internal/cmd/testutil_test.go
+  s_c9c86bc40a995c::t_f275f2ea49051b 11-12,15-23
+internal/cmd/thread.go
+  s_c9c86bc40a995c::t_a8d98f213fd0b0 49,63,67-71,162,173-175,180,192,217,254-256,261,275,307,350-352,357
+internal/cmd/trace.go
+  s_c9c86bc40a995c::t_8f0c50ba0ca776 144-146,152-154,229-231,236,341,345-347
+internal/cmd/trace_stats.go
+  s_c9c86bc40a995c::t_7240aef426025d 95-97
+internal/cmd/watch_process_unix.go
+  s_c9c86bc40a995c::t_b6570ca76a1ac2 1-9
+internal/cmd/watch_process_windows.go
+  s_c9c86bc40a995c::t_e6014153e0e56a 1-12
+internal/cmd/workspace.go
+  s_c9c86bc40a995c::t_bffe29cdcc7335 8,71,77,85
+internal/cmdutil/resolve.go
+  s_c9c86bc40a995c::t_1e59b6b81f8499 180,206-211
+internal/cmdutil/resolve_test.go
+  s_c9c86bc40a995c::t_d7a35b4d020f88 420-478
+internal/config/config.go
+  s_c9c86bc40a995c::t_78a65870c7efde 32
+internal/output/output.go
+  s_c9c86bc40a995c::t_e109dd228ee98c 12,16-44,47,50,55,61,65,67-68,73-76,80-103,113-115,185,188-191,193-195,199,201,222,261,264
+internal/output/output_test.go
+  s_c9c86bc40a995c::t_853cf85b3af8f4 17-19,31-33,54-56,69-82
+internal/structured/specs.go
+  s_c9c86bc40a995c::t_d9a3d48a336fad 11,132,143-145,148-150
+internal/structured/template_funcs.go
+  s_c9c86bc40a995c::t_1835b3b91be3cb 5,17,22-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "8704c65468664c8fa0981bdafe2190b484bcd0fb",
+  "prompts": {},
+  "sessions": {
+    "s_820656d39429c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e251de4a-be60-42bb-8131-aa48aa9c7e73",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    },
+    "s_c9c86bc40a995c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc640f0a-a4bd-4516-9d43-5da3f680b19e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
