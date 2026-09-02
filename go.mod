@@ -4,7 +4,7 @@ go 1.26.7
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/itchyny/gojq v0.12.15
+	github.com/itchyny/gojq v0.12.19
 	github.com/langchain-ai/langsmith-go v0.26.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -18,16 +18,17 @@ require (
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/clipperhouse/stringish v0.1.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/itchyny/timefmt-go v0.1.5 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/klauspost/compress v1.19.0 // indirect
-	github.com/mattn/go-runewidth v0.0.15 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
