@@ -15,16 +15,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            go-version: '1.23'
-            build-output: langsmith
-          - os: ubuntu-latest
-            go-version: '1.24'
+            go-version: '1.26.7'
             build-output: langsmith
           - os: windows-latest
-            go-version: '1.24'
+            go-version: '1.26.7'
             build-output: langsmith.exe
           - os: macos-latest
-            go-version: '1.24'
+            go-version: '1.26.7'
             build-output: langsmith
     runs-on: ${{ matrix.os }}
 
