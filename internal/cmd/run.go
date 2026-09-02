@@ -60,7 +60,7 @@ func newRunListCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run list")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "run list")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -81,7 +81,9 @@ func newRunListCmd() *cobra.Command {
 				output.PrintRunsTable(os.Stdout, data, includeMetadata, "Runs")
 			} else {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -99,6 +101,7 @@ func newRunListCmd() *cobra.Command {
 func newRunGetCmd() *cobra.Command {
 	var (
 		project         string
+		projectID       string
 		since           string
 		lastNMinutes    int
 		includeMetadata bool
@@ -123,7 +126,7 @@ func newRunGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, project, "", "run get")
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "run get")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -148,14 +151,18 @@ func newRunGetCmd() *cobra.Command {
 			fmt_ := GetFormat()
 
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			} else {
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
@@ -195,7 +202,7 @@ func newRunExportCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, ff.Project, "", "run export")
+			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "run export")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -210,7 +217,9 @@ func newRunExportCmd() *cobra.Command {
 			}
 
 			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
-			output.OutputJSONL(data, outputFile)
+			if err := output.OutputJSONL(data, outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

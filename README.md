@@ -98,6 +98,26 @@ langsmith --format=json trace list --project my-app
 langsmith trace list --project my-app -o traces.json
 ```
 
+## Selecting a project
+
+Every command that operates on a project takes either `--project <name>` or
+`--project-id <session UUID>`, and `$LANGSMITH_PROJECT` supplies the name when
+neither is set. The two flags are mutually exclusive.
+
+```bash
+langsmith trace list --project 'my-app'
+langsmith trace list --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
+```
+
+Prefer `--project-id` when a program is building the command line. Project names
+are free-form — users can create one containing spaces, quotes, or shell
+metacharacters — so a name has to be quoted correctly at every call site, and a
+name that is quoted wrongly matches nothing and returns an empty result rather
+than an error. A UUID needs no quoting. `--project-id` also skips the name
+lookup, saving a round-trip.
+
+`langsmith project list` returns the `id` to use.
+
 ## Command Reference
 
 ### `project` — List tracing projects

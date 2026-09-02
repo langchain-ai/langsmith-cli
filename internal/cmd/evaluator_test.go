@@ -371,20 +371,25 @@ func TestValidateEvaluatorTargetFlags(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		dataset string
-		project string
-		wantErr string
+		name      string
+		dataset   string
+		project   string
+		projectID string
+		wantErr   string
 	}{
 		{name: "requires one target", wantErr: "must specify"},
-		{name: "rejects both targets", dataset: "ds", project: "proj", wantErr: "cannot specify both"},
+		{name: "rejects dataset and project", dataset: "ds", project: "proj", wantErr: "only one of"},
+		{name: "rejects dataset and project-id", dataset: "ds", projectID: "id", wantErr: "only one of"},
+		{name: "rejects project and project-id", project: "proj", projectID: "id", wantErr: "only one of"},
+		{name: "rejects all three", dataset: "ds", project: "proj", projectID: "id", wantErr: "only one of"},
 		{name: "dataset only", dataset: "ds"},
 		{name: "project only", project: "proj"},
+		{name: "project-id only", projectID: "id"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateEvaluatorTargetFlags(tt.dataset, tt.project)
+			err := validateEvaluatorTargetFlags(tt.dataset, tt.project, tt.projectID)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -584,6 +589,17 @@ func TestEvaluatorUploadCmd_ExactArgs(t *testing.T) {
 	}
 }
 
+func TestEvaluatorUploadCmd_InvalidTargetReturnsError(t *testing.T) {
+	cmd := newEvaluatorUploadCmd()
+	_ = cmd.Flags().Set("dataset", "dataset")
+	_ = cmd.Flags().Set("project", "project")
+
+	runErr := runTestCommand(t, cmd, []string{"evaluator.py"})
+	if runErr == nil || !contains(runErr.Error(), "only one of") {
+		t.Fatalf("unexpected error: %v", runErr)
+	}
+}
+
 // ---------- evaluator delete flags ----------
 
 func TestEvaluatorDeleteCmd_Flags(t *testing.T) {
@@ -628,7 +644,7 @@ func TestEvaluatorListCmd_Execute(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -673,7 +689,7 @@ func TestEvaluatorListCmd_Execute_PrettyFormat(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if len(out) > 0 && out[0] == '[' {
@@ -700,7 +716,7 @@ func TestEvaluatorListCmd_Execute_EmptyList(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -722,7 +738,7 @@ func TestEvaluatorListCmd_VerifiesAPIKeyHeader(t *testing.T) {
 
 	captureStdout(t, func() {
 		cmd := newEvaluatorListCmd()
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if receivedKey != "test-api-key" {
@@ -791,7 +807,7 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, []string{evaluatorFile})
+		_ = runTestCommand(t, cmd, []string{evaluatorFile})
 	})
 
 	if sawDelete {
@@ -896,7 +912,7 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 		_ = cmd.Flags().Set("sampling-rate", "0.5")
 		_ = cmd.Flags().Set("replace", "true")
 		_ = cmd.Flags().Set("yes", "true")
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	if sawDelete {
@@ -977,7 +993,7 @@ func TestEvaluatorGetCmd_Execute_CodeEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result map[string]any
@@ -1027,7 +1043,7 @@ func TestEvaluatorGetCmd_Execute_LLMEvaluator(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"relevance"})
+		_ = runTestCommand(t, cmd, []string{"relevance"})
 	})
 
 	var result map[string]any
@@ -1059,17 +1075,10 @@ func TestEvaluatorGetCmd_Execute_NotFound(t *testing.T) {
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
-	out := captureStdout(t, func() {
-		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"nonexistent"})
-	})
-
-	var result map[string]any
-	if err := json.Unmarshal([]byte(out), &result); err != nil {
-		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
-	}
-	if result["error"] == nil {
-		t.Error("expected error for not found evaluator")
+	cmd := newEvaluatorGetCmd()
+	runErr := runTestCommand(t, cmd, []string{"nonexistent"})
+	if runErr == nil || !contains(runErr.Error(), "no matching evaluators found") {
+		t.Fatalf("unexpected error: %v", runErr)
 	}
 }
 
@@ -1103,7 +1112,7 @@ func TestEvaluatorGetCmd_Execute_FilterBySessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, nil)
+		_ = runTestCommand(t, cmd, nil)
 	})
 
 	var result []map[string]any
@@ -1148,7 +1157,7 @@ func TestEvaluatorGetCmd_Execute_FilterByNameAndSessionID(t *testing.T) {
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
 		_ = cmd.Flags().Set("session-id", "session-abc")
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result map[string]any
@@ -1178,7 +1187,7 @@ func TestEvaluatorGetCmd_Execute_MultipleMatches(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		cmd := newEvaluatorGetCmd()
-		cmd.Run(cmd, []string{"accuracy"})
+		_ = runTestCommand(t, cmd, []string{"accuracy"})
 	})
 
 	var result []map[string]any

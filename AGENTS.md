@@ -23,6 +23,8 @@ The module targets the Go version declared in `go.mod`.
 
 Keep commands scriptable and preserve established output formats. Add focused tests for new commands, flags, request parameters, and output behavior.
 
+A command that selects a project takes both `--project` and `--project-id`; register the pair with `addProjectFlags` (or `addCommonFilterFlags`, which calls it) and resolve it with `resolveSessionID`. Callers building a command line programmatically should pass the UUID, since project names are user-authored and may contain shell metacharacters. `TestEveryProjectCommandAcceptsProjectID` fails if a new command offers only one of the two.
+
 ## LangSmith API access
 
 Use the generated Go SDK through the shared client's `SDK` field. Do not add raw API calls when the endpoint is available in `langsmith-go`, and do not copy existing raw-call patterns for new code.

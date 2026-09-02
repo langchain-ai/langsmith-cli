@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -110,7 +112,7 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if info, statErr := os.Stat(entrypointPath); statErr == nil {
 		prevBuildTime = info.ModTime()
 	}
-	if startWatchProcess(ctx, dir) {
+	if started, _ := startWatchProcess(ctx, dir); started {
 		// Build tools empty their output dir before rebuilding, which would
 		// briefly hide an existing entrypoint — wait for a fresh build first.
 		waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
@@ -122,10 +124,12 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if !noOpen {
 		_ = openBrowser(previewURL)
 	}
-	output.OutputJSON(map[string]any{
+	if err := output.OutputJSON(map[string]any{
 		"status": "serving",
 		"url":    previewURL,
-	}, "")
+	}, ""); err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "Serving %s at %s (sandboxed) — press Ctrl+C to stop\n", dir, previewURL)
 	fmt.Fprintln(os.Stderr, appsDevLogModeBanner())
 
@@ -146,22 +150,23 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 }
 
 // startWatchProcess runs package.json's "watch" script tied to ctx. Never
-// fails runAppsDev — returns false (with a note) if it can't start one.
-func startWatchProcess(ctx context.Context, dir string) bool {
+// fails runAppsDev — returns false (with a note) if it can't start one. The
+// returned channel closes after a successfully started watcher exits.
+func startWatchProcess(ctx context.Context, dir string) (bool, <-chan struct{}) {
 	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: couldn't read package.json to find a \"watch\" script: %v\n", err)
-		return false
+		return false, nil
 	}
 	if script == "" {
 		if pkgJSONExists {
 			fmt.Fprintln(os.Stderr, `note: no "watch" script in package.json — start your own build/watch process to see live updates`)
 		}
-		return false
+		return false, nil
 	}
 	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
 		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm run watch" yourself to see live updates`)
-		return false
+		return false, nil
 	}
 
 	fmt.Fprintln(os.Stderr, "Starting build watcher: npm run watch")
@@ -169,12 +174,17 @@ func startWatchProcess(ctx context.Context, dir string) bool {
 	watchCmd.Dir = dir
 	watchCmd.Stdout = os.Stderr
 	watchCmd.Stderr = os.Stderr
+	watchCmd.Cancel = func() error { return terminateWatchProcess(watchCmd.Process) }
 	if startErr := watchCmd.Start(); startErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
-		return false
+		return false, nil
 	}
-	go func() { _ = watchCmd.Wait() }()
-	return true
+	done := make(chan struct{})
+	go func() {
+		_ = watchCmd.Wait()
+		close(done)
+	}()
+	return true, done
 }
 
 // waitForFreshEntrypoint blocks until path's mtime is newer than after, ctx
@@ -210,6 +220,23 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 	return pkg.Scripts[name], true, nil
 }
 
+// resolveDevWorkspaceID falls back to the API when none is configured.
+func resolveDevWorkspaceID(c *client.Client) string {
+	if id := GetWorkspaceID(); id != "" {
+		return id
+	}
+	if c == nil || c.SDK == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	workspaces, err := c.SDK.Workspaces.List(ctx, langsmith.WorkspaceListParams{})
+	if err != nil || workspaces == nil || len(*workspaces) != 1 {
+		return ""
+	}
+	return (*workspaces)[0].ID
+}
+
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
@@ -218,6 +245,13 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	if err != nil {
 		return nil, nil, "", err
 	}
+
+	var apiURL string
+	if c != nil {
+		apiURL = c.APIURL()
+	}
+	workspaceID := resolveDevWorkspaceID(c)
+	webOrigin := langsmithWebOrigin(apiURL)
 
 	mux := http.NewServeMux()
 
@@ -238,7 +272,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +386,14 @@ func makeLsDevLogHandler(token string) http.HandlerFunc {
 
 var proxyPathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
 
+// Mirrors smith-frontend apiProxy.ts DENIED_PATH_SEGMENTS.
+var deniedProxyPathPattern = regexp.MustCompile(
+	`(?i)(^|/)(api-key|api-keys|members|users|identities|roles|permissions|scim|service-accounts)(/|$)`,
+)
+
+// Batch ID lookups; apps need these to render names.
+var allowedProxyPathExceptions = regexp.MustCompile(`(?i)/(users|identities)/info$`)
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -369,6 +411,10 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 	pathPart, queryPart, hasQuery := strings.Cut(path, "?")
 	if !proxyPathPattern.MatchString(pathPart) || strings.ContainsAny(pathPart, `%\`) || strings.Contains(pathPart, "..") {
 		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
+		return
+	}
+	if !allowedProxyPathExceptions.MatchString(pathPart) && deniedProxyPathPattern.MatchString(pathPart) {
+		http.Error(w, fmt.Sprintf("path %q is not available to custom apps", pathPart), http.StatusForbidden)
 		return
 	}
 	if len(req.Args.Params) > 0 {
@@ -510,9 +556,11 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint, token string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
+	workspaceIDJSON, _ := json.Marshal(workspaceID)
+	webOriginJSON, _ := json.Marshal(webOrigin)
 
 	inner := strings.NewReplacer(
 		"__FILES_JSON__", escapeForScript(filesJSON),
@@ -522,6 +570,8 @@ func renderDevHostHTML(files map[string]string, entrypoint, token string) string
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
 		"__LS_DEV_TOKEN__", token,
+		"__LS_WORKSPACE_ID_JSON__", escapeForScript(workspaceIDJSON),
+		"__LS_WEB_ORIGIN_JSON__", escapeForScript(webOriginJSON),
 	).Replace(devHostHTMLTemplate)
 }
 
@@ -647,8 +697,13 @@ const devHostHTMLTemplate = `<!doctype html>
     if (darkBtn) darkBtn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
   }
 
+  var webOrigin = __LS_WEB_ORIGIN_JSON__;
+
   function postMetadata() {
-    post({ type: 'LANGSMITH_METADATA', metadata: { mode: mode } });
+    post({
+      type: 'LANGSMITH_METADATA',
+      metadata: { mode: mode, workspaceId: __LS_WORKSPACE_ID_JSON__, host: webOrigin },
+    });
   }
 
   function setMode(next) {
@@ -680,6 +735,24 @@ const devHostHTMLTemplate = `<!doctype html>
 
     if (msg.type === 'LS_MUTATION') {
       console.log('[langsmith apps dev] setData (not persisted locally):', msg.patch);
+    }
+
+    if (msg.type === 'LS_NAVIGATE') {
+      var href = '';
+      try {
+        var base = new URL(webOrigin);
+        var target = new URL(String(msg.url), base);
+        if (target.origin === base.origin) href = target.href;
+      } catch (e) {}
+      if (!href) {
+        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      } else if (msg.newTab) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        // Prod soft-navigates in place; dev leaves the harness.
+        console.log('[langsmith apps dev] openUrl navigating away:', href);
+        window.location.assign(href);
+      }
     }
 
     if (msg.type === 'LS_LOG') {
@@ -743,6 +816,7 @@ const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; form-action 'none'; base-uri 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style id="ls-theme">/* theme injected via postMessage */</style>
 <style>
@@ -921,9 +995,18 @@ pre, code {
     reportHeight();
   }
 
+  function openUrl(url, options) {
+    window.parent.postMessage({
+      type: 'LS_NAVIGATE',
+      url: String(url),
+      newTab: !!(options && options.newTab)
+    }, '*');
+  }
+
   window.langsmith = {
     call: call,
     setData: setData,
+    openUrl: openUrl,
     feedback: {
       create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
     }

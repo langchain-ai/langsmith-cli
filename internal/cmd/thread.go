@@ -46,6 +46,7 @@ Examples:
 func newThreadListCmd() *cobra.Command {
 	var (
 		project      string
+		projectID    string
 		limit        int
 		rawFilter    string
 		lastNMinutes int
@@ -56,18 +57,17 @@ func newThreadListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List conversation threads in a project (default: 20, newest first)",
 		Run: func(cmd *cobra.Command, args []string) {
-			project = ResolveProject(project)
-			if project == "" {
-				ExitError("--project is required for thread list (or set LANGSMITH_PROJECT)")
-			}
-
 			c := MustGetClient()
 			ctx := context.Background()
 
-			// Resolve project to session ID
-			sessionID, err := c.ResolveSessionID(ctx, project)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread list")
 			if err != nil {
 				ExitErrorf("%v", err)
+			}
+			// Name the table by whichever identifier the caller gave.
+			projectLabel := ResolveProject(project)
+			if projectLabel == "" {
+				projectLabel = sessionID
 			}
 
 			// Default to last 24h if no time filter
@@ -159,7 +159,7 @@ func newThreadListCmd() *cobra.Command {
 						t.MaxStartTime,
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Threads in %s", project))
+				output.OutputTable(columns, rows, fmt.Sprintf("Threads in %s", projectLabel))
 			} else {
 				var data []map[string]any
 				for _, t := range threads {
@@ -170,12 +170,14 @@ func newThreadListCmd() *cobra.Command {
 						"max_start_time": t.MaxStartTime,
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum number of threads to return")
 	cmd.Flags().StringVar(&rawFilter, "filter", "", "Raw LangSmith filter DSL string")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include threads active in last N minutes")
@@ -187,6 +189,7 @@ func newThreadListCmd() *cobra.Command {
 func newThreadGetCmd() *cobra.Command {
 	var (
 		project         string
+		projectID       string
 		includeMetadata bool
 		includeIO       bool
 		includeFeedback bool
@@ -208,16 +211,10 @@ func newThreadGetCmd() *cobra.Command {
 				includeFeedback = true
 			}
 
-			project = ResolveProject(project)
-			if project == "" {
-				ExitError("--project is required for thread get (or set LANGSMITH_PROJECT)")
-			}
-
 			c := MustGetClient()
 			ctx := context.Background()
 
-			// Resolve project to session ID
-			sessionID, err := c.ResolveSessionID(ctx, project)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread get")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -254,12 +251,14 @@ func newThreadGetCmd() *cobra.Command {
 					"run_count": len(extracted),
 					"runs":      extracted,
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -273,6 +272,7 @@ func newThreadGetCmd() *cobra.Command {
 func newThreadMessagesCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		limit      int
 		cursor     string
 		traceID    string
@@ -299,17 +299,12 @@ Examples:
 		Run: func(cmd *cobra.Command, args []string) {
 			threadID := args[0]
 
-			project = ResolveProject(project)
-			if project == "" {
-				ExitError("--project is required for thread messages (or set LANGSMITH_PROJECT)")
-			}
-
 			c := MustGetClient()
 			ctx := context.Background()
 
 			requireV2Feature(ctx, c, "thread messages")
 
-			sessionID, err := c.ResolveSessionID(ctx, project)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread messages")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -352,12 +347,14 @@ Examples:
 			if fmt_ == "pretty" {
 				printThreadMessages(result)
 			} else {
-				output.OutputJSON(result, outputFile)
+				if err := output.OutputJSON(result, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "Maximum number of turns to return (max 100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous response")
 	cmd.Flags().StringVar(&traceID, "trace-id", "", "Start the page at a specific trace ID")

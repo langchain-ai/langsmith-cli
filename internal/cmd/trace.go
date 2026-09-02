@@ -141,20 +141,23 @@ func newTraceListCmd() *cobra.Command {
 							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO, includeFeedback),
 						})
 					}
-					output.OutputJSON(result, outputFile)
+					if err := output.OutputJSON(result, outputFile); err != nil {
+						ExitErrorf("%v", err)
+					}
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					if flaggedByTrace != nil {
 						annotateFlagged(data, flaggedByTrace)
 					}
-					output.OutputJSON(data, outputFile)
+					if err := output.OutputJSON(data, outputFile); err != nil {
+						ExitErrorf("%v", err)
+					}
 				}
 			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, false)
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
@@ -162,7 +165,6 @@ func newTraceListCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().BoolVar(&showHierarchy, "show-hierarchy", false, "Fetch the full run tree for each trace")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }
@@ -224,13 +226,14 @@ func newTraceGetCmd() *cobra.Command {
 					"run_count": len(runs),
 					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback),
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().StringVar(&projectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
@@ -238,7 +241,6 @@ func newTraceGetCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }
@@ -336,24 +338,23 @@ func newTraceExportCmd() *cobra.Command {
 				f.Close()
 				exported++
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":     "exported",
 				"count":      exported,
 				"output_dir": outputDir,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, false)
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
 	cmd.Flags().BoolVar(&full, "full", false, "Shorthand for --include-metadata --include-io --include-feedback")
 	cmd.Flags().StringVar(&filenamePattern, "filename-pattern", "{trace_id}.jsonl",
 		"Filename pattern. Supports {trace_id} and {name} placeholders.")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }

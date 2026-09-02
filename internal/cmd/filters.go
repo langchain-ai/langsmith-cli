@@ -32,11 +32,26 @@ type FilterFlags struct {
 	RawFilter    string
 }
 
+const (
+	projectFlagUsage   = "Project name [env: LANGSMITH_PROJECT]"
+	projectIDFlagUsage = "Project (session) UUID; skips the name lookup. Mutually exclusive with --project; overrides $LANGSMITH_PROJECT"
+)
+
+// addProjectFlags attaches the --project / --project-id pair to a command that
+// does not use the shared filter flags. Every command that resolves a project
+// takes both, so an agent building a command line never has to quote a project
+// name it did not choose. Resolve them with resolveSessionID.
+func addProjectFlags(cmd *cobra.Command, project, projectID *string) {
+	cmd.Flags().StringVar(project, "project", "", projectFlagUsage)
+	cmd.Flags().StringVar(projectID, "project-id", "", projectIDFlagUsage)
+	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
+}
+
 // addCommonFilterFlags attaches shared filter flags to a command.
 func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType bool) {
 	cmd.Flags().StringVar(&f.TraceIDs, "trace-ids", "", "Comma-separated trace IDs to filter by")
 	cmd.Flags().IntVarP(&f.Limit, "limit", "n", 0, "Maximum number of results to return")
-	cmd.Flags().StringVar(&f.Project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &f.Project, &f.ProjectID)
 	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")

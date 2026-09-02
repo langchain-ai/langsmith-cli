@@ -218,12 +218,15 @@ Examples:
 				if fmt_ == "pretty" {
 					printTraceMessages(combined)
 				} else {
-					output.OutputJSON(combined, outputFile)
+					if err := output.OutputJSON(combined, outputFile); err != nil {
+						ExitErrorf("%v", err)
+
+						// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
+					}
 				}
 				return
 			}
 
-			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 			const maxPageSize = 10
 			remaining := ff.Limit
 			var allTraces []any
@@ -274,16 +277,16 @@ Examples:
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
-				output.OutputJSON(combined, outputFile)
+				if err := output.OutputJSON(combined, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
 	cmd.Flags().StringVar(&ff.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }

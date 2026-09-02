@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -34,14 +35,17 @@ func newHubDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			if err := c.SDK.Repos.Directories.Delete(ctx, owner, name); err != nil {
+			// No repo_type filter: `hub delete` deletes the repo whatever its type.
+			if err := c.SDK.Repos.Directories.Delete(ctx, owner, name, langsmith.RepoDirectoryDeleteParams{}); err != nil {
 				return fmt.Errorf("deleting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
 				"repo":   name,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

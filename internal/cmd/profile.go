@@ -9,7 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
-	"github.com/olekukonko/tablewriter"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -333,18 +333,13 @@ func profileEnvName() string {
 }
 
 func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
-	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Expires At"})
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := output.NewTable(cmd.OutOrStdout(), []string{"Active", "Name", "API URL", "Workspace ID", "Auth", "Expires At"})
 	for _, profile := range profiles {
 		active := ""
 		if profile.Active {
 			active = "*"
 		}
-		table.Append([]string{
+		_ = table.Append([]string{
 			active,
 			profile.Name,
 			profile.APIURL,
@@ -353,21 +348,16 @@ func renderProfileTable(cmd *cobra.Command, profiles []profileListItem) {
 			profile.OAuthExpiresAt,
 		})
 	}
-	table.Render()
+	_ = table.Render()
 }
 
 func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
-	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := output.NewTable(cmd.OutOrStdout(), []string{"Active", "Name", "API URL", "Workspace ID", "Auth", "API Key", "Expires At"})
 	active := ""
 	if profile.Active {
 		active = "*"
 	}
-	table.Append([]string{
+	_ = table.Append([]string{
 		active,
 		profile.Name,
 		profile.APIURL,
@@ -376,7 +366,7 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.APIKey,
 		profile.OAuthExpiresAt,
 	})
-	table.Render()
+	_ = table.Render()
 }
 
 func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {

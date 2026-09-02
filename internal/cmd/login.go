@@ -150,6 +150,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	if workspaceID != "" {
 		profile.WorkspaceID = workspaceID
 	}
+	profile.OAuth.Issuer = oauthMeta.Issuer
 	applyTokenResponse(&profile, token, time.Now())
 	cfg.Profiles[profileName] = profile
 	cfg.CurrentProfile = profileName
@@ -327,8 +328,12 @@ func requestDeviceCode(ctx context.Context, meta *client.OAuthMetadata) (*device
 	return &resp, nil
 }
 
-func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
-	meta, err := client.ResolveOAuth(ctx, apiURL)
+func refreshProfileToken(ctx context.Context, apiURL, issuer, refreshToken string) (*oauthTokenResponse, error) {
+	oauthURL := apiURL
+	if issuer != "" {
+		oauthURL = issuer
+	}
+	meta, err := client.ResolveOAuth(ctx, oauthURL)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,18 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
+
+func runTestCommand(t *testing.T, cmd *cobra.Command, args []string) error {
+	t.Helper()
+	if cmd.RunE != nil {
+		return cmd.RunE(cmd, args)
+	}
+	cmd.Run(cmd, args)
+	return nil
+}
 
 // testDeploymentVersion is the version newTestServer reports at /info, driving
 // v1/v2 selection. Defaults to "dev" (Cloud → v2); override for the v1 path.

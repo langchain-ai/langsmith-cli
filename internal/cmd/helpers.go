@@ -26,16 +26,24 @@ import (
 // the "required" error message.
 func resolveSessionID(ctx context.Context, c *client.Client, projectName, projectID, cmdName string) (string, error) {
 	if projectID != "" {
-		if _, err := uuid.Parse(projectID); err != nil {
-			return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
-		}
-		return projectID, nil
+		return validateProjectID(projectID)
 	}
 	name := ResolveProject(projectName)
 	if name == "" {
 		return "", fmt.Errorf("--project or --project-id is required for %s (or set LANGSMITH_PROJECT)", cmdName)
 	}
 	return c.ResolveSessionID(ctx, name)
+}
+
+// validateProjectID returns a --project-id value unchanged once it is a
+// well-formed UUID, so a malformed one fails here rather than as a server 4xx.
+// Callers that filter by session ID without going through resolveSessionID
+// (see `project issues list`) use this directly.
+func validateProjectID(projectID string) (string, error) {
+	if _, err := uuid.Parse(projectID); err != nil {
+		return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
+	}
+	return projectID, nil
 }
 
 // queryRuns queries runs with the given params, scoped to sessionID when non-empty.

@@ -103,6 +103,75 @@ func TestDiscoverOAuth_SaaSAtRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverOAuth_DelegatedAuthorizationServer(t *testing.T) {
+	var authServer *httptest.Server
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/oauth-authorization-server" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                        authServer.URL,
+			"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+			"token_endpoint":                authServer.URL + "/oauth/token",
+			"registration_endpoint":         authServer.URL + "/oauth/register",
+		})
+	}))
+	t.Cleanup(authServer.Close)
+
+	dataPlane := metadataServer(t, func(string) map[string]any {
+		return map[string]any{
+			"issuer":                        authServer.URL,
+			"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+			"token_endpoint":                authServer.URL + "/oauth/token",
+			"registration_endpoint":         authServer.URL + "/oauth/register",
+		}
+	})
+
+	meta, err := DiscoverOAuth(context.Background(), dataPlane.URL)
+	if err != nil {
+		t.Fatalf("DiscoverOAuth: %v", err)
+	}
+	if got, want := meta.Issuer, authServer.URL; got != want {
+		t.Errorf("Issuer = %q, want %q", got, want)
+	}
+	if got, want := meta.Resource, authServer.URL; got != want {
+		t.Errorf("Resource = %q, want %q", got, want)
+	}
+	if got, want := meta.TokenEndpoint, authServer.URL+"/oauth/token"; got != want {
+		t.Errorf("TokenEndpoint = %q, want %q", got, want)
+	}
+}
+
+func TestResolveOAuth_RejectsDelegatedEndpointMismatch(t *testing.T) {
+	var authServer *httptest.Server
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/oauth-authorization-server" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                        authServer.URL,
+			"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+			"token_endpoint":                authServer.URL + "/oauth/token",
+		})
+	}))
+	t.Cleanup(authServer.Close)
+
+	dataPlane := metadataServer(t, func(string) map[string]any {
+		return map[string]any{
+			"issuer":                        authServer.URL,
+			"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+			"token_endpoint":                authServer.URL + "/oauth/other-token",
+		}
+	})
+
+	if _, err := ResolveOAuth(context.Background(), dataPlane.URL); err == nil {
+		t.Fatal("expected delegated endpoint mismatch to be rejected")
+	}
+}
+
 // No metadata document must surface an error so callers can fall back.
 func TestDiscoverOAuth_NoMetadataReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -167,9 +236,8 @@ func metadataServer(t *testing.T, doc func(base string) map[string]any) *httptes
 	return srv
 }
 
-// Credentials are POSTed to these endpoints, so a document claiming an issuer
-// other than the host we probed must not be trusted.
-func TestDiscoverOAuth_RejectsIssuerMismatch(t *testing.T) {
+// Every advertised endpoint must be on the issuer's origin.
+func TestDiscoverOAuth_RejectsIssuerEndpointMismatch(t *testing.T) {
 	srv := metadataServer(t, func(base string) map[string]any {
 		return map[string]any{
 			"issuer":                        "https://evil.example.com",

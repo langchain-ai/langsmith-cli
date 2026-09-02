@@ -58,6 +58,13 @@ type sandboxServiceURLInput struct {
 	ExpiresInSeconds int64
 }
 
+type sandboxDownloadURLInput struct {
+	Path               string
+	ExpiresInSeconds   int64
+	ContentType        string
+	ContentDisposition string
+}
+
 var sandboxBoxDetailRender = structured.PropertyList{
 	Properties: []structured.Property{
 		{Label: "Name", Template: "{{.Name}}"},
@@ -134,6 +141,7 @@ allows and what headers to inject. Format:
         {"name": "Authorization", "type": "opaque", "value": "Bearer sk-..."},
         {"name": "X-Key", "type": "workspace_secret", "value": "Bearer {OPENAI_API_KEY}"}
       ],
+      "env_vars": {"OPENAI_API_KEY": "proxy-injected"},
       "enabled": true
     }],
     "no_proxy": ["internal.example.com"],
@@ -145,6 +153,10 @@ allows and what headers to inject. Format:
 
 Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
+
+A rule's "env_vars" are plaintext variables set for every command in the sandbox
+while the rule is enabled, for tools that refuse to run without a credential
+variable even though the proxy injects the real credential on the wire.
 
 Examples:
   langsmith sandbox create
@@ -266,6 +278,82 @@ Examples:
 	Render: sandboxServiceURLRender,
 }
 
+var sandboxDownloadURLRender = structured.PropertyList{
+	Properties: []structured.Property{
+		{Label: "Download URL", Template: "{{.DownloadURL}}"},
+		{Label: "Expires", Template: "{{if .ExpiresAt}}{{formatTime .ExpiresAt}}{{else}}never{{end}}"},
+	},
+	Caption: `Example:
+  curl -LO "{{.DownloadURL}}"`,
+}
+
+var sandboxDownloadURLCommand = structured.Command[*sandboxDownloadURLInput]{
+	Use:   "generate-download-url <name> --path <path>",
+	Short: "Generate a link that downloads a sandbox file without credentials",
+	Long: `Generate a link that downloads a single file from a sandbox.
+
+The link carries its own token, so anyone with the URL can fetch that one file
+with no LangSmith credential. It is pinned to the sandbox and the exact path,
+and cannot be repointed at another file. Fetching wakes a stopped sandbox.
+
+Do not modify the file after minting a link for it. The link is pinned to a
+path, not to a snapshot of the contents, so a later write to that path may or
+may not be reflected in what the link serves. Write a new file and mint a new
+link when the contents change.
+
+Without --expires-in-seconds the link never expires.
+
+Examples:
+  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf
+  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf --expires-in-seconds 3600
+  langsmith sandbox generate-download-url my-vm --path /tmp/page.html --content-disposition inline`,
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxDownloadURLInput {
+		in := &sandboxDownloadURLInput{}
+		cmd.Flags().StringVar(&in.Path, "path", in.Path, "File path inside the sandbox")
+		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "Link TTL in seconds (omit for a link that never expires)")
+		cmd.Flags().StringVar(&in.ContentType, "content-type", in.ContentType, "Content-Type to serve the file as")
+		cmd.Flags().StringVar(&in.ContentDisposition, "content-disposition", in.ContentDisposition, "Content-Disposition to serve the file with (attachment or inline)")
+		_ = cmd.MarkFlagRequired("path")
+		return in
+	},
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxDownloadURLInput, args []string) (any, error) {
+		if cmd.Flags().Changed("expires-in-seconds") && in.ExpiresInSeconds < 1 {
+			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
+		}
+		switch in.ContentDisposition {
+		case "", "attachment", "inline":
+		default:
+			return nil, fmt.Errorf("--content-disposition must be attachment or inline (got %q)", in.ContentDisposition)
+		}
+
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		params := langsmith.SandboxBoxGenerateDownloadURLParams{
+			Path: langsmith.F(in.Path),
+		}
+		if cmd.Flags().Changed("expires-in-seconds") {
+			params.ExpiresInSeconds = langsmith.F(in.ExpiresInSeconds)
+		}
+		if in.ContentType != "" {
+			params.ContentType = langsmith.F(in.ContentType)
+		}
+		if in.ContentDisposition != "" {
+			params.ContentDisposition = langsmith.F(in.ContentDisposition)
+		}
+
+		resp, err := c.SDK.Sandboxes.Boxes.GenerateDownloadURL(ctx, args[0], params)
+		if err != nil {
+			return nil, fmt.Errorf("generating download URL: %w", err)
+		}
+		return resp, nil
+	},
+	Render: sandboxDownloadURLRender,
+}
+
 var sandboxListCommand = structured.Command[struct{}]{
 	Use:   "list",
 	Short: "List all sandboxes",
@@ -275,11 +363,15 @@ var sandboxListCommand = structured.Command[struct{}]{
 			return nil, err
 		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{})
-		if err != nil {
+		var sandboxes []langsmith.SandboxResponse
+		pager := c.SDK.Sandboxes.Boxes.ListAutoPaging(ctx, langsmith.SandboxBoxListParams{})
+		for pager.Next() {
+			sandboxes = append(sandboxes, pager.Current())
+		}
+		if err := pager.Err(); err != nil {
 			return nil, fmt.Errorf("listing sandboxes: %w", err)
 		}
-		return resp.Sandboxes, nil
+		return sandboxes, nil
 	},
 	Render: structured.Table{
 		Title: "Sandboxes",

@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -631,4 +633,69 @@ func TestAddFilterClause(t *testing.T) {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
+}
+
+// ---------- queryRunsV2 pagination ----------
+
+// POST /api/v2/runs/query reads `cursor` from the body, so the SDK auto-pager
+// must send it there; sending it as a query parameter silently refetches the
+// first page.
+func TestQueryRunsV2_SDKAutoPagerSendsCursorInBody(t *testing.T) {
+	pages := map[string]struct {
+		ids  []string
+		next string
+	}{
+		"":         {ids: []string{"run-1", "run-2"}, next: "cursor-2"},
+		"cursor-2": {ids: []string{"run-3", "run-4"}, next: "cursor-3"},
+		"cursor-3": {ids: []string{"run-5"}},
+	}
+	var bodyCursors []string
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/runs/query" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+			t.Errorf("cursor sent as query parameter: %q", cursor)
+		}
+		var body struct {
+			Cursor string `json:"cursor"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		bodyCursors = append(bodyCursors, body.Cursor)
+		page, ok := pages[body.Cursor]
+		if !ok {
+			t.Errorf("request body cursor %q does not match any page", body.Cursor)
+			http.Error(w, "unknown cursor", http.StatusBadRequest)
+			return
+		}
+		items := make([]map[string]any, 0, len(page.ids))
+		for _, id := range page.ids {
+			items = append(items, map[string]any{"id": id})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": page.next})
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	runs, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 100, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got []string
+	for _, run := range runs {
+		got = append(got, run.ID)
+	}
+	if strings.Join(got, ",") != "run-1,run-2,run-3,run-4,run-5" {
+		t.Errorf("runs = %v, want each of run-1..run-5 exactly once", got)
+	}
+	if strings.Join(bodyCursors, ",") != ",cursor-2,cursor-3" {
+		t.Errorf("body cursors = %v, want [\"\", cursor-2, cursor-3]", bodyCursors)
+	}
 }

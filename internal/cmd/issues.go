@@ -99,6 +99,7 @@ Examples:
 func newProjectIssuesListCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		status     string
 		priority   string
 		limit      int
@@ -131,13 +132,20 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			params := langsmith.IssueListParams{
-				SessionName: langsmith.F(projectName),
+			params := langsmith.IssueListParams{}
+			projectLabel := projectID
+			if projectID != "" {
+				id, err := validateProjectID(projectID)
+				if err != nil {
+					ExitErrorf("%v", err)
+				}
+				params.SessionID = langsmith.F(id)
+			} else {
+				projectLabel = ResolveProject(project)
+				if projectLabel == "" {
+					ExitError("--project or --project-id is required (or set LANGSMITH_PROJECT)")
+				}
+				params.SessionName = langsmith.F(projectLabel)
 			}
 			// Validate both filters before sending: an unknown --status used to
 			// cost a round-trip and return a server 400, and an unknown
@@ -190,14 +198,16 @@ Examples:
 						formatIssueTimestamp(issue.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectLabel))
 			} else {
-				output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile)
+				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open, fixing, watching, completed, or ignored")
 	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: urgent, high, medium, or low")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Page size (server-side; max 500)")
@@ -229,8 +239,9 @@ Examples:
 			if err != nil {
 				ExitErrorf("getting issue: %v", err)
 			}
-
-			output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile)
+			if err := output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -253,6 +264,7 @@ type issueEvent struct {
 func newProjectIssuesEventsCmd() *cobra.Command {
 	var (
 		project         string
+		projectID       string
 		lookBackMinutes int
 		limit           int
 		outputFile      string
@@ -277,14 +289,14 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "project issues events")
 			if err != nil {
-				ExitErrorf("resolving project %q: %v", projectName, err)
+				ExitErrorf("%v", err)
+			}
+			// Name the board by whichever identifier the caller gave.
+			projectLabel := ResolveProject(project)
+			if projectLabel == "" {
+				projectLabel = sessionID
 			}
 
 			path := fmt.Sprintf("/api/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
@@ -315,7 +327,7 @@ Examples:
 						formatIssueTime(e.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectLabel))
 			} else {
 				data := []map[string]any{}
 				for _, e := range events {
@@ -340,12 +352,14 @@ Examples:
 					}
 					data = append(data, m)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVar(&lookBackMinutes, "look-back-minutes", 10080, "Look-back window in minutes (default 10080 = 7 days)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
@@ -451,8 +465,9 @@ Examples:
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
 				ExitErrorf("updating issue: %v", err)
 			}
-
-			output.OutputJSON(issueToMap(issue), outputFile)
+			if err := output.OutputJSON(issueToMap(issue), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -704,9 +719,25 @@ func parseAssertion(s string) (exampleAssertion, error) {
 	return exampleAssertion{Key: key, Comment: comment}, nil
 }
 
+// proposeExampleBody builds the request body for examples propose. start_time
+// is omitted rather than sent empty when the flag is unset, so this release can
+// ship ahead of the server change that reads it, leaving callers that don't
+// pass the flag on exactly their current request shape.
+func proposeExampleBody(runID, startTime string, assertions []exampleAssertion) map[string]any {
+	body := map[string]any{
+		"run_id":     runID,
+		"assertions": assertions,
+	}
+	if startTime != "" {
+		body["start_time"] = startTime
+	}
+	return body
+}
+
 func newProjectIssuesProposeExampleCmd() *cobra.Command {
 	var (
 		runID      string
+		startTime  string
 		assertions []string
 		outputFile string
 	)
@@ -718,6 +749,16 @@ func newProjectIssuesProposeExampleCmd() *cobra.Command {
 the run should satisfy. The issues agent uses these to generate evaluators
 and test cases for the issue.
 
+The run does not have to be linked to the issue as evidence. Evidence points a
+reviewer at where a failure is visible; an example is replayed against the
+agent, so it usually starts earlier in the trace. The server validates the
+run_id and start_time against the runs database and resolves the trace_id
+automatically.
+
+--start-time is how the server addresses the run. It is not enforced here, so
+this build still works against servers predating that lookup, which accept a
+bare run_id for a run already linked to the issue.
+
 Each --assertion flag takes a key=comment pair. The key is a short identifier
 for the assertion (e.g. "correctness"), and the comment describes what the run
 should demonstrate. You may specify up to 10 assertions; keys must be unique.
@@ -725,10 +766,12 @@ should demonstrate. You may specify up to 10 assertions; keys must be unique.
 Examples:
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Response must be factually correct"
 
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Must cite sources" \
     --assertion format="Output must be valid JSON"`,
 		Args: cobra.ExactArgs(1),
@@ -761,22 +804,21 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{
-				"run_id":     runID,
-				"assertions": parsed,
-			}
+			body := proposeExampleBody(runID, startTime, parsed)
 
 			path := fmt.Sprintf("/api/v1/platform/issues/%s/proposed-examples", issueID)
 			var result map[string]any
 			if err := c.RawPost(ctx, path, body, &result); err != nil {
 				ExitErrorf("proposing example: %v", err)
 			}
-
-			output.OutputJSON(result, outputFile)
+			if err := output.OutputJSON(result, outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to propose as a regression example (required)")
+	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required by servers that resolve unlinked runs)")
 	cmd.Flags().StringArrayVar(&assertions, "assertion", nil, `Assertion in key=comment format. May be repeated up to 10 times.`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd

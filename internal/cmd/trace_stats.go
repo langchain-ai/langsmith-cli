@@ -92,7 +92,9 @@ Examples:
 				if hasCompare {
 					result["compare"] = compare
 				}
-				output.OutputJSON(result, outputFile)
+				if err := output.OutputJSON(result, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 			return nil
 		},

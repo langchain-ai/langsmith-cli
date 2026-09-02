@@ -82,15 +82,30 @@ func TestAppsListCmd_HasOutputFlag(t *testing.T) {
 	}
 }
 
+func TestAppsList_ReturnsOutputWriteError(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	})
+	defer setupTestEnv(t, srv.URL)()
+	flagOutputFormat = "json"
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"list", "--output", t.TempDir()})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected output write error")
+	}
+}
+
 func TestAppsDelete_SkipsConfirmationWithYes(t *testing.T) {
 	const id = "11111111-1111-1111-1111-111111111111"
 	var sawDelete bool
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]customApp{{ID: id, Name: "one"}})
-		case r.Method == "DELETE" && r.URL.Path == "/api/v1/platform/custom-apps/"+id:
+		case r.Method == "DELETE" && r.URL.Path == "/v1/platform/custom-apps/"+id:
 			sawDelete = true
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -119,7 +134,7 @@ func TestAppsDelete_ResolvesNameToID(t *testing.T) {
 	var deletePath string
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/api/v1/platform/custom-apps":
+		case r.Method == "GET" && r.URL.Path == "/v1/platform/custom-apps":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]customApp{
 				{ID: "44444444-4444-4444-4444-444444444444", Name: "other"},
@@ -141,7 +156,7 @@ func TestAppsDelete_ResolvesNameToID(t *testing.T) {
 			t.Fatalf("execute: %v", err)
 		}
 	})
-	if deletePath != "/api/v1/platform/custom-apps/"+id {
+	if deletePath != "/v1/platform/custom-apps/"+id {
 		t.Errorf("expected the name resolved to its ID before deleting, got %q", deletePath)
 	}
 	if !strings.Contains(out, `"name": "My App"`) {

@@ -1,8 +1,40 @@
 package cmd
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestExampleParams_UseNativeSplitFields(t *testing.T) {
+	list := exampleListParams("dataset-id", 20, 0, "test")
+	if got := list.URLQuery().Get("splits"); got != "test" {
+		t.Fatalf("list split query = %q, want test", got)
+	}
+	metadata := map[string]any{"split": "metadata-value", "owner": "me"}
+	create := exampleCreateParams("dataset-id", map[string]any{"x": 1}, nil, metadata, "test")
+	body, err := json.Marshal(create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonBody := string(body)
+	if !strings.Contains(jsonBody, `"split":"test"`) {
+		t.Fatalf("native split missing from create body: %s", jsonBody)
+	}
+	if metadata["split"] != "metadata-value" {
+		t.Fatalf("metadata split was overwritten: %#v", metadata)
+	}
+}
+
+func TestExampleSplitDisplay_UsesAPIDatasetSplitNotUserMetadata(t *testing.T) {
+	metadata := map[string]any{
+		"dataset_split": []any{"test", "regression"},
+		"split":         "metadata-only",
+	}
+	if got := exampleSplitDisplay(metadata); got != "test, regression" {
+		t.Fatalf("split display = %q", got)
+	}
+}
 
 // ==================== Command structure ====================
 
@@ -134,6 +166,36 @@ func TestExampleCreateCmd_RequiredFlags(t *testing.T) {
 		if _, ok := ann["cobra_annotation_bash_completion_one_required_flag"]; !ok {
 			t.Errorf("flag --%s not marked as required", name)
 		}
+	}
+}
+
+func TestExampleCreateCmd_InvalidJSONReturnsError(t *testing.T) {
+	tests := []struct {
+		name      string
+		flag      string
+		value     string
+		wantError string
+	}{
+		{name: "inputs", flag: "inputs", value: "{", wantError: "Invalid JSON for --inputs"},
+		{name: "outputs", flag: "outputs", value: "{", wantError: "Invalid JSON for --outputs"},
+		{name: "metadata", flag: "metadata", value: "{", wantError: "Invalid JSON for --metadata"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanup := setupTestEnv(t, "http://127.0.0.1:1")
+			defer cleanup()
+
+			cmd := newExampleCreateCmd()
+			_ = cmd.Flags().Set("dataset", "anything")
+			_ = cmd.Flags().Set("inputs", `{}`)
+			_ = cmd.Flags().Set(tt.flag, tt.value)
+
+			runErr := runTestCommand(t, cmd, nil)
+			if runErr == nil || !strings.Contains(runErr.Error(), tt.wantError) {
+				t.Fatalf("error = %v, want substring %q", runErr, tt.wantError)
+			}
+		})
 	}
 }
 

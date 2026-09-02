@@ -90,21 +90,12 @@ same app too.
 					Name:          optionalString(name),
 					Description:   optionalString(description),
 				}
-				err := c.RawPatch(ctx, "/api/v1/platform/custom-apps/"+link.AppID, payload, &app)
+				err := c.RawPatch(ctx, c.CustomAppPath(link.AppID), payload, &app)
 				switch {
 				case err == nil:
 					updated = true
 				case isSourceArchiveRejection(err):
 					return sourceArchiveRejectionError(err)
-				case client.IsConflict(err):
-					conflictName := name
-					if conflictName == "" {
-						conflictName = link.Name
-					}
-					if conflictName == "" {
-						conflictName = link.AppID
-					}
-					return fmt.Errorf("a custom app named %q already exists in this workspace", conflictName)
 				case client.IsNotFound(err):
 					// Stale link (app deleted server-side) — recreate instead of failing.
 					fmt.Fprintf(os.Stderr, "note: custom app %s no longer exists (it may have been deleted) — creating a new one\n", link.AppID)
@@ -135,15 +126,12 @@ same app too.
 					SourceArchive: optionalString(sourceArchive),
 					Description:   optionalString(description),
 				}
-				if err := c.RawPost(ctx, "/api/v1/platform/custom-apps", payload, &app); err != nil {
+				if err := c.RawPost(ctx, c.CustomAppsPath(), payload, &app); err != nil {
 					if isSourceArchiveRejection(err) {
 						return sourceArchiveRejectionError(err)
 					}
-					if client.IsForbidden(err) {
-						return fmt.Errorf("this workspace doesn't support custom apps — ask a workspace admin to enable them, then try again")
-					}
 					if client.IsConflict(err) {
-						return fmt.Errorf("a custom app named %q already exists in this workspace. try `langsmith apps push --name \"New Name\"` instead", appName)
+						return fmt.Errorf("%w — try `langsmith apps push --name \"New Name\"` instead", err)
 					}
 					return fmt.Errorf("creating custom app: %w", err)
 				}
@@ -172,7 +160,9 @@ same app too.
 				"entrypoint": app.Entrypoint,
 				"files":      paths,
 			}
-			output.OutputJSON(result, "")
+			if err := output.OutputJSON(result, ""); err != nil {
+				return err
+			}
 
 			workspaceID := app.TenantID
 			if workspaceID == "" {
