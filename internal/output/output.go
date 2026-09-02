@@ -9,8 +9,38 @@ import (
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/xlab/treeprint"
 )
+
+// NewTable creates the CLI's standard borderless table.
+func NewTable(w io.Writer, columns []string) *tablewriter.Table {
+	symbols := tw.NewSymbolCustom("cli").WithColumn("  ")
+	table := tablewriter.NewTable(w,
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.BorderNone,
+			Symbols: symbols,
+			Settings: tw.Settings{
+				Lines: tw.Lines{
+					ShowTop:        tw.Off,
+					ShowBottom:     tw.Off,
+					ShowHeaderLine: tw.On,
+					ShowFooterLine: tw.Off,
+				},
+				Separators: tw.Separators{
+					ShowHeader:     tw.On,
+					ShowFooter:     tw.Off,
+					BetweenRows:    tw.Off,
+					BetweenColumns: tw.On,
+				},
+			},
+		}),
+		tablewriter.WithHeaderAutoWrap(tw.WrapNone),
+		tablewriter.WithRowAutoWrap(tw.WrapNone),
+	)
+	table.Header(columns)
+	return table
+}
 
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
@@ -80,14 +110,9 @@ func OutputTable(columns []string, rows [][]string, title string) {
 		fmt.Println(strings.Repeat("─", len(title)))
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(columns)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
-	table.AppendBulk(rows)
-	table.Render()
+	table := NewTable(os.Stdout, columns)
+	_ = table.Bulk(rows)
+	_ = table.Render()
 }
 
 // RunTreeData holds the data needed for tree rendering.
@@ -194,12 +219,7 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 		columns = append(columns, "Duration", "Status", "Tokens")
 	}
 
-	table := tablewriter.NewWriter(w)
-	table.SetHeader(columns)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := NewTable(w, columns)
 
 	for _, r := range runs {
 		timeStr := "N/A"
@@ -238,10 +258,10 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 			row = append(row, duration, status, tokens)
 		}
 
-		table.Append(row)
+		_ = table.Append(row)
 	}
 
-	table.Render()
+	_ = table.Render()
 }
 
 // FormatDuration formats milliseconds as human-readable duration.

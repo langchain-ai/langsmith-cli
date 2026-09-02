@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/olekukonko/tablewriter"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 )
 
 type Template string
@@ -129,12 +129,7 @@ func (t Table) RenderText(w io.Writer, model any) error {
 		fmt.Fprintln(w, strings.Repeat("-", len(t.Title)))
 	}
 
-	table := tablewriter.NewWriter(w)
-	table.SetHeader(headers)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := output.NewTable(w, headers)
 
 	for _, rowModel := range rows {
 		row := make([]string, 0, len(columnTemplates))
@@ -145,10 +140,14 @@ func (t Table) RenderText(w io.Writer, model any) error {
 			}
 			row = append(row, buf.String())
 		}
-		table.Append(row)
+		if err := table.Append(row); err != nil {
+			return fmt.Errorf("adding table row: %w", err)
+		}
 	}
 
-	table.Render()
+	if err := table.Render(); err != nil {
+		return fmt.Errorf("rendering table: %w", err)
+	}
 	return nil
 }
 
