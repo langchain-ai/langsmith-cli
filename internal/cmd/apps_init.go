@@ -32,6 +32,9 @@ var codingAgentDashboardStarterFS embed.FS
 //go:embed all:templates/experiment-comparison
 var experimentComparisonStarterFS embed.FS
 
+//go:embed all:templates/thread
+var threadStarterFS embed.FS
+
 //go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
@@ -58,6 +61,7 @@ type appType struct {
 	templateFS   embed.FS
 	templateRoot string
 	agentsMD     string // template-specific AGENTS.md fragment; "" = none (generic base only)
+	contextType  string
 }
 
 var appTypes = map[string]appType{
@@ -86,6 +90,12 @@ var appTypes = map[string]appType{
 		templateRoot: "templates/experiment-comparison",
 		agentsMD:     "experiment_comparison",
 	},
+	"thread": {
+		templateFS:   threadStarterFS,
+		templateRoot: "templates/thread",
+		agentsMD:     "thread",
+		contextType:  appContextThread,
+	},
 }
 
 // appTypeNames returns the valid --template values, sorted.
@@ -101,6 +111,38 @@ func appTypeNames() []string {
 	return names
 }
 
+func resolveInitContextType(flag string, at appType) (string, error) {
+	flag = normalizeAppContextType(flag)
+	tmpl := normalizeAppContextType(at.contextType)
+	if tmpl == "" {
+		return flag, nil
+	}
+	if flag == "" {
+		return tmpl, nil
+	}
+	if flag != tmpl {
+		return "", fmt.Errorf("--context %q conflicts with the %q template, which requires context type %q",
+			flag, templateNameFor(at), tmpl)
+	}
+	return tmpl, nil
+}
+
+func templateNameFor(at appType) string {
+	for name, t := range appTypes {
+		if t.templateRoot == at.templateRoot {
+			return name
+		}
+	}
+	return at.templateRoot
+}
+
+func contextTypeForOutput(ctx string) string {
+	if ctx == "" {
+		return appContextNone
+	}
+	return ctx
+}
+
 type customAppStarterVars struct {
 	Name        string
 	Description string
@@ -113,11 +155,12 @@ func newAppsInitCmd() *cobra.Command {
 		name         string
 		description  string
 		templateFlag string
+		contextType  string
 		force        bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init --name NAME [--template annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
+		Use:   "init --name NAME [--template annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison|thread] [--context none|thread]",
 		Short: "Scaffold a starter custom app in a new directory named after the app",
 		Long: `Scaffold a starter custom app into a new directory named after --name.
 
@@ -127,6 +170,11 @@ func newAppsInitCmd() *cobra.Command {
   annotation-queue-grid   Same review workflow, as an editable spreadsheet.
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
+  thread                  Embedded in a project's thread view; gets { threadId, projectId }.
+
+--context declares what resource the app binds to at render time (default
+none). It is fixed when the app is first pushed and cannot be changed later.
+The "thread" template implies --context thread.
 
 Installs dependencies as the last step, so you can cd in and run
 "langsmith apps dev" next. Run "langsmith apps push" to upload.`,
@@ -141,6 +189,13 @@ Installs dependencies as the last step, so you can cd in and run
 			if !ok {
 				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
+			if err := validateAppContextType(contextType); err != nil {
+				return err
+			}
+			resolvedContext, err := resolveInitContextType(contextType, at)
+			if err != nil {
+				return err
+			}
 			slug := slugifyAppName(name)
 			if slug == "" {
 				return fmt.Errorf("--name %q has no characters usable in a directory name", name)
@@ -153,7 +208,7 @@ Installs dependencies as the last step, so you can cd in and run
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating %s: %w", slug, err)
 			}
-			written, err := scaffoldCustomAppStarter(dir, name, description, at, force)
+			written, err := scaffoldCustomAppStarter(dir, name, description, resolvedContext, at, force)
 			if err != nil {
 				return err
 			}
@@ -165,11 +220,12 @@ Installs dependencies as the last step, so you can cd in and run
 			}
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
 			return output.OutputJSON(map[string]any{
-				"status":   "scaffolded",
-				"dir":      dir,
-				"name":     name,
-				"template": templateName,
-				"files":    written,
+				"status":       "scaffolded",
+				"dir":          dir,
+				"name":         name,
+				"template":     templateName,
+				"context_type": contextTypeForOutput(resolvedContext),
+				"files":        written,
 			}, "")
 		},
 	}
@@ -177,6 +233,7 @@ Installs dependencies as the last step, so you can cd in and run
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
 	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template. Omittable for a blank starter.")
+	cmd.Flags().StringVar(&contextType, "context", "", "Resource the app binds to at render time: none (default) or thread. Fixed at first push.")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the target directory already exists and is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
@@ -219,7 +276,7 @@ func installAppDeps(dir string) error {
 	return nil
 }
 
-func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
+func scaffoldCustomAppStarter(dir, name, description, contextType string, at appType, force bool) ([]string, error) {
 	if name == "" {
 		return nil, fmt.Errorf("--name is required")
 	}
@@ -330,7 +387,7 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	written = append(written, "AGENTS.md")
 
 	// Record the name now so a later push reuses it, not the directory basename.
-	if err := writeAppLink(dir, appLink{Name: name}); err != nil {
+	if err := writeAppLink(dir, appLink{Name: name, ContextType: normalizeAppContextType(contextType)}); err != nil {
 		return nil, fmt.Errorf("writing .langsmith/app.json: %w", err)
 	}
 	written = append(written, filepath.ToSlash(filepath.Join(appsLinkDir, appsLinkFile)))
