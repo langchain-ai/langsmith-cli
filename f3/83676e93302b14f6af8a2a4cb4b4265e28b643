@@ -1,0 +1,21 @@
+internal/cmd/trace_stats.go
+  s_9853ac5ea2144e::t_e603964ee58226 18-19,27-33,57-64,135,154,158,166-183,185-206,208-210,212-226,230-237,265-271,284-290,364-390
+internal/cmd/trace_stats_test.go
+  s_9853ac5ea2144e::t_c86e1a21605783 8,45-46,48-51,63-66,69-73,75-79,91-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f383676e93302b14f6af8a2a4cb4b4265e28b643",
+  "prompts": {},
+  "sessions": {
+    "s_9853ac5ea2144e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ed472a2-39f3-48b4-9b9a-6f781ff198f8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
