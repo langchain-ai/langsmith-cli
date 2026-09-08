@@ -15,7 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runStats is the internal representation used for display.
+// runStats is the internal representation used for display. Token and cost
+// fields are per-window sums; the p50/p99 fields are per-trace percentiles.
 type runStats struct {
 	RunCount         int64          `json:"run_count"`
 	LatencyP50       float64        `json:"latency_p50"`
@@ -23,7 +24,13 @@ type runStats struct {
 	TotalTokens      int64          `json:"total_tokens"`
 	PromptTokens     int64          `json:"prompt_tokens"`
 	CompletionTokens int64          `json:"completion_tokens"`
-	TotalCost        any            `json:"total_cost"`
+	MedianTokens     int64          `json:"median_tokens"`
+	TokensP99        int64          `json:"tokens_p99"`
+	TotalCost        float64        `json:"total_cost"`
+	PromptCost       float64        `json:"prompt_cost"`
+	CompletionCost   float64        `json:"completion_cost"`
+	CostP50          float64        `json:"cost_p50"`
+	CostP99          float64        `json:"cost_p99"`
 	ErrorRate        float64        `json:"error_rate"`
 	FeedbackStats    map[string]any `json:"feedback_stats"`
 }
@@ -47,10 +54,14 @@ func newTraceStatsCmd() *cobra.Command {
 		Short: "Aggregate stats for traces in a project (token usage, latency, costs, feedback)",
 		Long: `Fetch aggregate stats for root traces in a project.
 
-Returns run count, latency percentiles, token usage, costs, error rate, and
-the top feedback keys with their score distributions. Useful for spotting
-trends, discovering available feedback keys, and understanding score ranges
-before building evaluators.
+Returns run count, error rate, latency percentiles, token and cost totals
+(split into prompt/completion), per-trace token and cost percentiles, and the
+top feedback keys with their score distributions. Useful for spotting trends,
+discovering available feedback keys, and understanding score ranges before
+building evaluators.
+
+Token and cost totals are sums over the window; the p50/p99 figures are
+per-trace distributions.
 
 Optionally pass --compare-since/--compare-before (or --compare-last-n-minutes)
 to fetch a second time window side-by-side for trend comparison.
@@ -121,17 +132,7 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 			Session:   langsmith.F([]string{sessionID}),
 			IsRoot:    langsmith.F(true),
 			StartTime: langsmith.F(resolveStartTime(since, lastNMin)),
-			Select: langsmith.F([]langsmith.RunStatsQueryParamsSelect{
-				langsmith.RunStatsQueryParamsSelectRunCount,
-				langsmith.RunStatsQueryParamsSelectLatencyP50,
-				langsmith.RunStatsQueryParamsSelectLatencyP99,
-				langsmith.RunStatsQueryParamsSelectTotalTokens,
-				langsmith.RunStatsQueryParamsSelectPromptTokens,
-				langsmith.RunStatsQueryParamsSelectCompletionTokens,
-				langsmith.RunStatsQueryParamsSelectTotalCost,
-				langsmith.RunStatsQueryParamsSelectErrorRate,
-				langsmith.RunStatsQueryParamsSelectFeedbackStats,
-			}),
+			Select:    langsmith.F(traceStatsSelect()),
 		},
 	}
 	if before != "" {
@@ -150,11 +151,11 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 
 	switch s := (*res).(type) {
 	case langsmith.RunStatsResponseRunStats:
-		return toRunStats(s.RunCount, s.LatencyP50, s.LatencyP99, s.TotalTokens, s.PromptTokens, s.CompletionTokens, s.TotalCost, s.ErrorRate, s.FeedbackStats), nil
+		return statsFromResponse(s), nil
 	case langsmith.RunStatsResponseMap:
 		// group_by response — extract the first (and only) entry when no grouping was requested.
 		for _, item := range s {
-			return toRunStats(item.RunCount, item.LatencyP50, item.LatencyP99, item.TotalTokens, item.PromptTokens, item.CompletionTokens, item.TotalCost, item.ErrorRate, item.FeedbackStats), nil
+			return statsFromMapItem(item), nil
 		}
 		return runStats{}, nil
 	default:
@@ -162,26 +163,76 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 	}
 }
 
-func toRunStats(runCount int64, latencyP50, latencyP99 float64, totalTokens, promptTokens, completionTokens int64, totalCost float64, errorRate float64, feedbackStats map[string]interface{}) runStats {
-	fs := make(map[string]any, len(feedbackStats))
-	for k, v := range feedbackStats {
-		fs[k] = v
+// traceStatsSelect is the metric set requested for every trace stats call.
+func traceStatsSelect() []langsmith.RunStatsQueryParamsSelect {
+	return []langsmith.RunStatsQueryParamsSelect{
+		langsmith.RunStatsQueryParamsSelectRunCount,
+		langsmith.RunStatsQueryParamsSelectLatencyP50,
+		langsmith.RunStatsQueryParamsSelectLatencyP99,
+		langsmith.RunStatsQueryParamsSelectTotalTokens,
+		langsmith.RunStatsQueryParamsSelectPromptTokens,
+		langsmith.RunStatsQueryParamsSelectCompletionTokens,
+		langsmith.RunStatsQueryParamsSelectMedianTokens,
+		langsmith.RunStatsQueryParamsSelectTokensP99,
+		langsmith.RunStatsQueryParamsSelectTotalCost,
+		langsmith.RunStatsQueryParamsSelectPromptCost,
+		langsmith.RunStatsQueryParamsSelectCompletionCost,
+		langsmith.RunStatsQueryParamsSelectCostP50,
+		langsmith.RunStatsQueryParamsSelectCostP99,
+		langsmith.RunStatsQueryParamsSelectErrorRate,
+		langsmith.RunStatsQueryParamsSelectFeedbackStats,
 	}
-	var cost any
-	if totalCost > 0 {
-		cost = totalCost
-	}
+}
+
+// statsFromResponse and statsFromMapItem map the two shapes of the stats
+// response union onto runStats. The SDK models them as distinct structs with
+// identical fields, so neither generics nor a shared interface applies.
+func statsFromResponse(s langsmith.RunStatsResponseRunStats) runStats {
 	return runStats{
-		RunCount:         runCount,
-		LatencyP50:       latencyP50,
-		LatencyP99:       latencyP99,
-		TotalTokens:      totalTokens,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalCost:        cost,
-		ErrorRate:        errorRate,
-		FeedbackStats:    fs,
+		RunCount:         s.RunCount,
+		LatencyP50:       s.LatencyP50,
+		LatencyP99:       s.LatencyP99,
+		TotalTokens:      s.TotalTokens,
+		PromptTokens:     s.PromptTokens,
+		CompletionTokens: s.CompletionTokens,
+		MedianTokens:     s.MedianTokens,
+		TokensP99:        s.TokensP99,
+		TotalCost:        s.TotalCost,
+		PromptCost:       s.PromptCost,
+		CompletionCost:   s.CompletionCost,
+		CostP50:          s.CostP50,
+		CostP99:          s.CostP99,
+		ErrorRate:        s.ErrorRate,
+		FeedbackStats:    copyFeedbackStats(s.FeedbackStats),
 	}
+}
+
+func statsFromMapItem(s langsmith.RunStatsResponseMapItem) runStats {
+	return runStats{
+		RunCount:         s.RunCount,
+		LatencyP50:       s.LatencyP50,
+		LatencyP99:       s.LatencyP99,
+		TotalTokens:      s.TotalTokens,
+		PromptTokens:     s.PromptTokens,
+		CompletionTokens: s.CompletionTokens,
+		MedianTokens:     s.MedianTokens,
+		TokensP99:        s.TokensP99,
+		TotalCost:        s.TotalCost,
+		PromptCost:       s.PromptCost,
+		CompletionCost:   s.CompletionCost,
+		CostP50:          s.CostP50,
+		CostP99:          s.CostP99,
+		ErrorRate:        s.ErrorRate,
+		FeedbackStats:    copyFeedbackStats(s.FeedbackStats),
+	}
+}
+
+func copyFeedbackStats(in map[string]interface{}) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // parseFlexTime parses RFC3339 or YYYY-MM-DD.
@@ -211,7 +262,13 @@ func printStatsPretty(primary, compare *runStats, hasCompare bool) {
 			{"Total tokens", fmt.Sprintf("%d", p.TotalTokens), fmt.Sprintf("%d", c.TotalTokens), fmtDeltaInt(p.TotalTokens, c.TotalTokens)},
 			{"Prompt tokens", fmt.Sprintf("%d", p.PromptTokens), fmt.Sprintf("%d", c.PromptTokens), fmtDeltaInt(p.PromptTokens, c.PromptTokens)},
 			{"Completion tokens", fmt.Sprintf("%d", p.CompletionTokens), fmt.Sprintf("%d", c.CompletionTokens), fmtDeltaInt(p.CompletionTokens, c.CompletionTokens)},
-			{"Total cost", fmtOptFloat(p.TotalCost), fmtOptFloat(c.TotalCost), ""},
+			{"Tokens p50 / trace", fmt.Sprintf("%d", p.MedianTokens), fmt.Sprintf("%d", c.MedianTokens), fmtDeltaInt(p.MedianTokens, c.MedianTokens)},
+			{"Tokens p99 / trace", fmt.Sprintf("%d", p.TokensP99), fmt.Sprintf("%d", c.TokensP99), fmtDeltaInt(p.TokensP99, c.TokensP99)},
+			{"Total cost", fmtCost(p.TotalCost), fmtCost(c.TotalCost), fmtDeltaCost(p.TotalCost, c.TotalCost)},
+			{"Prompt cost", fmtCost(p.PromptCost), fmtCost(c.PromptCost), fmtDeltaCost(p.PromptCost, c.PromptCost)},
+			{"Completion cost", fmtCost(p.CompletionCost), fmtCost(c.CompletionCost), fmtDeltaCost(p.CompletionCost, c.CompletionCost)},
+			{"Cost p50 / trace", fmtCost(p.CostP50), fmtCost(c.CostP50), fmtDeltaCost(p.CostP50, c.CostP50)},
+			{"Cost p99 / trace", fmtCost(p.CostP99), fmtCost(c.CostP99), fmtDeltaCost(p.CostP99, c.CostP99)},
 		}
 		output.OutputTable(cols, rows, "Overview")
 	} else {
@@ -224,7 +281,13 @@ func printStatsPretty(primary, compare *runStats, hasCompare bool) {
 			{"Total tokens", fmt.Sprintf("%d", p.TotalTokens)},
 			{"Prompt tokens", fmt.Sprintf("%d", p.PromptTokens)},
 			{"Completion tokens", fmt.Sprintf("%d", p.CompletionTokens)},
-			{"Total cost", fmtOptFloat(p.TotalCost)},
+			{"Tokens p50 / trace", fmt.Sprintf("%d", p.MedianTokens)},
+			{"Tokens p99 / trace", fmt.Sprintf("%d", p.TokensP99)},
+			{"Total cost", fmtCost(p.TotalCost)},
+			{"Prompt cost", fmtCost(p.PromptCost)},
+			{"Completion cost", fmtCost(p.CompletionCost)},
+			{"Cost p50 / trace", fmtCost(p.CostP50)},
+			{"Cost p99 / trace", fmtCost(p.CostP99)},
 		}
 		output.OutputTable(cols, rows, "Overview")
 	}
@@ -296,6 +359,33 @@ func fmtOptFloat(v any) string {
 		return x
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// fmtCost renders a USD amount without scientific notation. Per-trace costs are
+// routinely well under a cent, so small values get more decimal places.
+func fmtCost(f float64) string {
+	if f == 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return "-"
+	}
+	if math.Abs(f) >= 0.01 {
+		return fmt.Sprintf("%.4f", f)
+	}
+	return fmt.Sprintf("%.6f", f)
+}
+
+func fmtDeltaCost(a, b float64) string {
+	if math.IsNaN(a) || math.IsNaN(b) {
+		return "-"
+	}
+	d := a - b
+	if d == 0 {
+		return "-"
+	}
+	sign := ""
+	if d > 0 {
+		sign = "+"
+	}
+	return sign + fmtCost(d)
 }
 
 func fmtPct(f float64) string {
