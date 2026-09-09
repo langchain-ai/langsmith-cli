@@ -5,7 +5,7 @@ go 1.26.7
 require (
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.19
-	github.com/langchain-ai/langsmith-go v0.26.1
+	github.com/langchain-ai/langsmith-go v0.26.2
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
@@ -51,6 +51,6 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/grpc v1.83.1 // indirect
+	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
