@@ -2,7 +2,27 @@ package cmd
 
 import (
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+func TestTraceExportPathUsesTraceID(t *testing.T) {
+	first := langsmith.RunSchema{TraceID: "trace-1", Name: "same"}
+	second := langsmith.RunSchema{TraceID: "trace-2", Name: "same"}
+	if got := traceExportPath("out", "{trace_id}.jsonl", first); got == traceExportPath("out", "{trace_id}.jsonl", second) {
+		t.Fatal("trace_id pattern should produce unique paths")
+	}
+}
+
+func TestTraceExportPathCollidesForConstantAndNamePatterns(t *testing.T) {
+	first := langsmith.RunSchema{TraceID: "trace-1", Name: "same"}
+	second := langsmith.RunSchema{TraceID: "trace-2", Name: "same"}
+	for _, pattern := range []string{"trace.jsonl", "{name}.jsonl"} {
+		if traceExportPath("out", pattern, first) != traceExportPath("out", pattern, second) {
+			t.Errorf("pattern %q should collide for equal names", pattern)
+		}
+	}
+}
 
 // ==================== Command structure ====================
 
