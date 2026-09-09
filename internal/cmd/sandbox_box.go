@@ -144,7 +144,6 @@ allows and what headers to inject. Format:
       "env_vars": {"OPENAI_API_KEY": "proxy-injected"},
       "enabled": true
     }],
-    "no_proxy": ["internal.example.com"],
     "access_control": {
       "allow_list": ["*.openai.com", "*.anthropic.com"],
       "deny_list": []

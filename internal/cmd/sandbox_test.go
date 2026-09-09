@@ -578,9 +578,9 @@ func TestLoadJSONArg_FileValid(t *testing.T) {
 	if !ok || len(rules) != 1 {
 		t.Errorf("expected 1 rule, got %v", parsed["rules"])
 	}
-	noProxy, ok := parsed["no_proxy"].([]interface{})
-	if !ok || len(noProxy) != 1 {
-		t.Errorf("expected 1 no_proxy entry, got %v", parsed["no_proxy"])
+	ac, ok := parsed["access_control"].(map[string]interface{})
+	if !ok || ac["allow_list"] == nil {
+		t.Errorf("expected access_control.allow_list, got %v", parsed["access_control"])
 	}
 }
 
