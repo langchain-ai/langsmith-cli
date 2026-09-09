@@ -392,8 +392,10 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read AGENTS.md: %v", err)
 	}
-	if !strings.Contains(string(blankAgents), "window.langsmith.call") {
-		t.Errorf("expected the blank template's AGENTS.md, got:\n%s", blankAgents)
+	for _, want := range []string{"cannot call external APIs", "fetch", "LLM providers", "configured LangSmith API"} {
+		if !strings.Contains(string(blankAgents), want) {
+			t.Errorf("expected the blank template's AGENTS.md to contain %q, got:\n%s", want, blankAgents)
+		}
 	}
 
 	aqTarget := filepath.Join(dir, "aq-app")

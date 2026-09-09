@@ -1,10 +1,18 @@
 # AGENTS.md — building a LangSmith custom app
 
-This app runs in a sandboxed iframe with no network access of its own —
-every LangSmith API call goes through `window.langsmith.call`. `src/entry.tsx`
-exports `render(data, root, metadata)`; keep that shape, the sandbox depends
-on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
-need to push a mutation out for the host to persist.
+This app runs in a sandboxed iframe and **cannot call external APIs**. Direct
+network access is blocked, including `fetch`, `XMLHttpRequest`, and WebSockets.
+That means you cannot call third-party services or LLM providers such as OpenAI
+or Anthropic from a custom app. Do not spend time trying to bypass the sandbox;
+if the app requires an external service, ask the developer to redesign that
+integration outside the custom app.
+
+Every LangSmith API call goes through `window.langsmith.call`. This bridge only
+calls the configured LangSmith API; it is not a proxy for external URLs.
+`src/entry.tsx` exports `render(data, root, metadata)`; keep that shape, the
+sandbox depends on it. `data` is normally `{}`; call
+`window.langsmith.setData(patch)` if you need to push a mutation out for the host
+to persist.
 
 ## Don't run `langsmith apps push`
 
@@ -45,12 +53,14 @@ const projects = await window.langsmith.call('GET /api/v1/sessions', {
 });
 ```
 
-`operation` is `"<METHOD> <path>"` — use the full path including its prefix
-(`/api/v1/...` for Python-hosted endpoints, `/v1/platform/...` and `/v2/...`
-for Go-hosted ones). `args` carries `params` (query string) and/or `body`
-(JSON). This is a generic passthrough, not a curated allowlist — anything
-your API key can already do works; a permission error is a real limit of the
-key. Full reference: https://docs.langchain.com/langsmith/smith-api-ref. Base URL:
+`operation` is `"<METHOD> <path>"` — use the full LangSmith API path including
+its prefix (`/api/v1/...` for Python-hosted endpoints, `/v1/platform/...` and
+`/v2/...` for Go-hosted ones). `args` carries `params` (query string) and/or
+`body` (JSON). This is a generic passthrough to the LangSmith API, not a curated
+allowlist of LangSmith endpoints — anything your API key can already do works;
+a permission error is a real limit of the key. It cannot call an absolute URL
+or any non-LangSmith host. Full reference:
+https://docs.langchain.com/langsmith/smith-api-ref. Base URL:
 `https://api.smith.langchain.com` (or your self-hosted instance's URL).
 
 While `langsmith apps dev` is running, the app's failed API calls (with status
