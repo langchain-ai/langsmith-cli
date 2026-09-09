@@ -155,9 +155,14 @@ Examples:
 				body["max_start_time"] = ff.Before
 			}
 
+			hasTraceIDs := false
 			if ff.TraceIDs != "" {
 				ids := splitTrim(ff.TraceIDs)
 				body["ids"] = ids
+				if len(ids) > 0 && ff.Limit > len(ids) {
+					ff.Limit = len(ids)
+				}
+				hasTraceIDs = true
 			}
 
 			if ff.RunType != "" {
@@ -245,9 +250,12 @@ Examples:
 
 				traces, _ := result["items"].([]any)
 				allTraces = append(allTraces, traces...)
-				remaining -= len(traces)
+				if hasTraceIDs {
+					remaining -= pageSize
+				} else {
+					remaining -= len(traces)
+				}
 
-				// Stop if we have enough or no more pages
 				next, _ := result["next_cursor"].(string)
 				if next == "" || remaining <= 0 {
 					break
