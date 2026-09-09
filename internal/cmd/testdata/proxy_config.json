@@ -10,7 +10,6 @@
       "enabled": true
     }
   ],
-  "no_proxy": ["internal.example.com"],
   "access_control": {
     "allow_list": ["*.openai.com"]
   }
