@@ -369,6 +369,80 @@ Installs from the `install.sh`/`install.ps1` scripts or a direct GitHub Releases
 are updated in place as usual. Pass `--force` to update in place regardless of how
 langsmith was installed.
 
+### `gateway setup claude-code` — Connect Claude Code to the gateway
+
+```bash
+langsmith auth login
+langsmith gateway setup claude-code
+```
+
+Configures Claude Code to call `langsmith --profile=<selected-profile>
+--api-url=<selected-api-url> --format=pretty auth token` through `apiKeyHelper`. Tokens stay in the LangSmith
+profile file; setup only writes the helper command, config-file path, gateway
+URL, a 30-second helper cache interval, an optional workspace header, and any
+selected model-family overrides.
+Restart Claude Code afterward. Use an installed CLI binary: the helper uses its
+absolute executable path, so a temporary `go run` binary will not work later.
+The helper pins the API URL selected at setup (`--api-url`, then the setup
+process's `LANGSMITH_ENDPOINT`, then the profile, then the default), so Claude's
+saved or launch-time `LANGSMITH_ENDPOINT` cannot redirect token refresh. The
+preview also shows the OAuth refresh authority: the profile's saved issuer when
+present, otherwise the pinned API URL, from which OAuth endpoints are discovered.
+
+```bash
+langsmith gateway setup claude-code --dry-run
+langsmith gateway setup claude-code --profile dev --scope project --yes
+langsmith gateway setup claude-code --gateway-url https://gateway.example.com \
+  --workspace <workspace-uuid>
+```
+
+Default scope is user settings; `--scope project` uses `.claude/settings.local.json`.
+Project-local setup can override user/shared-project gateway defaults, including
+the selected profile and workspace, without changing those lower-scope files.
+Higher-precedence settings that would override generated values are rejected.
+Existing unrelated settings are preserved. Changes require confirmation or `--yes`;
+conflicting credentials must be removed explicitly. `--dry-run` writes nothing.
+Only the US SaaS gateway is inferred; other deployments require a trusted
+`--gateway-url`. Without model overrides, setup appends `/anthropic` if absent,
+letting Claude Code resolve its native Anthropic family defaults. Generated helper
+quoting currently supports POSIX shells, not Windows.
+
+To use gateway `provider/model` slugs, configure **all four families**, including
+Fable. A complete set uses the bare gateway root instead of `/anthropic` (any
+final `/anthropic` component is removed; deployment path prefixes are preserved):
+
+```bash
+langsmith gateway setup claude-code \
+  --haiku-model openai/gpt-5.6-terra \
+  --sonnet-model openai/gpt-5.6-terra \
+  --opus-model openai/gpt-5.6-terra \
+  --fable-model openai/gpt-5.6-terra
+```
+
+Each flag overrides its corresponding `ANTHROPIC_DEFAULT_HAIKU_MODEL`,
+`ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, or
+`ANTHROPIC_DEFAULT_FABLE_MODEL` shell variable, then falls back to effective saved
+Claude settings. Partial mappings fail before writing anything, listing the
+missing families; setup does not guess or discover the latest family defaults.
+A saved complete mapping can therefore be updated one family at a time. Selected
+slugs are shown in the preview, but their availability is not checked. Remove all
+four saved and shell overrides to return to native Anthropic passthrough.
+Explicit model selections elsewhere (such as `ANTHROPIC_MODEL`, a pinned `model`
+setting, subagent models, or Claude launch flags) are not rewritten by these
+family overrides and should be reviewed separately.
+
+This configures workspace/provider-funded inference, not Claude subscription
+OAuth or tracing. The gateway must support LangSmith OAuth in the headers emitted
+by Claude Code. Setup performs no login, refresh, or live connection validation.
+It reuses the existing `auth token` refresh behavior unchanged; concurrent refresh
+safety is a separate follow-up. The helper cache interval does not guarantee token
+validity for tokens with less than 30 seconds remaining.
+
+To undo, remove or restore `apiKeyHelper`, `env.ANTHROPIC_BASE_URL`,
+`env.LANGSMITH_CONFIG_FILE`, and `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS`; remove only
+the added `X-Tenant-Id` line from `env.ANTHROPIC_CUSTOM_HEADERS`. Also remove or
+restore any of the four `ANTHROPIC_DEFAULT_*_MODEL` overrides written by setup.
+
 ### `trace setup` — Trace coding agents to LangSmith
 
 Configure Claude Code or Codex to send full-content traces (prompts, responses, tool

@@ -82,6 +82,7 @@ Quick start:
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(authCommand.Cobra())
 	rootCmd.AddCommand(newProfileCmd())
+	rootCmd.AddCommand(newGatewayCmd())
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
