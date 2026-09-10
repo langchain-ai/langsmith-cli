@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -147,152 +148,164 @@ func TestGatewaySetupModelsFlagEnvironmentMixtures(t *testing.T) {
 	}
 }
 
-func TestGatewaySetupModelsFillMissingFamiliesFromSaved(t *testing.T) {
-	for i, family := range gatewayModelTestFamilies {
-		t.Run(family.flag, func(t *testing.T) {
-			settings, _ := gatewayTestEnv(t)
-			want := gatewayModelTestValues("saved")
-			gatewayModelTestSave(t, settings, want)
-			// One flag, a different family from env, and two from saved settings.
-			other := gatewayModelTestFamilies[(i+1)%len(gatewayModelTestFamilies)]
-			want[family.env] = "flag/replacement"
-			want[other.env] = "shell/replacement"
-			t.Setenv(other.env, want[other.env])
-			out, err := gatewayRun(t, "--yes", family.flag+"="+want[family.env])
-			require.NoError(t, err)
-			gatewayModelTestAssertEnv(t, gatewayModelTestReport(t, out), want, "https://gateway.smith.langchain.com")
-			gatewayModelTestAssertEnv(t, readJSONFile(t, settings), want, "https://gateway.smith.langchain.com")
-		})
-	}
-}
-
-func TestGatewaySetupModelsSavedCompleteRerunAndPartialUpdate(t *testing.T) {
+func TestGatewaySetupModelsCompleteRepeatAndPartialUpdateRejected(t *testing.T) {
 	for _, scope := range []string{"user", "project"} {
 		t.Run(scope, func(t *testing.T) {
 			settings, _ := gatewayTestEnv(t)
 			if scope == "project" {
 				settings = filepath.Join(".claude", "settings.local.json")
 			}
-			want := gatewayModelTestValues("saved")
-			gatewayModelTestSave(t, settings, want)
-			args := []string{"--yes", "--scope=" + scope}
-			_, err := gatewayRun(t, args...)
+			old := gatewayModelTestValues("saved")
+			old["UNRELATED"] = "keep-private"
+			gatewayModelTestSave(t, settings, old)
+			want := gatewayModelTestValues("requested")
+			args := append([]string{"--yes", "--scope=" + scope}, gatewayModelTestFlags(want)...)
+			out, err := gatewayRun(t, args...)
 			require.NoError(t, err)
-			gatewayModelTestAssertEnv(t, readJSONFile(t, settings), want, "https://gateway.smith.langchain.com")
+			gatewayModelTestAssertEnv(t, gatewayModelTestReport(t, out), want, "https://gateway.smith.langchain.com")
+			doc := readJSONFile(t, settings)
+			gatewayModelTestAssertEnv(t, doc, want, "https://gateway.smith.langchain.com")
+			require.Equal(t, "keep-private", doc["env"].(map[string]any)["UNRELATED"])
+			require.Equal(t, "opus", doc["model"])
+			require.Equal(t, map[string]any{"keep": true}, doc["unrelated"])
 
-			assertIdempotent := func() {
-				t.Helper()
-				before, err := os.ReadFile(settings)
-				require.NoError(t, err)
-				out, err := gatewayRun(t, args...)
-				require.NoError(t, err)
-				after, err := os.ReadFile(settings)
-				require.NoError(t, err)
-				require.Equal(t, before, after, "rerun without flags must retain model routing")
-				report := gatewayModelTestReport(t, out)
-				require.Empty(t, report["replaced_keys"])
-				gatewayModelTestAssertEnv(t, report, want, "https://gateway.smith.langchain.com")
-			}
-			assertIdempotent()
+			// Repeating a complete replacement must supply all four again.
+			assertUnchanged := gatewayModelTestNoWrites(t)
+			defer assertUnchanged()
+			out, err = gatewayRun(t, args...)
+			require.NoError(t, err)
+			report := gatewayModelTestReport(t, out)
+			require.Empty(t, report["replaced_keys"])
+			require.Empty(t, report["removed_keys"])
+			gatewayModelTestAssertEnv(t, report, want, "https://gateway.smith.langchain.com")
+			assertUnchanged()
 			for _, family := range gatewayModelTestFamilies {
-				want[family.env] = "updated/" + family.env
-				out, err := gatewayRun(t, append(args, family.flag+"="+want[family.env])...)
-				require.NoError(t, err)
-				require.Equal(t, []any{"env." + family.env}, gatewayModelTestReport(t, out)["replaced_keys"])
-				gatewayModelTestAssertEnv(t, readJSONFile(t, settings), want, "https://gateway.smith.langchain.com")
-				assertIdempotent()
+				for _, mode := range []string{"--yes", "--dry-run"} {
+					_, err := gatewayRun(t, mode, "--scope="+scope, family.flag+"=changed/model")
+					require.ErrorContains(t, err, "all four")
+					assertUnchanged()
+				}
 			}
 		})
 	}
 }
 
-func TestGatewaySetupModelsEffectiveSavedSettings(t *testing.T) {
+func TestGatewaySetupModelsClearTargetAndPreview(t *testing.T) {
+	// Include every partial target map, an empty map, and a complete map.
 	for _, scope := range []string{"user", "project"} {
-		t.Run(scope, func(t *testing.T) {
-			settings, _ := gatewayTestEnv(t)
-			families := gatewayModelTestFamilies
-			// Resolve each family separately, with user < shared < local. No
-			// single settings file supplies the complete effective set.
-			gatewayModelTestSave(t, settings, map[string]string{
-				families[0].env: "user/haiku", families[1].env: "user/sonnet", families[2].env: "user/opus",
-			})
-			shared := filepath.Join(".claude", "settings.json")
-			local := filepath.Join(".claude", "settings.local.json")
-			gatewayModelTestSave(t, shared, map[string]string{families[1].env: "shared/sonnet", families[2].env: "shared/opus", families[3].env: "shared/fable"})
-			gatewayModelTestSave(t, local, map[string]string{families[2].env: "local/opus", families[3].env: "local/fable"})
-			want := map[string]string{families[0].env: "user/haiku", families[1].env: "shared/sonnet", families[2].env: "local/opus", families[3].env: "local/fable"}
-			target := settings
-			if scope == "project" {
-				target = local
-			}
-			unchanged := map[string][]byte{}
-			for _, path := range []string{settings, shared, local} {
-				if path != target {
-					data, err := os.ReadFile(path)
+		for mask := 0; mask < 1<<len(gatewayModelTestFamilies); mask++ {
+			for _, mode := range []string{"--yes", "--dry-run", "both"} {
+				t.Run(fmt.Sprintf("%s/%04b/%s", scope, mask, mode), func(t *testing.T) {
+					settings, cfg := gatewayTestEnv(t)
+					if scope == "project" {
+						settings = filepath.Join(".claude", "settings.local.json")
+					}
+					old := map[string]string{"UNRELATED": "keep-private", "ANTHROPIC_BASE_URL": "https://gateway.smith.langchain.com"}
+					removed := []any{}
+					keys := []string{}
+					for i, family := range gatewayModelTestFamilies {
+						if mask&(1<<i) != 0 {
+							// Saved values are not inputs: even empty/invalid aliases can be cleaned.
+							old[family.env] = []string{"private-old/model", "", "not-a-slug", "private-old/fable"}[i]
+							keys = append(keys, "env."+family.env)
+						}
+					}
+					sort.Strings(keys)
+					for _, key := range keys {
+						removed = append(removed, key)
+					}
+					gatewayModelTestSave(t, settings, old)
+					beforeConfig, err := os.ReadFile(cfg)
 					require.NoError(t, err)
-					unchanged[path] = data
-				}
+					args := []string{mode, "--scope=" + scope}
+					if mode == "both" {
+						args = []string{"--yes", "--dry-run", "--scope=" + scope}
+					}
+					if mode != "--yes" {
+						defer gatewayModelTestNoWrites(t)()
+					}
+					out, err := gatewayRun(t, args...)
+					require.NoError(t, err)
+					report := gatewayModelTestReport(t, out)
+					status := "dry-run"
+					if mode == "--yes" {
+						status = "configured"
+					}
+					require.Equal(t, status, report["status"])
+					require.Equal(t, removed, report["removed_keys"], "removals must be a sorted JSON array of keys only")
+					require.Equal(t, []any{"env.ANTHROPIC_BASE_URL"}, report["replaced_keys"])
+					gatewayModelTestAssertEnv(t, report, nil, "https://gateway.smith.langchain.com/anthropic")
+					for _, private := range []string{"private-old", "not-a-slug", "keep-private", "synthetic-access-secret", "synthetic-refresh-secret"} {
+						require.NotContains(t, out, private)
+					}
+					if mode == "--yes" {
+						doc := readJSONFile(t, settings)
+						gatewayModelTestAssertEnv(t, doc, nil, "https://gateway.smith.langchain.com/anthropic")
+						require.Equal(t, "keep-private", doc["env"].(map[string]any)["UNRELATED"])
+						require.Equal(t, "opus", doc["model"])
+						require.Equal(t, map[string]any{"keep": true}, doc["unrelated"])
+						assertPerm0600(t, settings)
+						assertUnchanged := gatewayModelTestNoWrites(t)
+						out, err = gatewayRun(t, args...)
+						require.NoError(t, err)
+						report = gatewayModelTestReport(t, out)
+						require.Equal(t, []any{}, report["removed_keys"])
+						require.Empty(t, report["replaced_keys"])
+						gatewayModelTestAssertEnv(t, report, nil, "https://gateway.smith.langchain.com/anthropic")
+						assertUnchanged()
+					}
+					afterConfig, err := os.ReadFile(cfg)
+					require.NoError(t, err)
+					require.Equal(t, beforeConfig, afterConfig)
+				})
 			}
-			out, err := gatewayRun(t, "--yes", "--scope="+scope)
-			require.NoError(t, err)
-			gatewayModelTestAssertEnv(t, gatewayModelTestReport(t, out), want, "https://gateway.smith.langchain.com")
-			gatewayModelTestAssertEnv(t, readJSONFile(t, target), want, "https://gateway.smith.langchain.com")
-			for path, before := range unchanged {
-				after, err := os.ReadFile(path)
-				require.NoError(t, err)
-				require.Equal(t, before, after, path)
-			}
-		})
+		}
 	}
 }
 
 func TestGatewaySetupModelsPartialSubsetsRejectedWithoutWrites(t *testing.T) {
-	// All 14 nonempty proper subsets, not just the original three families:
-	// fable-only and haiku+sonnet+opus without fable must both be rejected.
+	// All 14 nonempty proper subsets, including fable-only and missing-fable.
+	// Saved complete maps at any scope must NEVER supply the missing inputs.
 	for mask := 1; mask < (1<<len(gatewayModelTestFamilies))-1; mask++ {
-		for _, source := range []string{"flags", "environment", "user", "shared", "local", "mixed"} {
-			for _, mode := range []string{"--yes", "--dry-run", "both"} {
-				t.Run(fmt.Sprintf("%04b/%s/%s", mask, source, mode), func(t *testing.T) {
-					settings, _ := gatewayTestEnv(t)
-					args := []string{mode}
-					if mode == "both" {
-						args = []string{"--dry-run", "--yes"}
-					}
-					saved := map[string]string{}
-					for i, family := range gatewayModelTestFamilies {
-						if mask&(1<<i) == 0 {
-							continue
+		for _, source := range []string{"flags", "environment", "mixed"} {
+			for _, savedScope := range []string{"none", "user", "shared", "local"} {
+				for _, mode := range []string{"--yes", "--dry-run", "both"} {
+					t.Run(fmt.Sprintf("%04b/%s/saved-%s/%s", mask, source, savedScope, mode), func(t *testing.T) {
+						settings, _ := gatewayTestEnv(t)
+						if savedScope != "none" {
+							if savedScope == "shared" {
+								settings = filepath.Join(".claude", "settings.json")
+							} else if savedScope == "local" {
+								settings = filepath.Join(".claude", "settings.local.json")
+							}
+							gatewayModelTestSave(t, settings, gatewayModelTestValues("saved"))
 						}
-						value := fmt.Sprintf("provider/model-%d", i)
-						switch {
-						case source == "flags" || source == "mixed" && i%3 == 0:
-							args = append(args, family.flag+"="+value)
-						case source == "environment" || source == "mixed" && i%3 == 1:
-							t.Setenv(family.env, value)
-						default:
-							saved[family.env] = value
+						args := []string{mode}
+						if mode == "both" {
+							args = []string{"--dry-run", "--yes"}
 						}
-					}
-					if len(saved) != 0 {
-						path := settings
-						if source == "shared" {
-							path = filepath.Join(".claude", "settings.json")
-						} else if source == "local" {
-							path = filepath.Join(".claude", "settings.local.json")
+						for i, family := range gatewayModelTestFamilies {
+							if mask&(1<<i) == 0 {
+								continue
+							}
+							value := fmt.Sprintf("provider/model-%d", i)
+							if source == "flags" || source == "mixed" && i%2 == 0 {
+								args = append(args, family.flag+"="+value)
+							} else {
+								t.Setenv(family.env, value)
+							}
 						}
-						gatewayModelTestSave(t, path, saved)
-					}
-					defer gatewayModelTestNoWrites(t)()
-					_, err := gatewayRun(t, args...)
-					require.Error(t, err)
-					require.NotContains(t, err.Error(), "unknown flag")
-					for i, family := range gatewayModelTestFamilies {
-						if mask&(1<<i) == 0 {
-							require.Contains(t, err.Error(), family.flag, "missing family must identify its flag")
-							require.Contains(t, err.Error(), family.env, "missing family must identify its env alternative")
+						defer gatewayModelTestNoWrites(t)()
+						_, err := gatewayRun(t, args...)
+						require.ErrorContains(t, err, "all four")
+						for i, family := range gatewayModelTestFamilies {
+							if mask&(1<<i) == 0 {
+								require.Contains(t, err.Error(), family.flag, "missing family must identify its flag")
+								require.Contains(t, err.Error(), family.env, "missing family must identify its env alternative")
+							}
 						}
-					}
-				})
+					})
+				}
 			}
 		}
 	}
@@ -306,7 +319,9 @@ func TestGatewaySetupModelsExplicitEmptyFlagRejected(t *testing.T) {
 				values := gatewayModelTestValues("saved")
 				gatewayModelTestSave(t, settings, values)
 				// An explicitly empty flag is invalid, not a request to fall back.
-				t.Setenv(family.env, "shell/valid")
+				for key, value := range gatewayModelTestValues("shell") {
+					t.Setenv(key, value)
+				}
 				defer gatewayModelTestNoWrites(t)()
 				_, err := gatewayRun(t, mode, family.flag+"=")
 				require.ErrorContains(t, err, family.flag)
@@ -322,6 +337,11 @@ func TestGatewaySetupModelsInvalidSlugs(t *testing.T) {
 		{"empty-provider", "/model"},
 		{"empty-model", "provider/"},
 		{"both-empty", "/"},
+		{"double-slash", "provider/model//version"},
+		{"trailing-slash", "provider/model/"},
+		{"backslash", "provider/mo\\del"},
+		{"query", "provider/model?version=1"},
+		{"fragment", "provider/model#version"},
 		{"leading-space", " provider/model"},
 		{"trailing-space", "provider/model "},
 		{"provider-space", "pro vider/model"},
@@ -337,9 +357,9 @@ func TestGatewaySetupModelsInvalidSlugs(t *testing.T) {
 		{"unicode-line-separator", "provider/mo\u2028del"},
 	}
 	for _, family := range gatewayModelTestFamilies {
-		for _, source := range []string{"flag", "environment", "saved"} {
+		for _, source := range []string{"flag", "environment"} {
 			for _, tc := range invalid {
-				// OS environments cannot represent NUL; flags and saved JSON can.
+				// OS environments cannot represent NUL; flags can.
 				if source == "environment" && tc.name == "nul" {
 					continue
 				}
@@ -347,15 +367,15 @@ func TestGatewaySetupModelsInvalidSlugs(t *testing.T) {
 					settings, _ := gatewayTestEnv(t)
 					values := gatewayModelTestValues("valid")
 					args := []string{"--yes"}
-					switch source {
-					case "flag":
-						args = append(args, family.flag+"="+tc.value)
-					case "environment":
-						t.Setenv(family.env, tc.value)
-					case "saved":
-						values[family.env] = tc.value
-					}
 					gatewayModelTestSave(t, settings, values)
+					values[family.env] = tc.value
+					if source == "flag" {
+						args = append(args, gatewayModelTestFlags(values)...)
+					} else {
+						for key, value := range values {
+							t.Setenv(key, value)
+						}
+					}
 					defer gatewayModelTestNoWrites(t)()
 					_, err := gatewayRun(t, args...)
 					require.Error(t, err)
@@ -407,6 +427,8 @@ func TestGatewaySetupModelsGatewayURLRouting(t *testing.T) {
 					}
 				case "saved":
 					gatewayModelTestSave(t, settings, want)
+					want = nil
+					baseURL += "/anthropic"
 				}
 				out, err := gatewayRun(t, args...)
 				require.NoError(t, err)
@@ -443,6 +465,7 @@ func TestGatewaySetupModelsDryRunPreviewReplacements(t *testing.T) {
 				require.NoError(t, err)
 				report := gatewayModelTestReport(t, out)
 				require.Equal(t, "dry-run", report["status"])
+				require.Equal(t, []any{}, report["removed_keys"])
 				gatewayModelTestAssertEnv(t, report, want, "https://gateway.example/prefix")
 				if existing {
 					require.ElementsMatch(t, []any{
@@ -471,10 +494,13 @@ func TestGatewaySetupModelsHigherEffectiveConflicts(t *testing.T) {
 						gatewayModelTestSave(t, settings, gatewayModelTestValues("saved"))
 						gatewayModelTestSave(t, filepath.Join(".claude", higher), map[string]string{family.env: "higher/conflict"})
 						args := []string{mode, "--scope=user"}
+						want := gatewayModelTestValues("requested")
 						if source == "flag" {
-							args = append(args, family.flag+"=requested/model")
+							args = append(args, gatewayModelTestFlags(want)...)
 						} else {
-							t.Setenv(family.env, "requested/model")
+							for key, value := range want {
+								t.Setenv(key, value)
+							}
 						}
 						defer gatewayModelTestNoWrites(t)()
 						_, err := gatewayRun(t, args...)
@@ -499,9 +525,11 @@ func TestGatewaySetupModelsMatchingLocalMasksSharedConflict(t *testing.T) {
 				gatewayModelTestSave(t, filepath.Join(".claude", "settings.local.json"), map[string]string{family.env: want[family.env]})
 				args := []string{"--yes", "--scope=user"}
 				if source == "flag" {
-					args = append(args, family.flag+"="+want[family.env])
+					args = append(args, gatewayModelTestFlags(want)...)
 				} else {
-					t.Setenv(family.env, want[family.env])
+					for key, value := range want {
+						t.Setenv(key, value)
+					}
 				}
 				out, err := gatewayRun(t, args...)
 				require.NoError(t, err)
@@ -542,4 +570,117 @@ func TestGatewaySetupModelsLocalOverridesLowerSettings(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestGatewaySetupModelsClearCrossScopeEffectivePrecedence(t *testing.T) {
+	// Deleting the target key is not an empty override: lower values resurface.
+	// Conversely, an empty value in a retained higher scope masks lower values.
+	cases := []struct {
+		name, scope         string
+		user, shared, local *string
+		conflict            bool
+	}{
+		{name: "user-clears-own", scope: "user", user: gatewayModelTestString("target/model")},
+		{name: "user-shared-conflict", scope: "user", user: gatewayModelTestString("target/model"), shared: gatewayModelTestString("private-other/model"), conflict: true},
+		{name: "user-local-conflict", scope: "user", user: gatewayModelTestString("target/model"), local: gatewayModelTestString("private-other/model"), conflict: true},
+		{name: "user-local-empty-masks-shared", scope: "user", user: gatewayModelTestString("target/model"), shared: gatewayModelTestString("private-other/model"), local: gatewayModelTestString("")},
+		{name: "user-shared-empty-does-not-mask-local", scope: "user", shared: gatewayModelTestString(""), local: gatewayModelTestString("private-other/model"), conflict: true},
+		{name: "user-absent-target-other-complete", scope: "user", local: gatewayModelTestString("private-other/model"), conflict: true},
+		{name: "project-clears-own", scope: "project", local: gatewayModelTestString("target/model")},
+		{name: "project-inherits-user", scope: "project", user: gatewayModelTestString("private-other/model"), local: gatewayModelTestString("target/model"), conflict: true},
+		{name: "project-inherits-shared", scope: "project", shared: gatewayModelTestString("private-other/model"), local: gatewayModelTestString("target/model"), conflict: true},
+		{name: "project-target-empty-must-be-deleted", scope: "project", user: gatewayModelTestString("private-other/model"), local: gatewayModelTestString(""), conflict: true},
+		{name: "project-shared-empty-masks-user", scope: "project", user: gatewayModelTestString("private-other/model"), shared: gatewayModelTestString(""), local: gatewayModelTestString("target/model")},
+		{name: "project-empty-user-does-not-mask-shared", scope: "project", user: gatewayModelTestString(""), shared: gatewayModelTestString("private-other/model"), conflict: true},
+		{name: "project-absent-target-inherits", scope: "project", user: gatewayModelTestString("private-other/model"), conflict: true},
+	}
+	for _, tc := range cases {
+		for _, family := range gatewayModelTestFamilies {
+			for _, mode := range []string{"--yes", "--dry-run", "both"} {
+				t.Run(tc.name+"/"+family.flag+"/"+mode, func(t *testing.T) {
+					user, cfg := gatewayTestEnv(t)
+					shared := filepath.Join(".claude", "settings.json")
+					local := filepath.Join(".claude", "settings.local.json")
+					target := user
+					if tc.scope == "project" {
+						target = local
+					}
+					for path, value := range map[string]*string{user: tc.user, shared: tc.shared, local: tc.local} {
+						if value != nil {
+							env := map[string]string{family.env: *value, "UNRELATED": "keep-private"}
+							if tc.name == "user-absent-target-other-complete" {
+								env = gatewayModelTestValues("private-other")
+							}
+							gatewayModelTestSave(t, path, env)
+						}
+					}
+					// All non-target files (including OAuth credentials) stay byte-for-byte intact.
+					unchanged := map[string][]byte{}
+					for _, path := range []string{user, shared, local, cfg} {
+						if path == target {
+							continue
+						}
+						data, err := os.ReadFile(path)
+						if os.IsNotExist(err) {
+							unchanged[path] = nil
+						} else {
+							require.NoError(t, err)
+							unchanged[path] = data
+						}
+					}
+					if tc.conflict || mode != "--yes" {
+						defer gatewayModelTestNoWrites(t)()
+					}
+					args := []string{mode, "--scope=" + tc.scope}
+					if mode == "both" {
+						args = []string{"--yes", "--dry-run", "--scope=" + tc.scope}
+					}
+					out, err := gatewayRun(t, args...)
+					if tc.conflict {
+						require.Error(t, err)
+						if tc.name != "user-absent-target-other-complete" {
+							require.Contains(t, err.Error(), family.env)
+						}
+						require.Contains(t, err.Error(), "scope", "error must explain the cross-scope conflict")
+						require.NotContains(t, err.Error(), "private-other")
+					} else {
+						require.NoError(t, err)
+						report := gatewayModelTestReport(t, out)
+						gatewayModelTestAssertEnv(t, report, nil, "https://gateway.smith.langchain.com/anthropic")
+						require.Equal(t, []any{"env." + family.env}, report["removed_keys"])
+						if mode == "--yes" {
+							gatewayModelTestAssertEnv(t, readJSONFile(t, target), nil, "https://gateway.smith.langchain.com/anthropic")
+						}
+					}
+					require.NotContains(t, out, "private-other")
+					for path, before := range unchanged {
+						after, err := os.ReadFile(path)
+						if before == nil {
+							require.True(t, os.IsNotExist(err), "must not create %s", path)
+						} else {
+							require.NoError(t, err)
+							require.Equal(t, before, after, path)
+							assertPerm0600(t, path)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func gatewayModelTestString(value string) *string { return &value }
+
+func TestGatewaySetupModelsValidFlagsMaskInvalidShell(t *testing.T) {
+	settings, _ := gatewayTestEnv(t)
+	gatewayModelTestSave(t, settings, gatewayModelTestValues("saved"))
+	for _, family := range gatewayModelTestFamilies {
+		t.Setenv(family.env, "not a valid slug")
+	}
+	want := gatewayModelTestValues("flag")
+	args := append([]string{"--yes"}, gatewayModelTestFlags(want)...)
+	out, err := gatewayRun(t, args...)
+	require.NoError(t, err)
+	gatewayModelTestAssertEnv(t, gatewayModelTestReport(t, out), want, "https://gateway.smith.langchain.com")
+	gatewayModelTestAssertEnv(t, readJSONFile(t, settings), want, "https://gateway.smith.langchain.com")
 }

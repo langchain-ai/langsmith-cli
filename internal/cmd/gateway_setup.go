@@ -41,9 +41,14 @@ or validates tokens over the network. POSIX shells only (Windows unsupported).
 prefix. With no model overrides, /anthropic is appended for native Anthropic
 model defaults. With overrides, the bare gateway root is used instead: all four
 families (Haiku, Sonnet, Opus, Fable) require provider/model slugs. Model flags
-win over shell environment and saved settings. Partial overrides fail without
-writing settings. Only the US SaaS API has an inferred gateway; other APIs require
+win over shell environment; saved model values are never reused. No overrides
+clears all four family keys in the target settings and restores /anthropic.
+Partial overrides fail without writing settings. Only the US SaaS API has an inferred gateway; other APIs require
 --gateway-url.
+
+Workspace routing defaults to the OAuth token's tenant_id. Pass --workspace to
+explicitly override it; shell/profile workspace defaults are not used here.
+Requires a gateway deployment supporting X-LangSmith-Auth-Mode: oauth.
 
 Confirmation (or --yes) consents to sending OAuth credentials, prompts and model
 traffic to the displayed destination and replacing the displayed settings keys.
@@ -114,8 +119,8 @@ func gatewayAnthropicURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
-const gatewaySetupAdvice = "Restart Claude Code. This configures workspace/provider-funded inference, not Claude subscription OAuth. The gateway must accept LangSmith OAuth in both Authorization: Bearer and X-Api-Key. Setup does not verify gateway availability or token validity. Review other settings layers and launch flags before use."
-const gatewaySetupUndo = "To undo, remove or restore apiKeyHelper and env.ANTHROPIC_BASE_URL, env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS, env.LANGSMITH_CONFIG_FILE; remove only the X-Tenant-Id line added to env.ANTHROPIC_CUSTOM_HEADERS (retain unrelated headers). Remove or restore any ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_DEFAULT_OPUS_MODEL, ANTHROPIC_DEFAULT_FABLE_MODEL overrides written by setup. Restore any replaced values from your own backup."
+const gatewaySetupAdvice = "Restart Claude Code. This configures workspace/provider-funded inference, not Claude subscription OAuth. The gateway must support X-LangSmith-Auth-Mode: oauth for helper credentials. Workspace defaults to the token's tenant_id; use --workspace if the token has no workspace context. Setup does not verify gateway availability or token validity. Review other settings layers and launch flags before use."
+const gatewaySetupUndo = "To undo, remove or restore apiKeyHelper and env.ANTHROPIC_BASE_URL, env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS, env.LANGSMITH_CONFIG_FILE; remove the X-LangSmith-Auth-Mode line and any X-Tenant-Id line added to env.ANTHROPIC_CUSTOM_HEADERS (retain unrelated headers). Remove or restore any ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_DEFAULT_OPUS_MODEL, ANTHROPIC_DEFAULT_FABLE_MODEL overrides written by setup. Restore any replaced values from your own backup."
 
 func runGatewaySetupClaudeCode(cmd *cobra.Command, scope, rawURL string, yes, dryRun bool) error {
 	if runtime.GOOS == "windows" {
@@ -194,14 +199,14 @@ func runGatewaySetupClaudeCode(cmd *cobra.Command, scope, rawURL string, yes, dr
 	if profile.OAuth.Issuer != "" {
 		refreshAuthority = profile.OAuth.Issuer
 	}
-	workspace := profile.WorkspaceID
-	for _, v := range []string{os.Getenv("LANGSMITH_TENANT_ID"), os.Getenv("LANGSMITH_WORKSPACE_ID"), flagWorkspaceID} {
-		if v != "" {
-			workspace = v
+	// The OAuth token supplies workspace context unless explicitly overridden.
+	// Do not snapshot a profile/shell workspace that may differ from the token.
+	workspace := ""
+	if cmd.Flags().Changed("workspace") || cmd.Flags().Changed("workspace-id") {
+		workspace = flagWorkspaceID
+		if validateWorkspaceID(workspace) != nil {
+			return errors.New("invalid workspace ID: --workspace requires a nonempty UUID")
 		}
-	}
-	if workspace != "" && validateWorkspaceID(workspace) != nil {
-		return errors.New("invalid workspace ID: expected UUID (from --workspace, environment, or profile)")
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -244,6 +249,20 @@ func runGatewaySetupClaudeCode(cmd *cobra.Command, scope, rawURL string, yes, dr
 	if inheritedHeaders != "" && inheritedHeaders != headers {
 		return errors.New("unset inherited ANTHROPIC_CUSTOM_HEADERS; explicitly review and save non-auth headers in the target settings before rerunning")
 	}
+	hasOAuthMode := false
+	for _, name := range headerNames {
+		if strings.EqualFold(name, "X-LangSmith-Auth-Mode") {
+			hasOAuthMode = true
+		}
+	}
+	if !hasOAuthMode {
+		if headers != "" && !strings.HasSuffix(headers, "\n") {
+			headers += "\n"
+		}
+		headers += "X-LangSmith-Auth-Mode: oauth"
+		headerNames = append(headerNames, "X-LangSmith-Auth-Mode")
+		sort.Strings(headerNames)
+	}
 	updates := map[string]string{
 		"ANTHROPIC_BASE_URL":                baseURL,
 		"CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "30000",
@@ -268,6 +287,17 @@ func runGatewaySetupClaudeCode(cmd *cobra.Command, scope, rawURL string, yes, dr
 	if err := gatewayCheckOtherSettings(settingsPath, helper, updates); err != nil {
 		return err
 	}
+	removed := []string{}
+	if len(models) == 0 {
+		for _, family := range gatewayModelFamilies {
+			key := gatewayModelEnv(family)
+			if _, present := env[key]; present {
+				delete(env, key)
+				removed = append(removed, "env."+key)
+			}
+		}
+	}
+	sort.Strings(removed)
 	replacements := []string{}
 	if old, ok := doc["apiKeyHelper"]; ok {
 		var v string
@@ -302,7 +332,7 @@ func runGatewaySetupClaudeCode(cmd *cobra.Command, scope, rawURL string, yes, dr
 	result := map[string]any{
 		"status": "dry-run", "agent": "claude-code", "scope": scope, "settings_path": settingsPath,
 		"profile": name, "apiKeyHelper": helper, "env": safeEnv, "custom_header_names": headerNames,
-		"replaced_keys": replacements, "workspace_id": workspace,
+		"replaced_keys": replacements, "removed_keys": removed, "workspace_id": workspace,
 		"api_url": apiURL, "oauth_refresh_authority": refreshAuthority,
 		"consent": "Trust this destination to receive LangSmith OAuth credentials, prompts and model traffic: " + baseURL + "; trust this OAuth authority for token refresh and endpoint discovery: " + refreshAuthority,
 		"notes":   gatewaySetupAdvice, "undo": gatewaySetupUndo,

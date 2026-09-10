@@ -90,7 +90,11 @@ func gatewayMergeHeaders(raw, workspace string) (string, []string, error) {
 			}
 			lower := strings.ToLower(name)
 			credentialName := strings.ReplaceAll(lower, "_", "-")
-			if strings.Contains(credentialName, "auth") || strings.Contains(credentialName, "api-key") || strings.Contains(lower, "apikey") || strings.Contains(lower, "token") || strings.Contains(lower, "cookie") || lower == "host" || lower == "proxy-connection" || lower == "connection" || lower == "content-length" || lower == "transfer-encoding" || lower == "te" || lower == "trailer" || lower == "upgrade" {
+			if lower == "x-langsmith-auth-mode" {
+				if strings.TrimSpace(value) != "oauth" {
+					return "", nil, errors.New("X-LangSmith-Auth-Mode must be oauth")
+				}
+			} else if strings.Contains(credentialName, "auth") || strings.Contains(credentialName, "api-key") || strings.Contains(lower, "apikey") || strings.Contains(lower, "token") || strings.Contains(lower, "cookie") || lower == "host" || lower == "proxy-connection" || lower == "connection" || lower == "content-length" || lower == "transfer-encoding" || lower == "te" || lower == "trailer" || lower == "upgrade" {
 				return "", nil, fmt.Errorf("remove conflicting header %q from saved/inherited ANTHROPIC_CUSTOM_HEADERS before rerunning", name)
 			}
 			if seen[lower] {
@@ -151,6 +155,22 @@ func gatewayCheckOtherSettings(target, helper string, updates map[string]string)
 			return err
 		}
 		if abs == target {
+			// Adding the OAuth marker would mask lower-scope headers. With no
+			// selected tenant and no saved target header, reject inherited auth
+			// or tenant pins rather than silently removing their meaning.
+			if _, savedHeaders := env["ANTHROPIC_CUSTOM_HEADERS"]; !savedHeaders && updates["ANTHROPIC_CUSTOM_HEADERS"] == "X-LangSmith-Auth-Mode: oauth" {
+				if _, _, err := gatewayMergeHeaders(effectiveEnv["ANTHROPIC_CUSTOM_HEADERS"], ""); err != nil {
+					return err
+				}
+			}
+			// Model families are replaced as a set. Omitted generated models
+			// delete the target's keys, exposing any lower-scope values again.
+			for _, family := range gatewayModelFamilies {
+				key := gatewayModelEnv(family)
+				if _, selected := updates[key]; !selected {
+					delete(env, key)
+				}
+			}
 			// The caller validates the target file. Preserve its saved values
 			// too: an explicit empty header string still masks lower scopes,
 			// whereas an absent header key inherits them.
@@ -178,6 +198,12 @@ func gatewayCheckOtherSettings(target, helper string, updates map[string]string)
 		}
 		if value, present := env["CLAUDE_CONFIG_DIR"]; present && value != os.Getenv("CLAUDE_CONFIG_DIR") {
 			return errors.New("remove conflicting env.CLAUDE_CONFIG_DIR from other Claude settings scopes")
+		}
+	}
+	for _, family := range gatewayModelFamilies {
+		key := gatewayModelEnv(family)
+		if _, selected := updates[key]; !selected && effectiveEnv[key] != "" {
+			return fmt.Errorf("remove conflicting env.%s from other Claude settings scopes before restoring native Anthropic defaults; setup only clears model overrides in the target scope", key)
 		}
 	}
 	if effectiveHelper != helper {

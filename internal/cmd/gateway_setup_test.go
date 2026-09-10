@@ -82,7 +82,7 @@ func TestGatewaySetupMergeIdempotent(t *testing.T) {
 	require.Equal(t, map[string]any{
 		"FOO": "bar", "ANTHROPIC_BASE_URL": "https://gateway.smith.langchain.com/anthropic",
 		"CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "30000", "LANGSMITH_CONFIG_FILE": cfg,
-		"ANTHROPIC_CUSTOM_HEADERS": "X-Feature: keep-private\nX-Tenant-Id: " + gatewayTestWorkspace,
+		"ANTHROPIC_CUSTOM_HEADERS": "X-Feature: keep-private\nX-Tenant-Id: " + gatewayTestWorkspace + "\nX-LangSmith-Auth-Mode: oauth",
 	}, doc["env"])
 	assertPerm0600(t, settings)
 	_, err = gatewayRun(t, "--yes", "--workspace", gatewayTestWorkspace)
@@ -140,7 +140,7 @@ func TestGatewaySetupDryRunAndAbortNoWrites(t *testing.T) {
 	}
 }
 
-func TestGatewaySetupProfileAndWorkspacePrecedence(t *testing.T) {
+func TestGatewaySetupProfileSelectionUsesTokenDefaultWorkspace(t *testing.T) {
 	for _, selection := range []string{"explicit", "env", "current", "default"} {
 		t.Run(selection, func(t *testing.T) {
 			_, cfg := gatewayTestEnv(t)
@@ -169,13 +169,16 @@ func TestGatewaySetupProfileAndWorkspacePrecedence(t *testing.T) {
 			var report map[string]any
 			require.NoError(t, json.Unmarshal([]byte(out), &report))
 			require.Equal(t, name, report["profile"])
-			require.Equal(t, gatewayTestWorkspace, report["workspace_id"])
+			require.Empty(t, report["workspace_id"])
+			require.Equal(t, []any{"X-LangSmith-Auth-Mode"}, report["custom_header_names"])
 			envID := "619bb9dd-079b-4488-8610-e330951ea3e4"
 			flagID := "719bb9dd-079b-4488-8610-e330951ea3e4"
 			t.Setenv("LANGSMITH_WORKSPACE_ID", envID)
 			out, err = gatewayRun(t, args...)
 			require.NoError(t, err)
-			require.Contains(t, out, envID)
+			require.NoError(t, json.Unmarshal([]byte(out), &report))
+			require.Empty(t, report["workspace_id"])
+			require.NotContains(t, out, envID)
 			out, err = gatewayRun(t, append(args, "--workspace", flagID)...)
 			require.NoError(t, err)
 			require.Contains(t, out, flagID)
@@ -396,7 +399,7 @@ func TestGatewaySetupLocalOverridesLowerScopeGeneratedSettings(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, gatewayHelper(exe, profile, "https://api.smith.langchain.com"), doc["apiKeyHelper"])
 				env := doc["env"].(map[string]any)
-				require.Equal(t, "X-Tenant-Id: "+workspaceB, env["ANTHROPIC_CUSTOM_HEADERS"])
+				require.Equal(t, "X-Tenant-Id: "+workspaceB+"\nX-LangSmith-Auth-Mode: oauth", env["ANTHROPIC_CUSTOM_HEADERS"])
 				require.Equal(t, cfg, env["LANGSMITH_CONFIG_FILE"])
 				after, err := os.ReadFile(lower)
 				require.NoError(t, err)
@@ -434,6 +437,9 @@ func TestGatewaySetupLocalInheritedHeaders(t *testing.T) {
 	}{
 		{"unrelated", "X-Feature: do-not-print-secret", ""},
 		{"empty", "", ""},
+		{"oauth marker", "X-LangSmith-Auth-Mode: oauth", ""},
+		{"invalid oauth marker", "X-LangSmith-Auth-Mode: do-not-print-secret", "X-LangSmith-Auth-Mode"},
+		{"duplicate oauth marker", "X-LangSmith-Auth-Mode: oauth\nx-langsmith-auth-mode: oauth", "duplicate"},
 		{"tenant", "X-Tenant-Id: " + gatewayTestWorkspace, "conflicting X-Tenant-Id"},
 		{"authorization", "Authorization: do-not-print-secret", "conflicting header"},
 		{"api key", "X-Api-Key: do-not-print-secret", "conflicting header"},
@@ -460,7 +466,7 @@ func TestGatewaySetupLocalInheritedHeaders(t *testing.T) {
 					require.True(t, os.IsNotExist(err))
 				} else {
 					require.NoError(t, err)
-					require.NotContains(t, readJSONFile(t, local)["env"], "ANTHROPIC_CUSTOM_HEADERS")
+					require.Equal(t, "X-LangSmith-Auth-Mode: oauth", readJSONFile(t, local)["env"].(map[string]any)["ANTHROPIC_CUSTOM_HEADERS"])
 				}
 				require.NotContains(t, out, "do-not-print-secret")
 				after, err := os.ReadFile(lower)
@@ -548,7 +554,7 @@ func TestGatewaySetupProjectAndRelativeConfig(t *testing.T) {
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(cwd, "relative-config.json"), doc["env"].(map[string]any)["LANGSMITH_CONFIG_FILE"])
-	require.NotContains(t, doc["env"], "ANTHROPIC_CUSTOM_HEADERS")
+	require.Equal(t, "X-LangSmith-Auth-Mode: oauth", doc["env"].(map[string]any)["ANTHROPIC_CUSTOM_HEADERS"])
 }
 
 func TestGatewaySetupProjectSymlink(t *testing.T) {

@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -16,42 +15,18 @@ func gatewayModelEnv(family string) string {
 	return "ANTHROPIC_DEFAULT_" + strings.ToUpper(family) + "_MODEL"
 }
 
-// Resolve the effective saved aliases first so rerunning setup can change one
-// family without losing the others. Explicit flags then shell environment win;
-// gatewayCheckOtherSettings rejects higher scopes that would mask those choices.
+// Each invocation supplies the complete model selection: flags override shell
+// environment, never saved settings. No selection restores native defaults.
 func gatewayModelOverrides(cmd *cobra.Command) (map[string]string, error) {
-	userPath, err := claudeSettingsPath("user")
-	if err != nil {
-		return nil, err
-	}
-	saved := map[string]string{}
-	for _, p := range []string{userPath, filepath.Join(".claude", "settings.json"), filepath.Join(".claude", "settings.local.json")} {
-		_, doc, err := gatewayReadSettings(p)
-		if err != nil {
-			return nil, err
-		}
-		env, err := gatewaySettingsEnv(doc)
-		if err != nil {
-			return nil, err
-		}
-		for _, family := range gatewayModelFamilies {
-			key := gatewayModelEnv(family)
-			if value, present := env[key]; present {
-				saved[key] = value
-			}
-		}
-	}
 	models := map[string]string{}
 	missing := []string{}
 	requested := false
 	for _, family := range gatewayModelFamilies {
 		key, flag := gatewayModelEnv(family), family+"-model"
-		value := saved[key]
-		if v := os.Getenv(key); v != "" {
-			value = v
-		}
+		value := os.Getenv(key)
 		if cmd.Flags().Changed(flag) {
 			requested = true
+			var err error
 			value, err = cmd.Flags().GetString(flag)
 			if err != nil {
 				return nil, err
