@@ -20,11 +20,15 @@ var sandboxSnapshotCommand = structured.Parent{
 	Long: `Manage sandbox snapshots — ext4 rootfs images built from Docker images
 or captured from running sandboxes. Snapshots are used to create new sandboxes.
 
+A snapshot is named Docker-style: "name:tag" is a mutable pointer to one
+immutable snapshot, and a bare name means "name:latest". Publishing over an
+existing name:tag moves the pointer; the old snapshot stays addressable by id.
+
 Examples:
   langsmith sandbox snapshot list
   langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
-  langsmith sandbox snapshot capture my-snap --box my-vm
-  langsmith sandbox snapshot get <id>
+  langsmith sandbox snapshot capture my-snap:v2 --box my-vm
+  langsmith sandbox snapshot get my-snap:v2
   langsmith sandbox snapshot delete <id>`,
 	Children: []func() *cobra.Command{
 		snapshotListCommand.Cobra,
@@ -44,11 +48,15 @@ var snapshotListCommand = structured.Command[struct{}]{
 			return nil, err
 		}
 
-		resp, err := c.SDK.Sandboxes.Snapshots.List(ctx, langsmith.SandboxSnapshotListParams{})
-		if err != nil {
+		var snapshots []langsmith.SnapshotResponse
+		pager := c.SDK.Sandboxes.Snapshots.ListAutoPaging(ctx, langsmith.SandboxSnapshotListParams{})
+		for pager.Next() {
+			snapshots = append(snapshots, pager.Current())
+		}
+		if err := pager.Err(); err != nil {
 			return nil, fmt.Errorf("listing snapshots: %w", err)
 		}
-		return resp.Snapshots, nil
+		return snapshots, nil
 	},
 	Render: structured.Table{
 		Title: "Snapshots",
@@ -56,6 +64,7 @@ var snapshotListCommand = structured.Command[struct{}]{
 		Columns: []structured.Column{
 			{Header: "ID", Template: "{{.ID}}"},
 			{Header: "Name", Template: "{{.Name}}"},
+			{Header: "Tags", Template: "{{joinOrDash .Tags}}"},
 			{Header: "Image", Template: "{{dash .DockerImage}}"},
 			{Header: "Status", Template: "{{.Status}}"},
 			{Header: "Size", Template: "{{formatBytesOrDash .FsUsedBytes}}"},
@@ -68,16 +77,22 @@ type snapshotBuildInput struct {
 	DockerImage string
 	Capacity    string
 	RegistryID  string
+	Description string
 }
 
 var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
-	Use:   "build <name>",
+	Use:   "build <name[:tag]>",
 	Short: "Build a snapshot from a Docker image",
 	Long: `Build a snapshot from a Docker image.
 
+The tag is applied once the build finishes. Omit it and the snapshot inherits the
+Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
+
 	Examples:
 	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
-	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb`,
+	  langsmith sandbox snapshot build my-snap:v2 --docker-image ubuntu:24.04
+	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb
+	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --description "Python 3.12 with uv and ruff"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotBuildInput {
 		in := &snapshotBuildInput{
@@ -86,10 +101,11 @@ var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
 		cmd.Flags().StringVar(&in.DockerImage, "docker-image", in.DockerImage, "Docker image to build from (required)")
 		cmd.Flags().StringVar(&in.Capacity, "capacity", in.Capacity, "Filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.RegistryID, "registry-id", in.RegistryID, "Registry ID for private images")
+		cmd.Flags().StringVar(&in.Description, "description", in.Description, "What the snapshot's image can do, for handing to an agent (max 1024 chars)")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *snapshotBuildInput, args []string) (any, error) {
-		name := args[0]
+		name, tag := splitSnapshotRef(args[0])
 		if in.DockerImage == "" {
 			return nil, fmt.Errorf("--docker-image is required")
 		}
@@ -109,8 +125,14 @@ var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
 			DockerImage:     langsmith.F(in.DockerImage),
 			FsCapacityBytes: langsmith.F(capBytes),
 		}
+		if tag != "" {
+			params.Tag = langsmith.F(tag)
+		}
 		if in.RegistryID != "" {
 			params.RegistryID = langsmith.F(in.RegistryID)
+		}
+		if in.Description != "" {
+			params.Description = langsmith.F(in.Description)
 		}
 
 		resp, err := c.SDK.Sandboxes.Snapshots.New(ctx, params)
@@ -120,39 +142,47 @@ var snapshotBuildCommand = structured.Command[*snapshotBuildInput]{
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
 type snapshotCaptureInput struct {
-	BoxName    string
-	Checkpoint string
+	BoxName     string
+	Checkpoint  string
+	Description string
 }
 
 var snapshotCaptureCommand = structured.Command[*snapshotCaptureInput]{
-	Use:   "capture <name>",
+	Use:   "capture <name[:tag]>",
 	Short: "Capture a snapshot from a running sandbox",
 	Long: `Capture a snapshot from a sandbox VM. If --checkpoint is specified, uses
 that existing checkpoint (no VM interaction needed). Otherwise creates a
 fresh checkpoint from the running VM's current state.
 
+An omitted tag means "latest".
+
 	Examples:
 	  langsmith sandbox snapshot capture my-snap --box my-vm
-	  langsmith sandbox snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z`,
+	  langsmith sandbox snapshot capture my-snap:2026081101 --box my-vm
+	  langsmith sandbox snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z
+	  langsmith sandbox snapshot capture my-snap --box my-vm --description "repo cloned, deps installed"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotCaptureInput {
 		in := &snapshotCaptureInput{}
 		cmd.Flags().StringVar(&in.BoxName, "box", in.BoxName, "Sandbox name to capture from (required)")
 		cmd.Flags().StringVar(&in.Checkpoint, "checkpoint", in.Checkpoint, "Checkpoint timestamp to use (omit for fresh checkpoint)")
+		cmd.Flags().StringVar(&in.Description, "description", in.Description, "What the snapshot's image can do, for handing to an agent (max 1024 chars)")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *snapshotCaptureInput, args []string) (any, error) {
-		name := args[0]
+		name, tag := splitSnapshotRef(args[0])
 		if in.BoxName == "" {
 			return nil, fmt.Errorf("--box is required")
 		}
@@ -165,8 +195,14 @@ fresh checkpoint from the running VM's current state.
 		params := langsmith.SandboxBoxNewSnapshotParams{
 			Name: langsmith.F(name),
 		}
+		if tag != "" {
+			params.Tag = langsmith.F(tag)
+		}
 		if in.Checkpoint != "" {
 			params.Checkpoint = langsmith.F(in.Checkpoint)
+		}
+		if in.Description != "" {
+			params.Description = langsmith.F(in.Description)
 		}
 
 		resp, err := c.SDK.Sandboxes.Boxes.NewSnapshot(ctx, in.BoxName, params)
@@ -176,18 +212,20 @@ fresh checkpoint from the running VM's current state.
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
 var snapshotGetCommand = structured.Command[struct{}]{
-	Use:   "get <snapshot-id>",
-	Short: "Get a snapshot by ID",
+	Use:   "get <snapshot-id|name[:tag]>",
+	Short: "Get a snapshot by ID or Docker-style reference",
 	Args:  cobra.ExactArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
@@ -202,18 +240,20 @@ var snapshotGetCommand = structured.Command[struct{}]{
 
 		return resp, nil
 	},
-	Render: structured.Template(`ID:      {{.ID}}
-Name:    {{.Name}}
-Image:   {{dash .DockerImage}}
-Status:  {{.Status}}
-Size:    {{formatBytesOrDash .FsUsedBytes}}
-Created: {{formatTime .CreatedAt}}
+	Render: structured.Template(`ID:          {{.ID}}
+Name:        {{.Name}}
+Tags:        {{joinOrDash .Tags}}
+Image:       {{dash .DockerImage}}
+Description: {{dash .Description}}
+Status:      {{.Status}}
+Size:        {{formatBytesOrDash .FsUsedBytes}}
+Created:     {{formatTime .CreatedAt}}
 `),
 }
 
 var snapshotDeleteCommand = structured.Command[struct{}]{
-	Use:   "delete <snapshot-id>",
-	Short: "Delete a snapshot",
+	Use:   "delete <snapshot-id|name[:tag]>",
+	Short: "Delete a snapshot by ID or Docker-style reference",
 	Args:  cobra.ExactArgs(1),
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
 		c, err := cmdutil.GetClient(cmd)
@@ -229,6 +269,13 @@ var snapshotDeleteCommand = structured.Command[struct{}]{
 	},
 	Render: structured.Template(`{{.Message}}
 `),
+}
+
+// splitSnapshotRef splits a Docker-style name[:tag] on the first colon. The
+// server rejects a colon inside a name, so an empty tag leaves the default to it.
+func splitSnapshotRef(ref string) (name, tag string) {
+	name, tag, _ = strings.Cut(ref, ":")
+	return name, tag
 }
 
 func parseByteSize(s string) (int64, error) {

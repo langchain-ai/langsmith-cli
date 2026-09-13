@@ -119,17 +119,17 @@ export async function fetchProjectStats(sessionId: string, windowDays: number): 
 // for anything but "what happened most recently."
 export async function fetchRecentRuns(sessionId: string, windowDays: number) {
   await sleep(INTER_QUERY_GAP_MS);
-  const resp = await callWithRetry<RunsQueryResponse>('POST /api/v1/runs/query', {
+  const resp = await callWithRetry<RunsQueryResponse>('POST /api/v2/runs/query', {
     body: {
-      session: [sessionId],
+      project_ids: [sessionId],
       filter: CODING_FILTER,
-      start_time: windowStart(windowDays),
+      min_start_time: windowStart(windowDays),
       is_root: true,
-      limit: RECENT_RUNS_LIMIT,
-      select: ['id', 'name', 'error', 'start_time', 'end_time', 'total_tokens', 'total_cost', 'extra'],
+      page_size: RECENT_RUNS_LIMIT,
+      selects: ['ID', 'NAME', 'ERROR', 'START_TIME', 'END_TIME', 'TOTAL_TOKENS', 'TOTAL_COST', 'EXTRA'],
     },
   });
-  return resp?.runs ?? [];
+  return resp?.items ?? [];
 }
 
 // What fraction of the most recent root runs in this window are coding-agent
@@ -140,16 +140,16 @@ export async function fetchRecentRuns(sessionId: string, windowDays: number) {
 // whole-window rate.
 export async function fetchCodingShare(sessionId: string, windowDays: number): Promise<CodingShare> {
   await sleep(INTER_QUERY_GAP_MS);
-  const resp = await callWithRetry<RunsQueryResponse>('POST /api/v1/runs/query', {
+  const resp = await callWithRetry<RunsQueryResponse>('POST /api/v2/runs/query', {
     body: {
-      session: [sessionId],
-      start_time: windowStart(windowDays),
+      project_ids: [sessionId],
+      min_start_time: windowStart(windowDays),
       is_root: true,
-      limit: RECENT_RUNS_LIMIT,
-      select: ['id', 'extra'],
+      page_size: RECENT_RUNS_LIMIT,
+      selects: ['ID', 'EXTRA'],
     },
   });
-  const runs = resp?.runs ?? [];
+  const runs = resp?.items ?? [];
   const coding = runs.filter((r) => r.extra?.metadata?.ls_agent_purpose === 'coding').length;
   return { coding, total: runs.length };
 }

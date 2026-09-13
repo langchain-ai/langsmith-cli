@@ -13,7 +13,7 @@ func TestHubDelete_WithYesFlag(t *testing.T) {
 		if r.Method != "DELETE" {
 			t.Errorf("method = %q", r.Method)
 		}
-		if r.URL.Path != "/v1/platform/hub/repos/acme/my-skill/directories" {
+		if r.URL.Path != "/api/v1/platform/hub/repos/acme/my-skill/directories" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)

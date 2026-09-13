@@ -9,50 +9,98 @@ import (
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/xlab/treeprint"
 )
 
+// NewTable creates the CLI's standard borderless table.
+func NewTable(w io.Writer, columns []string) *tablewriter.Table {
+	symbols := tw.NewSymbolCustom("cli").WithColumn("  ")
+	table := tablewriter.NewTable(w,
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.BorderNone,
+			Symbols: symbols,
+			Settings: tw.Settings{
+				Lines: tw.Lines{
+					ShowTop:        tw.Off,
+					ShowBottom:     tw.Off,
+					ShowHeaderLine: tw.On,
+					ShowFooterLine: tw.Off,
+				},
+				Separators: tw.Separators{
+					ShowHeader:     tw.On,
+					ShowFooter:     tw.Off,
+					BetweenRows:    tw.Off,
+					BetweenColumns: tw.On,
+				},
+			},
+		}),
+		tablewriter.WithHeaderAutoWrap(tw.WrapNone),
+		tablewriter.WithRowAutoWrap(tw.WrapNone),
+	)
+	table.Header(columns)
+	return table
+}
+
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
-func OutputJSON(data any, filePath string) {
+func OutputJSON(data any, filePath string) error {
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		PrintError(fmt.Sprintf("JSON encoding error: %v", err))
-		return
+		return fmt.Errorf("encode JSON: %w", err)
 	}
 
 	if filePath != "" {
 		if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
+			return fmt.Errorf("write JSON to %q: %w", filePath, err)
 		}
 		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q}`+"\n", filePath)
 	} else {
 		fmt.Println(string(jsonBytes))
 	}
+	return nil
 }
 
 // OutputJSONL writes items as JSONL (one JSON object per line).
-func OutputJSONL(items []map[string]any, filePath string) {
+func OutputJSONL(items []map[string]any, filePath string) error {
 	if filePath != "" {
-		f, err := os.Create(filePath)
-		if err != nil {
-			PrintError(fmt.Sprintf("write error: %v", err))
-			return
-		}
-		defer f.Close()
-		for _, item := range items {
-			line, _ := json.Marshal(item)
-			_, _ = f.Write(line)
-			_, _ = f.WriteString("\n")
+		if err := writeJSONLFile(items, filePath); err != nil {
+			return err
 		}
 		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
 	} else {
 		for _, item := range items {
-			line, _ := json.Marshal(item)
+			line, err := json.Marshal(item)
+			if err != nil {
+				return fmt.Errorf("encode JSONL item: %w", err)
+			}
 			fmt.Println(string(line))
 		}
 	}
+	return nil
+}
+
+func writeJSONLFile(items []map[string]any, filePath string) (err error) {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("create JSONL file %q: %w", filePath, err)
+	}
+	defer func() {
+		if closeErr := f.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("close JSONL file %q: %w", filePath, closeErr)
+		}
+	}()
+
+	for _, item := range items {
+		line, err := json.Marshal(item)
+		if err != nil {
+			return fmt.Errorf("encode JSONL item: %w", err)
+		}
+		if _, err := fmt.Fprintln(f, string(line)); err != nil {
+			return fmt.Errorf("write JSONL to %q: %w", filePath, err)
+		}
+	}
+	return nil
 }
 
 // OutputTable prints a table to stdout using tablewriter.
@@ -62,14 +110,9 @@ func OutputTable(columns []string, rows [][]string, title string) {
 		fmt.Println(strings.Repeat("─", len(title)))
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(columns)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
-	table.AppendBulk(rows)
-	table.Render()
+	table := NewTable(os.Stdout, columns)
+	_ = table.Bulk(rows)
+	_ = table.Render()
 }
 
 // RunTreeData holds the data needed for tree rendering.
@@ -139,17 +182,23 @@ func addChildren(node treeprint.Tree, parentID string, childrenMap map[string][]
 }
 
 // PrintOutput dispatches to JSON or pretty output.
-func PrintOutput(data any, format string, filePath string) {
+func PrintOutput(data any, format string, filePath string) error {
 	if format == "pretty" {
 		// Pretty mode: just pretty-print JSON to stdout
-		jsonBytes, _ := json.MarshalIndent(data, "", "  ")
+		jsonBytes, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode JSON: %w", err)
+		}
 		if filePath != "" {
-			_ = os.WriteFile(filePath, jsonBytes, 0644)
+			if err := os.WriteFile(filePath, jsonBytes, 0644); err != nil {
+				return fmt.Errorf("write JSON to %q: %w", filePath, err)
+			}
 		} else {
 			fmt.Println(string(jsonBytes))
 		}
+		return nil
 	} else {
-		OutputJSON(data, filePath)
+		return OutputJSON(data, filePath)
 	}
 }
 
@@ -170,12 +219,7 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 		columns = append(columns, "Duration", "Status", "Tokens")
 	}
 
-	table := tablewriter.NewWriter(w)
-	table.SetHeader(columns)
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := NewTable(w, columns)
 
 	for _, r := range runs {
 		timeStr := "N/A"
@@ -214,10 +258,10 @@ func PrintRunsTable(w io.Writer, runs []map[string]any, includeMetadata bool, ti
 			row = append(row, duration, status, tokens)
 		}
 
-		table.Append(row)
+		_ = table.Append(row)
 	}
 
-	table.Render()
+	_ = table.Render()
 }
 
 // FormatDuration formats milliseconds as human-readable duration.

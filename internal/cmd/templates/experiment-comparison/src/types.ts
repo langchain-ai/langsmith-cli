@@ -18,7 +18,7 @@ export interface ExperimentRun {
   start_time: string;
   end_time: string | null;
   total_tokens: number | null;
-  total_cost: string | null;
+  total_cost: number | null;
   feedback_stats: Record<string, Record<string, unknown>> | null;
 }
 

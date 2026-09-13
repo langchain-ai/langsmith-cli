@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -505,23 +507,23 @@ func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
 	// select builder: first_token_time is a base field always requested,
 	// events is requested alongside inputs/outputs/error under --include-io.
 	base := buildRunSelectV2(false, false)
-	baseHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	baseHas := map[langsmith.RunSelectField]bool{}
 	for _, f := range base {
 		baseHas[f] = true
 	}
-	if !baseHas[langsmith.RunQueryV2ParamsSelectFirstTokenTime] {
+	if !baseHas[langsmith.RunSelectFieldFirstTokenTime] {
 		t.Error("missing first_token_time field in base v2 select set")
 	}
-	if baseHas[langsmith.RunQueryV2ParamsSelectEvents] {
+	if baseHas[langsmith.RunSelectFieldEvents] {
 		t.Error("events should not be requested without --include-io")
 	}
 
 	withIO := buildRunSelectV2(true, false)
-	ioHas := map[langsmith.RunQueryV2ParamsSelect]bool{}
+	ioHas := map[langsmith.RunSelectField]bool{}
 	for _, f := range withIO {
 		ioHas[f] = true
 	}
-	if !ioHas[langsmith.RunQueryV2ParamsSelectEvents] {
+	if !ioHas[langsmith.RunSelectFieldEvents] {
 		t.Error("missing events field when --include-io requested")
 	}
 }
@@ -548,5 +550,152 @@ func TestRunV2ToSchema_MapsFirstTokenTimeAndEvents(t *testing.T) {
 	}
 	if out.Events[0]["name"] != "new_token" {
 		t.Errorf("expected event name=new_token, got %v", out.Events[0]["name"])
+	}
+}
+
+// ---------- toV2Params ----------
+
+func TestToV2Params_TranslatesFields(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	p := langsmith.RunQueryParams{
+		Trace:     langsmith.F("trace-1"),
+		IsRoot:    langsmith.F(true),
+		RunType:   langsmith.F(langsmith.RunTypeEnum("llm")),
+		Error:     langsmith.F(true),
+		StartTime: langsmith.F(start),
+		EndTime:   langsmith.F(end),
+		Filter:    langsmith.F(`eq(name, "x")`),
+		ID:        langsmith.F([]string{"id-1", "id-2"}),
+		Limit:     langsmith.F(int64(25)),
+		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
+	}
+	sel := []langsmith.RunSelectField{langsmith.RunSelectFieldID}
+
+	v2 := toV2Params(p, sel)
+
+	if v2.TraceID.Value != "trace-1" {
+		t.Errorf("TraceID = %q, want trace-1", v2.TraceID.Value)
+	}
+	if !v2.IsRoot.Value {
+		t.Error("IsRoot = false, want true")
+	}
+	if v2.RunType.Value != langsmith.RunType("LLM") {
+		t.Errorf("RunType = %q, want LLM (uppercased)", v2.RunType.Value)
+	}
+	if !v2.HasError.Value {
+		t.Error("HasError = false, want true")
+	}
+	if !v2.MinStartTime.Value.Equal(start) {
+		t.Errorf("MinStartTime = %v, want %v", v2.MinStartTime.Value, start)
+	}
+	if !v2.MaxStartTime.Value.Equal(end) {
+		t.Errorf("MaxStartTime = %v, want %v", v2.MaxStartTime.Value, end)
+	}
+	if v2.Filter.Value != `eq(name, "x")` {
+		t.Errorf("Filter = %q", v2.Filter.Value)
+	}
+	if len(v2.IDs.Value) != 2 {
+		t.Errorf("IDs = %v, want 2 entries", v2.IDs.Value)
+	}
+	if v2.PageSize.Value != 25 {
+		t.Errorf("PageSize = %d, want 25", v2.PageSize.Value)
+	}
+	if !v2.Selects.Present {
+		t.Error("Selects not set")
+	}
+}
+
+func TestToV2Params_OmitsUnsetFields(t *testing.T) {
+	v2 := toV2Params(langsmith.RunQueryParams{}, nil)
+	if v2.TraceID.Present || v2.IsRoot.Present || v2.HasError.Present ||
+		v2.MinStartTime.Present || v2.Filter.Present || v2.IDs.Present ||
+		v2.PageSize.Present || v2.Selects.Present {
+		t.Error("expected all fields unset for empty input")
+	}
+}
+
+func TestAddFilterClause(t *testing.T) {
+	t.Run("empty existing filter", func(t *testing.T) {
+		var params langsmith.RunQueryParams
+		addFilterClause(&params, "gte(total_tokens, 500)")
+		if got := params.Filter.Value; got != "gte(total_tokens, 500)" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("ANDs into an existing filter", func(t *testing.T) {
+		var params langsmith.RunQueryParams
+		params.Filter = langsmith.F(`eq(status, "error")`)
+		addFilterClause(&params, "gte(total_tokens, 500)")
+		want := `and(eq(status, "error"), gte(total_tokens, 500))`
+		if got := params.Filter.Value; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+}
+
+// ---------- queryRunsV2 pagination ----------
+
+// POST /api/v2/runs/query reads `cursor` from the body, so the SDK auto-pager
+// must send it there; sending it as a query parameter silently refetches the
+// first page.
+func TestQueryRunsV2_SDKAutoPagerSendsCursorInBody(t *testing.T) {
+	pages := map[string]struct {
+		ids  []string
+		next string
+	}{
+		"":         {ids: []string{"run-1", "run-2"}, next: "cursor-2"},
+		"cursor-2": {ids: []string{"run-3", "run-4"}, next: "cursor-3"},
+		"cursor-3": {ids: []string{"run-5"}},
+	}
+	var bodyCursors []string
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/runs/query" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+			t.Errorf("cursor sent as query parameter: %q", cursor)
+		}
+		var body struct {
+			Cursor string `json:"cursor"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+		bodyCursors = append(bodyCursors, body.Cursor)
+		page, ok := pages[body.Cursor]
+		if !ok {
+			t.Errorf("request body cursor %q does not match any page", body.Cursor)
+			http.Error(w, "unknown cursor", http.StatusBadRequest)
+			return
+		}
+		items := make([]map[string]any, 0, len(page.ids))
+		for _, id := range page.ids {
+			items = append(items, map[string]any{"id": id})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": page.next})
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	runs, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 100, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got []string
+	for _, run := range runs {
+		got = append(got, run.ID)
+	}
+	if strings.Join(got, ",") != "run-1,run-2,run-3,run-4,run-5" {
+		t.Errorf("runs = %v, want each of run-1..run-5 exactly once", got)
+	}
+	if strings.Join(bodyCursors, ",") != ",cursor-2,cursor-3" {
+		t.Errorf("body cursors = %v, want [\"\", cursor-2, cursor-3]", bodyCursors)
 	}
 }

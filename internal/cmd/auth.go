@@ -101,7 +101,7 @@ var authTokenCommand = structured.Command[struct{}]{
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			token, err := refreshProfileToken(ctx, apiURL, profile.OAuth.RefreshToken)
+			token, err := refreshProfileToken(ctx, apiURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
 			if err != nil {
 				return "", fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}

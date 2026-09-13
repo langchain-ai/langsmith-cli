@@ -22,15 +22,31 @@ import (
 	"syscall"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
+// appsDevLogLevel controls how much of the running app the dev server streams
+// to the terminal. Set once from flags before the server starts.
+type appsDevLogLevel int
+
+const (
+	logErrors  appsDevLogLevel = iota // failed API calls + app errors only (default)
+	logQuiet                          // nothing from the app, build output only
+	logVerbose                        // all API calls + all console output
+)
+
+var appsDevLogMode = logErrors
+
 func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
 		noOpen     bool
+		quiet      bool
+		verbose    bool
 	)
 
 	cmd := &cobra.Command{
@@ -42,8 +58,25 @@ LangSmith web app involved.
 
 API calls the app makes are proxied through your local credentials.
 
-Rebuilds automatically on save when package.json has a "watch" script.`,
+Rebuilds automatically on save when package.json has a "watch" script.
+
+The app's failed API calls and errors stream to this terminal so problems
+show up without opening browser devtools. Use --verbose to also see every
+successful call and all console output, or --quiet to silence app output
+entirely (build output stays).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if quiet && verbose {
+				return fmt.Errorf("--quiet and --verbose cannot be used together")
+			}
+			switch {
+			case quiet:
+				appsDevLogMode = logQuiet
+			case verbose:
+				appsDevLogMode = logVerbose
+			default:
+				appsDevLogMode = logErrors
+			}
+
 			dir, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
@@ -63,6 +96,8 @@ Rebuilds automatically on save when package.json has a "watch" script.`,
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
+	cmd.Flags().BoolVar(&quiet, "quiet", false, "Silence the app's console output and API call logging (build output still shows)")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "Also log successful API calls and all console output, not just errors")
 	return cmd
 }
 
@@ -77,7 +112,7 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if info, statErr := os.Stat(entrypointPath); statErr == nil {
 		prevBuildTime = info.ModTime()
 	}
-	if startWatchProcess(ctx, dir) {
+	if started, _ := startWatchProcess(ctx, dir); started {
 		// Build tools empty their output dir before rebuilding, which would
 		// briefly hide an existing entrypoint — wait for a fresh build first.
 		waitForFreshEntrypoint(ctx, entrypointPath, prevBuildTime, 10*time.Second)
@@ -89,11 +124,14 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 	if !noOpen {
 		_ = openBrowser(previewURL)
 	}
-	output.OutputJSON(map[string]any{
+	if err := output.OutputJSON(map[string]any{
 		"status": "serving",
 		"url":    previewURL,
-	}, "")
+	}, ""); err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "Serving %s at %s (sandboxed) — press Ctrl+C to stop\n", dir, previewURL)
+	fmt.Fprintln(os.Stderr, appsDevLogModeBanner())
 
 	select {
 	case <-ctx.Done():
@@ -112,22 +150,23 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 }
 
 // startWatchProcess runs package.json's "watch" script tied to ctx. Never
-// fails runAppsDev — returns false (with a note) if it can't start one.
-func startWatchProcess(ctx context.Context, dir string) bool {
+// fails runAppsDev — returns false (with a note) if it can't start one. The
+// returned channel closes after a successfully started watcher exits.
+func startWatchProcess(ctx context.Context, dir string) (bool, <-chan struct{}) {
 	script, pkgJSONExists, err := packageJSONScript(dir, "watch")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: couldn't read package.json to find a \"watch\" script: %v\n", err)
-		return false
+		return false, nil
 	}
 	if script == "" {
 		if pkgJSONExists {
 			fmt.Fprintln(os.Stderr, `note: no "watch" script in package.json — start your own build/watch process to see live updates`)
 		}
-		return false
+		return false, nil
 	}
 	if _, lookErr := exec.LookPath("npm"); lookErr != nil {
 		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm run watch" yourself to see live updates`)
-		return false
+		return false, nil
 	}
 
 	fmt.Fprintln(os.Stderr, "Starting build watcher: npm run watch")
@@ -135,12 +174,17 @@ func startWatchProcess(ctx context.Context, dir string) bool {
 	watchCmd.Dir = dir
 	watchCmd.Stdout = os.Stderr
 	watchCmd.Stderr = os.Stderr
+	watchCmd.Cancel = func() error { return terminateWatchProcess(watchCmd.Process) }
 	if startErr := watchCmd.Start(); startErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to start \"npm run watch\": %v\n", startErr)
-		return false
+		return false, nil
 	}
-	go func() { _ = watchCmd.Wait() }()
-	return true
+	done := make(chan struct{})
+	go func() {
+		_ = watchCmd.Wait()
+		close(done)
+	}()
+	return true, done
 }
 
 // waitForFreshEntrypoint blocks until path's mtime is newer than after, ctx
@@ -176,6 +220,23 @@ func packageJSONScript(dir, name string) (script string, pkgJSONExists bool, err
 	return pkg.Scripts[name], true, nil
 }
 
+// resolveDevWorkspaceID falls back to the API when none is configured.
+func resolveDevWorkspaceID(c *client.Client) string {
+	if id := GetWorkspaceID(); id != "" {
+		return id
+	}
+	if c == nil || c.SDK == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	workspaces, err := c.SDK.Workspaces.List(ctx, langsmith.WorkspaceListParams{})
+	if err != nil || workspaces == nil || len(*workspaces) != 1 {
+		return ""
+	}
+	return (*workspaces)[0].ID
+}
+
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
@@ -184,6 +245,13 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	if err != nil {
 		return nil, nil, "", err
 	}
+
+	var apiURL string
+	if c != nil {
+		apiURL = c.APIURL()
+	}
+	workspaceID := resolveDevWorkspaceID(c)
+	webOrigin := langsmithWebOrigin(apiURL)
 
 	mux := http.NewServeMux()
 
@@ -204,7 +272,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +287,8 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	})
 
 	mux.HandleFunc("/__ls_dev/call", makeLsDevCallHandler(c, token))
+
+	mux.HandleFunc("/__ls_dev/log", makeLsDevLogHandler(token))
 
 	ln, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -279,6 +349,51 @@ func makeLsDevCallHandler(c *client.Client, token string) http.HandlerFunc {
 	}
 }
 
+// makeLsDevLogHandler receives console output and uncaught errors forwarded
+// from the sandboxed app and prints them to stderr.
+func makeLsDevLogHandler(token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-LS-Dev-Token")), []byte(token)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxLsDevCallBody)
+		var entry struct {
+			Level   string `json:"level"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		level := entry.Level
+		if level == "" {
+			level = "log"
+		}
+		// quiet drops everything; only verbose keeps non-error console output.
+		if appsDevLogMode == logQuiet || (appsDevLogMode != logVerbose && level != "error") {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "[app %s] %s\n", level, entry.Message)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+var proxyPathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
+
+// Mirrors smith-frontend apiProxy.ts DENIED_PATH_SEGMENTS.
+var deniedProxyPathPattern = regexp.MustCompile(
+	`(?i)(^|/)(api-key|api-keys|members|users|identities|roles|permissions|scim|service-accounts)(/|$)`,
+)
+
+// Batch ID lookups; apps need these to render names.
+var allowedProxyPathExceptions = regexp.MustCompile(`(?i)/(users|identities)/info$`)
+
 func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, req lsDevCallRequest) {
 
 	spaceIdx := strings.IndexByte(req.Operation, ' ')
@@ -293,16 +408,26 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 		http.Error(w, fmt.Sprintf("method %q is not permitted", method), http.StatusBadRequest)
 		return
 	}
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.Contains(path, "://") {
+	pathPart, queryPart, hasQuery := strings.Cut(path, "?")
+	if !proxyPathPattern.MatchString(pathPart) || strings.ContainsAny(pathPart, `%\`) || strings.Contains(pathPart, "..") {
 		http.Error(w, fmt.Sprintf("path %q must be a relative path starting with \"/\"", path), http.StatusBadRequest)
 		return
 	}
+	if !allowedProxyPathExceptions.MatchString(pathPart) && deniedProxyPathPattern.MatchString(pathPart) {
+		http.Error(w, fmt.Sprintf("path %q is not available to custom apps", pathPart), http.StatusForbidden)
+		return
+	}
 	if len(req.Args.Params) > 0 {
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
+		if hasQuery {
+			queryPart += "&"
 		}
-		path += sep + encodeProxyParams(req.Args.Params)
+		queryPart += encodeProxyParams(req.Args.Params)
+		hasQuery = true
+	}
+	if hasQuery {
+		path = pathPart + "?" + queryPart
+	} else {
+		path = pathPart
 	}
 
 	var bodyReader io.Reader
@@ -317,14 +442,75 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 
 	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
 	if err != nil {
+		if appsDevLogMode != logQuiet {
+			fmt.Fprintf(os.Stderr, "[app api] %s %s → error: %s\n", method, path, err)
+		}
 		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	logProxyCall(method, path, status, respBody)
 	if ct := respHeaders.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.WriteHeader(status)
 	_, _ = w.Write(respBody)
+}
+
+// logProxyCall prints proxied API calls to stderr per the current log mode,
+// appending an error summary for non-2xx responses so failures surface here.
+func logProxyCall(method, path string, status int, body []byte) {
+	if appsDevLogMode == logQuiet {
+		return
+	}
+	if appsDevLogMode != logVerbose && status < 400 {
+		return
+	}
+	line := fmt.Sprintf("[app api] %s %s → %d", method, path, status)
+	if status >= 400 {
+		msg := proxyErrorSummary(body)
+		if msg == "" {
+			msg = http.StatusText(status)
+		}
+		if msg != "" {
+			line += " " + msg
+		}
+	}
+	fmt.Fprintln(os.Stderr, line)
+}
+
+func proxyErrorSummary(body []byte) string {
+	var parsed struct {
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+	}
+	if json.Unmarshal(body, &parsed) == nil {
+		if parsed.Message != "" {
+			return parsed.Message
+		}
+		if parsed.Detail != "" {
+			return parsed.Detail
+		}
+	}
+	s := strings.TrimSpace(string(body))
+	// HTML error pages (e.g. a proxy's 429) are noise — the status text says enough.
+	if s == "" || strings.HasPrefix(s, "<") {
+		return ""
+	}
+	if len(s) > 300 {
+		s = s[:300] + "…"
+	}
+	return s
+}
+
+func appsDevLogModeBanner() string {
+	switch appsDevLogMode {
+	case logQuiet:
+		return "App logging: off (--quiet) — build output only"
+	case logVerbose:
+		return "App logging: streaming all console output + API calls (--verbose)"
+	default:
+		return "App logging: errors only (--verbose for all calls + console, --quiet to silence)"
+	}
 }
 
 func encodeProxyParams(params map[string]any) string {
@@ -356,12 +542,12 @@ func devWaitingHTML(message string) string {
 <body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:24px;color:#334155;">
 <p>` + html.EscapeString(message) + `</p>
 <script>
-var seen = false, lastKey = null;
+// Served only while the entrypoint is missing, so reload as soon as the
+// build produces it — no need to track changes, any existing bundle is an
+// improvement over this page.
 setInterval(function() {
   fetch('/__ls_dev/mtime', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
-    var key = j.exists ? String(j.mtime) : 'missing';
-    if (!seen) { seen = true; lastKey = key; return; }
-    if (key !== lastKey) { location.reload(); }
+    if (j.exists) { location.reload(); }
   }).catch(function(){});
 }, 500);
 </script>
@@ -370,9 +556,11 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint, token string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
+	workspaceIDJSON, _ := json.Marshal(workspaceID)
+	webOriginJSON, _ := json.Marshal(webOrigin)
 
 	inner := strings.NewReplacer(
 		"__FILES_JSON__", escapeForScript(filesJSON),
@@ -382,6 +570,8 @@ func renderDevHostHTML(files map[string]string, entrypoint, token string) string
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
 		"__LS_DEV_TOKEN__", token,
+		"__LS_WORKSPACE_ID_JSON__", escapeForScript(workspaceIDJSON),
+		"__LS_WEB_ORIGIN_JSON__", escapeForScript(webOriginJSON),
 	).Replace(devHostHTMLTemplate)
 }
 
@@ -507,8 +697,13 @@ const devHostHTMLTemplate = `<!doctype html>
     if (darkBtn) darkBtn.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
   }
 
+  var webOrigin = __LS_WEB_ORIGIN_JSON__;
+
   function postMetadata() {
-    post({ type: 'LANGSMITH_METADATA', metadata: { mode: mode } });
+    post({
+      type: 'LANGSMITH_METADATA',
+      metadata: { mode: mode, workspaceId: __LS_WORKSPACE_ID_JSON__, host: webOrigin },
+    });
   }
 
   function setMode(next) {
@@ -542,6 +737,32 @@ const devHostHTMLTemplate = `<!doctype html>
       console.log('[langsmith apps dev] setData (not persisted locally):', msg.patch);
     }
 
+    if (msg.type === 'LS_NAVIGATE') {
+      var href = '';
+      try {
+        var base = new URL(webOrigin);
+        var target = new URL(String(msg.url), base);
+        if (target.origin === base.origin) href = target.href;
+      } catch (e) {}
+      if (!href) {
+        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      } else if (msg.newTab) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        // Prod soft-navigates in place; dev leaves the harness.
+        console.log('[langsmith apps dev] openUrl navigating away:', href);
+        window.location.assign(href);
+      }
+    }
+
+    if (msg.type === 'LS_LOG') {
+      fetch('/__ls_dev/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': '__LS_DEV_TOKEN__' },
+        body: JSON.stringify({ level: msg.level, message: msg.message }),
+      }).catch(function() {});
+    }
+
     if (msg.type === 'LS_API') {
       fetch('/__ls_dev/call', {
         method: 'POST',
@@ -565,15 +786,21 @@ const devHostHTMLTemplate = `<!doctype html>
     }
   });
 
-  // Poll for a rebuild and reload the page when detected.
-  var seen = false, lastKey = null;
+  // Poll for a rebuild and reload once the new bundle is actually on disk.
+  // Build tools empty dist/ before rewriting the entrypoint, so a rebuild
+  // briefly reports exists:false. Reloading during that window would land on
+  // the "waiting for build" page (a white flash), so ignore the transient
+  // missing state entirely and reload only when the entrypoint exists with a
+  // newer mtime than the last one we saw it have.
+  var lastMtime = null;
   setInterval(function() {
     fetch('/__ls_dev/mtime', { cache: 'no-store' })
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        var key = j.exists ? String(j.mtime) : 'missing';
-        if (!seen) { seen = true; lastKey = key; return; }
-        if (key !== lastKey) { location.reload(); }
+        if (!j.exists) return;
+        var mtime = String(j.mtime);
+        if (lastMtime === null) { lastMtime = mtime; return; }
+        if (mtime !== lastMtime) { location.reload(); }
       })
       .catch(function() {});
   }, 500);
@@ -589,6 +816,7 @@ const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; form-action 'none'; base-uri 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style id="ls-theme">/* theme injected via postMessage */</style>
 <style>
@@ -612,6 +840,31 @@ pre, code {
   var themeReady = false;
   var currentData = null;
   var currentMetadata = null;
+
+  // Forward console output and uncaught errors to the host so they stream
+  // into the terminal running "langsmith apps dev".
+  function reportLog(level, message) {
+    try { window.parent.postMessage({ type: 'LS_LOG', level: level, message: message }, '*'); } catch (e) {}
+  }
+  function formatArg(a) {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return String(a.stack || a.message || a);
+    try { return JSON.stringify(a); } catch (e) { return String(a); }
+  }
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function(level) {
+    var orig = console[level];
+    console[level] = function() {
+      reportLog(level, Array.prototype.map.call(arguments, formatArg).join(' '));
+      if (orig) return orig.apply(console, arguments);
+    };
+  });
+  window.addEventListener('error', function(e) {
+    reportLog('error', String((e.error && e.error.stack) || e.message || 'uncaught error'));
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var r = e.reason;
+    reportLog('error', 'Unhandled rejection: ' + String((r && r.stack) || (r && r.message) || r));
+  });
 
   var FILES = __FILES_JSON__;
 
@@ -742,9 +995,18 @@ pre, code {
     reportHeight();
   }
 
+  function openUrl(url, options) {
+    window.parent.postMessage({
+      type: 'LS_NAVIGATE',
+      url: String(url),
+      newTab: !!(options && options.newTab)
+    }, '*');
+  }
+
   window.langsmith = {
     call: call,
     setData: setData,
+    openUrl: openUrl,
     feedback: {
       create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
     }

@@ -113,7 +113,9 @@ func newDatasetListCmd() *cobra.Command {
 						"created_at":    formatTimeISO(ds.CreatedAt),
 					})
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -152,9 +154,13 @@ func newDatasetGetCmd() *cobra.Command {
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				output.PrintOutput(data, "pretty", outputFile)
+				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			} else {
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -188,13 +194,15 @@ func newDatasetCreateCmd() *cobra.Command {
 				ExitErrorf("creating dataset: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":      "created",
 				"id":          ds.ID,
 				"name":        ds.Name,
 				"description": nilStr(ds.Description),
 				"created_at":  formatTimeISO(ds.CreatedAt),
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -235,11 +243,13 @@ func newDatasetDeleteCmd() *cobra.Command {
 				ExitErrorf("deleting dataset: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"id":     ds.ID,
 				"name":   ds.Name,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -298,12 +308,14 @@ func newDatasetExportCmd() *cobra.Command {
 				ExitErrorf("writing file: %v", err)
 			}
 
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":  "exported",
 				"dataset": ds.Name,
 				"count":   len(data),
 				"path":    outputFile,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
@@ -390,12 +402,14 @@ func newDatasetUploadCmd() *cobra.Command {
 				}
 			}
 
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status":        "uploaded",
 				"dataset_id":    ds.ID,
 				"dataset_name":  name,
 				"example_count": len(items),
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

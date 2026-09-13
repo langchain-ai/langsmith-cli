@@ -105,7 +105,12 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		ctx = context.Background()
 	}
 
-	device, err := requestDeviceCode(ctx, apiURL)
+	oauthMeta, err := client.ResolveOAuth(ctx, apiURL)
+	if err != nil {
+		return err
+	}
+
+	device, err := requestDeviceCode(ctx, oauthMeta)
 	if err != nil {
 		return err
 	}
@@ -127,7 +132,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	defer cancel()
 
 	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
-	token, err := pollDeviceToken(pollCtx, apiURL, device.DeviceCode, interval)
+	token, err := pollDeviceToken(pollCtx, oauthMeta, device.DeviceCode, interval)
 	if err != nil {
 		return err
 	}
@@ -145,6 +150,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	if workspaceID != "" {
 		profile.WorkspaceID = workspaceID
 	}
+	profile.OAuth.Issuer = oauthMeta.Issuer
 	applyTokenResponse(&profile, token, time.Now())
 	cfg.Profiles[profileName] = profile
 	cfg.CurrentProfile = profileName
@@ -307,13 +313,13 @@ func promptLine(cmd *cobra.Command, prompt string) (string, error) {
 	return line, nil
 }
 
-func requestDeviceCode(ctx context.Context, apiURL string) (*deviceCodeResponse, error) {
+func requestDeviceCode(ctx context.Context, meta *client.OAuthMetadata) (*deviceCodeResponse, error) {
 	values := url.Values{
 		"client_id": {oauthClientID},
-		"resource":  {oauthResource(apiURL)},
+		"resource":  {meta.Resource},
 	}
 	var resp deviceCodeResponse
-	if err := postOAuthForm(ctx, apiURL, "/oauth/device/code", values, &resp); err != nil {
+	if err := postOAuthForm(ctx, meta.DeviceAuthorizationEndpoint, values, &resp); err != nil {
 		return nil, fmt.Errorf("requesting device code: %w", err)
 	}
 	if resp.DeviceCode == "" || resp.UserCode == "" || resp.VerificationURI == "" {
@@ -322,15 +328,23 @@ func requestDeviceCode(ctx context.Context, apiURL string) (*deviceCodeResponse,
 	return &resp, nil
 }
 
-func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
+func refreshProfileToken(ctx context.Context, apiURL, issuer, refreshToken string) (*oauthTokenResponse, error) {
+	oauthURL := apiURL
+	if issuer != "" {
+		oauthURL = issuer
+	}
+	meta, err := client.ResolveOAuth(ctx, oauthURL)
+	if err != nil {
+		return nil, err
+	}
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},
-		"resource":      {oauthResource(apiURL)},
+		"resource":      {meta.Resource},
 		"refresh_token": {refreshToken},
 	}
 	var resp oauthTokenResponse
-	if err := postOAuthForm(ctx, apiURL, "/oauth/token", values, &resp); err != nil {
+	if err := postOAuthForm(ctx, meta.TokenEndpoint, values, &resp); err != nil {
 		return nil, err
 	}
 	if resp.AccessToken == "" {
@@ -339,11 +353,11 @@ func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oau
 	return &resp, nil
 }
 
-func pollDeviceToken(ctx context.Context, apiURL, deviceCode string, interval time.Duration) (*oauthTokenResponse, error) {
+func pollDeviceToken(ctx context.Context, meta *client.OAuthMetadata, deviceCode string, interval time.Duration) (*oauthTokenResponse, error) {
 	interval = normalizeDeviceCodePollInterval(interval)
 
 	for {
-		token, oauthErr, err := requestDeviceToken(ctx, apiURL, deviceCode)
+		token, oauthErr, err := requestDeviceToken(ctx, meta, deviceCode)
 		if err != nil {
 			return nil, err
 		}
@@ -378,15 +392,15 @@ func normalizeDeviceCodePollInterval(interval time.Duration) time.Duration {
 	return interval
 }
 
-func requestDeviceToken(ctx context.Context, apiURL, deviceCode string) (*oauthTokenResponse, *oauthErrorResponse, error) {
+func requestDeviceToken(ctx context.Context, meta *client.OAuthMetadata, deviceCode string) (*oauthTokenResponse, *oauthErrorResponse, error) {
 	values := url.Values{
 		"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
 		"client_id":   {oauthClientID},
 		"device_code": {deviceCode},
-		"resource":    {oauthResource(apiURL)},
+		"resource":    {meta.Resource},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauthURL(apiURL, "/oauth/token"), strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, meta.TokenEndpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating token request: %w", err)
 	}
@@ -418,8 +432,8 @@ func requestDeviceToken(ctx context.Context, apiURL, deviceCode string) (*oauthT
 	return nil, oauthErr, nil
 }
 
-func postOAuthForm(ctx context.Context, apiURL, path string, values url.Values, result any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauthURL(apiURL, path), strings.NewReader(values.Encode()))
+func postOAuthForm(ctx context.Context, endpointURL string, values url.Values, result any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, strings.NewReader(values.Encode()))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
@@ -463,16 +477,6 @@ func applyTokenResponse(profile *lsconfig.Profile, token *oauthTokenResponse, no
 	if token.ExpiresIn > 0 {
 		profile.OAuth.ExpiresAt = now.Add(time.Duration(token.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
 	}
-}
-
-func oauthURL(apiURL, path string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/") + path
-}
-
-// oauthResource is the API origin expected by the OAuth server; it must not
-// include the /api/v1 suffix accepted by LANGSMITH_ENDPOINT.
-func oauthResource(apiURL string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/")
 }
 
 func openBrowserDefault(rawURL string) error {

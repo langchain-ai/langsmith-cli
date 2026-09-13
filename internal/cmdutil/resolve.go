@@ -91,7 +91,7 @@ func GetClient(cmd *cobra.Command) (*client.Client, error) {
 		return nil, err
 	}
 	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
-		return nil, fmt.Errorf("not authenticated; run 'langsmith login', set LANGSMITH_API_KEY, or pass --api-key")
+		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts), nil
 }
@@ -188,9 +188,9 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			token, err := refreshProfileToken(ctx, opts.APIURL, profile.OAuth.RefreshToken)
+			token, err := refreshProfileToken(ctx, opts.APIURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
 			if err != nil {
-				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith login --profile %s' to reauthenticate", profileName, err, profileName)
+				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}
 			applyTokenResponse(&profile, token, time.Now())
 			cfg.Profiles[profileName] = profile
@@ -214,14 +214,22 @@ func ResolveClientOptions(cmd *cobra.Command, refreshOAuth bool) (client.Options
 	return opts, nil
 }
 
-func refreshProfileToken(ctx context.Context, apiURL, refreshToken string) (*oauthTokenResponse, error) {
+func refreshProfileToken(ctx context.Context, apiURL, issuer, refreshToken string) (*oauthTokenResponse, error) {
+	oauthURL := apiURL
+	if issuer != "" {
+		oauthURL = issuer
+	}
+	meta, err := client.ResolveOAuth(ctx, oauthURL)
+	if err != nil {
+		return nil, err
+	}
 	values := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {oauthClientID},
-		"resource":      {oauthResource(apiURL)},
+		"resource":      {meta.Resource},
 		"refresh_token": {refreshToken},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauthURL(apiURL, "/oauth/token"), strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, meta.TokenEndpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -269,14 +277,4 @@ func decodeOAuthError(body []byte, statusCode int) *oauthErrorResponse {
 		}
 	}
 	return &oauthErr
-}
-
-func oauthURL(apiURL, path string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/") + path
-}
-
-// oauthResource is the API origin expected by the OAuth server; it must not
-// include the /api/v1 suffix accepted by LANGSMITH_ENDPOINT.
-func oauthResource(apiURL string) string {
-	return strings.TrimRight(client.NormalizeURL(apiURL), "/")
 }

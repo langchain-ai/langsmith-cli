@@ -315,3 +315,131 @@ func TestAppsPush_NoBuildSkipsAutomaticBuild(t *testing.T) {
 		t.Error("--no-build must not run the package.json \"build\" script")
 	}
 }
+
+func TestAppsPush_UploadsSourceArchiveOnCreate(t *testing.T) {
+	var postBody map[string]any
+
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/platform/custom-apps":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &postBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{ID: "app_new", Name: "my-app", Entrypoint: "dist/bundle.js"})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	seedFile(t, dir, "src/App.tsx", "export default function App() {}")
+	seedFile(t, dir, "node_modules/react/index.js", "dep")
+	seedFile(t, dir, ".env", "LANGSMITH_API_KEY=lsv2_secret")
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"push", "--name", "my-app"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	encoded, ok := postBody["source_archive"].(string)
+	if !ok || encoded == "" {
+		t.Fatalf("expected source_archive in the create payload, got %v", keysOfAny(postBody))
+	}
+	entries := untarBase64(t, encoded)
+	if _, ok := entries["src/App.tsx"]; !ok {
+		t.Errorf("expected source files in the archive, got %v", keysOf(entries))
+	}
+	for _, unwanted := range []string{"node_modules/react/index.js", ".env", "dist/bundle.js"} {
+		if _, ok := entries[unwanted]; ok {
+			t.Errorf("%q must not be uploaded in the source archive", unwanted)
+		}
+	}
+	// The runnable-files upload is unchanged and still carries the bundle.
+	files, ok := postBody["files"].(map[string]any)
+	if !ok || files["dist/bundle.js"] == nil {
+		t.Errorf("expected the files map to still carry dist/bundle.js, got %v", postBody["files"])
+	}
+}
+
+func TestAppsPush_UploadsSourceArchiveOnUpdate(t *testing.T) {
+	var patchBody map[string]any
+
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PATCH" && r.URL.Path == "/v1/platform/custom-apps/app_existing":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &patchBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(customApp{ID: "app_existing", Name: "my-app", Entrypoint: "dist/bundle.js"})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	seedFile(t, dir, "src/App.tsx", "export default function App() {}")
+	if err := writeAppLink(dir, appLink{AppID: "app_existing", Name: "my-app"}); err != nil {
+		t.Fatalf("seed link: %v", err)
+	}
+	t.Chdir(dir)
+
+	captureStdout(t, func() {
+		cmd := newAppsCmd()
+		cmd.SetArgs([]string{"push"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	encoded, ok := patchBody["source_archive"].(string)
+	if !ok || encoded == "" {
+		t.Fatalf("expected source_archive in the update payload, got %v", keysOfAny(patchBody))
+	}
+	if _, ok := untarBase64(t, encoded)["src/App.tsx"]; !ok {
+		t.Error("expected the update archive to carry the source")
+	}
+	// --name was not passed, so it must stay absent rather than blank.
+	if _, present := patchBody["name"]; present {
+		t.Errorf("expected no name in the update payload, got %v", patchBody["name"])
+	}
+}
+
+func TestAppsPush_SurfacesBackendSourceArchiveRejection(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": "source archive exceeds the maximum size"})
+	})
+	defer setupTestEnv(t, srv.URL)()
+
+	dir := t.TempDir()
+	seedAppDir(t, dir)
+	seedFile(t, dir, "src/App.tsx", "app")
+	t.Chdir(dir)
+
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"push", "--name", "my-app"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected the backend 400 to surface as an error")
+	}
+	if !strings.Contains(err.Error(), "source archive") {
+		t.Errorf("expected a source-archive-specific message, got: %v", err)
+	}
+}
+
+func keysOfAny(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

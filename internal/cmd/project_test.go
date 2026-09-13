@@ -15,6 +15,9 @@ func TestProjectCmd_Subcommands(t *testing.T) {
 	if !names["list"] {
 		t.Error("project missing subcommand 'list'")
 	}
+	if !names["delete"] {
+		t.Error("project missing subcommand 'delete'")
+	}
 }
 
 func TestProjectCmd_UseField(t *testing.T) {

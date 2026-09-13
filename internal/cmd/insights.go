@@ -39,6 +39,7 @@ Examples:
 func newInsightsListCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		limit      int
 		outputFile string
 	)
@@ -58,12 +59,7 @@ for full details including the executive summary and category breakdown.`,
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "insights list")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -100,12 +96,14 @@ for full details including the executive summary and category breakdown.`,
 				for _, job := range jobs {
 					data = append(data, insightJobToMap(job))
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of reports to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
@@ -115,6 +113,7 @@ for full details including the executive summary and category breakdown.`,
 func newInsightsGetCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		outputFile string
 	)
 
@@ -134,12 +133,7 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "insights get")
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -155,12 +149,14 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 				printInsightPretty(detail)
 			} else {
 				data := buildInsightDetailJSON(detail)
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd

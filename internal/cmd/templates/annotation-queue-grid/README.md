@@ -4,10 +4,10 @@
 
 A LangSmith custom app, scaffolded by `langsmith apps init` — a real,
 working annotation-queue review UI rendered as a **spreadsheet**: one row per
-queue run, one column per rubric key, cells edited inline and saved as you go,
-`Mark Completed` to complete a row. Meant to vibe-code from here, not a toy example.
-**Read `AGENTS.md` first** — it documents the LangSmith API surface this app
-can call.
+queue item (RUN or THREAD), one column per rubric key, cells edited inline
+and saved as you go, `Mark Completed` to complete a row. Meant to vibe-code
+from here, not a toy example. **Read `AGENTS.md` first** — it documents the
+LangSmith API surface this app can call.
 
 ## What this is
 
@@ -29,9 +29,9 @@ there's no way to `<link>` a second file into this sandbox.
 Apps are uniform — the host hands you no bound context (`data` is always
 `{}`). This app picks its own annotation queue: the top bar lists your
 workspace's queues (`GET /api/v1/annotation-queues`) and, once one is
-selected, everything else (which runs are in the queue, the rubric, existing
-feedback, marking a run complete) is fetched via `window.langsmith.call`. See
-`src/api.ts` and `src/components/QueueBar.tsx`.
+selected, everything else (queue items via `/items`, RUN/THREAD hydrate on
+expand, existing feedback, marking an item complete) is fetched via
+`window.langsmith.call`. See `src/api.ts` and `src/components/QueueBar.tsx`.
 
 ## Develop
 
@@ -68,7 +68,7 @@ export default {
 `window.langsmith`, injected by the host page, gives you:
 
 - `window.langsmith.call(operation, args)` — `operation` is a
-  `"<METHOD> <path>"` string (e.g. `"GET /api/v1/annotation-queues/{id}/runs"`),
+  `"<METHOD> <path>"` string (e.g. `"GET /api/v1/platform/annotation-queues/{id}/items"`),
   forwarded as-is to the real LangSmith API. Not a curated allowlist — see
   `AGENTS.md` for the available surface. Returns a Promise.
 - `window.langsmith.setData(patch)` — push a data mutation out for the host

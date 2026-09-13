@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
-	"github.com/langchain-ai/langsmith-go"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -39,16 +40,29 @@ func waitForBoxReady(ctx context.Context, c *client.Client, name string) (*langs
 }
 
 type sandboxCreateInput struct {
+	Snapshot    string
 	SnapshotID  string
 	VCPUs       int
 	Memory      string
 	RootFS      string
 	ProxyConfig string
+
+	Console         bool
+	Shell           string
+	ForwardSSHAgent bool
+	Env             []string
 }
 
 type sandboxServiceURLInput struct {
 	Port             int
 	ExpiresInSeconds int64
+}
+
+type sandboxDownloadURLInput struct {
+	Path               string
+	ExpiresInSeconds   int64
+	ContentType        string
+	ContentDisposition string
 }
 
 var sandboxBoxDetailRender = structured.PropertyList{
@@ -83,6 +97,14 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 	}
 	if in.SnapshotID != "" {
 		params.SnapshotID = langsmith.F(in.SnapshotID)
+	}
+	if in.Snapshot != "" {
+		// The server takes snapshot_id (UUID) and snapshot_name (name or name:tag) as distinct fields.
+		if _, err := uuid.Parse(in.Snapshot); err == nil {
+			params.SnapshotID = langsmith.F(in.Snapshot)
+		} else {
+			params.SnapshotName = langsmith.F(in.Snapshot)
+		}
 	}
 	if in.RootFS != "" {
 		rootfsBytes, err := parseByteSize(in.RootFS)
@@ -119,6 +141,7 @@ allows and what headers to inject. Format:
         {"name": "Authorization", "type": "opaque", "value": "Bearer sk-..."},
         {"name": "X-Key", "type": "workspace_secret", "value": "Bearer {OPENAI_API_KEY}"}
       ],
+      "env_vars": {"OPENAI_API_KEY": "proxy-injected"},
       "enabled": true
     }],
     "no_proxy": ["internal.example.com"],
@@ -131,23 +154,35 @@ allows and what headers to inject. Format:
 Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
 
+A rule's "env_vars" are plaintext variables set for every command in the sandbox
+while the rule is enabled, for tools that refuse to run without a credential
+variable even though the proxy injects the real credential on the wire.
+
 Examples:
   langsmith sandbox create
   langsmith sandbox create my-vm
+  langsmith sandbox create my-vm --snapshot <id-or-name>
   langsmith sandbox create my-vm --snapshot-id <id>
-  langsmith sandbox create my-vm --snapshot-id <id> --vcpus 4 --memory 1gb
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
-  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json`,
+  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json
+  langsmith sandbox create my-vm --snapshot-id <id> --console`,
 	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{}
+		cmd.Flags().StringVar(&in.Snapshot, "snapshot", in.Snapshot, "Snapshot ID or name to boot from")
 		cmd.Flags().StringVar(&in.SnapshotID, "snapshot-id", in.SnapshotID, "Snapshot ID to boot from")
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
-		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 4gb, 8gb); must be within 50% of 4gb per vCPU")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
+		cmd.Flags().BoolVar(&in.Console, "console", in.Console, "Open an interactive console once the sandbox is ready")
+		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use for --console (default: sandbox default, usually /bin/bash)")
+		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the --console session")
+		cmd.Flags().StringArrayVar(&in.Env, "env", nil, "Additional environment variable for the --console session (KEY or KEY=VALUE, repeatable)")
+		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
 		return in
 	},
+	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxCreateInput, args []string) (any, error) {
 		name := ""
 		if len(args) > 0 {
@@ -159,6 +194,10 @@ Examples:
 			return nil, err
 		}
 
+		if in.Snapshot != "" && in.SnapshotID != "" {
+			return nil, fmt.Errorf("use either --snapshot or --snapshot-id, not both")
+		}
+
 		params, err := sandboxCreateParams(name, in)
 		if err != nil {
 			return nil, err
@@ -168,9 +207,16 @@ Examples:
 			return nil, fmt.Errorf("creating sandbox: %w", err)
 		}
 
-		return resp, nil
+		if !in.Console {
+			return nil, structured.Render(cmd, resp, sandboxBoxDetailRender)
+		}
+
+		if _, err := waitForBoxReady(ctx, c, resp.Name); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "Sandbox %s ready, opening console...\n", resp.Name)
+		return nil, runConsole(resp.Name, in.Shell, in.ForwardSSHAgent, in.Env)
 	},
-	Render: sandboxBoxDetailRender,
 }
 
 var sandboxServiceURLRender = structured.PropertyList{
@@ -232,6 +278,82 @@ Examples:
 	Render: sandboxServiceURLRender,
 }
 
+var sandboxDownloadURLRender = structured.PropertyList{
+	Properties: []structured.Property{
+		{Label: "Download URL", Template: "{{.DownloadURL}}"},
+		{Label: "Expires", Template: "{{if .ExpiresAt}}{{formatTime .ExpiresAt}}{{else}}never{{end}}"},
+	},
+	Caption: `Example:
+  curl -LO "{{.DownloadURL}}"`,
+}
+
+var sandboxDownloadURLCommand = structured.Command[*sandboxDownloadURLInput]{
+	Use:   "generate-download-url <name> --path <path>",
+	Short: "Generate a link that downloads a sandbox file without credentials",
+	Long: `Generate a link that downloads a single file from a sandbox.
+
+The link carries its own token, so anyone with the URL can fetch that one file
+with no LangSmith credential. It is pinned to the sandbox and the exact path,
+and cannot be repointed at another file. Fetching wakes a stopped sandbox.
+
+Do not modify the file after minting a link for it. The link is pinned to a
+path, not to a snapshot of the contents, so a later write to that path may or
+may not be reflected in what the link serves. Write a new file and mint a new
+link when the contents change.
+
+Without --expires-in-seconds the link never expires.
+
+Examples:
+  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf
+  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf --expires-in-seconds 3600
+  langsmith sandbox generate-download-url my-vm --path /tmp/page.html --content-disposition inline`,
+	Args: cobra.ExactArgs(1),
+	Input: func(cmd *cobra.Command) *sandboxDownloadURLInput {
+		in := &sandboxDownloadURLInput{}
+		cmd.Flags().StringVar(&in.Path, "path", in.Path, "File path inside the sandbox")
+		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "Link TTL in seconds (omit for a link that never expires)")
+		cmd.Flags().StringVar(&in.ContentType, "content-type", in.ContentType, "Content-Type to serve the file as")
+		cmd.Flags().StringVar(&in.ContentDisposition, "content-disposition", in.ContentDisposition, "Content-Disposition to serve the file with (attachment or inline)")
+		_ = cmd.MarkFlagRequired("path")
+		return in
+	},
+	Action: func(ctx context.Context, cmd *cobra.Command, in *sandboxDownloadURLInput, args []string) (any, error) {
+		if cmd.Flags().Changed("expires-in-seconds") && in.ExpiresInSeconds < 1 {
+			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
+		}
+		switch in.ContentDisposition {
+		case "", "attachment", "inline":
+		default:
+			return nil, fmt.Errorf("--content-disposition must be attachment or inline (got %q)", in.ContentDisposition)
+		}
+
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+
+		params := langsmith.SandboxBoxGenerateDownloadURLParams{
+			Path: langsmith.F(in.Path),
+		}
+		if cmd.Flags().Changed("expires-in-seconds") {
+			params.ExpiresInSeconds = langsmith.F(in.ExpiresInSeconds)
+		}
+		if in.ContentType != "" {
+			params.ContentType = langsmith.F(in.ContentType)
+		}
+		if in.ContentDisposition != "" {
+			params.ContentDisposition = langsmith.F(in.ContentDisposition)
+		}
+
+		resp, err := c.SDK.Sandboxes.Boxes.GenerateDownloadURL(ctx, args[0], params)
+		if err != nil {
+			return nil, fmt.Errorf("generating download URL: %w", err)
+		}
+		return resp, nil
+	},
+	Render: sandboxDownloadURLRender,
+}
+
 var sandboxListCommand = structured.Command[struct{}]{
 	Use:   "list",
 	Short: "List all sandboxes",
@@ -241,11 +363,15 @@ var sandboxListCommand = structured.Command[struct{}]{
 			return nil, err
 		}
 
-		resp, err := c.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{})
-		if err != nil {
+		var sandboxes []langsmith.SandboxResponse
+		pager := c.SDK.Sandboxes.Boxes.ListAutoPaging(ctx, langsmith.SandboxBoxListParams{})
+		for pager.Next() {
+			sandboxes = append(sandboxes, pager.Current())
+		}
+		if err := pager.Err(); err != nil {
 			return nil, fmt.Errorf("listing sandboxes: %w", err)
 		}
-		return resp.Sandboxes, nil
+		return sandboxes, nil
 	},
 	Render: structured.Table{
 		Title: "Sandboxes",
@@ -303,7 +429,7 @@ for the proxy config JSON format.`,
 	Input: func(cmd *cobra.Command) *sandboxUpdateInput {
 		in := &sandboxUpdateInput{}
 		cmd.Flags().IntVar(&in.VCPUs, "vcpus", in.VCPUs, "Number of vCPU cores")
-		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 512mb, 1gb)")
+		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 4gb, 8gb); must be within 50% of 4gb per vCPU")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
 		return in

@@ -85,11 +85,12 @@ func newHubListCmd() *cobra.Command {
 				output.OutputTable(columns, rows, "Hub repos")
 				return nil
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"total": int(resp.Total),
 				"repos": repos,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

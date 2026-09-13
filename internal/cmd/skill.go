@@ -88,7 +88,7 @@ Use --copy to copy instead of symlink.`,
 				canonicalDir = filepath.Join(".agents", "skills", skillName)
 			}
 
-			apiPath := fmt.Sprintf("/v1/platform/hub/repos/-/%s/directories", skillName)
+			apiPath := fmt.Sprintf("/api/v1/platform/hub/repos/-/%s/directories", skillName)
 			var resp directoryResponse
 			if err := c.RawGet(context.Background(), apiPath, &resp); err != nil {
 				return fmt.Errorf("fetching skill %q: %w", skillName, err)

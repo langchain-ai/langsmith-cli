@@ -125,6 +125,8 @@ func TestGetClient_MissingKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing API key")
 	}
+	// "langsmith login" is not a command; the OAuth flow lives under "auth".
+	require.Contains(t, err.Error(), "langsmith auth login")
 }
 
 func TestGetClient_ProfileBearer(t *testing.T) {
@@ -473,6 +475,65 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	}
 }
 
+func TestResolveClientOptionsRefreshesThroughPinnedIssuer(t *testing.T) {
+	dataPlane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("refresh unexpectedly contacted data plane at %s", r.URL.Path)
+	}))
+	defer dataPlane.Close()
+
+	var authServer *httptest.Server
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                        authServer.URL,
+				"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+				"token_endpoint":                authServer.URL + "/oauth/token",
+			})
+		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+				t.Fatalf("unexpected refresh token %q", got)
+			}
+			assertOAuthResource(t, r)
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{AccessToken: "new-access-token"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer authServer.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "`+dataPlane.URL+`",
+      "oauth": {
+        "issuer": "`+authServer.URL+`",
+        "refresh_token": "old-refresh-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, err := ResolveClientOptions(newTestCmd(), true)
+	if err != nil {
+		t.Fatalf("ResolveClientOptions returned error: %v", err)
+	}
+	if opts.OAuthAccessToken != "new-access-token" {
+		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	}
+}
+
 func assertOAuthResource(t *testing.T, r *http.Request) {
 	t.Helper()
 	expected := "http://" + r.Host
@@ -532,4 +593,86 @@ func TestResolveClientOptions_ProfileEnvTrimsWhitespace(t *testing.T) {
 	if opts.APIKey != "profile-api-key" {
 		t.Fatalf("expected profile API key, got %q", opts.APIKey)
 	}
+}
+
+// writeEndpointConfig writes a config whose "dev" profile carries an api_url and
+// whose "bare" profile omits one.
+func writeEndpointConfig(t *testing.T) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "")
+	t.Setenv("LANGSMITH_TENANT_ID", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	require.NoError(t, os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "api_url": "https://dev.api.smith.langchain.com",
+      "api_key": "dev-key"
+    },
+    "bare": {
+      "api_key": "bare-key"
+    }
+  }
+}
+`), 0600))
+}
+
+func TestResolveClientOptions_ProfileFlagIgnoresEnvEndpoint(t *testing.T) {
+	writeEndpointConfig(t)
+	t.Setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	require.NoError(t, cmd.PersistentFlags().Set("profile", "dev"))
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "https://dev.api.smith.langchain.com", opts.APIURL)
+	require.Contains(t, stderr.String(), `warning: ignoring LANGSMITH_ENDPOINT because profile "dev" was selected with --profile`)
+}
+
+func TestResolveClientOptions_ProfileFlagWithoutAPIURLHonorsEnvEndpoint(t *testing.T) {
+	writeEndpointConfig(t)
+	t.Setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	require.NoError(t, cmd.PersistentFlags().Set("profile", "bare"))
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
+	require.Empty(t, stderr.String())
+}
+
+func TestResolveClientOptions_ImplicitProfileHonorsEnvEndpoint(t *testing.T) {
+	writeEndpointConfig(t)
+	t.Setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+	cmd := newTestCmd()
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
+	require.Empty(t, stderr.String())
+}
+
+func TestResolveClientOptions_APIURLFlagBeatsProfile(t *testing.T) {
+	writeEndpointConfig(t)
+	t.Setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+	cmd := newTestCmd()
+	require.NoError(t, cmd.PersistentFlags().Set("profile", "dev"))
+	require.NoError(t, cmd.PersistentFlags().Set("api-url", "https://flag.example.com"))
+
+	opts, err := ResolveClientOptions(cmd, false)
+	require.NoError(t, err)
+	require.Equal(t, "https://flag.example.com", opts.APIURL)
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -61,13 +62,7 @@ func newExampleListCmd() *cobra.Command {
 			if limit > 0 && int64(limit) < pageSize {
 				pageSize = int64(limit)
 			}
-			params := langsmith.ExampleListParams{
-				Dataset: langsmith.F(ds.ID),
-				Limit:   langsmith.F(pageSize),
-			}
-			if offset > 0 {
-				params.Offset = langsmith.F(int64(offset))
-			}
+			params := exampleListParams(ds.ID, pageSize, offset, split)
 			var examples []langsmith.Example
 			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
 			for pager.Next() {
@@ -81,31 +76,12 @@ func newExampleListCmd() *cobra.Command {
 			}
 			fmt_ := GetFormat()
 
-			// Filter by split if specified
-			if split != "" {
-				var filtered []langsmith.Example
-				for _, ex := range examples {
-					// The split field may be in metadata
-					if ex.Metadata != nil {
-						if s, ok := ex.Metadata["split"].(string); ok && s == split {
-							filtered = append(filtered, ex)
-						}
-					}
-				}
-				examples = filtered
-			}
-
 			if fmt_ == "pretty" {
 				columns := []string{"ID", "Split", "Created", "Inputs Preview"}
 				var rows [][]string
 				for _, ex := range examples {
 					id := ex.ID
-					splitVal := "N/A"
-					if ex.Metadata != nil {
-						if s, ok := ex.Metadata["split"].(string); ok {
-							splitVal = s
-						}
-					}
+					splitVal := exampleSplitDisplay(ex.Metadata)
 					created := "N/A"
 					if !ex.CreatedAt.IsZero() {
 						created = ex.CreatedAt.Format("2006-01-02")
@@ -133,7 +109,9 @@ func newExampleListCmd() *cobra.Command {
 					}
 					data = append(data, entry)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
@@ -148,6 +126,33 @@ func newExampleListCmd() *cobra.Command {
 	return cmd
 }
 
+func exampleSplitDisplay(metadata map[string]any) string {
+	if metadata == nil {
+		return "N/A"
+	}
+	switch splits := metadata["dataset_split"].(type) {
+	case []any:
+		values := make([]string, 0, len(splits))
+		for _, split := range splits {
+			if value, ok := split.(string); ok {
+				values = append(values, value)
+			}
+		}
+		if len(values) > 0 {
+			return strings.Join(values, ", ")
+		}
+	case []string:
+		if len(splits) > 0 {
+			return strings.Join(splits, ", ")
+		}
+	case string:
+		if splits != "" {
+			return splits
+		}
+	}
+	return "N/A"
+}
+
 func newExampleCreateCmd() *cobra.Command {
 	var (
 		datasetName string
@@ -160,61 +165,42 @@ func newExampleCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new example in a dataset",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			c := MustGetClient()
 			ctx := context.Background()
 
 			// Parse JSON inputs
 			var parsedInputs map[string]any
 			if err := json.Unmarshal([]byte(inputs), &parsedInputs); err != nil {
-				output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --inputs: %v", err)}, "")
-				return
+				return fmt.Errorf("Invalid JSON for --inputs: %v", err)
 			}
 
 			var parsedOutputs map[string]any
 			if outputs != "" {
 				if err := json.Unmarshal([]byte(outputs), &parsedOutputs); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --outputs: %v", err)}, "")
-					return
+					return fmt.Errorf("Invalid JSON for --outputs: %v", err)
 				}
 			}
 
 			var parsedMetadata map[string]any
 			if metadata != "" {
 				if err := json.Unmarshal([]byte(metadata), &parsedMetadata); err != nil {
-					output.OutputJSON(map[string]any{"error": fmt.Sprintf("Invalid JSON for --metadata: %v", err)}, "")
-					return
+					return fmt.Errorf("Invalid JSON for --metadata: %v", err)
 				}
 			}
 
-			// Resolve dataset
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
 
-			params := langsmith.ExampleNewParams{
-				DatasetID: langsmith.F(ds.ID),
-				Inputs:    langsmith.F(parsedInputs),
-			}
-			if parsedOutputs != nil {
-				params.Outputs = langsmith.F(parsedOutputs)
-			}
-			if parsedMetadata != nil {
-				if split != "" {
-					parsedMetadata["split"] = split
-				}
-				params.Metadata = langsmith.F(parsedMetadata)
-			} else if split != "" {
-				params.Metadata = langsmith.F(map[string]any{"split": split})
-			}
+			params := exampleCreateParams(ds.ID, parsedInputs, parsedOutputs, parsedMetadata, split)
 
 			ex, err := c.SDK.Examples.New(ctx, params)
 			if err != nil {
 				ExitErrorf("creating example: %v", err)
 			}
-
-			output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status":     "created",
 				"id":         ex.ID,
 				"dataset_id": ex.DatasetID,
@@ -233,6 +219,31 @@ func newExampleCreateCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("inputs")
 
 	return cmd
+}
+
+func exampleListParams(datasetID string, pageSize int64, offset int, split string) langsmith.ExampleListParams {
+	params := langsmith.ExampleListParams{Dataset: langsmith.F(datasetID), Limit: langsmith.F(pageSize)}
+	if offset > 0 {
+		params.Offset = langsmith.F(int64(offset))
+	}
+	if split != "" {
+		params.Splits = langsmith.F([]string{split})
+	}
+	return params
+}
+
+func exampleCreateParams(datasetID string, inputs, outputs, metadata map[string]any, split string) langsmith.ExampleNewParams {
+	params := langsmith.ExampleNewParams{DatasetID: langsmith.F(datasetID), Inputs: langsmith.F(inputs)}
+	if outputs != nil {
+		params.Outputs = langsmith.F(outputs)
+	}
+	if metadata != nil {
+		params.Metadata = langsmith.F(metadata)
+	}
+	if split != "" {
+		params.Split = langsmith.F[langsmith.ExampleNewParamsSplitUnion](shared.UnionString(split))
+	}
+	return params
 }
 
 func newExampleDeleteCmd() *cobra.Command {
@@ -261,11 +272,12 @@ func newExampleDeleteCmd() *cobra.Command {
 			if err != nil {
 				ExitErrorf("deleting example: %v", err)
 			}
-
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"id":     exampleID,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 

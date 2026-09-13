@@ -10,6 +10,27 @@ import (
 
 // ==================== Command structure ====================
 
+// trace messages rejects invocations without --since/--last-n-minutes, so every
+// example in its help text must carry one. Three examples did not, which is
+// where callers copying the help got commands that always exit 1.
+func TestTraceMessagesCmd_HelpExamplesHaveStartTime(t *testing.T) {
+	cmd := newTraceMessagesCmd()
+	var examples int
+	for _, line := range strings.Split(cmd.Long, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "langsmith trace messages") {
+			continue
+		}
+		examples++
+		if !strings.Contains(line, "--since") && !strings.Contains(line, "--last-n-minutes") {
+			t.Errorf("help example lacks a start time (always exits 1): %q", line)
+		}
+	}
+	if examples == 0 {
+		t.Fatal("no help examples found; the assertion above would vacuously pass")
+	}
+}
+
 func TestTraceMessagesCmd_UseField(t *testing.T) {
 	cmd := newTraceMessagesCmd()
 	if cmd.Use != "messages" {
@@ -73,7 +94,7 @@ func TestTraceMessages_Success(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-123", "name": "my-project"},
 			})
-		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/traces/messages" && r.Method == "POST":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 
@@ -100,10 +121,10 @@ func TestTraceMessages_Success(t *testing.T) {
 					},
 				},
 			})
-		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
-			// attachRootIO always fetches root run previews
+		case r.URL.Path == "/api/v2/runs/query" && r.Method == "POST":
+			// attachRootIO always fetches root run previews (v2 backend here)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			http.Error(w, "not found", 404)
@@ -145,7 +166,7 @@ func TestTraceMessages_PassesFilterAndRunType(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-456", "name": "test-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -193,7 +214,7 @@ func TestTraceMessages_PrettyFormat(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-pretty", "name": "my-project"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{
@@ -293,7 +314,7 @@ func TestTraceMessages_Pagination(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-pag", "name": "pag-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			pageCount++
@@ -378,7 +399,7 @@ func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-lim", "name": "lim-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			pageCount++
@@ -436,7 +457,7 @@ func TestTraceMessages_CursorFlag_SinglePage(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-cur", "name": "cur-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			callCount++
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -494,7 +515,7 @@ func TestTraceMessages_CursorFlag_EmptyCursorIsFirstPage(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-first", "name": "first-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			callCount++
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
@@ -544,7 +565,7 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-bef", "name": "bef-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -579,7 +600,7 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-fb", "name": "fb-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/traces/messages" && r.Method == "POST":
 			// API returns feedback_stats directly on each trace
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -599,9 +620,9 @@ func TestTraceMessages_FeedbackStats(t *testing.T) {
 				},
 				"next_cursor": "",
 			})
-		case r.URL.Path == "/api/v1/runs/query" && r.Method == "POST":
+		case r.URL.Path == "/api/v2/runs/query" && r.Method == "POST":
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"runs": []any{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			http.Error(w, "not found", 404)
@@ -652,7 +673,7 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "sess-789", "name": "empty-proj"},
 			})
-		case r.URL.Path == "/v2/traces/messages":
+		case r.URL.Path == "/api/v2/traces/messages":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"items": []any{},

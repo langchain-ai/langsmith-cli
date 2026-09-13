@@ -2,13 +2,21 @@
 // global.d.ts for the bridge's type, and AGENTS.md for the operation format
 // and available endpoints. No fetch()/XMLHttpRequest here: the sandbox this
 // app runs in has no network access of its own.
+//
+// Queue membership uses GET .../items (metadata only). Hydrate RUN via
+// GET /v2/runs/{id} and THREAD via POST /v1/trajectory (format: messages).
+// Do not use GET /v2/threads/{id}/messages — it is SSE-only and the JSON
+// bridge cannot stream it.
 import type {
   AnnotationQueue,
-  AnnotationQueueRun,
   FeedbackConfigSchema,
   FeedbackItem,
   FeedbackSubmission,
+  QueueItem,
+  StandardMessage,
 } from './types';
+
+const TRAJECTORY_MAX_PAGES = 10;
 
 export async function fetchQueues(
   search = '',
@@ -28,36 +36,114 @@ export async function fetchQueue(queueId: string): Promise<AnnotationQueue> {
   ) as Promise<AnnotationQueue>;
 }
 
-export type AnnotationQueueRunSectionStatus =
+/** UI section keys — "completed" maps to API status "archived". */
+export type QueueItemSectionStatus =
   | 'needs_my_review'
   | 'needs_others_review'
   | 'completed';
 
-export async function fetchQueueRuns(
-  queueId: string,
-  status: AnnotationQueueRunSectionStatus | null = null,
-  limit = 50,
-  offset = 0
-): Promise<AnnotationQueueRun[]> {
-  const params: Record<string, string> = { limit: String(limit), offset: String(offset) };
-  if (status) params.status = status;
-  return window.langsmith.call(`GET /api/v1/annotation-queues/${queueId}/runs`, {
-    params,
-  }) as Promise<AnnotationQueueRun[]>;
+export type QueueItemApiStatus =
+  | 'needs_my_review'
+  | 'needs_others_review'
+  | 'archived';
+
+export function toItemApiStatus(status: QueueItemSectionStatus): QueueItemApiStatus {
+  return status === 'completed' ? 'archived' : status;
 }
 
-// The /runs endpoint's total-count header isn't reachable through the
-// window.langsmith.call bridge (it only returns the parsed body), so we ask
-// this endpoint separately to learn how many runs exist for a status.
-export async function fetchQueueRunsSize(
+export interface ListQueueItemsResponse {
+  items: QueueItem[];
+  next_cursor: string | null;
+  previous_cursor?: string | null;
+}
+
+export async function fetchQueueItems(
   queueId: string,
-  status: AnnotationQueueRunSectionStatus
+  status: QueueItemSectionStatus,
+  pageSize = 50,
+  cursor?: string | null
+): Promise<ListQueueItemsResponse> {
+  const params: Record<string, string> = {
+    status: toItemApiStatus(status),
+    page_size: String(pageSize),
+  };
+  if (cursor) params.cursor = cursor;
+  return window.langsmith.call(
+    `GET /api/v1/platform/annotation-queues/${queueId}/items`,
+    {
+      params,
+    }
+  ) as Promise<ListQueueItemsResponse>;
+}
+
+export async function fetchQueueItemsCount(
+  queueId: string,
+  status: QueueItemSectionStatus
 ): Promise<number> {
   const result = (await window.langsmith.call(
-    `GET /api/v1/annotation-queues/${queueId}/size`,
-    { params: { status } }
-  )) as { size: number };
-  return result.size;
+    `GET /api/v1/platform/annotation-queues/${queueId}/items/count`,
+    { params: { status: toItemApiStatus(status) } }
+  )) as { count: number };
+  return result.count;
+}
+
+export async function fetchRun(
+  runId: string,
+  projectId: string,
+  startTime?: string
+): Promise<{
+  id: string;
+  name?: string | null;
+  inputs?: Record<string, unknown> | null;
+  outputs?: Record<string, unknown> | null;
+  error?: string | null;
+  trace_id?: string;
+  project_id?: string;
+  start_time?: string;
+}> {
+  const params: Record<string, string | string[]> = {
+    project_id: projectId,
+    // PROJECT_ID is the HTTP select token (wire key project_id); SESSION_ID is rejected.
+    selects: ['ID', 'NAME', 'INPUTS', 'OUTPUTS', 'ERROR', 'TRACE_ID', 'PROJECT_ID', 'START_TIME'],
+  };
+  if (startTime) params.start_time = startTime;
+  return window.langsmith.call(`GET /v2/runs/${runId}`, { params }) as Promise<{
+    id: string;
+    name?: string | null;
+    inputs?: Record<string, unknown> | null;
+    outputs?: Record<string, unknown> | null;
+    error?: string | null;
+    trace_id?: string;
+    project_id?: string;
+    start_time?: string;
+  }>;
+}
+
+/** Chronological human/AI messages for a thread (JSON; not SSE /messages). */
+export async function fetchThreadMessages(
+  threadId: string,
+  projectId: string
+): Promise<StandardMessage[]> {
+  const messages: StandardMessage[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < TRAJECTORY_MAX_PAGES; page++) {
+    const body: Record<string, string> = {
+      project_id: projectId,
+      thread_id: threadId,
+      format: 'messages',
+    };
+    if (cursor) body.cursor = cursor;
+    const resp = (await window.langsmith.call('POST /v1/trajectory', {
+      body,
+    })) as {
+      messages?: StandardMessage[];
+      next_cursor?: string | null;
+    };
+    messages.push(...(resp.messages ?? []));
+    if (!resp.next_cursor) break;
+    cursor = resp.next_cursor;
+  }
+  return messages;
 }
 
 export async function fetchFeedbackConfigs(keys: string[]): Promise<FeedbackConfigSchema[]> {
@@ -80,9 +166,20 @@ export async function submitFeedback(feedback: FeedbackSubmission): Promise<Feed
   }) as Promise<FeedbackItem>;
 }
 
-export async function fetchFeedbacks(runId: string): Promise<FeedbackItem[]> {
+export async function fetchFeedbacksForRun(runId: string): Promise<FeedbackItem[]> {
   return window.langsmith.call('GET /api/v1/feedback', {
     params: { run: runId },
+  }) as Promise<FeedbackItem[]>;
+}
+
+export async function fetchFeedbacksForThread(
+  feedbackThreadId: string,
+  sessionId?: string
+): Promise<FeedbackItem[]> {
+  const params: Record<string, string> = { feedback_thread_id: feedbackThreadId };
+  if (sessionId) params.session = sessionId;
+  return window.langsmith.call('GET /api/v1/feedback', {
+    params,
   }) as Promise<FeedbackItem[]>;
 }
 
@@ -99,8 +196,11 @@ export async function deleteFeedback(feedbackId: string): Promise<void> {
   await window.langsmith.call(`DELETE /api/v1/feedback/${feedbackId}`);
 }
 
-export async function markRunComplete(queueRunId: string): Promise<void> {
-  await window.langsmith.call(`POST /api/v1/annotation-queues/status/${queueRunId}`, {
-    body: { status: 'completed' },
-  });
+export async function markItemComplete(itemId: string): Promise<void> {
+  await window.langsmith.call(
+    `POST /api/v1/platform/annotation-queues/items/${itemId}/status`,
+    {
+      body: { status: 'completed' },
+    }
+  );
 }

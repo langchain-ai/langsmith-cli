@@ -25,7 +25,9 @@ func newHubGetCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("getting %s/%s: %w", owner, name, err)
 			}
-			output.OutputJSON(sdkRepoToHubRepo(resp.Repo), "")
+			if err := output.OutputJSON(sdkRepoToHubRepo(resp.Repo), ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

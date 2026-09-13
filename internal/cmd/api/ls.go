@@ -7,7 +7,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/olekukonko/tablewriter"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -66,16 +66,15 @@ Examples:
 			w := cmd.OutOrStdout()
 
 			if format == "pretty" {
-				table := tablewriter.NewWriter(w)
-				table.SetHeader([]string{"Method", "Path", "Tag", "Summary"})
-				table.SetBorder(false)
-				table.SetColumnSeparator("  ")
-				table.SetHeaderLine(true)
-				table.SetAutoWrapText(false)
+				table := output.NewTable(w, []string{"Method", "Path", "Tag", "Summary"})
 				for _, e := range endpoints {
-					table.Append([]string{e.Method, e.Path, e.Tag, e.Summary})
+					if err := table.Append([]string{e.Method, e.Path, e.Tag, e.Summary}); err != nil {
+						return fmt.Errorf("adding table row: %w", err)
+					}
 				}
-				table.Render()
+				if err := table.Render(); err != nil {
+					return fmt.Errorf("rendering table: %w", err)
+				}
 				fmt.Fprintf(w, "(%d endpoints)\n", len(endpoints))
 			} else {
 				data, _ := json.MarshalIndent(endpoints, "", "  ")

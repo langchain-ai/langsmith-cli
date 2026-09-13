@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -22,11 +24,12 @@ type Profile struct {
 	OAuth       OAuth  `json:"oauth,omitempty"`
 }
 
-// OAuth stores OAuth tokens written by `langsmith login`.
+// OAuth stores OAuth tokens written by `langsmith auth login`.
 type OAuth struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	ExpiresAt    string `json:"expires_at,omitempty"`
+	Issuer       string `json:"issuer,omitempty"`
 }
 
 // Config is the on-disk LangSmith CLI config.
@@ -76,7 +79,29 @@ func LoadFrom(path string) (*Config, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]Profile)
 	}
+	warnIfGroupOrWorldReadable(path)
 	return cfg, nil
+}
+
+// warnedConfigs keeps the warning to once per path; a command loads the config several times.
+var warnedConfigs sync.Map
+
+func warnIfGroupOrWorldReadable(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	perm := info.Mode().Perm()
+	if perm&0o077 == 0 {
+		return
+	}
+	if _, seen := warnedConfigs.LoadOrStore(path, struct{}{}); seen {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "warning: %s is accessible to other users (mode %#o); run: chmod 600 %s\n", path, perm, path)
 }
 
 // Save writes the config to the default config path with owner-only permissions.
@@ -104,16 +129,40 @@ func (c *Config) SaveTo(path string) error {
 		return fmt.Errorf("encoding config JSON: %w", err)
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".langsmith-config-*")
 	if err != nil {
-		return fmt.Errorf("opening config for write: %w", err)
+		return fmt.Errorf("creating temporary config: %w", err)
 	}
-	defer f.Close()
+	tmpPath := f.Name()
+	cleanup := func() {
+		_ = os.Remove(tmpPath)
+	}
 	if _, err := f.Write(buf.Bytes()); err != nil {
+		closeErr := f.Close()
+		cleanup()
+		if closeErr != nil {
+			return fmt.Errorf("writing config: %v (closing temporary config: %v)", err, closeErr)
+		}
 		return fmt.Errorf("writing config: %w", err)
 	}
 	if err := f.Chmod(0600); err != nil {
+		_ = f.Close()
+		cleanup()
 		return fmt.Errorf("setting config permissions: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		cleanup()
+		return fmt.Errorf("syncing temporary config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("closing temporary config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return fmt.Errorf("replacing config: %w", err)
 	}
 	return nil
 }

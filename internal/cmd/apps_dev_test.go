@@ -284,13 +284,13 @@ func TestHandleLsDevCall_ForwardsParamsAsQueryString(t *testing.T) {
 	})
 	defer setupTestEnv(t, upstream.URL)()
 
-	reqBody := `{"operation":"GET /api/v1/annotation-queues/q1/runs","args":{"params":{"status":"needs_my_review"}}}`
+	reqBody := `{"operation":"GET /api/v1/annotation-queues/q1/items","args":{"params":{"status":"needs_my_review","page_size":"50"}}}`
 	rec := serveLsDevCall(t, reqBody)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if sawQuery != "status=needs_my_review" {
+	if sawQuery != "page_size=50&status=needs_my_review" {
 		t.Errorf("expected query string forwarded, got %q", sawQuery)
 	}
 }
@@ -362,6 +362,23 @@ func serveLsDevCall(t *testing.T, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func TestProxyErrorSummary(t *testing.T) {
+	cases := []struct {
+		name, body, want string
+	}{
+		{"json message", `{"message":"Rate limit exceeded."}`, "Rate limit exceeded."},
+		{"json detail", `{"detail":"nope"}`, "nope"},
+		{"html page dropped", `<!doctype html><title>429</title>429 Too Many Requests`, ""},
+		{"empty dropped", "  ", ""},
+		{"plain text kept", "boom", "boom"},
+	}
+	for _, tc := range cases {
+		if got := proxyErrorSummary([]byte(tc.body)); got != tc.want {
+			t.Errorf("%s: proxyErrorSummary(%q) = %q, want %q", tc.name, tc.body, got, tc.want)
+		}
+	}
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
@@ -426,7 +443,8 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 	fakeNpmOnPath(t, marker)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	if started := startWatchProcess(ctx, dir); !started {
+	started, done := startWatchProcess(ctx, dir)
+	if !started {
 		t.Fatal("expected startWatchProcess to report started=true")
 	}
 
@@ -443,7 +461,11 @@ func TestStartWatchProcess_SpawnsWatchScriptAndIsKilledOnContextCancel(t *testin
 
 	// ctx cancellation should kill the process, not hang.
 	cancel()
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch process did not exit after context cancellation")
+	}
 }
 
 func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
@@ -452,7 +474,7 @@ func TestStartWatchProcess_NoWatchScriptDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	if started := startWatchProcess(context.Background(), dir); started {
+	if started, _ := startWatchProcess(context.Background(), dir); started {
 		t.Error("expected started=false when package.json has no \"watch\" script")
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -467,7 +489,7 @@ func TestStartWatchProcess_NoPackageJSONDoesNotSpawn(t *testing.T) {
 	marker := filepath.Join(dir, "watch-ran.marker")
 	fakeNpmOnPath(t, marker)
 
-	if started := startWatchProcess(context.Background(), dir); started {
+	if started, _ := startWatchProcess(context.Background(), dir); started {
 		t.Error("expected started=false when there's no package.json")
 	}
 	time.Sleep(100 * time.Millisecond)

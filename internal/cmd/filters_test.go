@@ -3,6 +3,8 @@ package cmd
 import (
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func TestBuildFilterDSL_Empty(t *testing.T) {
@@ -68,11 +70,12 @@ func TestBuildFilterDSL_MultipleTags(t *testing.T) {
 }
 
 func TestBuildFilterDSL_TokenFilter(t *testing.T) {
-	// MinTokens is filtered client-side, not via server-side DSL
+	// --min-tokens is applied by queryRunsAuto (server-side on v2, client-side
+	// on v1), not by buildFilterDSL.
 	f := &FilterFlags{MinTokens: 1000}
 	result := buildFilterDSL(f)
 	if result != "" {
-		t.Errorf("expected empty filter DSL for MinTokens (client-side only), got %q", result)
+		t.Errorf("expected empty filter DSL for MinTokens, got %q", result)
 	}
 }
 
@@ -302,6 +305,29 @@ func TestAddCommonFilterFlags_WithoutRunType(t *testing.T) {
 	}
 }
 
+func TestAddCommonFilterFlags_CursorOnlyOnTraceMessages(t *testing.T) {
+	tests := []struct {
+		name       string
+		cmd        *cobra.Command
+		wantCursor bool
+	}{
+		{name: "run list", cmd: newRunListCmd()},
+		{name: "run export", cmd: newRunExportCmd()},
+		{name: "trace list", cmd: newTraceListCmd()},
+		{name: "trace export", cmd: newTraceExportCmd()},
+		{name: "trace messages", cmd: newTraceMessagesCmd(), wantCursor: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotCursor := tt.cmd.Flags().Lookup("cursor") != nil
+			if gotCursor != tt.wantCursor {
+				t.Errorf("cursor flag present = %t, want %t", gotCursor, tt.wantCursor)
+			}
+		})
+	}
+}
+
 func TestAddCommonFilterFlags_LimitShorthand(t *testing.T) {
 	cmd := newRunListCmd()
 	f := cmd.Flags().Lookup("limit")
@@ -368,6 +394,17 @@ func TestResolveStartTime_Since(t *testing.T) {
 	expected := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
 	if !st.Equal(expected) {
 		t.Errorf("expected %v, got %v", expected, st)
+	}
+}
+
+// --before accepts date-only via parseFlexTime and the flag help advertises
+// "RFC3339 or YYYY-MM-DD", so --since must accept it too.
+func TestResolveStartTime_SinceAcceptsDateOnly(t *testing.T) {
+	for _, in := range []string{"2024-01-15", "2024-01-15T10:00:00", "2024-01-15T10:00:00Z"} {
+		st := resolveStartTime(in, 0)
+		if st.Year() != 2024 || st.Month() != time.January || st.Day() != 15 {
+			t.Errorf("resolveStartTime(%q) = %v, want 2024-01-15", in, st)
+		}
 	}
 }
 

@@ -108,13 +108,15 @@ Each trace in the response contains a list of conversation groups:
   - "message" groups contain a single normalized message (human, ai, system, tool)
   - "tool_interaction" groups contain an AI message with tool calls and their results
 
-Requires --project. Results are paginated internally (default limit: 10, max: 100).
+Requires --project and an explicit start time (--since or --last-n-minutes);
+unlike the read/query commands this one has no implicit time window.
+Default limit: 10, max: 100.
 
 Examples:
-  langsmith trace messages --project my-chatbot --limit 5
-  langsmith trace messages --project my-chatbot --filter "eq(status, \"error\")"
-  langsmith trace messages --project my-chatbot --since 2024-01-15T00:00:00Z
-  langsmith trace messages --project my-chatbot --trace-ids <id1,id2>`,
+  langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
+  langsmith trace messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
+  langsmith trace messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
+  langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
@@ -133,6 +135,9 @@ Examples:
 
 			c := MustGetClient()
 			ctx := context.Background()
+
+			requireV2Feature(ctx, c, "trace messages")
+
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace messages")
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -183,7 +188,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
+				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
@@ -213,12 +218,15 @@ Examples:
 				if fmt_ == "pretty" {
 					printTraceMessages(combined)
 				} else {
-					output.OutputJSON(combined, outputFile)
+					if err := output.OutputJSON(combined, outputFile); err != nil {
+						ExitErrorf("%v", err)
+
+						// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
+					}
 				}
 				return
 			}
 
-			// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 			const maxPageSize = 10
 			remaining := ff.Limit
 			var allTraces []any
@@ -231,7 +239,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPost(ctx, "/v2/traces/messages", body, &result); err != nil {
+				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
@@ -269,15 +277,16 @@ Examples:
 			if fmt_ == "pretty" {
 				printTraceMessages(combined)
 			} else {
-				output.OutputJSON(combined, outputFile)
+				if err := output.OutputJSON(combined, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
-	cmd.Flags().StringVar(&ff.ProjectID, "project-id", "", "Project (session) UUID; skips the name lookup. Takes precedence over --project / $LANGSMITH_PROJECT")
+	cmd.Flags().StringVar(&ff.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 
 	return cmd
 }
@@ -330,7 +339,6 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 		return out
 	}
 	params := langsmith.RunQueryParams{
-		Session:   langsmith.F([]string{sessionID}),
 		IsRoot:    langsmith.F(true),
 		ID:        langsmith.F(ids),
 		StartTime: langsmith.F(startTime),
@@ -342,12 +350,17 @@ func fetchRootPreviews(ctx context.Context, c *client.Client, sessionID string, 
 			langsmith.RunQueryParamsSelectOutputsPreview,
 		}),
 	}
-	resp, err := c.SDK.Runs.Query(ctx, params)
+	v2Select := []langsmith.RunSelectField{
+		langsmith.RunSelectFieldTraceID,
+		langsmith.RunSelectFieldInputsPreview,
+		langsmith.RunSelectFieldOutputsPreview,
+	}
+	runs, err := queryRunsAuto(ctx, c, params, v2Select, sessionID, len(ids), 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: fetching root previews failed: %v\n", err)
 		return out
 	}
-	for _, run := range resp.Runs {
+	for _, run := range runs {
 		tid := run.TraceID
 		if tid == "" {
 			tid = run.ID

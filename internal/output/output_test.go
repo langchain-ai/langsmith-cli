@@ -14,7 +14,9 @@ func TestOutputJSON(t *testing.T) {
 		"id":   "123",
 		"name": "test",
 	}
-	OutputJSON(data, "")
+	if err := OutputJSON(data, ""); err != nil {
+		t.Fatalf("OutputJSON: %v", err)
+	}
 }
 
 func TestOutputJSONToFile(t *testing.T) {
@@ -26,7 +28,9 @@ func TestOutputJSONToFile(t *testing.T) {
 		{"id": "2", "name": "second"},
 	}
 
-	OutputJSON(data, fpath)
+	if err := OutputJSON(data, fpath); err != nil {
+		t.Fatalf("OutputJSON: %v", err)
+	}
 
 	content, err := os.ReadFile(fpath)
 	if err != nil {
@@ -47,7 +51,9 @@ func TestOutputJSONL(t *testing.T) {
 		{"id": "2", "name": "second"},
 	}
 
-	OutputJSONL(items, fpath)
+	if err := OutputJSONL(items, fpath); err != nil {
+		t.Fatalf("OutputJSONL: %v", err)
+	}
 
 	content, err := os.ReadFile(fpath)
 	if err != nil {
@@ -57,6 +63,20 @@ func TestOutputJSONL(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	if len(lines) != 2 {
 		t.Errorf("expected 2 lines, got %d", len(lines))
+	}
+}
+
+func TestOutputJSONReturnsWriteError(t *testing.T) {
+	err := OutputJSON(map[string]any{"status": "ok"}, t.TempDir())
+	if err == nil {
+		t.Fatal("expected an error when output path is a directory")
+	}
+}
+
+func TestOutputJSONLReturnsEncodingError(t *testing.T) {
+	err := OutputJSONL([]map[string]any{{"invalid": make(chan int)}}, "")
+	if err == nil {
+		t.Fatal("expected an error for an unsupported JSON value")
 	}
 }
 

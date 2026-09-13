@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,9 +25,14 @@ type Client struct {
 	oauthAccessToken string
 	apiURL           string
 	workspaceID      string
+	platformPrefix   string
 
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
+
+	// Cached v2-API decision (see UseV2API), resolved once per invocation
+	// from GET /info.
+	cachedUseV2API *bool
 }
 
 // Options controls LangSmith client authentication and routing.
@@ -87,6 +93,7 @@ func NewWithOptions(options Options) *Client {
 		oauthAccessToken: options.OAuthAccessToken,
 		apiURL:           normalized,
 		workspaceID:      options.WorkspaceID,
+		platformPrefix:   derivePlatformPrefix(options.APIURL),
 		sessionCache:     make(map[string]string),
 	}
 }
@@ -111,6 +118,121 @@ func (c *Client) ResolveSessionID(ctx context.Context, projectName string) (stri
 	return id, nil
 }
 
+// Self-hosted gains the v2 (SmithDB) run-query API at 0.16.
+const minSelfHostedV2Minor = 16
+
+// UseV2API reports whether the connected deployment's v2 (SmithDB) API should
+// be used, resolved once from GET /info and cached.
+func (c *Client) UseV2API(ctx context.Context) (bool, error) {
+	if c.cachedUseV2API != nil {
+		return *c.cachedUseV2API, nil
+	}
+	info, err := c.SDK.Info.List(ctx)
+	if err != nil {
+		return false, fmt.Errorf("fetching deployment info: %w", err)
+	}
+	v := useV2API(info.Version)
+	c.cachedUseV2API = &v
+	return v, nil
+}
+
+// useV2API decides whether to use the v2 API from the /info version. Cloud reports
+// a non-release version (e.g. "dev") → v2; self-hosted reports a semver, v2 at
+// >= 0.16 else v1.
+func useV2API(version string) bool {
+	major, minor, ok := parseReleaseVersion(version)
+	if !ok {
+		return true // Cloud / non-release version
+	}
+	if major != 0 {
+		return true
+	}
+	return minor >= minSelfHostedV2Minor
+}
+
+// parseReleaseVersion pulls major.minor from a release version like "0.16.18rc1"
+// or "v1.2.3"; ok=false for non-release versions (e.g. "dev", "").
+func parseReleaseVersion(v string) (major, minor int, ok bool) {
+	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "v"))
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(leadingDigits(parts[0]))
+	if err != nil {
+		return 0, 0, false
+	}
+	minor, err = strconv.Atoi(leadingDigits(parts[1]))
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// leadingDigits returns the leading ASCII digits of s (e.g. "16rc1" → "16").
+func leadingDigits(s string) string {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	return s[:i]
+}
+
+// Platform paths mirror the SDK: derived from the configured endpoint rather
+// than configured separately. Single-origin deployments route the /api form;
+// multi-origin routes the same path without that segment. SaaS serves both.
+const (
+	apiSegment                 = "/api"
+	apiV1Segment               = "/api/v1"
+	singleOriginPlatformPrefix = apiV1Segment + "/platform"
+)
+
+// multiOriginPlatformPrefix drops the /api segment rather than restating the
+// path, so TestHandWrittenPathsCarryAPIPrefix still guards every literal.
+func multiOriginPlatformPrefix() string {
+	return strings.TrimPrefix(singleOriginPlatformPrefix, apiSegment)
+}
+
+// derivePlatformPrefix reads the endpoint as given, before NormalizeURL strips
+// the suffix that distinguishes the two topologies.
+func derivePlatformPrefix(apiURL string) string {
+	u := strings.TrimRight(strings.TrimSpace(apiURL), "/")
+	if strings.HasSuffix(u, apiV1Segment) || strings.HasSuffix(u, apiSegment) {
+		return singleOriginPlatformPrefix
+	}
+	return multiOriginPlatformPrefix()
+}
+
+// PlatformPath builds a platform-service path.
+func (c *Client) PlatformPath(elem ...string) string {
+	prefix := c.platformPrefix
+	if prefix == "" {
+		prefix = multiOriginPlatformPrefix()
+	}
+	for _, e := range elem {
+		prefix += "/" + url.PathEscape(e)
+	}
+	return prefix
+}
+
+// CustomAppsPath is the custom-apps collection.
+func (c *Client) CustomAppsPath() string { return c.PlatformPath("custom-apps") }
+
+// CustomAppPath addresses one app.
+func (c *Client) CustomAppPath(appID string) string {
+	return c.PlatformPath("custom-apps", appID)
+}
+
+// CustomAppRequest is the body of custom-app create (POST) and update (PATCH).
+// Unset pointer fields are omitted, leaving the server value untouched.
+type CustomAppRequest struct {
+	Name          *string           `json:"name,omitempty"`
+	Description   *string           `json:"description,omitempty"`
+	Files         map[string]string `json:"files,omitempty"`
+	Entrypoint    *string           `json:"entrypoint,omitempty"`
+	SourceArchive *string           `json:"source_archive,omitempty"`
+}
+
 // --- Raw HTTP helpers for endpoints not covered by the SDK ---
 
 // RawGet performs a GET request to the LangSmith API.
@@ -131,6 +253,23 @@ func (c *Client) RawPatch(ctx context.Context, path string, body any, result any
 // RawDelete performs a DELETE request to the LangSmith API.
 func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 	return c.rawRequest(ctx, http.MethodDelete, path, nil, result)
+}
+
+// FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
+// The response is binary, so it bypasses the JSON-decoding raw helpers.
+func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
+	path := c.CustomAppPath(appID) + "/source"
+	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.statusCode >= 400 {
+		return nil, &httpError{statusCode: resp.statusCode, body: resp.body}
+	}
+	if len(resp.body) == 0 {
+		return nil, fmt.Errorf("custom app source response was empty")
+	}
+	return resp.body, nil
 }
 
 // httpResponse holds the parsed result of a raw HTTP call.
@@ -158,6 +297,16 @@ func IsNotFound(err error) bool {
 func IsConflict(err error) bool {
 	var httpErr *httpError
 	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusConflict
+}
+
+func IsForbidden(err error) bool {
+	var httpErr *httpError
+	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusForbidden
+}
+
+func IsBadRequest(err error) bool {
+	var httpErr *httpError
+	return errors.As(err, &httpErr) && httpErr.statusCode == http.StatusBadRequest
 }
 
 type httpErrorBody struct {

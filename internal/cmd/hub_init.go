@@ -36,13 +36,15 @@ func newHubInitCmd() *cobra.Command {
 				return err
 			}
 			sort.Strings(written)
-			output.OutputJSON(map[string]any{
+			if err := output.OutputJSON(map[string]any{
 				"status": "scaffolded",
 				"dir":    dir,
 				"type":   repoType,
 				"name":   name,
 				"files":  written,
-			}, "")
+			}, ""); err != nil {
+				ExitErrorf("%v", err)
+			}
 			return nil
 		},
 	}

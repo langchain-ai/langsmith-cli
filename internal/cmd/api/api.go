@@ -64,6 +64,9 @@ Make requests:
 			if err != nil {
 				return err
 			}
+			if err := blockRawDelete(c.APIURL(), method, path); err != nil {
+				return err
+			}
 
 			w := cmd.OutOrStdout()
 			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, w)

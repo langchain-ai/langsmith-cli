@@ -131,6 +131,9 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	if profile.OAuth.RefreshToken != "test-refresh-token" {
 		t.Fatalf("refresh token was not saved")
 	}
+	if profile.OAuth.Issuer != ts.URL {
+		t.Fatalf("expected OAuth issuer %q, got %q", ts.URL, profile.OAuth.Issuer)
+	}
 	if profile.WorkspaceID != workspaceID {
 		t.Fatalf("workspace ID was not saved")
 	}
@@ -464,12 +467,51 @@ func TestRefreshProfileToken(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	token, err := refreshProfileToken(t.Context(), ts.URL+"/api/v1", "old-refresh-token")
+	token, err := refreshProfileToken(t.Context(), ts.URL+"/api/v1", "", "old-refresh-token")
 	if err != nil {
 		t.Fatalf("refreshProfileToken returned error: %v", err)
 	}
 	if token.AccessToken != "new-access-token" || token.RefreshToken != "new-refresh-token" {
 		t.Fatalf("unexpected token response: %+v", token)
+	}
+}
+
+func TestRefreshProfileTokenUsesPinnedIssuer(t *testing.T) {
+	dataPlane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("refresh unexpectedly contacted data plane at %s", r.URL.Path)
+	}))
+	defer dataPlane.Close()
+
+	var authServer *httptest.Server
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                        authServer.URL,
+				"device_authorization_endpoint": authServer.URL + "/oauth/device/code",
+				"token_endpoint":                authServer.URL + "/oauth/token",
+			})
+		case "/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
+				t.Fatalf("unexpected refresh token %q", got)
+			}
+			assertOAuthResource(t, r)
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{AccessToken: "new-access-token"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer authServer.Close()
+
+	token, err := refreshProfileToken(t.Context(), dataPlane.URL, authServer.URL, "old-refresh-token")
+	if err != nil {
+		t.Fatalf("refreshProfileToken returned error: %v", err)
+	}
+	if token.AccessToken != "new-access-token" {
+		t.Fatalf("unexpected access token %q", token.AccessToken)
 	}
 }
 
@@ -486,7 +528,7 @@ func TestRefreshProfileTokenRequiresAccessToken(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	_, err := refreshProfileToken(t.Context(), ts.URL, "old-refresh-token")
+	_, err := refreshProfileToken(t.Context(), ts.URL, "", "old-refresh-token")
 	if err == nil || !strings.Contains(err.Error(), "access token") {
 		t.Fatalf("expected missing access token error, got %v", err)
 	}

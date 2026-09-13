@@ -33,7 +33,7 @@ func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
 	runs, datasets, evaluators, experiments, and threads.
 
 Authentication:
-  Run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key.
+  Run 'langsmith auth login' or set LANGSMITH_API_KEY.
   Optionally set LANGSMITH_ENDPOINT for self-hosted instances.
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
   Pass --workspace to target a specific workspace for one command.
@@ -57,6 +57,7 @@ Quick start:
 	}
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
+	_ = rootCmd.PersistentFlags().MarkHidden("api-key")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
 	rootCmd.PersistentFlags().StringVar(&flagProfile, "profile", "", "Named profile to use [env: LANGSMITH_PROFILE]")
 	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
@@ -221,7 +222,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
 		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
 			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
-			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.RefreshToken)
+			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
 			if err != nil {
 				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
 			}

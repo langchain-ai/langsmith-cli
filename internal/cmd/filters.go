@@ -30,18 +30,31 @@ type FilterFlags struct {
 	Tags         string
 	Metadata     string
 	RawFilter    string
-	Version      string
+}
+
+const (
+	projectFlagUsage   = "Project name [env: LANGSMITH_PROJECT]"
+	projectIDFlagUsage = "Project (session) UUID; skips the name lookup. Mutually exclusive with --project; overrides $LANGSMITH_PROJECT"
+)
+
+// addProjectFlags attaches the --project / --project-id pair to a command that
+// does not use the shared filter flags. Every command that resolves a project
+// takes both, so an agent building a command line never has to quote a project
+// name it did not choose. Resolve them with resolveSessionID.
+func addProjectFlags(cmd *cobra.Command, project, projectID *string) {
+	cmd.Flags().StringVar(project, "project", "", projectFlagUsage)
+	cmd.Flags().StringVar(projectID, "project-id", "", projectIDFlagUsage)
+	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 }
 
 // addCommonFilterFlags attaches shared filter flags to a command.
 func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType bool) {
 	cmd.Flags().StringVar(&f.TraceIDs, "trace-ids", "", "Comma-separated trace IDs to filter by")
 	cmd.Flags().IntVarP(&f.Limit, "limit", "n", 0, "Maximum number of results to return")
-	cmd.Flags().StringVar(&f.Project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &f.Project, &f.ProjectID)
 	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")
-	cmd.Flags().StringVar(&f.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
 	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
@@ -57,11 +70,6 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	}
 }
 
-// addVersionFlag attaches the --version flag for selecting the runs query backend.
-func addVersionFlag(cmd *cobra.Command, f *FilterFlags) {
-	cmd.Flags().StringVar(&f.Version, "version", "", `Query API version: "" (v1, default) or "v2" (SmithDB)`)
-}
-
 // resolveStartTime returns the start time for a query.
 // Priority: lastNMinutes > since > default (7 days ago).
 func resolveStartTime(since string, lastNMinutes int) time.Time {
@@ -69,14 +77,14 @@ func resolveStartTime(since string, lastNMinutes int) time.Time {
 		return time.Now().UTC().Add(-time.Duration(lastNMinutes) * time.Minute)
 	}
 	if since != "" {
-		t, err := time.Parse(time.RFC3339, since)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", since)
-			if err != nil {
-				ExitErrorf("invalid --since timestamp: %s", since)
+		// Date-only is accepted so --since matches --before (parseFlexTime) and
+		// the "RFC3339 or YYYY-MM-DD" contract the flag help advertises.
+		for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+			if t, err := time.Parse(layout, since); err == nil {
+				return t
 			}
 		}
-		return t
+		ExitErrorf("invalid --since timestamp: %s", since)
 	}
 	return time.Now().UTC().Add(-7 * 24 * time.Hour)
 }
@@ -174,8 +182,10 @@ func buildFilterDSL(f *FilterFlags) string {
 		parts = append(parts, fmt.Sprintf("lte(latency, %g)", f.MaxLatency))
 	}
 
-	// Note: total_tokens is not accepted as a server-side filter attribute.
-	// --min-tokens filtering is applied client-side in queryRuns().
+	// Note: --min-tokens is not emitted here. total_tokens is filterable on the
+	// v2 (SmithDB) path but not on v1, and buildFilterDSL cannot see which
+	// backend a deployment uses. queryRunsAuto adds the clause when v2 is in
+	// play and falls back to the client-side bound otherwise.
 
 	// Tags
 	if f.Tags != "" {

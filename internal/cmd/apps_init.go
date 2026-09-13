@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +42,16 @@ var agentsMDFS embed.FS
 var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
+
+// One package.json rendered for every template; deps that vary per template
+// (currently just the icon set) are toggled by customAppStarterVars.
+//
+//go:embed templates/package.json.tmpl
+var sharedPackageJSONTmpl string
+
+const iconsImportSpecifier = "@langchain/untitled-ui-icons"
+
+const cnUtilsImportSpecifier = "lib/utils"
 
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
@@ -93,6 +104,8 @@ func appTypeNames() []string {
 type customAppStarterVars struct {
 	Name        string
 	Description string
+	NeedsIcons  bool
+	NeedsCn     bool
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -105,18 +118,18 @@ func newAppsInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init --name NAME [--template annotation-queue|annotation-queue-grid|coding-agent-dashboard|experiment-comparison]",
-		Short: "Scaffold a starter custom app in the current directory",
-		Long: `Scaffold a starter custom app in the current directory.
+		Short: "Scaffold a starter custom app in a new directory named after the app",
+		Long: `Scaffold a starter custom app into a new directory named after --name.
 
 --template picks which starter gets scaffolded; omit it for a blank single-file starter.
 
-  annotation-queue        A queue-review UI: run list, inputs/outputs, feedback rubric, reviewer notes.
+  annotation-queue        A queue-review UI: RUN/THREAD items, type-specific viewer, feedback rubric.
   annotation-queue-grid   Same review workflow, as an editable spreadsheet.
   coding-agent-dashboard  Charts over coding-agent runs: usage, cost, errors, activity over time.
   experiment-comparison   Compare evaluation experiments against a baseline.
 
-Only writes local files. Next: run "npm install", then "langsmith apps dev" to preview.
-Run "langsmith apps push" to upload.`,
+Installs dependencies as the last step, so you can cd in and run
+"langsmith apps dev" next. Run "langsmith apps push" to upload.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			templateName := templateFlag
 			if templateName == "" {
@@ -128,9 +141,17 @@ Run "langsmith apps push" to upload.`,
 			if !ok {
 				return fmt.Errorf("--template must be one of: %s", strings.Join(appTypeNames(), ", "))
 			}
-			dir, err := os.Getwd()
+			slug := slugifyAppName(name)
+			if slug == "" {
+				return fmt.Errorf("--name %q has no characters usable in a directory name", name)
+			}
+			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
+			}
+			dir := filepath.Join(cwd, slug)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("creating %s: %w", slug, err)
 			}
 			written, err := scaffoldCustomAppStarter(dir, name, description, at, force)
 			if err != nil {
@@ -138,24 +159,64 @@ Run "langsmith apps push" to upload.`,
 			}
 			sort.Strings(written)
 
-			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\nNext: npm install, then langsmith apps dev.\n", templateName, dir)
-			output.OutputJSON(map[string]any{
+			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\n", templateName, dir)
+			if err := installAppDeps(dir); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
+			return output.OutputJSON(map[string]any{
 				"status":   "scaffolded",
 				"dir":      dir,
 				"name":     name,
 				"template": templateName,
 				"files":    written,
 			}, "")
-			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Name for the app, written into package.json/README (required)")
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
 	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template. Omittable for a blank starter.")
-	cmd.Flags().BoolVar(&force, "force", false, "Write even if the current directory is non-empty")
+	cmd.Flags().BoolVar(&force, "force", false, "Write even if the target directory already exists and is non-empty")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
+}
+
+// slugifyAppName turns --name into a directory name: lowercase, non-alphanumeric
+// runs collapsed to a single dash, no leading/trailing dashes.
+func slugifyAppName(name string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
+}
+
+// installAppDeps runs npm install
+func installAppDeps(dir string) error {
+	if _, err := exec.LookPath("npm"); err != nil {
+		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm install" before "langsmith apps dev"`)
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "Installing dependencies: npm install")
+	c := exec.Command("npm", "install")
+	c.Dir = dir
+	c.Stdout = os.Stderr
+	c.Stderr = os.Stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("\"npm install\" failed: %w", err)
+	}
+	return nil
 }
 
 func scaffoldCustomAppStarter(dir, name, description string, at appType, force bool) ([]string, error) {
@@ -186,8 +247,15 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		vars.Description = "TODO: one-sentence description of what this app does."
 	}
 
+	src, err := concatenatedTemplateSource(at)
+	if err != nil {
+		return nil, err
+	}
+	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
+	vars.NeedsCn = strings.Contains(src, cnUtilsImportSpecifier)
+
 	var written []string
-	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -236,6 +304,15 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	if err != nil {
 		return nil, err
 	}
+
+	pkgJSON, err := renderSharedPackageJSON(vars)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), pkgJSON, 0o644); err != nil {
+		return nil, fmt.Errorf("writing package.json: %w", err)
+	}
+	written = append(written, "package.json")
 
 	sharedWritten, err := writeUsedSharedFiles(dir, at)
 	if err != nil {
@@ -366,8 +443,19 @@ func sharedFileImportSpecifiers(sharedRelPath string) []string {
 }
 
 var templatedStarterFiles = map[string]bool{
-	"README.md":    true,
-	"package.json": true,
+	"README.md": true,
+}
+
+func renderSharedPackageJSON(vars customAppStarterVars) ([]byte, error) {
+	tmpl, err := template.New("package.json").Parse(sharedPackageJSONTmpl)
+	if err != nil {
+		return nil, fmt.Errorf("parsing shared package.json template: %w", err)
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return nil, fmt.Errorf("rendering package.json: %w", err)
+	}
+	return []byte(buf.String()), nil
 }
 
 // assembleAgentsMD injects the template-specific fragment into the base AGENTS.md.

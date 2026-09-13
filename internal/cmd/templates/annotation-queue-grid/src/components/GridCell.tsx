@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon } from '@langchain/untitled-ui-icons';
 import { patchFeedback, submitFeedback, deleteFeedback } from '../api';
-import type { FeedbackConfig, FeedbackItem, RubricItem } from '../types';
+import type { FeedbackConfig, FeedbackItem, QueueItemType, RubricItem } from '../types';
 import { cn } from '../lib/utils';
 
 interface Props {
   item: RubricItem;
   config: FeedbackConfig | undefined;
-  runId: string;
+  itemType: QueueItemType;
+  runId: string | undefined;
+  feedbackThreadId: string | undefined;
   traceId: string | undefined;
   sessionId: string | undefined;
   startTime: string | undefined;
@@ -25,7 +27,9 @@ interface Props {
 export function GridCell({
   item,
   config,
+  itemType,
   runId,
+  feedbackThreadId,
   traceId,
   sessionId,
   startTime,
@@ -69,6 +73,15 @@ export function GridCell({
           score: newScore,
           value: newValue,
           comment: commentVal || null,
+        });
+      } else if (itemType === 'THREAD' && feedbackThreadId) {
+        saved = await submitFeedback({
+          key: item.feedback_key,
+          feedback_thread_id: feedbackThreadId,
+          score: newScore,
+          value: newValue ?? undefined,
+          comment: commentVal || undefined,
+          session_id: sessionId,
         });
       } else {
         saved = await submitFeedback({

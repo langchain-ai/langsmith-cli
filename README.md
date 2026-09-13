@@ -46,10 +46,20 @@ export LANGSMITH_WORKSPACE_ID="<workspace-id>"                # Default workspac
 export LANGSMITH_PROJECT="my-default-project"                 # Default project for queries
 ```
 
-Or pass them as flags:
+Or save the credentials in a profile:
 
 ```bash
-langsmith --api-key lsv2_pt_... --workspace <workspace-id> trace list --project my-app
+langsmith auth login                    # OAuth
+langsmith profile create prod           # API key, taken from $LANGSMITH_API_KEY
+```
+
+Profiles live in `~/.langsmith/config.json`, written owner-only; the CLI warns
+if it is readable by other users.
+
+Other settings can be passed as flags:
+
+```bash
+langsmith --workspace <workspace-id> trace list --project my-app
 ```
 
 ## Quick Start
@@ -88,9 +98,29 @@ langsmith --format=json trace list --project my-app
 langsmith trace list --project my-app -o traces.json
 ```
 
+## Selecting a project
+
+Every command that operates on a project takes either `--project <name>` or
+`--project-id <session UUID>`, and `$LANGSMITH_PROJECT` supplies the name when
+neither is set. The two flags are mutually exclusive.
+
+```bash
+langsmith trace list --project 'my-app'
+langsmith trace list --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
+```
+
+Prefer `--project-id` when a program is building the command line. Project names
+are free-form — users can create one containing spaces, quotes, or shell
+metacharacters — so a name has to be quoted correctly at every call site, and a
+name that is quoted wrongly matches nothing and returns an empty result rather
+than an error. A UUID needs no quoting. `--project-id` also skips the name
+lookup, saving a round-trip.
+
+`langsmith project list` returns the `id` to use.
+
 ## Command Reference
 
-### `project` — List tracing projects
+### `project` — List and delete tracing projects
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
@@ -106,6 +136,9 @@ langsmith project list --name-contains chatbot
 
 # Machine-readable JSON
 langsmith --format=json project list
+
+# Permanently delete a project and all of its traces (requires confirmation)
+langsmith project delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 ```
 
 ### `trace` — Query and export traces
@@ -168,12 +201,7 @@ langsmith run get <run-id> --full
 langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **For agents querying runs:** prefer `--version v2` first (SmithDB-backed; faster on tenants that are rolled out). If the call fails with a 4xx (typically 403, 404, or 422), retry the **same command without** `--version` to fall back to v1. Example:
->
-> ```bash
-> langsmith run list --project my-app --version v2 \
->   || langsmith run list --project my-app
-> ```
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 
@@ -265,6 +293,18 @@ langsmith evaluator upload evals.py \
 
 # Delete an evaluator
 langsmith evaluator delete accuracy --yes
+
+# Create an LLM-as-judge evaluator (--model-config is always required)
+# model.json: copy the structured.model block from an existing evaluator or the UI.
+langsmith evaluator create-llm \
+  --name relevance --project my-app \
+  --prompt prompt.json --schema schema.json --model-config model.json \
+  --variable-mapping '{"input":"input.question","output":"output.answer"}'
+
+# Or reference an existing Prompt Hub commit (--hub-ref replaces --prompt and --schema)
+langsmith evaluator create-llm \
+  --name relevance --project my-app \
+  --hub-ref my-org/relevance:latest --model-config model.json
 ```
 
 ### `experiment` — Query experiment results
@@ -417,6 +457,25 @@ Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands lik
 
 - Go 1.23+
 - golangci-lint (for linting)
+
+## Releasing
+
+Releases are tag-driven. Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which invokes GoReleaser to cross-compile linux/darwin/windows on amd64+arm64, publish the
+archives and `checksums.txt`, and cut the GitHub Release with a changelog generated from the
+commits since the previous tag (`docs:`, `test:`, and `ci:` commits are excluded).
+
+```bash
+git checkout main && git pull
+git tag v0.2.44          # next patch after the latest tag
+git push origin v0.2.44
+```
+
+There is no version file or changelog to edit — the version is stamped into the binary from the
+tag via ldflags, so `git tag` is the only bump. Find the latest tag with `git tag --sort=-v:refname | head -1`.
+
+The install scripts and `langsmith self-update` both read the latest GitHub Release, so a tag push
+is all that's needed to ship to users.
 
 ## License
 

@@ -26,16 +26,24 @@ import (
 // the "required" error message.
 func resolveSessionID(ctx context.Context, c *client.Client, projectName, projectID, cmdName string) (string, error) {
 	if projectID != "" {
-		if _, err := uuid.Parse(projectID); err != nil {
-			return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
-		}
-		return projectID, nil
+		return validateProjectID(projectID)
 	}
 	name := ResolveProject(projectName)
 	if name == "" {
 		return "", fmt.Errorf("--project or --project-id is required for %s (or set LANGSMITH_PROJECT)", cmdName)
 	}
 	return c.ResolveSessionID(ctx, name)
+}
+
+// validateProjectID returns a --project-id value unchanged once it is a
+// well-formed UUID, so a malformed one fails here rather than as a server 4xx.
+// Callers that filter by session ID without going through resolveSessionID
+// (see `project issues list`) use this directly.
+func validateProjectID(projectID string) (string, error) {
+	if _, err := uuid.Parse(projectID); err != nil {
+		return "", fmt.Errorf("invalid --project-id %q: must be a project (session) UUID", projectID)
+	}
+	return projectID, nil
 }
 
 // queryRuns queries runs with the given params, scoped to sessionID when non-empty.
@@ -106,95 +114,139 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 	return allRuns, nil
 }
 
-// buildRunQueryV2Params translates FilterFlags into a v2 query body. The
-// project name is left for queryRunsV2 to resolve into ProjectIDs.
-func buildRunQueryV2Params(f *FilterFlags, isRoot bool, defaultLimit int) langsmith.RunQueryV2Params {
-	var params langsmith.RunQueryV2Params
-
-	limit := defaultLimit
-	if f.Limit > 0 {
-		limit = f.Limit
+// requireV2Feature exits with a clear error when the deployment lacks the v2
+// (SmithDB) API a v2-only feature needs (older self-hosted).
+func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
+	useV2, err := c.UseV2API(ctx)
+	if err != nil {
+		ExitErrorf("%v", err)
 	}
-	params.PageSize = langsmith.F(int64(limit))
-
-	if isRoot {
-		params.IsRoot = langsmith.F(true)
+	if !useV2 {
+		ExitErrorf("%s is only available on LangSmith Cloud or self-hosted >= 0.16 (SmithDB); this deployment does not support it", feature)
 	}
+}
 
-	params.MinStartTime = langsmith.F(resolveStartTime(f.Since, f.LastNMinutes))
-	if f.Before != "" {
-		t, err := time.Parse(time.RFC3339, f.Before)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
-			if err != nil {
-				ExitErrorf("invalid --before timestamp: %s", f.Before)
-			}
+// queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment
+// supports it, else v1. params is the canonical v1 query; always pass a base
+// v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
+func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+	useV2, err := c.UseV2API(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if useV2 {
+		// total_tokens is filterable on the v2 (SmithDB) path, so push the bound
+		// into the query and skip the client-side pass. v1 does not accept it,
+		// and an attribute it does not recognise fails the whole query rather
+		// than being ignored — so the clause must not reach that path. useV2API
+		// routes v1 only below 0.16, which is also below any release that
+		// accepts the attribute, so nothing is lost by gating on v2.
+		if minTokens > 0 {
+			addFilterClause(&params, fmt.Sprintf("gte(total_tokens, %d)", minTokens))
+			minTokens = 0
 		}
-		params.MaxStartTime = langsmith.F(t.UTC())
+		return queryRunsV2(ctx, c, toV2Params(params, v2Selects), sessionID, limit, minTokens)
 	}
+	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
+}
 
-	if f.RunType != "" {
-		params.RunType = langsmith.F(langsmith.RunQueryV2ParamsRunType(strings.ToUpper(f.RunType)))
+// addFilterClause ANDs clause into params.Filter, preserving anything already
+// there from buildFilterDSL.
+func addFilterClause(params *langsmith.RunQueryParams, clause string) {
+	if params.Filter.Present && params.Filter.Value != "" {
+		params.Filter = langsmith.F(fmt.Sprintf("and(%s, %s)", params.Filter.Value, clause))
+		return
 	}
+	params.Filter = langsmith.F(clause)
+}
 
-	if f.ErrorFlag {
-		params.HasError = langsmith.F(true)
-	} else if f.NoErrorFlag {
-		params.HasError = langsmith.F(false)
+// toV2Params translates canonical v1 RunQueryParams to v2. Order is dropped (no
+// v2 equivalent; v2 is newest-first); Session is applied by queryRunsV2.
+func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) langsmith.RunQueryV2Params {
+	var v2 langsmith.RunQueryV2Params
+	if len(selects) > 0 {
+		v2.Selects = langsmith.F(selects)
 	}
-
-	if f.TraceIDs != "" {
-		ids := splitTrim(f.TraceIDs)
-		if len(ids) == 1 {
-			params.TraceID = langsmith.F(ids[0])
-		}
+	if p.Trace.Present {
+		v2.TraceID = langsmith.F(p.Trace.Value)
 	}
-
-	if s := buildFilterDSL(f); s != "" {
-		params.Filter = langsmith.F(s)
+	if p.IsRoot.Present {
+		v2.IsRoot = langsmith.F(p.IsRoot.Value)
 	}
+	if p.RunType.Present {
+		v2.RunType = langsmith.F(langsmith.RunType(strings.ToUpper(string(p.RunType.Value))))
+	}
+	if p.Error.Present {
+		v2.HasError = langsmith.F(p.Error.Value)
+	}
+	if p.StartTime.Present {
+		v2.MinStartTime = langsmith.F(p.StartTime.Value)
+	}
+	if p.EndTime.Present {
+		v2.MaxStartTime = langsmith.F(p.EndTime.Value)
+	}
+	if p.Filter.Present {
+		v2.Filter = langsmith.F(p.Filter.Value)
+	}
+	if len(p.ID.Value) > 0 {
+		v2.IDs = langsmith.F(p.ID.Value)
+	}
+	if p.Limit.Present {
+		v2.PageSize = langsmith.F(p.Limit.Value)
+	}
+	return v2
+}
 
-	return params
+// threadListSelect and threadListSelectV2 add thread_id to the base select
+// sets. `thread list` groups runs by thread_id, so omitting it yields zero
+// threads rather than an error; the base sets leave it out because no other
+// command reads it.
+func threadListSelect() []langsmith.RunQueryParamsSelect {
+	return append(buildRunSelect(true, false), langsmith.RunQueryParamsSelectThreadID)
+}
+
+func threadListSelectV2() []langsmith.RunSelectField {
+	return append(buildRunSelectV2(true, false), langsmith.RunSelectFieldThreadID)
 }
 
 // buildRunSelectV2 returns the v2 select-field set covering the same base
 // fields used by the downstream RunSchema pipeline plus the optional groups
 // requested by the include flags.
-func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunQueryV2ParamsSelect {
-	fields := []langsmith.RunQueryV2ParamsSelect{
-		langsmith.RunQueryV2ParamsSelectID,
-		langsmith.RunQueryV2ParamsSelectTraceID,
-		langsmith.RunQueryV2ParamsSelectName,
-		langsmith.RunQueryV2ParamsSelectRunType,
-		langsmith.RunQueryV2ParamsSelectStartTime,
-		langsmith.RunQueryV2ParamsSelectEndTime,
-		langsmith.RunQueryV2ParamsSelectParentRunIDs,
-		langsmith.RunQueryV2ParamsSelectProjectID,
-		langsmith.RunQueryV2ParamsSelectDottedOrder,
-		langsmith.RunQueryV2ParamsSelectIsRoot,
-		langsmith.RunQueryV2ParamsSelectExtra,
-		langsmith.RunQueryV2ParamsSelectMetadata,
-		langsmith.RunQueryV2ParamsSelectTags,
-		langsmith.RunQueryV2ParamsSelectPromptTokens,
-		langsmith.RunQueryV2ParamsSelectCompletionTokens,
-		langsmith.RunQueryV2ParamsSelectTotalTokens,
-		langsmith.RunQueryV2ParamsSelectPromptCost,
-		langsmith.RunQueryV2ParamsSelectCompletionCost,
-		langsmith.RunQueryV2ParamsSelectTotalCost,
-		langsmith.RunQueryV2ParamsSelectLatencySeconds,
-		langsmith.RunQueryV2ParamsSelectAppPath,
-		langsmith.RunQueryV2ParamsSelectFirstTokenTime,
+func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunSelectField {
+	fields := []langsmith.RunSelectField{
+		langsmith.RunSelectFieldID,
+		langsmith.RunSelectFieldTraceID,
+		langsmith.RunSelectFieldName,
+		langsmith.RunSelectFieldRunType,
+		langsmith.RunSelectFieldStartTime,
+		langsmith.RunSelectFieldEndTime,
+		langsmith.RunSelectFieldParentRunIDs,
+		langsmith.RunSelectFieldProjectID,
+		langsmith.RunSelectFieldDottedOrder,
+		langsmith.RunSelectFieldIsRoot,
+		langsmith.RunSelectFieldExtra,
+		langsmith.RunSelectFieldMetadata,
+		langsmith.RunSelectFieldTags,
+		langsmith.RunSelectFieldPromptTokens,
+		langsmith.RunSelectFieldCompletionTokens,
+		langsmith.RunSelectFieldTotalTokens,
+		langsmith.RunSelectFieldPromptCost,
+		langsmith.RunSelectFieldCompletionCost,
+		langsmith.RunSelectFieldTotalCost,
+		langsmith.RunSelectFieldLatencySeconds,
+		langsmith.RunSelectFieldAppPath,
+		langsmith.RunSelectFieldFirstTokenTime,
 	}
 	if includeIO {
 		fields = append(fields,
-			langsmith.RunQueryV2ParamsSelectInputs,
-			langsmith.RunQueryV2ParamsSelectOutputs,
-			langsmith.RunQueryV2ParamsSelectError,
-			langsmith.RunQueryV2ParamsSelectEvents,
+			langsmith.RunSelectFieldInputs,
+			langsmith.RunSelectFieldOutputs,
+			langsmith.RunSelectFieldError,
+			langsmith.RunSelectFieldEvents,
 		)
 	}
 	if includeFeedback {
-		fields = append(fields, langsmith.RunQueryV2ParamsSelectFeedbackStats)
+		fields = append(fields, langsmith.RunSelectFieldFeedbackStats)
 	}
 	return fields
 }

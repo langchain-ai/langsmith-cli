@@ -35,6 +35,62 @@ func TestNormalizeURL(t *testing.T) {
 	}
 }
 
+// ---------- PlatformPath ----------
+
+func TestDerivePlatformPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		want     string
+	}{
+		{"bare host is multi-origin", "http://localhost:1980", "/v1/platform"},
+		{"trailing slash", "http://localhost:1980/", "/v1/platform"},
+		{"api/v1 suffix is single-origin", "https://host/api/v1", "/api/v1/platform"},
+		{"api/v1 with trailing slash", "https://host/api/v1/", "/api/v1/platform"},
+		{"api suffix is single-origin", "https://host/api", "/api/v1/platform"},
+		{"saas default", "https://api.smith.langchain.com", "/v1/platform"},
+		{"empty", "", "/v1/platform"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := derivePlatformPrefix(tt.endpoint); got != tt.want {
+				t.Errorf("derivePlatformPrefix(%q) = %q, want %q", tt.endpoint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClientPlatformPaths(t *testing.T) {
+	const appID = "6f1c9b0e-6b3e-4a0e-9a4a-2c1d3e4f5a6b"
+	tests := []struct {
+		name           string
+		endpoint       string
+		wantCollection string
+		wantSingleApp  string
+	}{
+		{"multi-origin", "http://localhost:1980", "/v1/platform/custom-apps", "/v1/platform/custom-apps/" + appID},
+		{"single-origin", "https://host/api/v1", "/api/v1/platform/custom-apps", "/api/v1/platform/custom-apps/" + appID},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New("k", tt.endpoint)
+			if got := c.CustomAppsPath(); got != tt.wantCollection {
+				t.Errorf("CustomAppsPath() = %q, want %q", got, tt.wantCollection)
+			}
+			if got := c.CustomAppPath(appID); got != tt.wantSingleApp {
+				t.Errorf("CustomAppPath() = %q, want %q", got, tt.wantSingleApp)
+			}
+		})
+	}
+}
+
+func TestPlatformPath_EscapesElements(t *testing.T) {
+	c := New("k", "http://localhost:1980")
+	if got := c.CustomAppPath("a b/../c"); got != "/v1/platform/custom-apps/a%20b%2F..%2Fc" {
+		t.Errorf("expected the app ID escaped, got %q", got)
+	}
+}
+
 // ---------- New ----------
 
 func TestNew_CreatesClient(t *testing.T) {
@@ -721,5 +777,37 @@ func TestAPIURL(t *testing.T) {
 	c := New("key", "http://localhost:1234")
 	if c.APIURL() != "http://localhost:1234" {
 		t.Errorf("expected http://localhost:1234, got %q", c.APIURL())
+	}
+}
+
+// ---------- Run-query backend selection ----------
+
+func TestUseV2API(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		// Cloud reports a non-release version.
+		{"dev", true},
+		{"", true},
+		{"latest", true},
+		// Self-hosted release semvers.
+		{"0.16", true},
+		{"0.16.0", true},
+		{"0.16.18", true},
+		{"0.16.18rc1", true},
+		{"v0.16.0", true},
+		{"0.17.3", true},
+		{"1.0.0", true},
+		{"1.2.3", true},
+		{"0.15.9", false},
+		{"0.15", false},
+		{"0.10.7", false},
+		{"0.0.1", false},
+	}
+	for _, tc := range cases {
+		if got := useV2API(tc.version); got != tc.want {
+			t.Errorf("useV2API(%q) = %v, want %v", tc.version, got, tc.want)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,41 @@ type forgeIssue struct {
 	Traces           json.RawMessage `json:"traces"`
 }
 
+// issueStatuses renders the valid --status values in error messages. It is not
+// the validator: that is the SDK's IsKnown, so if the API gains a status before
+// this list is updated the filter still works and only the message is stale —
+// the reverse would reject a filter the server supports.
+var issueStatuses = []langsmith.IssueListParamsStatus{
+	langsmith.IssueListParamsStatusOpen,
+	langsmith.IssueListParamsStatusFixing,
+	langsmith.IssueListParamsStatusWatching,
+	langsmith.IssueListParamsStatusCompleted,
+	langsmith.IssueListParamsStatusIgnored,
+}
+
+func issueStatusList() string {
+	names := make([]string, len(issueStatuses))
+	for i, s := range issueStatuses {
+		names[i] = string(s)
+	}
+	return strings.Join(names, ", ")
+}
+
+// validIssueUpdateStatus reports whether this is a state an issue can hold. It
+// uses the resource's own IssueStatus rather than the list filter's enum: the
+// question here is what an issue may become, not what may be filtered on.
+//
+// Which transitions a given caller may make is the server's decision, not the
+// CLI's — it varies by the caller's role, so a client-side allow-list here would
+// either forbid something the server permits or imply something it doesn't. This
+// only catches typos before a round-trip, the same way the list filter does.
+func validIssueUpdateStatus(status string) bool {
+	return langsmith.IssueStatus(status).IsKnown()
+}
+
+// issuePriorities mirrors the keys priorityToSeverity accepts, for its message.
+var issuePriorities = []string{"urgent", "high", "medium", "low"}
+
 var severityLabels = map[int]string{
 	0: "URGENT",
 	1: "HIGH",
@@ -46,11 +82,13 @@ func newProjectIssuesCmd() *cobra.Command {
 
 Examples:
   langsmith project issues list --project my-app
+  langsmith project issues get <issue-id>
   langsmith project issues list --project my-app --status open --priority high
   langsmith project issues events --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
+	cmd.AddCommand(newProjectIssuesGetCmd())
 	cmd.AddCommand(newProjectIssuesEventsCmd())
 	cmd.AddCommand(newProjectIssuesUpdateCmd())
 	cmd.AddCommand(newProjectIssuesRunsCmd())
@@ -61,9 +99,11 @@ Examples:
 func newProjectIssuesListCmd() *cobra.Command {
 	var (
 		project    string
+		projectID  string
 		status     string
 		priority   string
 		limit      int
+		offset     int
 		outputFile string
 	)
 
@@ -72,43 +112,73 @@ func newProjectIssuesListCmd() *cobra.Command {
 		Short: "List issues for a tracing project",
 		Long: `List forge issues associated with a tracing project.
 
-Fetches issues from the Issues Board for the specified project. Results
-can be filtered by status (open/closed) and priority (high/medium/low).
+Fetches issues from the Issues Board for the specified project. Results can be
+filtered by status (open/fixing/watching/completed/ignored) and priority
+(urgent/high/medium/low).
+
+Paging is server-side: --limit is the page size (max 500) and --offset skips
+that many issues. To read a board larger than one page, advance --offset by
+--limit until a request returns fewer rows than the limit.
+
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
   langsmith project issues list --project my-app
   langsmith project issues list --project my-app --status open
   langsmith project issues list --project my-app --priority high --limit 10
+  langsmith project issues list --project my-app --limit 100 --offset 100
   langsmith project issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
+			params := langsmith.IssueListParams{}
+			projectLabel := projectID
+			if projectID != "" {
+				id, err := validateProjectID(projectID)
+				if err != nil {
+					ExitErrorf("%v", err)
+				}
+				params.SessionID = langsmith.F(id)
+			} else {
+				projectLabel = ResolveProject(project)
+				if projectLabel == "" {
+					ExitError("--project or --project-id is required (or set LANGSMITH_PROJECT)")
+				}
+				params.SessionName = langsmith.F(projectLabel)
 			}
-
-			path := fmt.Sprintf("/v1/platform/issues?session_name=%s", urlEscape(projectName))
+			// Validate both filters before sending: an unknown --status used to
+			// cost a round-trip and return a server 400, and an unknown
+			// --priority was dropped silently, returning the whole unfiltered
+			// list with exit 0.
 			if status != "" {
-				path += "&status=" + urlEscape(status)
+				st := langsmith.IssueListParamsStatus(status)
+				if !st.IsKnown() {
+					ExitErrorf("invalid --status %q: must be one of %s", status, issueStatusList())
+				}
+				params.Status = langsmith.F(st)
 			}
 			if priority != "" {
 				sev := priorityToSeverity(priority)
-				if sev >= 0 {
-					path += fmt.Sprintf("&severity=%d", sev)
+				if sev < 0 {
+					ExitErrorf("invalid --priority %q: must be one of %s", priority, strings.Join(issuePriorities, ", "))
 				}
+				params.Severity = langsmith.F(langsmith.IssueListParamsSeverity(sev))
+			}
+			// Both are server-side; the server clamps limit to 500 and rejects
+			// a non-positive limit or negative offset.
+			if limit > 0 {
+				params.Limit = langsmith.F(int64(limit))
+			}
+			if offset > 0 {
+				params.Offset = langsmith.F(int64(offset))
 			}
 
-			var issues []forgeIssue
-			if err := c.RawGet(ctx, path, &issues); err != nil {
+			page, err := c.SDK.Issues.List(ctx, params)
+			if err != nil {
 				ExitErrorf("listing issues: %v", err)
 			}
-
-			if limit > 0 && len(issues) > limit {
-				issues = issues[:limit]
-			}
+			issues := page.Items
 
 			fmt_ := GetFormat()
 
@@ -116,35 +186,66 @@ Examples:
 				columns := []string{"NAME", "SEVERITY", "STATUS", "TAGS", "CREATED"}
 				var rows [][]string
 				for _, issue := range issues {
-					sevLabel := severityLabels[issue.Severity]
+					sevLabel := severityLabels[int(issue.Severity)]
 					if sevLabel == "" {
 						sevLabel = fmt.Sprintf("%d", issue.Severity)
 					}
 					rows = append(rows, []string{
 						truncate(issue.Name, 60),
 						sevLabel,
-						issue.Status,
+						string(issue.Status),
 						strings.Join(issue.Tags, ", "),
-						formatIssueTime(issue.CreatedAt),
+						formatIssueTimestamp(issue.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectLabel))
 			} else {
-				data := []map[string]any{}
-				for _, issue := range issues {
-					data = append(data, issueToMap(issue))
+				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
+					ExitErrorf("%v", err)
 				}
-				output.OutputJSON(data, outputFile)
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open or closed")
-	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: high, medium, or low")
-	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of issues to return")
+	addProjectFlags(cmd, &project, &projectID)
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status: open, fixing, watching, completed, or ignored")
+	cmd.Flags().StringVar(&priority, "priority", "", "Filter by priority: urgent, high, medium, or low")
+	cmd.Flags().IntVar(&limit, "limit", 50, "Page size (server-side; max 500)")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Number of issues to skip (server-side; for paging)")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
+	return cmd
+}
+
+func newProjectIssuesGetCmd() *cobra.Command {
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "get <issue-id>",
+		Short: "Get an issue by ID",
+		Long: `Get full details for a specific issue.
+
+The issue ID is the UUID returned by 'langsmith project issues list'.
+
+Examples:
+  langsmith project issues get <issue-id>
+  langsmith project issues get <issue-id> --output issue.json`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			c := MustGetClient()
+			ctx := context.Background()
+
+			issue, err := c.SDK.Issues.Get(ctx, args[0])
+			if err != nil {
+				ExitErrorf("getting issue: %v", err)
+			}
+			if err := output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }
 
@@ -163,6 +264,7 @@ type issueEvent struct {
 func newProjectIssuesEventsCmd() *cobra.Command {
 	var (
 		project         string
+		projectID       string
 		lookBackMinutes int
 		limit           int
 		outputFile      string
@@ -187,17 +289,17 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			projectName := ResolveProject(project)
-			if projectName == "" {
-				ExitError("--project is required (or set LANGSMITH_PROJECT)")
-			}
-
-			sessionID, err := c.ResolveSessionID(ctx, projectName)
+			sessionID, err := resolveSessionID(ctx, c, project, projectID, "project issues events")
 			if err != nil {
-				ExitErrorf("resolving project %q: %v", projectName, err)
+				ExitErrorf("%v", err)
+			}
+			// Name the board by whichever identifier the caller gave.
+			projectLabel := ResolveProject(project)
+			if projectLabel == "" {
+				projectLabel = sessionID
 			}
 
-			path := fmt.Sprintf("/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
+			path := fmt.Sprintf("/api/v1/platform/sessions/%s/issue-events?look_back_minutes=%d&limit=%d",
 				sessionID, lookBackMinutes, limit)
 
 			var events []issueEvent
@@ -225,7 +327,7 @@ Examples:
 						formatIssueTime(e.CreatedAt),
 					})
 				}
-				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectName))
+				output.OutputTable(columns, rows, fmt.Sprintf("Issue events for %s", projectLabel))
 			} else {
 				data := []map[string]any{}
 				for _, e := range events {
@@ -250,12 +352,14 @@ Examples:
 					}
 					data = append(data, m)
 				}
-				output.OutputJSON(data, outputFile)
+				if err := output.OutputJSON(data, outputFile); err != nil {
+					ExitErrorf("%v", err)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&project, "project", "", "Project name [env: LANGSMITH_PROJECT]")
+	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVar(&lookBackMinutes, "look-back-minutes", 10080, "Look-back window in minutes (default 10080 = 7 days)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum number of events to return")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
@@ -270,6 +374,7 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 		proposedFix string
 		evaluator   string
 		status      string
+		reason      string
 		outputFile  string
 	)
 
@@ -285,11 +390,12 @@ The issue ID is the UUID returned by 'langsmith project issues list'.
 --name and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
 --evaluator replaces the suggested evaluator. Pass the evaluator config as JSON — the CLI wraps it automatically.
---status reopens a resolved issue. The only accepted value is 'open' — closing an issue is a human action done via the UI.
+--status sets the issue's lifecycle state: open, fixing, watching, completed, or ignored ('ignored' is shown as "Incorrectly Flagged"). Pass --reason to record why; it is stored on the issue's history alongside who made the change. Which transitions you may make depends on your role — the server rejects the ones you may not.
 
 Examples:
   langsmith project issues update <id> --name "Corrected name" --description "New finding..."
   langsmith project issues update <id> --status open
+  langsmith project issues update <id> --status ignored --reason "Duplicate of 1ac6dbe2 — same root cause, one fix closes both"
   langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
   langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
   langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
@@ -299,8 +405,11 @@ Examples:
 			if name == "" && description == "" && proposedFix == "" && evaluator == "" && status == "" {
 				ExitError("at least one of --name, --description, --proposed-fix, --evaluator, or --status is required")
 			}
-			if status != "" && status != "open" {
-				ExitError("--status only accepts 'open' — closing an issue is done via the UI")
+			if status != "" && !validIssueUpdateStatus(status) {
+				ExitErrorf("invalid --status %q: must be one of %s", status, issueStatusList())
+			}
+			if reason != "" && status == "" {
+				ExitError("--reason describes a status change; pass it with --status")
 			}
 
 			c := MustGetClient()
@@ -318,6 +427,9 @@ Examples:
 			}
 			if status != "" {
 				body["status"] = status
+			}
+			if reason != "" {
+				body["reason"] = reason
 			}
 			if evaluator != "" {
 				var evalConfig map[string]any
@@ -347,21 +459,23 @@ Examples:
 				}}
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues/%s", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s", issueID)
 
 			var issue forgeIssue
 			if err := c.RawPatch(ctx, path, body, &issue); err != nil {
 				ExitErrorf("updating issue: %v", err)
 			}
-
-			output.OutputJSON(issueToMap(issue), outputFile)
+			if err := output.OutputJSON(issueToMap(issue), outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
 	cmd.Flags().StringVar(&name, "name", "", "Corrected name (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&description, "description", "", "Corrected description (use only when original is factually wrong)")
 	cmd.Flags().StringVar(&proposedFix, "proposed-fix", "", "Updated proposed fix (markdown with code diff)")
-	cmd.Flags().StringVar(&status, "status", "", "Reopen a resolved issue. Only 'open' is accepted — closing is done via the UI")
+	cmd.Flags().StringVar(&status, "status", "", "New lifecycle state: open, fixing, watching, completed, or ignored")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why the status changed, recorded on the issue's history. Use with --status")
 	cmd.Flags().StringVar(&evaluator, "evaluator", "", `Replace the suggested evaluator. JSON with "type" ("llm" or "code"), "display_name", and type-specific fields`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
@@ -395,6 +509,7 @@ func issueToMap(issue forgeIssue) map[string]any {
 		"fix_branch":    issue.FixBranch,
 		"fix_prompt":    issue.FixPrompt,
 		"fix_pr_number": issue.FixPRNumber,
+		"proposed_fix":  issue.ProposedFix,
 		"created_at":    formatTimeISO(issue.CreatedAt),
 		"updated_at":    formatTimeISO(issue.UpdatedAt),
 	}
@@ -456,14 +571,14 @@ func formatIssueTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04")
 }
 
-func urlEscape(s string) string {
-	s = strings.ReplaceAll(s, "%", "%25")
-	s = strings.ReplaceAll(s, " ", "%20")
-	s = strings.ReplaceAll(s, "&", "%26")
-	s = strings.ReplaceAll(s, "=", "%3D")
-	s = strings.ReplaceAll(s, "+", "%2B")
-	s = strings.ReplaceAll(s, "#", "%23")
-	return s
+// formatIssueTimestamp renders an RFC3339 timestamp string from the SDK, which
+// types these fields as strings rather than time.Time.
+func formatIssueTimestamp(s string) string {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return "N/A"
+	}
+	return formatIssueTime(t)
 }
 
 func truncate(s string, n int) string {
@@ -528,7 +643,7 @@ Examples:
 				body["comment"] = comment
 			}
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/runs", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/runs", issueID)
 			if err := c.RawPost(ctx, path, body, nil); err != nil {
 				ExitErrorf("linking run: %v", err)
 			}
@@ -554,7 +669,7 @@ func newProjectIssuesRunsRemoveCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/runs/%s", issueID, runID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/runs/%s", issueID, runID)
 			if err := c.RawDelete(ctx, path, nil); err != nil {
 				ExitErrorf("unlinking run: %v", err)
 			}
@@ -604,9 +719,25 @@ func parseAssertion(s string) (exampleAssertion, error) {
 	return exampleAssertion{Key: key, Comment: comment}, nil
 }
 
+// proposeExampleBody builds the request body for examples propose. start_time
+// is omitted rather than sent empty when the flag is unset, so this release can
+// ship ahead of the server change that reads it, leaving callers that don't
+// pass the flag on exactly their current request shape.
+func proposeExampleBody(runID, startTime string, assertions []exampleAssertion) map[string]any {
+	body := map[string]any{
+		"run_id":     runID,
+		"assertions": assertions,
+	}
+	if startTime != "" {
+		body["start_time"] = startTime
+	}
+	return body
+}
+
 func newProjectIssuesProposeExampleCmd() *cobra.Command {
 	var (
 		runID      string
+		startTime  string
 		assertions []string
 		outputFile string
 	)
@@ -618,6 +749,16 @@ func newProjectIssuesProposeExampleCmd() *cobra.Command {
 the run should satisfy. The issues agent uses these to generate evaluators
 and test cases for the issue.
 
+The run does not have to be linked to the issue as evidence. Evidence points a
+reviewer at where a failure is visible; an example is replayed against the
+agent, so it usually starts earlier in the trace. The server validates the
+run_id and start_time against the runs database and resolves the trace_id
+automatically.
+
+--start-time is how the server addresses the run. It is not enforced here, so
+this build still works against servers predating that lookup, which accept a
+bare run_id for a run already linked to the issue.
+
 Each --assertion flag takes a key=comment pair. The key is a short identifier
 for the assertion (e.g. "correctness"), and the comment describes what the run
 should demonstrate. You may specify up to 10 assertions; keys must be unique.
@@ -625,10 +766,12 @@ should demonstrate. You may specify up to 10 assertions; keys must be unique.
 Examples:
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Response must be factually correct"
 
   langsmith project issues examples propose <issue-id> \
     --run-id <run-id> \
+    --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Must cite sources" \
     --assertion format="Output must be valid JSON"`,
 		Args: cobra.ExactArgs(1),
@@ -661,22 +804,21 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			body := map[string]any{
-				"run_id":     runID,
-				"assertions": parsed,
-			}
+			body := proposeExampleBody(runID, startTime, parsed)
 
-			path := fmt.Sprintf("/v1/platform/issues/%s/proposed-examples", issueID)
+			path := fmt.Sprintf("/api/v1/platform/issues/%s/proposed-examples", issueID)
 			var result map[string]any
 			if err := c.RawPost(ctx, path, body, &result); err != nil {
 				ExitErrorf("proposing example: %v", err)
 			}
-
-			output.OutputJSON(result, outputFile)
+			if err := output.OutputJSON(result, outputFile); err != nil {
+				ExitErrorf("%v", err)
+			}
 		},
 	}
 
 	cmd.Flags().StringVar(&runID, "run-id", "", "Run ID to propose as a regression example (required)")
+	cmd.Flags().StringVar(&startTime, "start-time", "", "Run start time in RFC3339 format (required by servers that resolve unlinked runs)")
 	cmd.Flags().StringArrayVar(&assertions, "assertion", nil, `Assertion in key=comment format. May be repeated up to 10 times.`)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd

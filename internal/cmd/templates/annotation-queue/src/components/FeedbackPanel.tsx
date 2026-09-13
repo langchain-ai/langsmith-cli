@@ -12,11 +12,18 @@ import { ErrorBanner } from './ErrorBanner';
 import { FeedbackChip } from './FeedbackChip';
 import { ReviewerNotes } from './ReviewerNotes';
 import { Spinner } from './Spinner';
-import type { AnnotationQueue, FeedbackConfig, FeedbackItem, RubricItem } from '../types';
+import type {
+  AnnotationQueue,
+  FeedbackConfig,
+  FeedbackItem,
+  QueueItemType,
+  RubricItem,
+} from '../types';
 import {
   deleteFeedback,
   fetchFeedbackConfigs,
-  fetchFeedbacks,
+  fetchFeedbacksForRun,
+  fetchFeedbacksForThread,
   patchFeedback,
   submitFeedback,
 } from '../api';
@@ -28,11 +35,15 @@ function errorMessage(e: unknown): string {
 
 interface Props {
   queue: AnnotationQueue | null;
+  itemType: QueueItemType | undefined;
+  /** RUN subject id */
   runId: string | undefined;
+  /** THREAD subject id (feedback_thread_id) */
+  feedbackThreadId: string | undefined;
   traceId: string | undefined;
   sessionId: string | undefined;
   startTime: string | undefined;
-  queueRunId: string | undefined;
+  itemId: string | undefined;
   onComplete: () => void;
   completing: boolean;
   completeError: string | null;
@@ -45,7 +56,9 @@ interface RubricCardProps {
   item: RubricItem;
   config: FeedbackConfig | undefined;
   existingFeedback: FeedbackItem | undefined;
-  runId: string;
+  itemType: QueueItemType;
+  runId: string | undefined;
+  feedbackThreadId: string | undefined;
   traceId: string | undefined;
   sessionId: string | undefined;
   startTime: string | undefined;
@@ -59,7 +72,9 @@ function RubricCard({
   item,
   config,
   existingFeedback,
+  itemType,
   runId,
+  feedbackThreadId,
   traceId,
   sessionId,
   startTime,
@@ -103,6 +118,15 @@ function RubricCard({
           score: newScore,
           value: newValue,
           comment: commentVal || null,
+        });
+      } else if (itemType === 'THREAD' && feedbackThreadId) {
+        saved = await submitFeedback({
+          key: item.feedback_key,
+          feedback_thread_id: feedbackThreadId,
+          score: newScore,
+          value: newValue ?? undefined,
+          comment: commentVal || undefined,
+          session_id: sessionId,
         });
       } else {
         saved = await submitFeedback({
@@ -317,11 +341,13 @@ function RubricCard({
 
 export function FeedbackPanel({
   queue,
+  itemType,
   runId,
+  feedbackThreadId,
   traceId,
   sessionId,
   startTime,
-  queueRunId,
+  itemId,
   onComplete,
   completing,
   completeError,
@@ -393,14 +419,19 @@ export function FeedbackPanel({
     setAddingKey(false);
   }
 
-  // Reload feedbacks when runId changes
+  // Reload feedbacks when the selected item's subject changes.
   useEffect(() => {
-    if (!runId) {
+    const isThread = itemType === 'THREAD';
+    const subject = isThread ? feedbackThreadId : runId;
+    if (!subject) {
       setFeedbackMap({});
       return;
     }
     setFeedbackLoading(true);
-    fetchFeedbacks(runId)
+    const load = isThread
+      ? fetchFeedbacksForThread(subject, sessionId)
+      : fetchFeedbacksForRun(subject);
+    load
       .then((items) => {
         const map: Record<string, FeedbackItem> = {};
         for (const item of items) map[item.key] = item;
@@ -408,7 +439,7 @@ export function FeedbackPanel({
       })
       .catch((e) => console.error('Failed to load feedbacks', e))
       .finally(() => setFeedbackLoading(false));
-  }, [runId]);
+  }, [itemType, runId, feedbackThreadId, sessionId]);
 
   const handleFeedbackSaved = useCallback(
     (feedback: FeedbackItem, index: number) => {
@@ -530,7 +561,9 @@ export function FeedbackPanel({
                     item={item}
                     config={feedbackConfigs[item.feedback_key]}
                     existingFeedback={feedbackMap[item.feedback_key]}
-                    runId={runId ?? ''}
+                    itemType={itemType ?? 'RUN'}
+                    runId={runId}
+                    feedbackThreadId={feedbackThreadId}
                     traceId={traceId}
                     sessionId={sessionId}
                     startTime={startTime}
@@ -550,13 +583,20 @@ export function FeedbackPanel({
             )}
           </div>
 
-          {/* Reviewer notes */}
-          <ReviewerNotes runId={runId} traceId={traceId} sessionId={sessionId} startTime={startTime} />
+          {/* Reviewer notes — RUN only; product AQ hides notes for THREAD. */}
+          {itemType !== 'THREAD' && (
+            <ReviewerNotes
+              runId={runId}
+              traceId={traceId}
+              sessionId={sessionId}
+              startTime={startTime}
+            />
+          )}
         </div>
       </div>
 
       {/* Sticky footer */}
-      {runId && queueRunId && (
+      {itemId && (itemType === 'THREAD' ? feedbackThreadId : runId) && (
         <div className="sticky bottom-0 border-t border-secondary bg-primary px-4 pb-20 pt-4">
           {completeError && <ErrorBanner error={completeError} />}
           <button

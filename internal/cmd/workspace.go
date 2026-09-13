@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
-	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -68,18 +68,13 @@ func newWorkspaceSetDefaultCmd() *cobra.Command {
 }
 
 func renderWorkspaceTable(cmd *cobra.Command, workspaces []langsmith.WorkspaceListResponse) {
-	table := tablewriter.NewWriter(cmd.OutOrStdout())
-	table.SetHeader([]string{"Name", "ID", "Handle", "Role", "Deleted"})
-	table.SetBorder(false)
-	table.SetColumnSeparator("  ")
-	table.SetHeaderLine(true)
-	table.SetAutoWrapText(false)
+	table := output.NewTable(cmd.OutOrStdout(), []string{"Name", "ID", "Handle", "Role", "Deleted"})
 	for _, ws := range workspaces {
 		deleted := "false"
 		if ws.IsDeleted {
 			deleted = "true"
 		}
-		table.Append([]string{
+		_ = table.Append([]string{
 			ws.DisplayName,
 			ws.ID,
 			ws.TenantHandle,
@@ -87,7 +82,7 @@ func renderWorkspaceTable(cmd *cobra.Command, workspaces []langsmith.WorkspaceLi
 			deleted,
 		})
 	}
-	table.Render()
+	_ = table.Render()
 }
 
 func workspaceRole(ws langsmith.WorkspaceListResponse) string {
