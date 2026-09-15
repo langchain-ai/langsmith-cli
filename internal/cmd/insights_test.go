@@ -9,7 +9,7 @@ import (
 
 func TestInsightsCmd_Subcommands(t *testing.T) {
 	cmd := newInsightsCmd()
-	expected := map[string]bool{"list": false, "get": false}
+	expected := map[string]bool{"list": false, "get": false, "create": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true

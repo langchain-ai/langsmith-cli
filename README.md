@@ -436,6 +436,40 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### `insights` — Create and inspect Insights reports
+
+Start a one-off analysis with an explicit provider, sample count, and time window:
+
+```bash
+langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --model openai \
+  --user-context '{"Business goal":"Resolve eligible refund requests","Concern":"Claims of success after a tool error"}'
+langsmith insights list --project-id <uuid> --limit 5
+langsmith insights get <job-id> --project-id <uuid>
+langsmith insights wait <job-id> --project-id <uuid> --timeout 5m --format json
+```
+
+In an interactive terminal with pretty output, omit `--model` to choose OpenAI or
+Anthropic at a prompt. There is no default choice. Non-interactive and JSON usage
+requires `--model` and never prompts. The menu lists supported providers, not verified
+workspace availability; credential checks still happen on the service.
+
+Alternatively use `--start-time` and optional `--end-time` as RFC3339 timestamps.
+Do not combine `--start-time` with `--last-n-hours`. Optional `--filter`, `--name`,
+and `--summary-prompt` refine the report. `--user-context` is a JSON object of
+question-to-answer strings, with at least one non-empty answer.
+
+Creation can incur workspace model usage. `--model` selects `openai` or `anthropic`
+using server-side configuration, not your app's local Gateway client. `--sample`
+is a positive trace count, not a percentage or dollar cap; service limits apply.
+No recurrence is scheduled, and model-secret validation is not bypassed.
+
+The JSON response preserves the service's job ID, name, status, error, and project
+ID. A queued response does not mean analysis is complete. Creation is not retried
+automatically; if a response is lost, inspect existing jobs before submitting again.
+Advanced saved configurations and separate cluster/summary model overrides remain
+available through the API, not this command's initial flag surface.
+
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
