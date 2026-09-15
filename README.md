@@ -436,6 +436,14 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### Create a tracing project
+
+```bash
+langsmith project create --name my-app --description 'Application traces'
+```
+
+Returns JSON with `status`, `id`, and `name`. Creating a project does not instrument your app or enable evaluators. The create request is not automatically retried.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
