@@ -17,6 +17,7 @@ import (
 type insightsCreateOptions struct {
 	name, model, start, end, filter, summaryPrompt, userContext string
 	lastNHours, sample                                          int64
+	summaryPromptSet                                            bool
 	configID, clusterModel, summaryModel                        string
 	categories                                                  map[string]string
 	attributes                                                  map[string]insightsAttribute
@@ -63,8 +64,8 @@ func insightsCreateParams(o insightsCreateOptions) (langsmith.SessionInsightNewP
 	if o.model != "openai" && o.model != "anthropic" {
 		return fail("--model must be openai or anthropic")
 	}
-	if o.sample <= 0 {
-		return fail("--sample must be a positive number of traces")
+	if o.sample < 1 || o.sample > 1000 {
+		return fail("--sample must be between 1 and 1000 (matching the Insights UI)")
 	}
 	if o.lastNHours < 0 || (o.start == "" && o.lastNHours == 0) {
 		return fail("specify --start-time or a positive --last-n-hours")
@@ -105,7 +106,10 @@ func insightsCreateParams(o insightsCreateOptions) (langsmith.SessionInsightNewP
 	if o.filter != "" {
 		request.Filter = langsmith.F(o.filter)
 	}
-	if o.summaryPrompt != "" {
+	if o.summaryPrompt != "" || o.summaryPromptSet {
+		if _, err := insightsPromptVariables(o.summaryPrompt); err != nil {
+			return fail(err.Error())
+		}
 		request.SummaryPrompt = langsmith.F(o.summaryPrompt)
 	}
 	if o.userContext != "" {
@@ -133,6 +137,7 @@ func newInsightsCreateCmd() *cobra.Command {
 	var options insightsCreateOptions
 	var file, categoriesFile, attributesFile, outputFile string
 	var dryRun bool
+	var previewRun string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Start a one-off Insights analysis of selected project traces",
@@ -144,7 +149,8 @@ LLM Gateway connection. Model-secret validation remains enabled on the service.
 If --model is omitted in an interactive terminal with pretty output, a selection
 prompt is shown. Scripts and JSON output require --model and never prompt.
 
-The sample is a trace count, not a percentage or cost budget. Service limits apply.
+The sample is a requested count from 1 to 1000, not a percentage or cost budget.
+The service selects the latest matching root per thread plus unthreaded roots.
 Without --filter the service selects root runs. --user-context accepts a JSON
 object mapping business questions to answers. Creation does not schedule recurrence.
 
@@ -153,6 +159,11 @@ Use --file for an analysis JSON object with API field names, or --categories and
 flags. --config-id runs a saved configuration exactly as stored; overrides are
 rejected. --dry-run validates the request without creating a job, but cannot
 resolve saved configurations or verify model availability and write permission.
+With --dry-run --preview-run UUID, inspect variable bindings from one root run.
+This does not render a summary or verify that the run will be sampled.
+Custom summary prompts summarize each run and must reference {{run.inputs}},
+{{run.outputs}}, other simple run paths, or {{all_thread_messages}}.
+Omit --summary-prompt to use the service default. Sections/helpers are unsupported.
 
 The response contains the actual job ID and status, not an assertion of completion.
 Use 'langsmith insights get <id> --project-id <project-id>' to inspect the report.`,
@@ -160,6 +171,15 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
   langsmith insights create --project my-app --start-time 2026-09-01T00:00:00Z --end-time 2026-09-02T00:00:00Z --sample 100 --model anthropic --user-context '{"Business goal":"Resolve eligible refund requests"}'`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			options.summaryPromptSet = cmd.Flags().Changed("summary-prompt")
+			if cmd.Flags().Changed("preview-run") {
+				if !dryRun || options.configID != "" {
+					return fmt.Errorf("--preview-run requires --dry-run and cannot use --config-id")
+				}
+				if _, err := uuid.Parse(previewRun); err != nil {
+					return fmt.Errorf("--preview-run must be a UUID")
+				}
+			}
 			for _, name := range []string{"file", "categories", "attributes", "config-id", "cluster-model", "summary-model"} {
 				v, _ := cmd.Flags().GetString(name)
 				if cmd.Flags().Changed(name) && strings.TrimSpace(v) == "" {
@@ -206,10 +226,18 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 				return err
 			}
 			if dryRun {
-				return output.OutputJSON(map[string]any{"status": "dry_run", "project_id": id,
+				result := map[string]any{"status": "dry_run", "project_id": id,
 					"workspace_id": nilStr(GetWorkspaceID()), "request": params,
 					"saved_config_resolved": false, "authorization_validated": false,
-					"note": "No job created. Saved configuration, provider availability, service limits and write permission are not validated."}, outputFile)
+					"note": "No job created. Saved configuration, provider availability, service limits and write permission are not validated."}
+				if previewRun != "" {
+					preview, err := previewInsightsRun(cmd.Context(), c, id, previewRun, options.summaryPrompt)
+					if err != nil {
+						return err
+					}
+					result["preview"] = preview
+				}
+				return output.OutputJSON(result, outputFile)
 			}
 			// A retried POST could create a second paid job after an ambiguous response.
 			job, err := c.SDK.Sessions.Insights.New(cmd.Context(), id, params, option.WithMaxRetries(0))
@@ -225,12 +253,12 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&options.name, "name", "", "Optional report name")
 	cmd.Flags().StringVar(&options.model, "model", "", "Workspace provider: openai or anthropic; prompts only in interactive pretty mode")
-	cmd.Flags().Int64Var(&options.sample, "sample", 0, "Number of traces to sample (positive; required unless using --file or --config-id)")
+	cmd.Flags().Int64Var(&options.sample, "sample", 0, "Requested sample count (1–1000; required unless using --file or --config-id)")
 	cmd.Flags().Int64Var(&options.lastNHours, "last-n-hours", 0, "Look back this many hours; cannot combine with --start-time")
 	cmd.Flags().StringVar(&options.start, "start-time", "", "Start timestamp in RFC3339 format")
 	cmd.Flags().StringVar(&options.end, "end-time", "", "End timestamp in RFC3339 format; requires --start-time")
 	cmd.Flags().StringVar(&options.filter, "filter", "", "LangSmith run filter DSL; defaults to root runs on the service")
-	cmd.Flags().StringVar(&options.summaryPrompt, "summary-prompt", "", "Instructions for the report summary")
+	cmd.Flags().StringVar(&options.summaryPrompt, "summary-prompt", "", "Per-run summary template with trace variables; omitted uses service default")
 	cmd.Flags().StringVar(&options.userContext, "user-context", "", "JSON object mapping business questions to answers")
 	cmd.Flags().StringVarP(&file, "file", "f", "", "Analysis JSON file; cannot combine with analysis flags or --config-id")
 	cmd.Flags().StringVar(&categoriesFile, "categories", "", "JSON file mapping category names to descriptions (1-10)")
@@ -239,6 +267,7 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 	cmd.Flags().StringVar(&options.clusterModel, "cluster-model", "", "Clustering provider or workspace model-settings UUID")
 	cmd.Flags().StringVar(&options.summaryModel, "summary-model", "", "Summarization provider or workspace model-settings UUID")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Validate and show the request without creating a job (may read project metadata)")
+	cmd.Flags().StringVar(&previewRun, "preview-run", "", "With --dry-run, inspect prompt variable bindings against this root run UUID")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	cmd.MarkFlagsMutuallyExclusive("file", "config-id")
 	for _, name := range []string{"name", "model", "sample", "last-n-hours", "start-time", "end-time", "filter", "summary-prompt", "user-context", "categories", "attributes", "cluster-model", "summary-model"} {

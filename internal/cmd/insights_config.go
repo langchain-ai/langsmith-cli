@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/google/uuid"
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -20,7 +21,7 @@ type insightsFileConfig struct {
 	LastNHours    int64                        `json:"last_n_hours"`
 	Sample        int64                        `json:"sample"`
 	Filter        string                       `json:"filter"`
-	SummaryPrompt string                       `json:"summary_prompt"`
+	SummaryPrompt *string                      `json:"summary_prompt"`
 	UserContext   map[string]string            `json:"user_context"`
 	Partitions    map[string]string            `json:"partitions"`
 	Attributes    map[string]insightsAttribute `json:"attribute_schemas"`
@@ -51,6 +52,9 @@ func readInsightsJSON(path string, target any) error {
 	if !strings.HasPrefix(strings.TrimSpace(string(b)), "{") {
 		return fmt.Errorf("Insights JSON file must contain an object")
 	}
+	if err := uniqueInsightsJSONKeys(json.NewDecoder(strings.NewReader(string(b))), 0); err != nil {
+		return err
+	}
 	d := json.NewDecoder(strings.NewReader(string(b)))
 	d.DisallowUnknownFields()
 	if err := d.Decode(target); err != nil {
@@ -68,8 +72,12 @@ func (f insightsFileConfig) options() insightsCreateOptions {
 		b, _ := json.Marshal(f.UserContext)
 		context = string(b)
 	}
+	prompt := ""
+	if f.SummaryPrompt != nil {
+		prompt = *f.SummaryPrompt
+	}
 	return insightsCreateOptions{name: f.Name, model: f.Model, start: f.Start, end: f.End,
-		lastNHours: f.LastNHours, sample: f.Sample, filter: f.Filter, summaryPrompt: f.SummaryPrompt,
+		lastNHours: f.LastNHours, sample: f.Sample, filter: f.Filter, summaryPrompt: prompt, summaryPromptSet: f.SummaryPrompt != nil,
 		userContext: context, categories: f.Partitions, attributes: f.Attributes,
 		clusterModel: f.ClusterModel, summaryModel: f.SummaryModel}
 }
@@ -79,10 +87,16 @@ func addInsightsAnalysisParams(o insightsCreateOptions, p *langsmith.CreateRunCl
 		if len(o.categories) == 0 || len(o.categories) > 10 {
 			return fmt.Errorf("categories must contain 1 to 10 name/description pairs")
 		}
+		seen := map[string]bool{}
 		for name, description := range o.categories {
 			if strings.TrimSpace(name) == "" || strings.TrimSpace(description) == "" {
 				return fmt.Errorf("category names and descriptions must not be blank")
 			}
+			key := strings.TrimSpace(name)
+			if seen[key] {
+				return fmt.Errorf("category names must be unique after trimming whitespace")
+			}
+			seen[key] = true
 		}
 		p.Partitions = langsmith.F(o.categories)
 	}
@@ -92,6 +106,9 @@ func addInsightsAnalysisParams(o insightsCreateOptions, p *langsmith.CreateRunCl
 		}
 		attributes := make(map[string]interface{}, len(o.attributes))
 		for name, a := range o.attributes {
+			if strings.IndexFunc(name, unicode.IsSpace) >= 0 {
+				return fmt.Errorf("attribute names must not contain whitespace")
+			}
 			if strings.TrimSpace(name) == "" || strings.TrimSpace(a.Description) == "" {
 				return fmt.Errorf("attribute names and descriptions must not be blank")
 			}
@@ -114,6 +131,43 @@ func addInsightsAnalysisParams(o insightsCreateOptions, p *langsmith.CreateRunCl
 	}
 	if o.summaryModel != "" {
 		p.SummaryModel = langsmith.F(o.summaryModel)
+	}
+	return nil
+}
+
+// Reject duplicate keys before decoding maps, which would otherwise silently keep
+// the last value. Bound nesting as well as file size for untrusted input.
+func uniqueInsightsJSONKeys(d *json.Decoder, depth int) error {
+	if depth > 128 {
+		return fmt.Errorf("Insights JSON nesting exceeds 128 levels")
+	}
+	token, err := d.Token()
+	if err != nil {
+		return fmt.Errorf("invalid Insights JSON")
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		if delim == '{' {
+			token, err = d.Token()
+			if err != nil {
+				return fmt.Errorf("invalid Insights JSON")
+			}
+			key, ok := token.(string)
+			if !ok || seen[key] {
+				return fmt.Errorf("Insights JSON contains a duplicate or invalid key")
+			}
+			seen[key] = true
+		}
+		if err := uniqueInsightsJSONKeys(d, depth+1); err != nil {
+			return err
+		}
+	}
+	if _, err := d.Token(); err != nil {
+		return fmt.Errorf("invalid Insights JSON")
 	}
 	return nil
 }

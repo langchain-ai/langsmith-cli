@@ -459,7 +459,7 @@ Use `--file/-f` for a reviewable JSON analysis. File keys match the API:
     }
   },
   "user_context": {"Business goal": "Resolve eligible support requests"},
-  "summary_prompt": "Highlight recurring failures with supporting evidence"
+  "summary_prompt": "Summarize the request, action and outcome. Inputs: {{run.inputs}} Outputs: {{run.outputs}}"
 }
 ```
 
@@ -471,6 +471,27 @@ bin/langsmith --format json insights create --project-id PROJECT_ID --file analy
 # After reviewing the request, submit it.
 bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json
 ```
+
+Custom summary prompts summarize each run, not just the final report. Use simple
+variables such as `{{run.inputs}}`, `{{run.outputs}}`, nested object paths, or
+`{{all_thread_messages}}`; sections and helpers are not supported. Omit the prompt
+to use the service default. Category names must be unique after trimming, and
+attribute names cannot contain whitespace.
+
+To check variables without starting analysis:
+
+```bash
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json --dry-run --preview-run RUN_ID
+```
+
+The preview returns `bindings`, `missing_paths`, `unchecked_paths`, and
+`paths_validated`. It preserves null, false and zero. Thread messages and feedback
+are marked unchecked; nested paths traverse objects, not array indexes. This is
+not a rendered summary, a matching-run count, or proof the explicit run meets the
+analysis filter/time window or will be sampled. It reads trace data into output.
+
+`--sample` accepts 1–1000. The service selects the latest matching root per thread
+plus unthreaded roots; fewer eligible traces can mean a smaller report.
 
 Dry-run validates local configuration, not provider availability, service limits, or write
 permission. It may read project metadata. It does not freeze the server's sampled traces;
