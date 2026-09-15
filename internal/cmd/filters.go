@@ -169,9 +169,10 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (exact match). The server's search() operator is single-argument
-	// full-text search across all string fields, so there is no name-scoped
-	// substring form; users wanting that pass --filter 'search("...")' themselves.
+	// Name filter (exact match). The server's search() operator takes a single
+	// argument and does token-based full-text matching across all string fields,
+	// so it cannot be scoped to name -- search(name, x) is rejected with a 400.
+	// eq() is the only name-scoped form the v2 query endpoint accepts.
 	if f.Name != "" {
 		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
 	}
