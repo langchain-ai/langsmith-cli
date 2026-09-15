@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -27,13 +30,296 @@ with an executive summary of key findings and highlighted traces.
 
 Examples:
   langsmith insights list --project my-app
+  langsmith insights create --project my-app --name "Reliability review" --summary-prompt 'Summarize {{run.inputs}} and {{run.outputs}}'
   langsmith insights get INSIGHT_ID --project my-app
   langsmith insights get INSIGHT_ID --project my-app --format pretty`,
 	}
 
+	cmd.AddCommand(newInsightsCreateCmd())
 	cmd.AddCommand(newInsightsListCmd())
 	cmd.AddCommand(newInsightsGetCmd())
 	return cmd
+}
+
+type insightCreateOptions struct {
+	project           string
+	projectID         string
+	name              string
+	since             string
+	before            string
+	lastNHours        int64
+	filter            string
+	sample            float64
+	model             string
+	clusterModel      string
+	summaryModel      string
+	summaryPrompt     string
+	summaryPromptFile string
+	partitions        string
+	attributeSchemas  string
+	outputFile        string
+	sampleSet         bool
+	lastNHoursSet     bool
+}
+
+func newInsightsCreateCmd() *cobra.Command {
+	var opts insightCreateOptions
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an insight report for a project",
+		Long: `Create an insight report using a manually specified configuration.
+
+The summary prompt controls how each trace is summarized before patterns are
+identified. It is a Mustache template and must reference at least one supported
+trace field, such as {{run.inputs}}, {{run.outputs}}, {{run.error}},
+{{run.feedback}}, or {{all_thread_messages}}.
+
+Report generation runs asynchronously and may incur model costs. The workspace
+must have secrets configured for the selected models.`,
+		Example: `  langsmith insights create --project my-app \
+    --name "Weekly reliability review" \
+    --summary-prompt 'Identify the request and outcome: {{run.inputs}} {{run.outputs}}'
+
+  langsmith insights create --project my-app \
+    --name "Weekly reliability review" \
+    --summary-prompt-file ./summary-prompt.txt \
+    --since 2026-09-01 --before 2026-09-08 \
+    --filter 'eq(is_root, true)'
+
+  cat summary-prompt.txt | langsmith insights create --project-id PROJECT_ID \
+    --name "Weekly reliability review" \
+    --summary-prompt-file - --format json`,
+		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			opts.sampleSet = cmd.Flags().Changed("sample")
+			opts.lastNHoursSet = cmd.Flags().Changed("last-n-hours")
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.name = strings.TrimSpace(opts.name)
+			if opts.name == "" {
+				return fmt.Errorf("--name must not be empty")
+			}
+			request, err := buildInsightCreateRequest(opts)
+			if err != nil {
+				return err
+			}
+
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			sessionID, err := resolveSessionID(ctx, c, opts.project, opts.projectID, "insights create")
+			if err != nil {
+				return err
+			}
+
+			config, err := c.SDK.Sessions.Insights.Configs.New(ctx, sessionID, langsmith.SessionInsightConfigNewParams{
+				Name:   langsmith.F(opts.name),
+				Config: langsmith.F(request),
+			})
+			if err != nil {
+				return fmt.Errorf("creating insight config: %w", err)
+			}
+
+			created, err := c.SDK.Sessions.Insights.New(ctx, sessionID, langsmith.SessionInsightNewParams{
+				CreateRunClusteringJobRequest: langsmith.CreateRunClusteringJobRequestParam{
+					ConfigID: langsmith.F(config.ID),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("insight config %s was saved, but starting the report failed: %w", config.ID, err)
+			}
+
+			if GetFormat() == "pretty" {
+				printInsightCreatePretty(created, sessionID, config.ID)
+				return nil
+			}
+			if err := output.OutputJSON(insightCreateResponseToMap(created, sessionID, config.ID), opts.outputFile); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	addProjectFlags(cmd, &opts.project, &opts.projectID)
+	cmd.Flags().StringVar(&opts.name, "name", "", "Report name")
+	cmd.Flags().StringVar(&opts.summaryPrompt, "summary-prompt", "", "Mustache template used to summarize each trace")
+	cmd.Flags().StringVar(&opts.summaryPromptFile, "summary-prompt-file", "", `Read the summary prompt from a file (use "-" for stdin)`)
+	cmd.Flags().StringVar(&opts.since, "since", "", "Start of time window (RFC3339 or YYYY-MM-DD; default: 7 days ago)")
+	cmd.Flags().StringVar(&opts.before, "before", "", "End of time window (RFC3339 or YYYY-MM-DD; default: now)")
+	cmd.Flags().Int64Var(&opts.lastNHours, "last-n-hours", 0, "Analyze traces from the last N hours")
+	cmd.Flags().StringVar(&opts.filter, "filter", "", "LangSmith trace filter (default: root traces)")
+	cmd.Flags().Float64Var(&opts.sample, "sample", 0, "Trace sample size or fraction (must be greater than 0)")
+	cmd.Flags().StringVar(&opts.model, "model", "openai", "Model provider: openai or anthropic")
+	cmd.Flags().StringVar(&opts.clusterModel, "cluster-model", "", "Model ID used to identify patterns; requires --summary-model")
+	cmd.Flags().StringVar(&opts.summaryModel, "summary-model", "", "Model ID used to summarize traces; requires --cluster-model")
+	cmd.Flags().StringVar(&opts.partitions, "partitions", "", "Partitions as a JSON object or @file.json")
+	cmd.Flags().StringVar(&opts.attributeSchemas, "attribute-schemas", "", "Attribute schemas as a JSON object or @file.json")
+	cmd.Flags().StringVarP(&opts.outputFile, "output", "o", "", "Write JSON output to a file")
+	_ = cmd.MarkFlagRequired("name")
+	cmd.MarkFlagsMutuallyExclusive("summary-prompt", "summary-prompt-file")
+	cmd.MarkFlagsMutuallyExclusive("since", "last-n-hours")
+
+	return cmd
+}
+
+func buildInsightCreateRequest(opts insightCreateOptions) (langsmith.CreateRunClusteringJobRequestParam, error) {
+	var request langsmith.CreateRunClusteringJobRequestParam
+
+	prompt, err := loadInsightSummaryPrompt(opts.summaryPrompt, opts.summaryPromptFile)
+	if err != nil {
+		return request, err
+	}
+	if strings.TrimSpace(prompt) == "" {
+		return request, fmt.Errorf("one of --summary-prompt or --summary-prompt-file is required")
+	}
+	request.SummaryPrompt = langsmith.F(prompt)
+
+	if opts.model != "openai" && opts.model != "anthropic" {
+		return request, fmt.Errorf("invalid --model %q: must be openai or anthropic", opts.model)
+	}
+	request.Model = langsmith.F(langsmith.CreateRunClusteringJobRequestModel(opts.model))
+
+	if (opts.clusterModel == "") != (opts.summaryModel == "") {
+		return request, fmt.Errorf("--cluster-model and --summary-model must be specified together")
+	}
+	if opts.clusterModel != "" {
+		request.ClusterModel = langsmith.F(opts.clusterModel)
+		request.SummaryModel = langsmith.F(opts.summaryModel)
+	}
+
+	if opts.since != "" {
+		start, err := parseFlexTime(opts.since)
+		if err != nil {
+			return request, fmt.Errorf("invalid --since timestamp %q: use RFC3339 or YYYY-MM-DD", opts.since)
+		}
+		request.StartTime = langsmith.F(start)
+	}
+	if opts.before != "" {
+		if opts.since == "" {
+			return request, fmt.Errorf("--before requires --since")
+		}
+		end, err := parseFlexTime(opts.before)
+		if err != nil {
+			return request, fmt.Errorf("invalid --before timestamp %q: use RFC3339 or YYYY-MM-DD", opts.before)
+		}
+		start := request.StartTime.Value
+		if !end.After(start) {
+			return request, fmt.Errorf("--before must be after --since")
+		}
+		request.EndTime = langsmith.F(end)
+	}
+	if opts.lastNHoursSet {
+		if opts.lastNHours <= 0 {
+			return request, fmt.Errorf("--last-n-hours must be greater than 0")
+		}
+		request.LastNHours = langsmith.F(opts.lastNHours)
+	}
+	if opts.sampleSet {
+		if opts.sample <= 0 {
+			return request, fmt.Errorf("--sample must be greater than 0")
+		}
+		request.Sample = langsmith.F(opts.sample)
+	}
+
+	if opts.name != "" {
+		request.Name = langsmith.F(opts.name)
+	}
+	if opts.filter != "" {
+		request.Filter = langsmith.F(opts.filter)
+	}
+	if opts.partitions != "" {
+		partitions, err := parseInsightJSONObject[string]("--partitions", opts.partitions)
+		if err != nil {
+			return request, err
+		}
+		request.Partitions = langsmith.F(partitions)
+	}
+	if opts.attributeSchemas != "" {
+		attributeSchemas, err := parseInsightJSONObject[any]("--attribute-schemas", opts.attributeSchemas)
+		if err != nil {
+			return request, err
+		}
+		request.AttributeSchemas = langsmith.F(attributeSchemas)
+	}
+
+	return request, nil
+}
+
+func loadInsightSummaryPrompt(inline, path string) (string, error) {
+	if inline != "" && path != "" {
+		return "", fmt.Errorf("specify only one of --summary-prompt or --summary-prompt-file")
+	}
+	if path == "" {
+		return inline, nil
+	}
+
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading --summary-prompt-file %q: %w", path, err)
+	}
+	return string(data), nil
+}
+
+func parseInsightJSONObject[T any](flagName, raw string) (map[string]T, error) {
+	data := []byte(raw)
+	if strings.HasPrefix(raw, "@") {
+		path := strings.TrimPrefix(raw, "@")
+		if path == "" {
+			return nil, fmt.Errorf("%s requires a file path after @", flagName)
+		}
+		var err error
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s file %q: %w", flagName, path, err)
+		}
+	}
+
+	var value map[string]T
+	if err := json.Unmarshal(data, &value); err != nil {
+		return nil, fmt.Errorf("parsing %s as a JSON object: %w", flagName, err)
+	}
+	if value == nil {
+		return nil, fmt.Errorf("%s must be a JSON object", flagName)
+	}
+	return value, nil
+}
+
+func insightCreateResponseToMap(created *langsmith.SessionInsightNewResponse, sessionID, configID string) map[string]any {
+	result := map[string]any{
+		"id":         created.ID,
+		"name":       created.Name,
+		"status":     created.Status,
+		"project_id": sessionID,
+		"config_id":  configID,
+	}
+	if created.JSON.Error.IsNull() {
+		result["error"] = nil
+	} else {
+		result["error"] = created.Error
+	}
+	return result
+}
+
+func printInsightCreatePretty(created *langsmith.SessionInsightNewResponse, sessionID, configID string) {
+	fmt.Println("Insight report created")
+	fmt.Println()
+	fmt.Printf("Name:       %s\n", created.Name)
+	fmt.Printf("ID:         %s\n", created.ID)
+	fmt.Printf("Config ID:  %s\n", configID)
+	fmt.Printf("Status:     %s\n", created.Status)
+	fmt.Println()
+	fmt.Println("View it with:")
+	fmt.Printf("  langsmith insights get %s --project-id %s\n", created.ID, sessionID)
 }
 
 func newInsightsListCmd() *cobra.Command {
