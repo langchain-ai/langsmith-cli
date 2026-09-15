@@ -35,7 +35,6 @@ Examples:
 	cmd.AddCommand(newInsightsListCmd())
 	cmd.AddCommand(newInsightsCreateCmd())
 	cmd.AddCommand(newInsightsGetCmd())
-	cmd.AddCommand(newInsightsWaitCmd())
 	return cmd
 }
 

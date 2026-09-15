@@ -445,7 +445,6 @@ langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --mo
   --user-context '{"Business goal":"Resolve eligible refund requests","Concern":"Claims of success after a tool error"}'
 langsmith insights list --project-id <uuid> --limit 5
 langsmith insights get <job-id> --project-id <uuid>
-langsmith insights wait <job-id> --project-id <uuid> --timeout 5m --format json
 ```
 
 In an interactive terminal with pretty output, omit `--model` to choose OpenAI or
