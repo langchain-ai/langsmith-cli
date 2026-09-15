@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 // ==================== Command structure ====================
@@ -38,19 +40,8 @@ func TestInsightsCreateCmd_Flags(t *testing.T) {
 	}{
 		{"project", "", ""},
 		{"project-id", "", ""},
-		{"name", "", ""},
-		{"summary-prompt", "", ""},
-		{"summary-prompt-file", "", ""},
-		{"since", "", ""},
-		{"before", "", ""},
-		{"last-n-hours", "0", ""},
-		{"filter", "", ""},
-		{"sample", "0", ""},
-		{"model", "openai", ""},
-		{"cluster-model", "", ""},
-		{"summary-model", "", ""},
-		{"partitions", "", ""},
-		{"attribute-schemas", "", ""},
+		{"config", "", ""},
+		{"wait", "false", ""},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {
@@ -66,30 +57,38 @@ func TestInsightsCreateCmd_Flags(t *testing.T) {
 			t.Errorf("flag --%s: expected shorthand %q, got %q", tc.name, tc.short, f.Shorthand)
 		}
 	}
-	if _, ok := cmd.Flags().Lookup("name").Annotations["cobra_annotation_bash_completion_one_required_flag"]; !ok {
-		t.Error("--name should be required")
+	if _, ok := cmd.Flags().Lookup("config").Annotations["cobra_annotation_bash_completion_one_required_flag"]; !ok {
+		t.Error("--config should be required")
 	}
 }
 
-func TestBuildInsightCreateRequest(t *testing.T) {
-	opts := insightCreateOptions{
-		name:             "Reliability review",
-		summaryPrompt:    "Diagnose {{run.inputs}} and {{run.error}}",
-		since:            "2026-09-01",
-		before:           "2026-09-08T12:00:00Z",
-		filter:           "eq(is_root, true)",
-		sample:           0.25,
-		sampleSet:        true,
-		model:            "anthropic",
-		clusterModel:     "claude-thinking",
-		summaryModel:     "claude-fast",
-		partitions:       `{"environment":"metadata.env"}`,
-		attributeSchemas: `{"failure":{"type":"boolean"}}`,
+func TestLoadInsightConfigFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(path, []byte(`{
+		"name": "Reliability review",
+		"summary_prompt": "Diagnose {{run.inputs}} and {{run.error}}",
+		"model": "anthropic",
+		"cluster_model": "claude-thinking",
+		"summary_model": "claude-fast",
+		"start_time": "2026-09-01T00:00:00Z",
+		"end_time": "2026-09-08T12:00:00Z",
+		"filter": "eq(is_root, true)",
+		"sample": 0.25,
+		"partitions": {"environment": "metadata.env"},
+		"attribute_schemas": {"failure": {"type": "boolean"}},
+		"hierarchy": [4, 12],
+		"user_context": {"goal": "Find reliability problems"}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	request, err := buildInsightCreateRequest(opts)
+	config, err := loadInsightConfigFile(path)
 	if err != nil {
-		t.Fatalf("buildInsightCreateRequest: %v", err)
+		t.Fatalf("loadInsightConfigFile: %v", err)
+	}
+	request, err := config.toSDKParams()
+	if err != nil {
+		t.Fatalf("toSDKParams: %v", err)
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
@@ -126,70 +125,85 @@ func TestBuildInsightCreateRequest(t *testing.T) {
 	if got["attribute_schemas"].(map[string]any)["failure"] == nil {
 		t.Errorf("unexpected attribute_schemas: %#v", got["attribute_schemas"])
 	}
+	if got["user_context"].(map[string]any)["goal"] != "Find reliability problems" {
+		t.Errorf("unexpected user_context: %#v", got["user_context"])
+	}
+	if len(got["hierarchy"].([]any)) != 2 {
+		t.Errorf("unexpected hierarchy: %#v", got["hierarchy"])
+	}
 }
 
-func TestBuildInsightCreateRequest_LastNHours(t *testing.T) {
-	request, err := buildInsightCreateRequest(insightCreateOptions{
-		summaryPrompt: "Summarize {{run.inputs}}",
-		model:         "openai",
-		lastNHours:    24,
-		lastNHoursSet: true,
-	})
+func TestInsightConfigFileDefaultsModel(t *testing.T) {
+	request, err := (insightConfigFile{
+		Name:          "Report",
+		SummaryPrompt: "Summarize {{run.inputs}}",
+	}).toSDKParams()
 	if err != nil {
-		t.Fatalf("buildInsightCreateRequest: %v", err)
+		t.Fatalf("toSDKParams: %v", err)
 	}
 	data, _ := json.Marshal(request)
-	if !strings.Contains(string(data), `"last_n_hours":24`) {
-		t.Fatalf("expected last_n_hours in request: %s", data)
+	if !strings.Contains(string(data), `"model":"openai"`) {
+		t.Fatalf("expected default model in request: %s", data)
 	}
 }
 
-func TestBuildInsightCreateRequest_Validation(t *testing.T) {
+func TestInsightConfigFileValidation(t *testing.T) {
+	zero := int64(0)
+	sample := float64(0)
+	clusterModel := "heavy"
+	start := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	invalidModel := createInsightModel("other")
 	tests := []struct {
-		name string
-		opts insightCreateOptions
-		want string
+		name   string
+		config insightConfigFile
+		want   string
 	}{
 		{
-			name: "prompt required",
-			opts: insightCreateOptions{model: "openai"},
-			want: "one of --summary-prompt or --summary-prompt-file is required",
+			name:   "name required",
+			config: insightConfigFile{SummaryPrompt: "{{run.inputs}}"},
+			want:   "name must not be empty",
 		},
 		{
-			name: "invalid model",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "other"},
-			want: "must be openai or anthropic",
+			name:   "prompt required",
+			config: insightConfigFile{Name: "Report"},
+			want:   "summary_prompt must not be empty",
 		},
 		{
-			name: "models paired",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "openai", clusterModel: "heavy"},
-			want: "must be specified together",
+			name:   "invalid model",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", Model: &invalidModel},
+			want:   "must be openai or anthropic",
 		},
 		{
-			name: "before requires since",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "openai", before: "2026-09-08"},
-			want: "--before requires --since",
+			name:   "models paired",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", ClusterModel: &clusterModel},
+			want:   "must be specified together",
 		},
 		{
-			name: "time order",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "openai", since: "2026-09-08", before: "2026-09-01"},
-			want: "--before must be after --since",
+			name:   "end requires start",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", EndTime: &end},
+			want:   "end_time requires start_time",
 		},
 		{
-			name: "positive last hours",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "openai", lastNHoursSet: true},
-			want: "--last-n-hours must be greater than 0",
+			name:   "time order",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", StartTime: &start, EndTime: &end},
+			want:   "end_time must be after start_time",
 		},
 		{
-			name: "positive sample",
-			opts: insightCreateOptions{summaryPrompt: "{{run.inputs}}", model: "openai", sampleSet: true},
-			want: "--sample must be greater than 0",
+			name:   "positive last hours",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", LastNHours: &zero},
+			want:   "last_n_hours must be greater than 0",
+		},
+		{
+			name:   "positive sample",
+			config: insightConfigFile{Name: "Report", SummaryPrompt: "{{run.inputs}}", Sample: &sample},
+			want:   "sample must be greater than 0",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := buildInsightCreateRequest(tc.opts)
+			_, err := tc.config.toSDKParams()
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected error containing %q, got %v", tc.want, err)
 			}
@@ -197,31 +211,14 @@ func TestBuildInsightCreateRequest_Validation(t *testing.T) {
 	}
 }
 
-func TestBuildInsightCreateRequest_ReadsFiles(t *testing.T) {
-	dir := t.TempDir()
-	promptPath := filepath.Join(dir, "summary.txt")
-	attributesPath := filepath.Join(dir, "attributes.json")
-	if err := os.WriteFile(promptPath, []byte("Classify {{run.outputs}}\n"), 0o600); err != nil {
+func TestLoadInsightConfigFileRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(path, []byte(`{"name":"Report","summary_prompt":"{{run.inputs}}","unknown":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(attributesPath, []byte(`{"topic":{"type":"string"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	request, err := buildInsightCreateRequest(insightCreateOptions{
-		summaryPromptFile: promptPath,
-		attributeSchemas:  "@" + attributesPath,
-		model:             "openai",
-	})
-	if err != nil {
-		t.Fatalf("buildInsightCreateRequest: %v", err)
-	}
-	data, _ := json.Marshal(request)
-	if !strings.Contains(string(data), `"summary_prompt":"Classify {{run.outputs}}\n"`) {
-		t.Fatalf("expected file prompt in request: %s", data)
-	}
-	if !strings.Contains(string(data), `"attribute_schemas":{"topic":{"type":"string"}}`) {
-		t.Fatalf("expected file attributes in request: %s", data)
+	_, err := loadInsightConfigFile(path)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown field error, got %v", err)
 	}
 }
 
@@ -229,6 +226,15 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	const projectID = "0199321d-e2b4-7000-8000-000000000001"
 	const configID = "0199321d-e2b4-7000-8000-000000000002"
 	const insightID = "0199321d-e2b4-7000-8000-000000000003"
+	configPath := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"name":"Reliability review",
+		"summary_prompt":"Diagnose {{run.error}}",
+		"last_n_hours":24,
+		"user_context":{"goal":"Find failures"}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var configRequestBody map[string]any
 	var jobRequestBody map[string]any
 	var requestPaths []string
@@ -270,8 +276,7 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	cmd := newInsightsCreateCmd()
 	cmd.SetArgs([]string{
 		"--project-id", projectID,
-		"--name", "Reliability review",
-		"--summary-prompt", "Diagnose {{run.error}}",
+		"--config", configPath,
 	})
 	var runErr error
 	out := captureStdout(t, func() {
@@ -287,7 +292,7 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 		t.Errorf("unexpected config request name: %#v", configRequestBody)
 	}
 	config, ok := configRequestBody["config"].(map[string]any)
-	if !ok || config["summary_prompt"] != "Diagnose {{run.error}}" {
+	if !ok || config["summary_prompt"] != "Diagnose {{run.error}}" || config["last_n_hours"] != float64(24) {
 		t.Errorf("unexpected config request: %#v", configRequestBody)
 	}
 	if len(jobRequestBody) != 1 || jobRequestBody["config_id"] != configID {
@@ -303,22 +308,13 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	}
 }
 
-func TestInsightsCreateCmd_RejectsBlankName(t *testing.T) {
-	cmd := newInsightsCreateCmd()
-	cmd.SetArgs([]string{
-		"--project-id", "0199321d-e2b4-7000-8000-000000000001",
-		"--name", "   ",
-		"--summary-prompt", "Diagnose {{run.error}}",
-	})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--name must not be empty") {
-		t.Fatalf("expected blank name error, got %v", err)
-	}
-}
-
 func TestInsightsCreateCmd_ReportsSavedConfigWhenJobStartFails(t *testing.T) {
 	const projectID = "0199321d-e2b4-7000-8000-000000000001"
 	const configID = "0199321d-e2b4-7000-8000-000000000002"
+	configPath := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(configPath, []byte(`{"name":"Reliability review","summary_prompt":"Diagnose {{run.error}}"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/insights/configs") {
@@ -339,13 +335,95 @@ func TestInsightsCreateCmd_ReportsSavedConfigWhenJobStartFails(t *testing.T) {
 	cmd := newInsightsCreateCmd()
 	cmd.SetArgs([]string{
 		"--project-id", projectID,
-		"--name", "Reliability review",
-		"--summary-prompt", "Diagnose {{run.error}}",
+		"--config", configPath,
 	})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "insight config "+configID+" was saved") {
 		t.Fatalf("expected saved config ID in error, got %v", err)
 	}
+}
+
+func TestInsightsCreateCmd_WaitsForSuccess(t *testing.T) {
+	const projectID = "0199321d-e2b4-7000-8000-000000000001"
+	const configID = "0199321d-e2b4-7000-8000-000000000002"
+	const insightID = "0199321d-e2b4-7000-8000-000000000003"
+	configPath := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(configPath, []byte(`{"name":"Reliability review","summary_prompt":"Diagnose {{run.error}}"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	getCalls := 0
+	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/insights/configs"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": configID, "name": "Reliability review", "description": nil,
+				"config": map[string]any{"name": "Reliability review", "summary_prompt": "Diagnose {{run.error}}", "model": "openai"},
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/insights"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": insightID, "name": "Reliability review", "status": "pending", "error": nil})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/insights/"+insightID):
+			getCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": insightID, "name": "Reliability review", "status": "success", "error": nil})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer setupTestEnv(t, server.URL)()
+	flagOutputFormat = "json"
+
+	cmd := newInsightsCreateCmd()
+	cmd.SetArgs([]string{"--project-id", projectID, "--config", configPath, "--wait"})
+	var runErr error
+	out := captureStdout(t, func() { runErr = cmd.Execute() })
+	if runErr != nil {
+		t.Fatalf("execute create --wait: %v", runErr)
+	}
+	if getCalls != 1 {
+		t.Fatalf("expected one status request, got %d", getCalls)
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("parse output %q: %v", out, err)
+	}
+	if result["status"] != "success" {
+		t.Fatalf("expected final success status, got %#v", result)
+	}
+}
+
+func TestWaitForInsightPollsAndReturnsJobError(t *testing.T) {
+	const projectID = "0199321d-e2b4-7000-8000-000000000001"
+	const insightID = "0199321d-e2b4-7000-8000-000000000003"
+	getCalls := 0
+	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		getCalls++
+		status := "running"
+		errorMessage := any(nil)
+		if getCalls == 2 {
+			status = "error"
+			errorMessage = "model secret unavailable"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": insightID, "name": "Report", "status": status, "error": errorMessage,
+		})
+	})
+	defer setupTestEnv(t, server.URL)()
+	c, err := getClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForInsight(t.Context(), c.SDK, projectID, insightID, time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "model secret unavailable") {
+		t.Fatalf("expected job error, got %v", err)
+	}
+	if getCalls != 2 {
+		t.Fatalf("expected two status requests, got %d", getCalls)
+	}
+}
+
+func createInsightModel(value string) langsmith.CreateRunClusteringJobRequestModel {
+	return langsmith.CreateRunClusteringJobRequestModel(value)
 }
 
 func TestInsightsCmd_UseField(t *testing.T) {
