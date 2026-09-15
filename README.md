@@ -222,31 +222,37 @@ langsmith thread get <thread-id> --project my-chatbot --full
 
 Insight reports analyze traces in a project to identify usage patterns, common
 behaviors, and failure modes. Creating a report is asynchronous and may incur
-model costs. It requires a summary prompt that describes how each trace should
-be summarized before patterns are identified.
+model costs. Define the report with a manual-mode JSON configuration:
+
+```json
+{
+  "name": "Weekly reliability review",
+  "summary_prompt": "Identify the request and outcome: {{run.inputs}} {{run.outputs}}",
+  "last_n_hours": 168,
+  "filter": "eq(is_root, true)",
+  "model": "openai",
+  "user_context": {
+    "goal": "Find common reliability problems"
+  }
+}
+```
+
+Create the report asynchronously, or wait for it to finish:
 
 ```bash
-# Create a report over the last 7 days
-langsmith insights create --project my-app \
-  --name "Weekly reliability review" \
-  --summary-prompt 'Identify the request and outcome: {{run.inputs}} {{run.outputs}}'
+langsmith insights create --project my-app --config insights.json
+langsmith insights create --project my-app --config insights.json --wait
 
-# Read a multiline prompt from a file and select a time window
-langsmith insights create --project my-app \
-  --name "Weekly reliability review" \
-  --summary-prompt-file ./summary-prompt.txt \
-  --since 2026-09-01 --before 2026-09-08
-
-# List reports and fetch the completed result
+# List reports and fetch a completed result
 langsmith insights list --project my-app
 langsmith insights get <insight-id> --project my-app
 ```
 
 The summary prompt is a Mustache template and must reference at least one of
 `{{run.inputs}}`, `{{run.outputs}}`, `{{run.error}}`, `{{run.feedback}}`, or
-`{{all_thread_messages}}`. Use `--summary-prompt-file -` to read it from stdin.
-Run `langsmith insights create --help` for sampling, filtering, model,
-partition, and attribute-schema options.
+`{{all_thread_messages}}`. Use `--config -` to read the JSON from stdin. The
+configuration also supports `start_time`, `end_time`, `sample`, `hierarchy`,
+`partitions`, `attribute_schemas`, `cluster_model`, and `summary_model`.
 
 ### `dataset` — Manage evaluation datasets
 
