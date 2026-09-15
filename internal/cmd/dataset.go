@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +40,9 @@ Examples:
 	cmd.AddCommand(newDatasetDeleteCmd())
 	cmd.AddCommand(newDatasetExportCmd())
 	cmd.AddCommand(newDatasetUploadCmd())
+	cmd.AddCommand(newDatasetPreviewTracesCmd())
+	cmd.AddCommand(newDatasetAddTracesCmd())
+	cmd.AddCommand(newDatasetAddCmd())
 
 	return cmd
 }
@@ -178,9 +182,15 @@ func newDatasetCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new empty dataset",
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("--name must not be blank")
+			}
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
 
 			params := langsmith.DatasetNewParams{
 				Name: langsmith.F(name),
@@ -189,20 +199,18 @@ func newDatasetCreateCmd() *cobra.Command {
 				params.Description = langsmith.F(description)
 			}
 
-			ds, err := c.SDK.Datasets.New(ctx, params)
+			ds, err := c.SDK.Datasets.New(cmd.Context(), params, option.WithMaxRetries(0))
 			if err != nil {
-				ExitErrorf("creating dataset: %v", err)
+				return fmt.Errorf("creating dataset: %w", err)
 			}
 
-			if err := output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status":      "created",
 				"id":          ds.ID,
 				"name":        ds.Name,
 				"description": nilStr(ds.Description),
 				"created_at":  formatTimeISO(ds.CreatedAt),
-			}, ""); err != nil {
-				ExitErrorf("%v", err)
-			}
+			}, "")
 		},
 	}
 

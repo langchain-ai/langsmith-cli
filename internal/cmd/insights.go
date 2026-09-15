@@ -17,8 +17,8 @@ import (
 func newInsightsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Query insights reports for a project",
-		Long: `Query insights reports for a project.
+		Short: "Create and query insights reports for a project",
+		Long: `Create and query insights reports for a project.
 
 The Insights Agent automatically analyzes traces to detect usage patterns,
 common agent behaviors, and failure modes using hierarchical categorization.
@@ -26,13 +26,16 @@ Each report organizes traces into top-level categories and subcategories,
 with an executive summary of key findings and highlighted traces.
 
 Examples:
+  langsmith insights create --project my-app --last-n-hours 24 --sample 20 --model openai
   langsmith insights list --project my-app
   langsmith insights get INSIGHT_ID --project my-app
   langsmith insights get INSIGHT_ID --project my-app --format pretty`,
 	}
 
 	cmd.AddCommand(newInsightsListCmd())
+	cmd.AddCommand(newInsightsCreateCmd())
 	cmd.AddCommand(newInsightsGetCmd())
+	cmd.AddCommand(newInsightsWaitCmd())
 	return cmd
 }
 

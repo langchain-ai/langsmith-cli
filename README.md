@@ -120,13 +120,17 @@ lookup, saving a round-trip.
 
 ## Command Reference
 
-### `project` — List and delete tracing projects
+### `project` — Create, list, and delete tracing projects
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
 Results are **paginated** — by default, only the first **20** projects are returned (use `--limit` to change). Projects are sorted by **most recent activity** (`last_run_start_time`, descending).
 
 ```bash
+# Create an empty tracing project in a specific workspace
+langsmith --profile demo --workspace <workspace-id> project create --name my-app
+langsmith project create --name my-app --description "Application traces"
+
 # List tracing projects (default: 20 results, most recently active first)
 langsmith project list
 langsmith project list --limit 50
@@ -140,6 +144,11 @@ langsmith --format=json project list
 # Permanently delete a project and all of its traces (requires confirmation)
 langsmith project delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 ```
+
+Creating a project does not instrument your application or enable tracing. Configure
+its LangSmith tracing credentials and `LANGSMITH_PROJECT` separately, run the app,
+then verify with `langsmith trace list --project-id <returned-id>`. Creation returns
+JSON containing `status`, `id`, and `name`; it does not silently reuse an existing project.
 
 ### `trace` — Query and export traces
 
@@ -241,6 +250,49 @@ langsmith dataset export my-dataset ./data.json --limit 500
 langsmith dataset upload data.json --name new-dataset
 ```
 
+### Curate traces into a dataset
+
+Use an existing destination dataset. Inputs-only is the default: a failed agent's
+output should not silently become the expected answer.
+
+```bash
+# One explicit root trace; no default time window is applied to this ID.
+langsmith dataset add-traces --dataset regression-tests --project-id <project-uuid> \
+  --trace-id <trace-uuid>
+
+# Preview a bounded sample using the existing trace filters, then import exactly it.
+langsmith dataset preview-traces --dataset regression-tests --project-id <project-uuid> \
+  --error --last-n-minutes 1440 --limit 20 --output selection.json
+langsmith dataset add-traces --dataset regression-tests --project-id <project-uuid> \
+  --selection selection.json
+
+# A specific child run, extracting an object within its inputs.
+langsmith dataset preview-traces --dataset tool-tests --project-id <project-uuid> \
+  --run-ids <run-uuid> --inputs-pointer /request --output step-selection.json
+```
+
+Preview returns JSON containing the actual example payloads. With `--output`, it writes
+that JSON to the file instead of stdout. `--output` creates
+a new private file and refuses to overwrite; protect it as trace data. Filter-based
+selection defaults to 20 roots in the last seven days; use time bounds and `--limit`
+explicitly for your sample. This is not representative sampling.
+
+Use `--reference-mode observed` only when the selected outputs are suitable references.
+`--outputs-pointer` can select a nested output object in that mode. For corrected
+references, edit the selection's `reference_mode` to `corrected` and supply an `outputs`
+object for every example. Review the file before importing it. Pointers are JSON
+Pointers (including array indices) and must resolve to objects, not scalar values.
+
+Import checks the explicit destination, API endpoint, and access to the selected
+source runs. It does not rerun a filter or replace frozen IO. Source run/trace/project
+provenance is recorded. Identical imports use content-derived IDs and are skipped;
+changed payloads or extraction settings create new examples. This does not deduplicate
+older examples created by other commands. Existing examples are never overwritten.
+Each result reports its example ID and created/skipped/recovered/failed status;
+partial failure exits nonzero. Retry the same file to reconcile successful writes.
+
+Annotation-queue promotion and representative sampling are not included in these commands.
+
 ### `example` — Manage dataset examples
 
 List results are **paginated** — by default, only the first **20** examples are returned (use `--limit` to change). Use `--offset` to paginate through results.
@@ -319,6 +371,39 @@ langsmith experiment list --dataset my-eval-set
 # Get experiment results (feedback stats, run stats)
 langsmith experiment get my-experiment-2024-01-15
 ```
+
+### `insights` — Create and inspect Insights reports
+
+Start a one-off analysis with an explicit provider, sample count, and time window:
+
+```bash
+langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --model openai \
+  --user-context '{"Business goal":"Resolve eligible refund requests","Concern":"Claims of success after a tool error"}'
+langsmith insights list --project-id <uuid> --limit 5
+langsmith insights get <job-id> --project-id <uuid>
+langsmith insights wait <job-id> --project-id <uuid> --timeout 5m --format json
+```
+
+In an interactive terminal with pretty output, omit `--model` to choose OpenAI or
+Anthropic at a prompt. There is no default choice. Non-interactive and JSON usage
+requires `--model` and never prompts. The menu lists supported providers, not verified
+workspace availability; credential checks still happen on the service.
+
+Alternatively use `--start-time` and optional `--end-time` as RFC3339 timestamps.
+Do not combine `--start-time` with `--last-n-hours`. Optional `--filter`, `--name`,
+and `--summary-prompt` refine the report. `--user-context` is a JSON object of
+question-to-answer strings, with at least one non-empty answer.
+
+Creation can incur workspace model usage. `--model` selects `openai` or `anthropic`
+using server-side configuration, not your app's local Gateway client. `--sample`
+is a positive trace count, not a percentage or dollar cap; service limits apply.
+No recurrence is scheduled, and model-secret validation is not bypassed.
+
+The JSON response preserves the service's job ID, name, status, error, and project
+ID. A queued response does not mean analysis is complete. Creation is not retried
+automatically; if a response is lost, inspect existing jobs before submitting again.
+Advanced saved configurations and separate cluster/summary model overrides remain
+available through the API, not this command's initial flag surface.
 
 ### `hub` — Manage agent and skill repos on the LangSmith Hub
 
@@ -435,6 +520,278 @@ Most `trace` and `run` commands share these filter options:
 | `--tags` | Tags (comma-separated, OR logic) | `--tags prod,v2` |
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
+
+## Added workflows and manual testing
+
+This checkout contains the combined reference implementation for [PR #308](https://github.com/langchain-ai/langsmith-cli/pull/308).
+Review and land the smaller capability PRs linked there instead. The commands below
+describe this checkout, not the published release.
+
+| Added commands | What they provide |
+| --- | --- |
+| `project create` | Create an empty tracing project. |
+| `init`, `doctor`, `trace verify` | Experimental local project context, read-access checks, and trace-ingestion verification; no automatic instrumentation. |
+| `dataset add`, `dataset preview-traces`, `dataset add-traces` | Preview and import root traces, child runs, or thread turns with frozen selections and retry reconciliation. |
+| `example update` | Replace inputs/reference outputs while preserving omitted fields. |
+| `feedback create`, `feedback list` | Write/read feedback, including stable-ID retry reconciliation. |
+| `queue create`, `queue list`, `queue items`, `queue add`, `queue delete` | Manage annotation queues and reviewed additions. |
+| `rule list` | Inspect project-scoped automation rules. |
+| `insights create`, `insights wait` | Start bounded reports and wait for their completion. |
+
+These are 19 new commands. Existing dataset creation also returns a creation status.
+No SDK/API changes are included. Experiment comparison, experiment execution, rule
+mutations, and Engine configuration are not part of this proposal.
+
+### 1. Build and select a safe test workspace
+
+Use Bash or zsh, Go matching `go.mod`, `jq`, and an existing authenticated profile.
+Run from the repository root, in the same shell throughout. Replace all uppercase
+placeholder values before continuing. Never paste API keys into the commands.
+
+```bash
+make build
+LS_BIN="$PWD/bin/langsmith"
+LS_PROFILE='YOUR_SAVED_PROFILE'
+LS_WORKSPACE='YOUR_WORKSPACE_UUID'
+LS_SOURCE_PROJECT='YOUR_SYNTHETIC_TRACING_PROJECT_UUID'
+LS_TRACE='YOUR_EXISTING_ROOT_TRACE_UUID'
+LS_TEST_DIR="$(mktemp -d)"
+LS_TEST_TAG="cli-manual-$(date +%Y%m%d-%H%M%S)-$$"
+
+lscheck() {
+  env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY \
+    "$LS_BIN" --no-context --profile "$LS_PROFILE" \
+    --workspace "$LS_WORKSPACE" --format json "$@"
+}
+
+lscheck --version
+lscheck doctor --project-id "$LS_SOURCE_PROJECT"
+lscheck trace verify --project-id "$LS_SOURCE_PROJECT" --trace-id "$LS_TRACE"
+lscheck rule list --project-id "$LS_SOURCE_PROJECT"
+```
+
+Expected: verified project read access, `trace_received` for the explicit trace,
+and project-scoped rules (possibly empty). Doctor does not verify write or inference
+permissions. Use a project with synthetic data you are authorized to copy.
+
+### 2. Create disposable resources — writes
+
+```bash
+lscheck project create --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/project.json"
+LS_TEST_PROJECT="$(jq -er '.id' "$LS_TEST_DIR/project.json")"
+lscheck dataset create --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/dataset.json"
+LS_TEST_DATASET="$(jq -er '.id' "$LS_TEST_DIR/dataset.json")"
+lscheck queue create --name "$LS_TEST_TAG" \
+  --dataset "${LS_TEST_DATASET:?Dataset creation must succeed}" | tee "$LS_TEST_DIR/queue.json"
+LS_TEST_QUEUE="$(jq -er '.id' "$LS_TEST_DIR/queue.json")"
+```
+
+Expected: each creation returns `status: created` and an ID. Stop if any command
+fails; do not blindly repeat creation after an ambiguous network failure. The new
+project is empty; subsequent imports read from the existing source project.
+
+### 3. Preview, review, import, and retry a trace
+
+```bash
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --trace-id "$LS_TRACE" \
+  --dry-run --output "$LS_TEST_DIR/selection.json"
+jq . "$LS_TEST_DIR/selection.json"
+```
+
+Review the saved inputs before applying. The preview writes a private file and emits
+no stdout with `--output`. Default references are inputs-only: observed agent
+answers are not silently accepted as ground truth.
+
+```bash
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --selection "$LS_TEST_DIR/selection.json" \
+  | tee "$LS_TEST_DIR/import.json"
+LS_EXAMPLE="$(jq -er '.results[0].example_id' "$LS_TEST_DIR/import.json")"
+
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --selection "$LS_TEST_DIR/selection.json"
+lscheck example list --dataset "${LS_TEST_DATASET:?}" --limit 5
+```
+
+Expected: first apply `created`, retry `skipped`, same example ID, `failed: 0`.
+
+Test the two lower-level entry points with the same source and destination:
+
+```bash
+lscheck dataset preview-traces --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --trace-id "$LS_TRACE" \
+  --output "$LS_TEST_DIR/selection-alternate.json"
+lscheck dataset add-traces --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --selection "$LS_TEST_DIR/selection-alternate.json"
+```
+
+Expected: identical content is skipped rather than duplicated.
+
+Optional selection variants, requiring valid source fixtures:
+
+```bash
+LS_CHILD_RUN='YOUR_CHILD_RUN_UUID'
+LS_THREAD='YOUR_THREAD_ID'
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" --dataset "${LS_TEST_DATASET:?}" \
+  --run-id "$LS_CHILD_RUN" --dry-run
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" --dataset "${LS_TEST_DATASET:?}" \
+  --thread-id "$LS_THREAD" --limit 5 --dry-run
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" --dataset "${LS_TEST_DATASET:?}" \
+  --no-error --last-n-minutes 1440 --limit 5 --dry-run
+```
+
+Thread imports produce separate root-turn examples, not a merged conversation.
+An empty recent selection is valid. Use `--error` or `--no-error` for execution
+error filtering; raw `eq(error, true)` and `eq(error, false)` are rejected by the API.
+
+### 4. Edit a reference and check conflict protection — writes
+
+Use an appropriate reference object for your fixture instead of this illustrative value:
+
+```bash
+lscheck example update "${LS_EXAMPLE:?}" --outputs '{"answer":"Reviewed reference"}'
+lscheck example list --dataset "${LS_TEST_DATASET:?}" --limit 5
+lscheck dataset add --project-id "$LS_SOURCE_PROJECT" \
+  --dataset "${LS_TEST_DATASET:?}" --selection "$LS_TEST_DIR/selection.json"
+```
+
+Expected: reference output changes while inputs remain intact. Reapplying the old
+selection now exits nonzero and reports conflicting content without overwriting the edit.
+
+### 5. Create and retry feedback — writes on the source trace
+
+This adds test feedback to the selected source trace. Use a disposable synthetic trace.
+
+```bash
+lscheck feedback create --project-id "$LS_SOURCE_PROJECT" --run-id "$LS_TRACE" \
+  --key "$LS_TEST_TAG" --score 0 --comment 'Manual CLI test' \
+  | tee "$LS_TEST_DIR/feedback.json"
+LS_FEEDBACK="$(jq -er '.feedback_id' "$LS_TEST_DIR/feedback.json")"
+lscheck feedback create --project-id "$LS_SOURCE_PROJECT" --run-id "$LS_TRACE" \
+  --key "$LS_TEST_TAG" --score 0 --comment 'Manual CLI test' --id "${LS_FEEDBACK:?}"
+lscheck feedback list --run-id "$LS_TRACE" --limit 5 --offset 0
+```
+
+Expected: verified creation, followed by `skipped`; score remains numeric zero.
+Keep the returned ID if a write is unverified and reconcile with that ID and payload.
+
+### 6. Review queue additions, apply, and inspect — writes on apply
+
+```bash
+lscheck queue list --limit 5
+lscheck queue add "${LS_TEST_QUEUE:?}" --project-id "$LS_SOURCE_PROJECT" \
+  --trace-id "$LS_TRACE" --dry-run --output "$LS_TEST_DIR/queue-plan.json"
+jq . "$LS_TEST_DIR/queue-plan.json"
+```
+
+After reviewing the exact source IDs:
+
+```bash
+lscheck queue add "${LS_TEST_QUEUE:?}" --project-id "$LS_SOURCE_PROJECT" \
+  --plan "$LS_TEST_DIR/queue-plan.json"
+lscheck queue items "${LS_TEST_QUEUE:?}" --limit 5
+```
+
+Expected: `submitted`, `failed: 0`, and the source trace visible in queue items.
+For optional child/thread tests, replace `--trace-id` in a new plan with
+`--run-id "$LS_CHILD_RUN"` or `--thread-id "$LS_THREAD"`. Queue thread additions
+represent whole threads, unlike dataset turn imports. Filter additions select roots
+and fail if they exceed the limit. Do not blindly replay queue writes: re-adding an
+item can reopen its review. Queue item pagination uses `--cursor`.
+
+### 7. Generate an Insights report — may incur model cost
+
+Choose the business question and a time window containing your synthetic traces.
+This starts one report, not a recurring job.
+
+```bash
+lscheck insights create --project-id "$LS_SOURCE_PROJECT" --model openai \
+  --sample 5 --last-n-hours 168 --name "$LS_TEST_TAG" \
+  --user-context '{"Goal":"Find failures in synthetic test traces"}' \
+  | tee "$LS_TEST_DIR/insights.json"
+LS_INSIGHT="$(jq -er '.id' "$LS_TEST_DIR/insights.json")"
+lscheck insights wait "${LS_INSIGHT:?}" --project-id "$LS_SOURCE_PROJECT" \
+  --timeout 2m --poll-interval 5s
+```
+
+Expected: creation returns a durable job ID and status, then wait returns a completed
+report or a nonzero timeout/failure. A timeout does not cancel the report; resume
+with the same wait command. Provider credentials are configured server-side.
+
+### 8. Verify experimental onboarding in an isolated directory
+
+```bash
+(
+  cd "$LS_TEST_DIR"
+  lscheck init --project-id "${LS_TEST_PROJECT:?}"
+  env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY "$LS_BIN" --format json doctor
+  lscheck init --project-id "${LS_TEST_PROJECT:?}"
+)
+```
+
+Expected: init writes credential-free context, doctor loads it, and repeated init
+fails with `context_exists`. Conflicting environment settings can require explicit
+cleanup or `--no-context`; they are not silently ignored. No tracing is instrumented.
+
+### 9. Check JSON errors and delete the disposable queue
+
+```bash
+lscheck feedback list --run-id invalid \
+  > "$LS_TEST_DIR/stdout.txt" 2> "$LS_TEST_DIR/stderr.json"
+# Expected nonzero exit; stdout empty, stderr one JSON diagnostic.
+wc -c "$LS_TEST_DIR/stdout.txt"
+jq . "$LS_TEST_DIR/stderr.json"
+
+lscheck queue delete "${LS_TEST_QUEUE:?}" --yes
+lscheck queue items "${LS_TEST_QUEUE:?}" --limit 1
+```
+
+Expected: deletion reports `deleted`; the subsequent lookup fails with 404. Only
+delete the scratch queue created above. The scratch project/dataset, source feedback,
+Insights report, and local files remain for inspection. Remove them separately after
+review; selection files can contain sensitive trace data.
+
+Known gaps: existing output-file collisions are misclassified as network errors in
+JSON mode, and some diagnostics omit useful recovery details. This checklist is not
+a substitute for the feature PRs' unit tests or deployment/permission testing.
+
+### Agent-facing errors
+
+Feedback and queue lists include `pagination.returned`, `pagination.has_more`,
+and `pagination.next_offset`. For a full offset page, `has_more` is null (unknown);
+request `next_offset` to find out. A short page has `has_more: false`. Queue-item
+lists use the server cursor and include `has_more` and `returned` directly.
+These read results include `workspace_id`, or null when it was not resolved.
+
+With `--format json`, errors returned to the executable produce a JSON diagnostic
+on stderr and exit nonzero. Stdout remains reserved for results (including any
+partial-write report). Diagnostics include `error.code`, `error.message`,
+`error.next_steps`, and an HTTP status when available. Typed API errors distinguish
+authentication, permissions, missing resources, conflicts, invalid requests, and
+rate limits. Unclassified failures use `command_failed`; raw upstream messages
+are omitted to avoid exposing credentials or trace data. Do not assume a failed
+write did not happen: inspect partial results and resource state before retrying.
+Legacy command paths that exit directly are not yet covered by this renderer.
+Local resource validation uses `invalid_resource_id` and `invalid_json_object`;
+an unavailable named profile uses `profile_not_found`. Each includes specific
+next steps without echoing the rejected value. Other validation paths still use
+the generic fallback until migrated.
+
+### Remaining proposal work
+
+- `rule create` / `rule delete` are outside the current CLI-only scope: the pinned generated Go SDK exposes rule listing,
+  but not these mutations. Existing backend routes need public OpenAPI/Stainless
+  coverage and a generated SDK release; no raw HTTP workaround is added here.
+- `engine setup` / `engine configure` are outside the current CLI-only scope: they require public SDK exposure of the existing
+  issues-agent routes. Atomic creation with a budget or paused state additionally
+  requires backend support; setup must not enable spending before limits exist.
+- Typed validation errors and legacy direct-exit migration, workspace envelopes on
+  every response, and universal retry reconciliation remain separate work. This checkout does not yet satisfy
+  the full proposed LLM-oriented contract.
+
+Live end-to-end verification remains necessary before release, particularly for
+workspace permissions, queue review states, and partial network failures.
 
 ## Local Development
 

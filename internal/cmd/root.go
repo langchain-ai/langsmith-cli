@@ -55,6 +55,15 @@ Quick start:
 		SilenceErrors: true,
 		Version:       displayVersion,
 	}
+	activeProjectContext = nil
+	var noContext bool
+	rootCmd.PersistentFlags().BoolVar(&noContext, "no-context", false, "Ignore local .langsmith-context.json for this invocation")
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if noContext || cmd.Name() == "init" {
+			return nil
+		}
+		return loadProjectContext(cmd)
+	}
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	_ = rootCmd.PersistentFlags().MarkHidden("api-key")
@@ -67,11 +76,16 @@ Quick start:
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
+	rootCmd.AddCommand(newOnboardingInitCmd())
+	rootCmd.AddCommand(newDoctorCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newThreadCmd())
 	rootCmd.AddCommand(newDatasetCmd())
 	rootCmd.AddCommand(newExampleCmd())
+	rootCmd.AddCommand(newFeedbackCmd())
+	rootCmd.AddCommand(newQueueCmd())
+	rootCmd.AddCommand(newRuleCmd())
 	rootCmd.AddCommand(newEvaluatorCmd())
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
@@ -158,7 +172,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		}
 		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
 		if (flagProfile != "" || envProfile != "") && !hasProfile {
-			return opts, fmt.Errorf("profile not found: %s", profileName)
+			return opts, commandDiagnostic{"profile_not_found", "profile not found", "Run langsmith profile list, then select an existing profile with --profile; or create one with langsmith auth login --profile NAME."}
 		}
 	}
 
