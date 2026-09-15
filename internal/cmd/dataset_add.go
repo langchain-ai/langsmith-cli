@@ -10,7 +10,7 @@ import (
 
 // dataset add shares preview validation and the existing deterministic import path.
 func newDatasetAddCmd() *cobra.Command {
-	preview := newDatasetPreviewTracesWithSink(nil)
+	preview := newDatasetSelectionPreviewCmd()
 	preview.Use = "add"
 	preview.Short = "Preview or apply trace/run examples to a dataset"
 	preview.Long = "Select a trace, run, root-run filter, or thread, bounded by --limit. Thread import\ncreates one example per selected root turn (not a merged conversation or necessarily\nthe entire thread). With --dry-run --output selection.json, freeze inputs for review;\napply with --selection selection.json. Observed outputs become references only with\n--reference-mode observed. Selection replay reconciles existing examples without\nrerunning discovery. For conversation-level evaluation, curate a combined example."
@@ -53,14 +53,14 @@ func newDatasetAddCmd() *cobra.Command {
 			if conflict != "" {
 				return fmt.Errorf("--selection cannot be combined with --%s", conflict)
 			}
-			apply := newDatasetAddTracesCmd()
+			apply := newDatasetSelectionApplyCmd()
 			return executeDatasetSubcommand(cmd, apply, append(target, "--selection", selection))
 		}
 		if !dryRun {
 			return fmt.Errorf("use --dry-run --output selection.json first, then --selection selection.json")
 		}
 		forwarded := []string{}
-		fresh := newDatasetPreviewTracesCmd()
+		fresh := newDatasetSelectionPreviewCmd()
 		cmd.Flags().Visit(func(f *pflag.Flag) {
 			if f.Name != "dry-run" && f.Name != "selection" && f.Name != "run-id" && f.Name != "thread-id" && fresh.Flags().Lookup(f.Name) != nil {
 				forwarded = append(forwarded, "--"+f.Name+"="+f.Value.String())

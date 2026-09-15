@@ -257,17 +257,19 @@ output should not silently become the expected answer.
 
 ```bash
 # One explicit root trace; no default time window is applied to this ID.
-langsmith dataset add-traces --dataset regression-tests --project-id <project-uuid> \
-  --trace-id <trace-uuid>
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
+  --trace-id <trace-uuid> --dry-run --output root-selection.json
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
+  --selection root-selection.json
 
 # Preview a bounded sample using the existing trace filters, then import exactly it.
-langsmith dataset preview-traces --dataset regression-tests --project-id <project-uuid> \
+langsmith dataset add --dry-run --dataset regression-tests --project-id <project-uuid> \
   --error --last-n-minutes 1440 --limit 20 --output selection.json
-langsmith dataset add-traces --dataset regression-tests --project-id <project-uuid> \
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
   --selection selection.json
 
 # A specific child run, extracting an object within its inputs.
-langsmith dataset preview-traces --dataset tool-tests --project-id <project-uuid> \
+langsmith dataset add --dry-run --dataset tool-tests --project-id <project-uuid> \
   --run-ids <run-uuid> --inputs-pointer /request --output step-selection.json
 ```
 
@@ -381,7 +383,6 @@ langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --mo
   --user-context '{"Business goal":"Resolve eligible refund requests","Concern":"Claims of success after a tool error"}'
 langsmith insights list --project-id <uuid> --limit 5
 langsmith insights get <job-id> --project-id <uuid>
-langsmith insights wait <job-id> --project-id <uuid> --timeout 5m --format json
 ```
 
 In an interactive terminal with pretty output, omit `--model` to choose OpenAI or
@@ -530,17 +531,16 @@ describe this checkout, not the published release.
 | Added commands | What they provide |
 | --- | --- |
 | `project create` | Create an empty tracing project. |
-| `init`, `doctor`, `trace verify` | Experimental local project context, read-access checks, and trace-ingestion verification; no automatic instrumentation. |
-| `dataset add`, `dataset preview-traces`, `dataset add-traces` | Preview and import root traces, child runs, or thread turns with frozen selections and retry reconciliation. |
+| `dataset add` | Preview and import root traces, child runs, or thread turns with frozen selections and retry reconciliation. |
 | `example update` | Replace inputs/reference outputs while preserving omitted fields. |
 | `feedback create`, `feedback list` | Write/read feedback, including stable-ID retry reconciliation. |
 | `queue create`, `queue list`, `queue items`, `queue add`, `queue delete` | Manage annotation queues and reviewed additions. |
 | `rule list` | Inspect project-scoped automation rules. |
-| `insights create`, `insights wait` | Start bounded reports and wait for their completion. |
+| `insights create` | Start bounded reports; inspect status with existing `insights get`. |
 
-These are 19 new commands. Existing dataset creation also returns a creation status.
+These are 12 new commands. Existing dataset creation also returns a creation status.
 No SDK/API changes are included. Experiment comparison, experiment execution, rule
-mutations, and Engine configuration are not part of this proposal.
+mutations, and Engine configuration are not included in this implementation.
 
 ### 1. Build and select a safe test workspace
 
@@ -560,13 +560,12 @@ LS_TEST_TAG="cli-manual-$(date +%Y%m%d-%H%M%S)-$$"
 
 lscheck() {
   env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY \
-    "$LS_BIN" --no-context --profile "$LS_PROFILE" \
+    "$LS_BIN" --profile "$LS_PROFILE" \
     --workspace "$LS_WORKSPACE" --format json "$@"
 }
 
 lscheck --version
-lscheck doctor --project-id "$LS_SOURCE_PROJECT"
-lscheck trace verify --project-id "$LS_SOURCE_PROJECT" --trace-id "$LS_TRACE"
+lscheck trace get "$LS_TRACE" --project-id "$LS_SOURCE_PROJECT"
 lscheck rule list --project-id "$LS_SOURCE_PROJECT"
 ```
 
@@ -615,18 +614,6 @@ lscheck example list --dataset "${LS_TEST_DATASET:?}" --limit 5
 ```
 
 Expected: first apply `created`, retry `skipped`, same example ID, `failed: 0`.
-
-Test the two lower-level entry points with the same source and destination:
-
-```bash
-lscheck dataset preview-traces --project-id "$LS_SOURCE_PROJECT" \
-  --dataset "${LS_TEST_DATASET:?}" --trace-id "$LS_TRACE" \
-  --output "$LS_TEST_DIR/selection-alternate.json"
-lscheck dataset add-traces --project-id "$LS_SOURCE_PROJECT" \
-  --dataset "${LS_TEST_DATASET:?}" --selection "$LS_TEST_DIR/selection-alternate.json"
-```
-
-Expected: identical content is skipped rather than duplicated.
 
 Optional selection variants, requiring valid source fixtures:
 
@@ -711,30 +698,12 @@ lscheck insights create --project-id "$LS_SOURCE_PROJECT" --model openai \
   --user-context '{"Goal":"Find failures in synthetic test traces"}' \
   | tee "$LS_TEST_DIR/insights.json"
 LS_INSIGHT="$(jq -er '.id' "$LS_TEST_DIR/insights.json")"
-lscheck insights wait "${LS_INSIGHT:?}" --project-id "$LS_SOURCE_PROJECT" \
-  --timeout 2m --poll-interval 5s
+lscheck insights get "${LS_INSIGHT:?}" --project-id "$LS_SOURCE_PROJECT"
 ```
 
-Expected: creation returns a durable job ID and status, then wait returns a completed
-report or a nonzero timeout/failure. A timeout does not cancel the report; resume
-with the same wait command. Provider credentials are configured server-side.
+Expected: creation returns a durable job ID and status. Use insights get with the same ID to inspect progress and retrieve the report when complete. Provider credentials are configured server-side.
 
-### 8. Verify experimental onboarding in an isolated directory
-
-```bash
-(
-  cd "$LS_TEST_DIR"
-  lscheck init --project-id "${LS_TEST_PROJECT:?}"
-  env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY "$LS_BIN" --format json doctor
-  lscheck init --project-id "${LS_TEST_PROJECT:?}"
-)
-```
-
-Expected: init writes credential-free context, doctor loads it, and repeated init
-fails with `context_exists`. Conflicting environment settings can require explicit
-cleanup or `--no-context`; they are not silently ignored. No tracing is instrumented.
-
-### 9. Check JSON errors and delete the disposable queue
+### 8. Check JSON errors and delete the disposable queue
 
 ```bash
 lscheck feedback list --run-id invalid \

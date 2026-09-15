@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -28,9 +27,6 @@ import (
 func resolveSessionID(ctx context.Context, c *client.Client, projectName, projectID, cmdName string) (string, error) {
 	if projectID != "" {
 		return validateProjectID(projectID)
-	}
-	if projectName == "" && os.Getenv("LANGSMITH_PROJECT") == "" && activeProjectContext != nil {
-		return activeProjectContext.ProjectID, nil
 	}
 	name := ResolveProject(projectName)
 	if name == "" {

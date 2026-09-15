@@ -171,14 +171,10 @@ func readTraceSelection(path string) (traceSelection, error) {
 	return s, s.validate()
 }
 
-func newDatasetPreviewTracesCmd() *cobra.Command {
-	return newDatasetPreviewTracesWithSink(nil)
-}
-
-func newDatasetPreviewTracesWithSink(sink func(traceSelection) error) *cobra.Command {
+func newDatasetSelectionPreviewCmd() *cobra.Command {
 	var ff FilterFlags
 	var dataset, runIDs, traceID, mode, inputPath, outputPath, path string
-	cmd := &cobra.Command{Use: "preview-traces", Short: "Preview trace examples and freeze a selection for import", Args: cobra.NoArgs,
+	cmd := &cobra.Command{Use: "add", Short: "Preview trace examples and freeze a selection for import", Args: cobra.NoArgs,
 		Long: "Read-only preview. Defaults to inputs-only: observed agent outputs are not trusted references.\nUse --run-ids for individual child steps, --trace-id for one root, or existing trace\nfilters for a bounded root sample. JSON pointers must select objects. Output files\ncontain trace data and are created privately without overwriting existing files.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for _, flag := range []string{"trace-id", "run-ids", "trace-ids"} {
@@ -231,7 +227,7 @@ func newDatasetPreviewTracesWithSink(sink func(traceSelection) error) *cobra.Com
 				return err
 			}
 			ctx := cmd.Context()
-			project, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "dataset preview-traces")
+			project, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "dataset add")
 			if err != nil {
 				return err
 			}
@@ -279,9 +275,6 @@ func newDatasetPreviewTracesWithSink(sink func(traceSelection) error) *cobra.Com
 			if err := s.validate(); err != nil {
 				return err
 			}
-			if sink != nil {
-				return sink(s)
-			}
 			return writeTraceSelection(s, path)
 		},
 	}
@@ -298,31 +291,15 @@ func newDatasetPreviewTracesWithSink(sink func(traceSelection) error) *cobra.Com
 	return cmd
 }
 
-func newDatasetAddTracesCmd() *cobra.Command {
-	var file, dataset, project, projectID, traceID, mode string
-	cmd := &cobra.Command{Use: "add-traces", Short: "Import a reviewed preview selection, skipping identical prior imports", Args: cobra.NoArgs,
-		Long: "Import the exact payload in a preview-traces selection, not a fresh filter query.\nReview inputs and reference mode first. To provide corrected answers, set the file's\nreference_mode to corrected and supply each example's outputs object. Repeating\nthe same selection skips identical examples; changed payloads create new examples.\nExisting examples are never overwritten. Partial failures return per-item results\nand a nonzero exit; retry the same file to recover without duplicating successes.",
+func newDatasetSelectionApplyCmd() *cobra.Command {
+	var file, dataset, project, projectID string
+	cmd := &cobra.Command{Use: "add", Short: "Import a reviewed preview selection, skipping identical prior imports", Args: cobra.NoArgs,
+		Long: "Import the exact payload in a dataset add --dry-run selection, not a fresh filter query.\nReview inputs and reference mode first. To provide corrected answers, set the file's\nreference_mode to corrected and supply each example's outputs object. Repeating\nthe same selection skips identical examples; changed payloads create new examples.\nExisting examples are never overwritten. Partial failures return per-item results\nand a nonzero exit; retry the same file to recover without duplicating successes.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var s traceSelection
-			var err error
-			if strings.TrimSpace(file) == "" && strings.TrimSpace(traceID) == "" {
-				return fmt.Errorf("provide a nonblank --selection or --trace-id")
+			if strings.TrimSpace(file) == "" {
+				return fmt.Errorf("provide a nonblank --selection")
 			}
-			if file != "" {
-				if cmd.Flags().Changed("reference-mode") {
-					return fmt.Errorf("with --selection, set reference_mode in the reviewed file")
-				}
-				s, err = readTraceSelection(file)
-			} else {
-				preview := newDatasetPreviewTracesWithSink(func(selected traceSelection) error { s = selected; return nil })
-				previewArgs := []string{"--dataset", dataset, "--trace-id", traceID, "--reference-mode", mode}
-				if projectID != "" {
-					previewArgs = append(previewArgs, "--project-id", projectID)
-				} else if project != "" {
-					previewArgs = append(previewArgs, "--project", project)
-				}
-				err = executeDatasetSubcommand(cmd, preview, previewArgs)
-			}
+			s, err := readTraceSelection(file)
 			if err != nil {
 				return err
 			}
@@ -334,7 +311,7 @@ func newDatasetAddTracesCmd() *cobra.Command {
 			if s.APIURL != c.APIURL() {
 				return fmt.Errorf("selection API URL differs from the configured API URL")
 			}
-			pid, err := resolveSessionID(ctx, c, project, projectID, "dataset add-traces")
+			pid, err := resolveSessionID(ctx, c, project, projectID, "dataset add")
 			if err != nil {
 				return err
 			}
@@ -422,11 +399,8 @@ func newDatasetAddTracesCmd() *cobra.Command {
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)
-	cmd.Flags().StringVar(&file, "selection", "", "Reviewed JSON file from preview-traces (or use --trace-id)")
-	cmd.Flags().StringVar(&traceID, "trace-id", "", "Import one explicit root trace without a selection file")
-	cmd.Flags().StringVar(&mode, "reference-mode", "inputs-only", "Direct import only: inputs-only or observed")
-	cmd.MarkFlagsOneRequired("selection", "trace-id")
-	cmd.MarkFlagsMutuallyExclusive("selection", "trace-id")
+	cmd.Flags().StringVar(&file, "selection", "", "Reviewed JSON file from dataset add --dry-run")
+	_ = cmd.MarkFlagRequired("selection")
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Destination dataset name or UUID; must match selection (required)")
 	_ = cmd.MarkFlagRequired("dataset")
 	return cmd
