@@ -485,6 +485,16 @@ Annotation-queue promotion and representative sampling are not included in these
 
 Use `dataset add --dry-run --output selection.json` to preview roots, child runs (`--run-id`), or thread turns (`--thread-id`); apply the frozen payload with `dataset add --selection selection.json`. Dataset creation returns `status: created` and disables automatic retries.
 
+### Experimental project onboarding
+
+```bash
+langsmith init --workspace <workspace-id> --project-id <existing-project-id>
+langsmith doctor
+langsmith trace verify --trace-id <trace-id>
+```
+
+Init saves credential-free local context and refuses to overwrite it. Doctor verifies read access only. Trace verification checks ingestion; these commands do not instrument the application. Use `--no-context` to explicitly bypass local defaults.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:

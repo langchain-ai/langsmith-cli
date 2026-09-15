@@ -56,6 +56,16 @@ Quick start:
 		Version:       displayVersion,
 	}
 
+	activeProjectContext = nil
+	var noContext bool
+	rootCmd.PersistentFlags().BoolVar(&noContext, "no-context", false, "Ignore local .langsmith-context.json for this invocation")
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if noContext || cmd.Name() == "init" {
+			return nil
+		}
+		return loadProjectContext(cmd)
+	}
+
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	_ = rootCmd.PersistentFlags().MarkHidden("api-key")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "LangSmith API URL [env: LANGSMITH_ENDPOINT]")
@@ -67,6 +77,8 @@ Quick start:
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
+	rootCmd.AddCommand(newOnboardingInitCmd())
+	rootCmd.AddCommand(newDoctorCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newThreadCmd())
