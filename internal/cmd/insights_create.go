@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 
@@ -16,6 +17,9 @@ import (
 type insightsCreateOptions struct {
 	name, model, start, end, filter, summaryPrompt, userContext string
 	lastNHours, sample                                          int64
+	configID, clusterModel, summaryModel                        string
+	categories                                                  map[string]string
+	attributes                                                  map[string]insightsAttribute
 }
 
 func chooseInsightsProvider(cmd *cobra.Command, explicit string) (string, error) {
@@ -46,6 +50,13 @@ func chooseInsightsProvider(cmd *cobra.Command, explicit string) (string, error)
 
 func insightsCreateParams(o insightsCreateOptions) (langsmith.SessionInsightNewParams, error) {
 	request := langsmith.CreateRunClusteringJobRequestParam{}
+	if o.configID != "" {
+		if _, err := uuid.Parse(o.configID); err != nil {
+			return langsmith.SessionInsightNewParams{}, fmt.Errorf("--config-id must be a UUID")
+		}
+		request.ConfigID = langsmith.F(o.configID)
+		return langsmith.SessionInsightNewParams{CreateRunClusteringJobRequest: request}, nil
+	}
 	fail := func(message string) (langsmith.SessionInsightNewParams, error) {
 		return langsmith.SessionInsightNewParams{}, fmt.Errorf("%s", message)
 	}
@@ -111,12 +122,17 @@ func insightsCreateParams(o insightsCreateOptions) (langsmith.SessionInsightNewP
 		}
 		request.UserContext = langsmith.F(context)
 	}
+	if err := addInsightsAnalysisParams(o, &request); err != nil {
+		return langsmith.SessionInsightNewParams{}, err
+	}
 	return langsmith.SessionInsightNewParams{CreateRunClusteringJobRequest: request}, nil
 }
 
 func newInsightsCreateCmd() *cobra.Command {
 	var project, projectID string
 	var options insightsCreateOptions
+	var file, categoriesFile, attributesFile, outputFile string
+	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Start a one-off Insights analysis of selected project traces",
@@ -132,17 +148,51 @@ The sample is a trace count, not a percentage or cost budget. Service limits app
 Without --filter the service selects root runs. --user-context accepts a JSON
 object mapping business questions to answers. Creation does not schedule recurrence.
 
+Use --file for an analysis JSON object with API field names, or --categories and
+--attributes for individual JSON files. File input cannot be mixed with analysis
+flags. --config-id runs a saved configuration exactly as stored; overrides are
+rejected. --dry-run validates the request without creating a job, but cannot
+resolve saved configurations or verify model availability and write permission.
+
 The response contains the actual job ID and status, not an assertion of completion.
 Use 'langsmith insights get <id> --project-id <project-id>' to inspect the report.`,
 		Example: `  langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --model openai
   langsmith insights create --project my-app --start-time 2026-09-01T00:00:00Z --end-time 2026-09-02T00:00:00Z --sample 100 --model anthropic --user-context '{"Business goal":"Resolve eligible refund requests"}'`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model, err := chooseInsightsProvider(cmd, options.model)
-			if err != nil {
-				return err
+			for _, name := range []string{"file", "categories", "attributes", "config-id", "cluster-model", "summary-model"} {
+				v, _ := cmd.Flags().GetString(name)
+				if cmd.Flags().Changed(name) && strings.TrimSpace(v) == "" {
+					return fmt.Errorf("--%s must not be blank", name)
+				}
 			}
-			options.model = model
+			if file != "" {
+				var config insightsFileConfig
+				if err := readInsightsJSON(file, &config); err != nil {
+					return err
+				}
+				options = config.options()
+			}
+			if categoriesFile != "" {
+				if err := readInsightsJSON(categoriesFile, &options.categories); err != nil {
+					return err
+				}
+			}
+			if attributesFile != "" {
+				if err := readInsightsJSON(attributesFile, &options.attributes); err != nil {
+					return err
+				}
+			}
+			if options.configID == "" {
+				if dryRun && options.model == "" {
+					return fmt.Errorf("--model is required for a non-interactive dry run")
+				}
+				model, err := chooseInsightsProvider(cmd, options.model)
+				if err != nil {
+					return err
+				}
+				options.model = model
+			}
 			params, err := insightsCreateParams(options)
 			if err != nil {
 				return err
@@ -155,6 +205,12 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 			if err != nil {
 				return err
 			}
+			if dryRun {
+				return output.OutputJSON(map[string]any{"status": "dry_run", "project_id": id,
+					"workspace_id": nilStr(GetWorkspaceID()), "request": params,
+					"saved_config_resolved": false, "authorization_validated": false,
+					"note": "No job created. Saved configuration, provider availability, service limits and write permission are not validated."}, outputFile)
+			}
 			// A retried POST could create a second paid job after an ambiguous response.
 			job, err := c.SDK.Sessions.Insights.New(cmd.Context(), id, params, option.WithMaxRetries(0))
 			if err != nil {
@@ -162,21 +218,33 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 			}
 			return output.OutputJSON(map[string]any{
 				"id": job.ID, "name": job.Name, "status": job.Status,
-				"error": nilStr(job.Error), "project_id": id,
-			}, "")
+				"error": nilStr(job.Error), "project_id": id, "workspace_id": nilStr(GetWorkspaceID()),
+			}, outputFile)
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&options.name, "name", "", "Optional report name")
 	cmd.Flags().StringVar(&options.model, "model", "", "Workspace provider: openai or anthropic; prompts only in interactive pretty mode")
-	cmd.Flags().Int64Var(&options.sample, "sample", 0, "Number of traces to sample (required, positive)")
+	cmd.Flags().Int64Var(&options.sample, "sample", 0, "Number of traces to sample (positive; required unless using --file or --config-id)")
 	cmd.Flags().Int64Var(&options.lastNHours, "last-n-hours", 0, "Look back this many hours; cannot combine with --start-time")
 	cmd.Flags().StringVar(&options.start, "start-time", "", "Start timestamp in RFC3339 format")
 	cmd.Flags().StringVar(&options.end, "end-time", "", "End timestamp in RFC3339 format; requires --start-time")
 	cmd.Flags().StringVar(&options.filter, "filter", "", "LangSmith run filter DSL; defaults to root runs on the service")
 	cmd.Flags().StringVar(&options.summaryPrompt, "summary-prompt", "", "Instructions for the report summary")
 	cmd.Flags().StringVar(&options.userContext, "user-context", "", "JSON object mapping business questions to answers")
-	_ = cmd.MarkFlagRequired("sample")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "Analysis JSON file; cannot combine with analysis flags or --config-id")
+	cmd.Flags().StringVar(&categoriesFile, "categories", "", "JSON file mapping category names to descriptions (1-10)")
+	cmd.Flags().StringVar(&attributesFile, "attributes", "", "JSON file defining named string/number/boolean attributes")
+	cmd.Flags().StringVar(&options.configID, "config-id", "", "Run a saved configuration UUID without overrides")
+	cmd.Flags().StringVar(&options.clusterModel, "cluster-model", "", "Clustering provider or workspace model-settings UUID")
+	cmd.Flags().StringVar(&options.summaryModel, "summary-model", "", "Summarization provider or workspace model-settings UUID")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Validate and show the request without creating a job (may read project metadata)")
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.MarkFlagsMutuallyExclusive("file", "config-id")
+	for _, name := range []string{"name", "model", "sample", "last-n-hours", "start-time", "end-time", "filter", "summary-prompt", "user-context", "categories", "attributes", "cluster-model", "summary-model"} {
+		cmd.MarkFlagsMutuallyExclusive("file", name)
+		cmd.MarkFlagsMutuallyExclusive("config-id", name)
+	}
 	cmd.MarkFlagsMutuallyExclusive("start-time", "last-n-hours")
 	return cmd
 }

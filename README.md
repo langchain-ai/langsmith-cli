@@ -376,6 +376,82 @@ langsmith experiment get my-experiment-2024-01-15
 
 ### `insights` — Create and inspect Insights reports
 
+#### Configure an analysis
+
+Use `--file/-f` for a reviewable JSON analysis. File keys match the API:
+
+```json
+{
+  "name": "Support quality",
+  "model": "openai",
+  "sample": 20,
+  "last_n_hours": 24,
+  "partitions": {
+    "Refunds": "Refund eligibility and refund requests",
+    "Account access": "Login problems and account recovery"
+  },
+  "attribute_schemas": {
+    "resolved": {
+      "type": "boolean",
+      "description": "The requested action was actually completed"
+    }
+  },
+  "user_context": {"Business goal": "Resolve eligible support requests"},
+  "summary_prompt": "Highlight recurring failures with supporting evidence"
+}
+```
+
+Save this as `analysis.json`, replace `PROJECT_ID`, and use your configured profile/workspace:
+
+```bash
+# Validate the request without creating a paid job.
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json --dry-run
+# After reviewing the request, submit it.
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json
+```
+
+Dry-run validates local configuration, not provider availability, service limits, or write
+permission. It may read project metadata. It does not freeze the server's sampled traces;
+relative time windows are evaluated again at submission. Service caps apply, so `sample`
+is a requested count, not a spending limit or a guarantee of that many analyzed traces.
+
+Alternatively, pass `--categories categories.json` (a name-to-description object, 1–10
+entries) and `--attributes attributes.json` (the `attribute_schemas` object above) with
+the ordinary analysis flags. Attributes support `string`, `number`, and `boolean`,
+descriptions, and optional `filter_by`. These are Insights attributes, not online evaluators.
+
+`--cluster-model` and `--summary-model` accept `openai`, `anthropic`, or a workspace
+model-settings UUID. The service validates availability. `--model` remains the fallback provider.
+
+`--file` cannot be combined with analysis flags. Unsupported fields (including scheduler,
+credential, and endpoint settings) are rejected. Files must contain one JSON object under
+1 MiB. `--output/-o` writes creation or dry-run JSON to a file.
+
+#### Reuse configurations and investigate results
+
+```bash
+bin/langsmith --format json insights create --project-id PROJECT_ID --config-id CONFIG_ID
+bin/langsmith --format json insights list --project-id PROJECT_ID --config-id CONFIG_ID --limit 20 --offset 0
+bin/langsmith --format json insights get JOB_ID --project-id PROJECT_ID
+bin/langsmith --format json insights runs JOB_ID --project-id PROJECT_ID --cluster-id CLUSTER_ID --limit 20
+```
+
+`--config-id` runs the saved configuration exactly as stored and rejects analysis overrides.
+Its dry-run shows the ID but cannot resolve the saved settings with the current SDK.
+Configuration authoring and scheduling remain in the UI.
+
+Report listing defaults to **20 reports** (previously unbounded), with a maximum page size
+of 100. The JSON list remains an array. Advance `--offset` by the number returned;
+a full page does not guarantee another page, and an empty page ends the listing.
+
+`insights runs` returns `project_id`, `workspace_id`, `job_id`, `cluster_id`, `runs`,
+`io_mode: "preview"`, `sort_scope: "page"`, and `pagination` with `next_offset`.
+Use that offset to continue. Run records include available metadata, summaries, and
+extracted attributes; full IO requires `run get --full`. Source retention or
+missing runs can reduce evidence coverage. `--sort-by ATTRIBUTE --sort-order asc|desc`
+sorts only the current page. No report cancellation or automatic retry of creation is offered.
+
+
 Start a one-off analysis with an explicit provider, sample count, and time window:
 
 ```bash
@@ -536,9 +612,9 @@ describe this checkout, not the published release.
 | `feedback create`, `feedback list` | Write/read feedback, including stable-ID retry reconciliation. |
 | `queue create`, `queue list`, `queue items`, `queue add`, `queue delete` | Manage annotation queues and reviewed additions. |
 | `rule list` | Inspect project-scoped automation rules. |
-| `insights create` | Start bounded reports; inspect status with existing `insights get`. |
+| `insights create`, `insights runs` | Configure bounded reports and drill into category evidence; inspect status with `insights get`. |
 
-These are 12 new commands. Existing dataset creation also returns a creation status.
+These are 13 new commands. Existing dataset creation also returns a creation status.
 No SDK/API changes are included. Experiment comparison, experiment execution, rule
 mutations, and Engine configuration are not included in this implementation.
 
