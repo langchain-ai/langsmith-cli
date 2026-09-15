@@ -436,6 +436,136 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### `insights` — Create and inspect Insights reports
+
+#### Configure an analysis
+
+Use `--file/-f` for a reviewable JSON analysis. File keys match the API:
+
+```json
+{
+  "name": "Support quality",
+  "model": "openai",
+  "sample": 20,
+  "last_n_hours": 24,
+  "partitions": {
+    "Refunds": "Refund eligibility and refund requests",
+    "Account access": "Login problems and account recovery"
+  },
+  "attribute_schemas": {
+    "resolved": {
+      "type": "boolean",
+      "description": "The requested action was actually completed"
+    }
+  },
+  "user_context": {"Business goal": "Resolve eligible support requests"},
+  "summary_prompt": "Summarize the request, action and outcome. Inputs: {{run.inputs}} Outputs: {{run.outputs}}"
+}
+```
+
+Save this as `analysis.json`, replace `PROJECT_ID`, and use your configured profile/workspace:
+
+```bash
+# Validate the request without creating a paid job.
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json --dry-run
+# After reviewing the request, submit it.
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json
+```
+
+Custom summary prompts summarize each run, not just the final report. Use simple
+variables such as `{{run.inputs}}`, `{{run.outputs}}`, nested object paths, or
+`{{all_thread_messages}}`; sections and helpers are not supported. Omit the prompt
+to use the service default. Category names must be unique after trimming, and
+attribute names cannot contain whitespace.
+
+To check variables without starting analysis:
+
+```bash
+bin/langsmith --format json insights create --project-id PROJECT_ID --file analysis.json --dry-run --preview-run RUN_ID
+```
+
+The preview returns `bindings`, `missing_paths`, `unchecked_paths`, and
+`paths_validated`. It preserves null, false, zero, and large integer values. Thread
+messages, feedback, and fields unavailable in the SDK query are marked unchecked;
+nested paths traverse objects, not array indexes. This is
+not a rendered summary, a matching-run count, or proof the explicit run meets the
+analysis filter/time window or will be sampled. It reads trace data into output.
+
+`--sample` accepts 1–1000. The service selects the latest matching root per thread
+plus unthreaded roots; fewer eligible traces can mean a smaller report.
+
+Dry-run validates local configuration, not provider availability, service limits, or write
+permission. It may read project metadata. It does not freeze the server's sampled traces;
+relative time windows are evaluated again at submission. Service caps apply, so `sample`
+is a requested count, not a spending limit or a guarantee of that many analyzed traces.
+
+Alternatively, pass `--categories categories.json` (a name-to-description object, 1–10
+entries) and `--attributes attributes.json` (the `attribute_schemas` object above) with
+the ordinary analysis flags. Attributes support `string`, `number`, and `boolean`,
+descriptions, and optional `filter_by`. These are Insights attributes, not online evaluators.
+
+`--cluster-model` and `--summary-model` accept `openai`, `anthropic`, or a workspace
+model-settings UUID. The service validates availability. `--model` remains the fallback provider.
+
+`--file` cannot be combined with analysis flags. Unsupported fields (including scheduler,
+credential, and endpoint settings) are rejected. Files must contain one JSON object under
+1 MiB. `--output/-o` writes creation or dry-run JSON to a file.
+
+#### Reuse configurations and investigate results
+
+```bash
+bin/langsmith --format json insights create --project-id PROJECT_ID --config-id CONFIG_ID
+bin/langsmith --format json insights list --project-id PROJECT_ID --config-id CONFIG_ID --limit 20 --offset 0
+bin/langsmith --format json insights get JOB_ID --project-id PROJECT_ID
+bin/langsmith --format json insights runs JOB_ID --project-id PROJECT_ID --cluster-id CLUSTER_ID --limit 20
+```
+
+`--config-id` runs the saved configuration exactly as stored and rejects analysis overrides.
+Its dry-run shows the ID but cannot resolve the saved settings with the current SDK.
+Configuration authoring and scheduling remain in the UI.
+
+Report listing defaults to **20 reports** (previously unbounded), with a maximum page size
+of 100. The JSON list remains an array. Advance `--offset` by the number returned;
+a full page does not guarantee another page, and an empty page ends the listing.
+
+`insights runs` returns `project_id`, `workspace_id`, `job_id`, `cluster_id`, `runs`,
+`io_mode: "preview"`, `sort_scope: "page"`, and `pagination` with `next_offset`.
+Use that offset to continue. Run records include available metadata, summaries, and
+extracted attributes; full IO requires `run get --full`. Source retention or
+missing runs can reduce evidence coverage. `--sort-by ATTRIBUTE --sort-order asc|desc`
+sorts only the current page. No report cancellation or automatic retry of creation is offered.
+
+Start a one-off analysis with an explicit provider, sample count, and time window:
+
+```bash
+langsmith insights create --project-id <uuid> --last-n-hours 24 --sample 20 --model openai \
+  --user-context '{"Business goal":"Resolve eligible refund requests","Concern":"Claims of success after a tool error"}'
+langsmith insights list --project-id <uuid> --limit 5
+langsmith insights get <job-id> --project-id <uuid>
+```
+
+In an interactive terminal with pretty output, omit `--model` to choose OpenAI or
+Anthropic at a prompt. There is no default choice. Non-interactive and JSON usage
+requires `--model` and never prompts. The menu lists supported providers, not verified
+workspace availability; credential checks still happen on the service.
+
+Alternatively use `--start-time` and optional `--end-time` as RFC3339 timestamps.
+Do not combine `--start-time` with `--last-n-hours`. Optional `--filter`, `--name`,
+and `--summary-prompt` refine the report. `--user-context` is a JSON object of
+question-to-answer strings, with at least one non-empty answer.
+
+Creation can incur workspace model usage. `--model` selects `openai` or `anthropic`
+using server-side configuration, not your app's local Gateway client. `--sample`
+is a positive trace count, not a percentage or dollar cap; service limits apply.
+No recurrence is scheduled, and model-secret validation is not bypassed.
+
+The JSON response preserves the service's job ID, name, status, error, and project
+ID. A queued response does not mean analysis is complete. Creation is not retried
+automatically; if a response is lost, inspect existing jobs before submitting again.
+Advanced saved configurations and separate cluster/summary model overrides remain
+available through the API, not this command's initial flag surface.
+
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
