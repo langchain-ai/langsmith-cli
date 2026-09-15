@@ -9,7 +9,7 @@ import (
 
 func TestInsightsCmd_Subcommands(t *testing.T) {
 	cmd := newInsightsCmd()
-	expected := map[string]bool{"list": false, "get": false, "create": false}
+	expected := map[string]bool{"list": false, "get": false, "create": false, "runs": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; !ok {
 			t.Errorf("unexpected insights subcommand %q", sub.Name())
@@ -41,7 +41,7 @@ func TestInsightsListCmd_Flags(t *testing.T) {
 		short  string
 	}{
 		{"project", "", ""},
-		{"limit", "0", "n"},
+		{"limit", "20", "n"},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {
