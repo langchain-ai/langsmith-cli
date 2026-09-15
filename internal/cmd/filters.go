@@ -169,9 +169,11 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (substring search)
+	// Name filter (exact match). The server's search() operator is single-argument
+	// full-text search across all string fields, so there is no name-scoped
+	// substring form; users wanting that pass --filter 'search("...")' themselves.
 	if f.Name != "" {
-		parts = append(parts, fmt.Sprintf("search(name, %q)", f.Name))
+		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
 	}
 
 	// Latency filters
