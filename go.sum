@@ -33,6 +33,8 @@ github.com/klauspost/compress v1.19.0 h1:sXLILfc9jV2QYWkzFOPWStmcUVH2RHEB1JCdY2o
 github.com/klauspost/compress v1.19.0/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/langchain-ai/langsmith-go v0.26.2 h1:MCfJb9mxo3DR1lqXZCmqEuxI4V19KdJrMuse34u4aaI=
 github.com/langchain-ai/langsmith-go v0.26.2/go.mod h1:urzpZ+6/porclCZ4HjWCMnErMHhL0i61a9GAmDoxh4M=
+github.com/langchain-ai/langsmith-go v0.26.4-0.20260915214749-73c31f6da9e1 h1:v/EuSONr1eEFJ60/cW1h3KgEtM5N+WAdXR7Se3hT32A=
+github.com/langchain-ai/langsmith-go v0.26.4-0.20260915214749-73c31f6da9e1/go.mod h1:urzpZ+6/porclCZ4HjWCMnErMHhL0i61a9GAmDoxh4M=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
 github.com/mattn/go-colorable v0.1.14/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
