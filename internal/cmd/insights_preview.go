@@ -61,7 +61,7 @@ func previewInsightsRun(ctx context.Context, c *client.Client, projectID, runID,
 		}
 	}
 	selects := []langsmith.RunQueryParamsSelect{"id", "trace_id", "parent_run_id", "session_id"}
-	seen := map[string]bool{}
+	seen := map[string]bool{"id": true, "trace_id": true, "parent_run_id": true, "session_id": true}
 	for _, path := range paths {
 		if path == "all_thread_messages" {
 			continue
@@ -82,7 +82,9 @@ func previewInsightsRun(ctx context.Context, c *client.Client, projectID, runID,
 	}
 	// Raw response preserves omitted versus explicitly null fields.
 	var run map[string]any
-	if err := json.Unmarshal([]byte(runs[0].JSON.RawJSON()), &run); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(runs[0].JSON.RawJSON()))
+	decoder.UseNumber()
+	if err := decoder.Decode(&run); err != nil {
 		return nil, fmt.Errorf("invalid preview run response")
 	}
 	bindings := map[string]any{}
@@ -90,6 +92,10 @@ func previewInsightsRun(ctx context.Context, c *client.Client, projectID, runID,
 	unchecked := []string{}
 	for _, path := range paths {
 		if path == "all_thread_messages" || strings.HasPrefix(path, "run.feedback") {
+			unchecked = append(unchecked, path)
+			continue
+		}
+		if !langsmith.RunQueryParamsSelect(strings.Split(path, ".")[1]).IsKnown() {
 			unchecked = append(unchecked, path)
 			continue
 		}

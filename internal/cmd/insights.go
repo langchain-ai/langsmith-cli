@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -325,18 +325,18 @@ func printInsightPretty(d *langsmith.SessionInsightGetJobResponse) {
 				levelStr = "subcategory"
 			}
 
-			errRate := "0.0%"
+			errRate := "N/A"
 			latency := "N/A"
 			cost := "N/A"
 
 			if stats := cl.Stats; stats != nil {
-				if v, ok := stats["error_rate"].(float64); ok && v > 0 {
+				if v, ok := stats["error_rate"].(float64); ok {
 					errRate = fmt.Sprintf("%.1f%%", v*100)
 				}
-				if v, ok := stats["latency_p50"].(float64); ok && v > 0 {
+				if v, ok := stats["latency_p50"].(float64); ok {
 					latency = formatTimedelta(v)
 				}
-				if v, ok := stats["cost_p50"].(float64); ok && v > 0 {
+				if v, ok := stats["cost_p50"].(float64); ok {
 					cost = fmt.Sprintf("$%.4f", v)
 				}
 			}

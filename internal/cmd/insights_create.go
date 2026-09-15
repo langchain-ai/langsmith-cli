@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-go/option"

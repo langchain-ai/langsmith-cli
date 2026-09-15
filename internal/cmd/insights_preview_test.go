@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 func TestInsightsPromptVariables(t *testing.T) {
@@ -56,12 +58,12 @@ func TestInsightsPreviewReadOnly(t *testing.T) {
 			t.Errorf("missing project/root scope: %v", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"runs":[{"id":"` + deleteTestProjectID + `","inputs":{"zero":0,"false":false,"null":null},"outputs":{}}]}`))
+		_, _ = w.Write([]byte(`{"runs":[{"id":"` + deleteTestProjectID + `","inputs":{"zero":0,"false":false,"null":null,"large":9007199254740993},"outputs":{}}]}`))
 	})
 	defer setupTestEnv(t, ts.URL)()
 	flagOutputFormat = "json"
 	cmd := newInsightsCreateCmd()
-	cmd.SetArgs([]string{"--project-id", deleteTestProjectID, "--model", "openai", "--sample", "20", "--last-n-hours", "24", "--dry-run", "--preview-run", deleteTestProjectID, "--summary-prompt", "{{run.inputs.zero}} {{run.inputs.false}} {{run.inputs.null}} {{run.inputs.missing}} {{all_thread_messages}}"})
+	cmd.SetArgs([]string{"--project-id", deleteTestProjectID, "--model", "openai", "--sample", "20", "--last-n-hours", "24", "--dry-run", "--preview-run", deleteTestProjectID, "--summary-prompt", "{{run.inputs.zero}} {{run.inputs.false}} {{run.inputs.null}} {{run.inputs.large}} {{run.inputs.missing}} {{all_thread_messages}} {{run.unsupported_field}}"})
 	var err error
 	out := captureStdout(t, func() { err = cmd.Execute() })
 	if err != nil {
@@ -74,6 +76,44 @@ func TestInsightsPreviewReadOnly(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("expected one read, got %d", calls)
+	}
+	var result struct {
+		Preview struct {
+			Bindings  map[string]json.RawMessage `json:"bindings"`
+			Missing   []string                   `json:"missing_paths"`
+			Unchecked []string                   `json:"unchecked_paths"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatal(err)
+	}
+	if string(result.Preview.Bindings["run.inputs.large"]) != "9007199254740993" {
+		t.Error("preview rounded a large integer")
+	}
+	if len(result.Preview.Missing) != 1 || len(result.Preview.Unchecked) != 2 {
+		t.Errorf("incorrect missing/unchecked classification: %+v", result.Preview)
+	}
+}
+
+func TestInsightsPrettyMissingAndZeroMetrics(t *testing.T) {
+	for _, tc := range []struct {
+		name, stats string
+		wantZero    bool
+	}{
+		{"missing", `{}`, false},
+		{"null", `{"error_rate":null,"latency_p50":null,"cost_p50":null}`, false},
+		{"zero", `{"error_rate":0,"latency_p50":0,"cost_p50":0}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var detail langsmith.SessionInsightGetJobResponse
+			if err := json.Unmarshal([]byte(`{"clusters":[{"name":"Test","stats":`+tc.stats+`}]}`), &detail); err != nil {
+				t.Fatal(err)
+			}
+			out := captureStdout(t, func() { printInsightPretty(&detail) })
+			if strings.Contains(out, "0.0%") != tc.wantZero || strings.Contains(out, "$0.0000") != tc.wantZero {
+				t.Errorf("incorrect metric rendering: %s", out)
+			}
+		})
 	}
 }
 

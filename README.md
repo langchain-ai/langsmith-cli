@@ -485,8 +485,9 @@ bin/langsmith --format json insights create --project-id PROJECT_ID --file analy
 ```
 
 The preview returns `bindings`, `missing_paths`, `unchecked_paths`, and
-`paths_validated`. It preserves null, false and zero. Thread messages and feedback
-are marked unchecked; nested paths traverse objects, not array indexes. This is
+`paths_validated`. It preserves null, false, zero, and large integer values. Thread
+messages, feedback, and fields unavailable in the SDK query are marked unchecked;
+nested paths traverse objects, not array indexes. This is
 not a rendered summary, a matching-run count, or proof the explicit run meets the
 analysis filter/time window or will be sampled. It reads trace data into output.
 
