@@ -158,7 +158,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		}
 		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
 		if (flagProfile != "" || envProfile != "") && !hasProfile {
-			return opts, fmt.Errorf("profile not found: %s", profileName)
+			return opts, commandDiagnostic{"profile_not_found", "profile not found", "Run langsmith profile list, then select an existing profile with --profile; or create one with langsmith auth login --profile NAME."}
 		}
 	}
 
