@@ -31,6 +31,7 @@ Examples:
 	cmd.AddCommand(newRunListCmd())
 	cmd.AddCommand(newRunGetCmd())
 	cmd.AddCommand(newRunExportCmd())
+	cmd.AddCommand(newFeedbackCmd())
 	return cmd
 }
 
