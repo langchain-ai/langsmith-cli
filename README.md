@@ -436,6 +436,27 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### Create a tracing project
+
+```bash
+langsmith project create --name my-app --description 'Application traces'
+```
+
+Use `--format json` for `status`, `id`, `name`, and `workspace_id`. Pretty output
+shows a creation confirmation and IDs. Workspace identity comes from the service
+response, falling back to the selected workspace; unknown identity stays null.
+Creating a project does not instrument your app or enable evaluators.
+
+The create request is not automatically retried. If the response is lost, inspect
+the selected workspace before retrying:
+
+```bash
+langsmith project list --name-contains my-app --format json
+```
+
+Compare exact names and workspace scope; this is a substring search, not proof
+that a matching project exists or that a single page contains every match.
+
 ### Agent-facing errors
 
 With `--format json`, returned errors are emitted as JSON on stderr with a nonzero exit. Stdout is reserved for results. Diagnostics include safe codes, messages, and next steps; raw upstream messages are omitted. Legacy commands that exit directly are not covered. Always inspect remote state before retrying writes.
