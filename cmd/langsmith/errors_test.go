@@ -96,3 +96,13 @@ func TestCommandTypedDiagnostic(t *testing.T) {
 		t.Fatalf("bad diagnostic: %s", out.String())
 	}
 }
+
+func TestCommandPrettyDiagnosticGuidance(t *testing.T) {
+	var out bytes.Buffer
+	if err := writeCommandError(&out, fmt.Errorf("sensitive wrapper: %w", testDiagnostic{}), "pretty"); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "Invalid resource ID.\nNext: Use the resource UUID.\n" {
+		t.Fatalf("unexpected diagnostic: %s", out.String())
+	}
+}

@@ -45,7 +45,19 @@ func errorOutputFormat(args []string, fallback string) string {
 // JSON diagnostics deliberately exclude upstream error text: it can contain
 // request URLs, credentials, user inputs, or server response bodies.
 func writeCommandError(w io.Writer, err error, format string) error {
+	var diagnostic interface {
+		CLIDiagnostic() (string, string, string)
+	}
 	if format != "json" {
+		if errors.As(err, &diagnostic) {
+			_, message, next := diagnostic.CLIDiagnostic()
+			if next != "" {
+				_, writeErr := fmt.Fprintf(w, "%s\nNext: %s\n", message, next)
+				return writeErr
+			}
+			_, writeErr := fmt.Fprintln(w, message)
+			return writeErr
+		}
 		_, writeErr := fmt.Fprintln(w, err.Error())
 		return writeErr
 	}
@@ -54,9 +66,6 @@ func writeCommandError(w io.Writer, err error, format string) error {
 	var status *int
 	var apiErr *langsmith.Error
 	var networkErr net.Error
-	var diagnostic interface {
-		CLIDiagnostic() (string, string, string)
-	}
 	switch {
 	case errors.As(err, &diagnostic):
 		code, message, next = diagnostic.CLIDiagnostic()

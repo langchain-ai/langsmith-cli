@@ -483,4 +483,17 @@ is all that's needed to ship to users.
 
 ## License
 
+### Shared command behavior
+
+JSON command errors are written to stderr with a stable code, safe message, and
+recovery steps. Typed diagnostics also show recovery steps in terminal output.
+Shared resource helpers validate UUIDs and JSON objects; paginated workflows
+preserve unknown completeness instead of claiming that a full page is the last.
+
+Manual error check (expected nonzero exit):
+
+```bash
+bin/langsmith --format json unknown-command
+```
+
 MIT
