@@ -33,6 +33,7 @@ Examples:
 
 	cmd.AddCommand(newExampleListCmd())
 	cmd.AddCommand(newExampleCreateCmd())
+	cmd.AddCommand(newExampleUpdateCmd())
 	cmd.AddCommand(newExampleDeleteCmd())
 	return cmd
 }
