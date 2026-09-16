@@ -461,6 +461,14 @@ that a matching project exists or that a single page contains every match.
 
 With `--format json`, returned errors are emitted as JSON on stderr with a nonzero exit. Stdout is reserved for results. Diagnostics include safe codes, messages, and next steps; raw upstream messages are omitted. Legacy commands that exit directly are not covered. Always inspect remote state before retrying writes.
 
+### Update example inputs or reference outputs
+
+```bash
+langsmith example update <example-id> --outputs '{"answer":"reviewed reference"}'
+```
+
+Accepts JSON objects or `@file`. Omitted fields are preserved. Writes are not automatically retried.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
