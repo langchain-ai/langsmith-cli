@@ -1,40 +1,16 @@
 # CLI integration testing
 
-This branch combines the latest reviewed capabilities into one build. **Do not
-merge this branch into main.** It is a testing snapshot, not a released CLI.
-All commands below use `bin/langsmith`, not your globally installed release.
-
-| Capability | PR | Included source commit |
-| --- | --- | --- |
-| Shared foundations | #309 | `3431967` |
-| Project creation | #310 | `6107a7c` |
-| Example updates | #311 | `16d607e` |
-| Run feedback | #312 | `1baf5bf` |
-| Dataset curation | #313 | `3b00ced` |
-| Annotation queues | #314 | `8c50e56` |
-| Insights | #316 | `901d529` |
-
-Engine and rule additions are excluded. Later PR changes are not automatically
-included in this snapshot. Combining the branches does not itself create any
-LangSmith resources or invoke models.
+All commands below use the local `bin/langsmith` build, not your globally installed
+release. The walkthrough creates disposable resources and optionally invokes
+model inference; review each step's scope before running it.
 
 ## 1. Build and select the demo workspace
 
-Already prepared locally at:
-`/Users/liam/Documents/Langchain Codebase/langsmith-cli-integration`.
+From the repository root:
 
 ```bash
-cd '/Users/liam/Documents/Langchain Codebase/langsmith-cli-integration'
 make build
 bin/langsmith --version
-```
-
-For a teammate without this checkout:
-
-```bash
-git clone --branch codex/cli-integration https://github.com/langchain-ai/langsmith-cli.git langsmith-cli-integration
-cd langsmith-cli-integration
-make build
 ```
 
 Use your configured `demo` profile. List workspaces and copy the Demo Workspace ID:

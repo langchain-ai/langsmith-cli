@@ -88,10 +88,8 @@ inference access. Existing JSON model files remain supported. No API or SDK chan
 The hidden `model preset list/get` and `--model-preset` spellings remain compatible
 with earlier scripts, including their original JSON envelope keys.
 
-> **Integration testing branch — do not merge into main.** This checkout combines
-> the capability PRs for manual testing. Start with [MANUAL-TESTING.md](MANUAL-TESTING.md).
-> Review and merge the individual PRs, not this branch. Proposed Engine and rule
-> additions are not included.
+See [MANUAL-TESTING.md](MANUAL-TESTING.md) for a bounded walkthrough using synthetic
+traces and disposable resources.
 
 An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
