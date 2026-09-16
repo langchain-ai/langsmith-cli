@@ -39,6 +39,7 @@ func newTraceStatsCmd() *cobra.Command {
 	var (
 		project     string
 		projectID   string
+		selects     []string
 		since       string
 		before      string
 		lastNMin    int
@@ -80,7 +81,12 @@ Examples:
 				return err
 			}
 
-			primary, err := fetchRunStats(ctx, c, sessionID, since, before, lastNMin, filter)
+			keys, attrs, err := resolveStatsSelect(selects)
+			if err != nil {
+				return err
+			}
+
+			primary, err := fetchRunStats(ctx, c, sessionID, since, before, lastNMin, filter, attrs)
 			if err != nil {
 				return fmt.Errorf("fetching stats: %w", err)
 			}
@@ -88,7 +94,7 @@ Examples:
 			hasCompare := cmpSince != "" || cmpBefore != "" || cmpLastNMin > 0
 			var compare *runStats
 			if hasCompare {
-				s, err := fetchRunStats(ctx, c, sessionID, cmpSince, cmpBefore, cmpLastNMin, filter)
+				s, err := fetchRunStats(ctx, c, sessionID, cmpSince, cmpBefore, cmpLastNMin, filter, attrs)
 				if err != nil {
 					return fmt.Errorf("fetching comparison stats: %w", err)
 				}
@@ -97,11 +103,11 @@ Examples:
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
-				printStatsPretty(&primary, compare, hasCompare)
+				printStatsPretty(&primary, compare, hasCompare, keys)
 			} else {
-				result := map[string]any{"stats": &primary}
-				if hasCompare {
-					result["compare"] = compare
+				result := map[string]any{"stats": selectedStats(primary, keys)}
+				if hasCompare && compare != nil {
+					result["compare"] = selectedStats(*compare, keys)
 				}
 				if err := output.OutputJSON(result, outputFile); err != nil {
 					ExitErrorf("%v", err)
@@ -119,6 +125,9 @@ Examples:
 	cmd.Flags().StringVar(&cmpSince, "compare-since", "", "Comparison window start (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&cmpBefore, "compare-before", "", "Comparison window end (RFC3339 or YYYY-MM-DD; default: same as --since)")
 	cmd.Flags().IntVar(&cmpLastNMin, "compare-last-n-minutes", 0, "Shorthand: comparison window = N minutes before the primary window starts")
+	cmd.Flags().StringSliceVar(&selects, "select", nil,
+		"Stats to request, comma-separated (default: all of "+strings.Join(defaultStatsKeys(), ", ")+"). "+
+			"Fewer stats is a cheaper query; unrequested stats are omitted from the output rather than reported as zero.")
 	cmd.Flags().StringVar(&filter, "filter", "", "LangSmith filter DSL (applied to both windows if comparing)")
 	cmd.Flags().StringVar(&outputFile, "output", "", "Write JSON output to file instead of stdout")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
@@ -126,13 +135,13 @@ Examples:
 }
 
 // fetchRunStats calls the SDK Runs.Stats endpoint and maps the result to runStats.
-func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, before string, lastNMin int, filter string) (runStats, error) {
+func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, before string, lastNMin int, filter string, attrs []langsmith.RunStatsQueryParamsSelect) (runStats, error) {
 	params := langsmith.RunStatsParams{
 		RunStatsQueryParams: langsmith.RunStatsQueryParams{
 			Session:   langsmith.F([]string{sessionID}),
 			IsRoot:    langsmith.F(true),
 			StartTime: langsmith.F(resolveStartTime(since, lastNMin)),
-			Select:    langsmith.F(traceStatsSelect()),
+			Select:    langsmith.F(attrs),
 		},
 	}
 	if before != "" {
@@ -161,6 +170,87 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 	default:
 		return runStats{}, fmt.Errorf("unhandled stats response type: %T", *res)
 	}
+}
+
+// statsKey ties one --select name to the API attribute that fetches it and the
+// accessor that reads it back, so a key cannot be requestable but unreadable.
+type statsKey struct {
+	attr langsmith.RunStatsQueryParamsSelect
+	get  func(runStats) any
+}
+
+var statsKeys = map[string]statsKey{
+	"run_count":         {langsmith.RunStatsQueryParamsSelectRunCount, func(s runStats) any { return s.RunCount }},
+	"latency_p50":       {langsmith.RunStatsQueryParamsSelectLatencyP50, func(s runStats) any { return s.LatencyP50 }},
+	"latency_p99":       {langsmith.RunStatsQueryParamsSelectLatencyP99, func(s runStats) any { return s.LatencyP99 }},
+	"total_tokens":      {langsmith.RunStatsQueryParamsSelectTotalTokens, func(s runStats) any { return s.TotalTokens }},
+	"prompt_tokens":     {langsmith.RunStatsQueryParamsSelectPromptTokens, func(s runStats) any { return s.PromptTokens }},
+	"completion_tokens": {langsmith.RunStatsQueryParamsSelectCompletionTokens, func(s runStats) any { return s.CompletionTokens }},
+	"median_tokens":     {langsmith.RunStatsQueryParamsSelectMedianTokens, func(s runStats) any { return s.MedianTokens }},
+	"tokens_p99":        {langsmith.RunStatsQueryParamsSelectTokensP99, func(s runStats) any { return s.TokensP99 }},
+	"total_cost":        {langsmith.RunStatsQueryParamsSelectTotalCost, func(s runStats) any { return s.TotalCost }},
+	"prompt_cost":       {langsmith.RunStatsQueryParamsSelectPromptCost, func(s runStats) any { return s.PromptCost }},
+	"completion_cost":   {langsmith.RunStatsQueryParamsSelectCompletionCost, func(s runStats) any { return s.CompletionCost }},
+	"cost_p50":          {langsmith.RunStatsQueryParamsSelectCostP50, func(s runStats) any { return s.CostP50 }},
+	"cost_p99":          {langsmith.RunStatsQueryParamsSelectCostP99, func(s runStats) any { return s.CostP99 }},
+	"error_rate":        {langsmith.RunStatsQueryParamsSelectErrorRate, func(s runStats) any { return s.ErrorRate }},
+	"feedback_stats":    {langsmith.RunStatsQueryParamsSelectFeedbackStats, func(s runStats) any { return s.FeedbackStats }},
+}
+
+// defaultStatsKeys is what --select defaults to: every supported stat, which is
+// what this command requested before the flag existed.
+func defaultStatsKeys() []string {
+	keys := make([]string, 0, len(statsKeys))
+	for k := range statsKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// resolveStatsSelect validates --select and returns the requested keys with the
+// API attributes to fetch them. Unknown names fail here rather than as a server
+// 422, and duplicates collapse so a repeated name is not requested twice.
+func resolveStatsSelect(selects []string) ([]string, []langsmith.RunStatsQueryParamsSelect, error) {
+	if len(selects) == 0 {
+		selects = defaultStatsKeys()
+	}
+	keys := make([]string, 0, len(selects))
+	attrs := make([]langsmith.RunStatsQueryParamsSelect, 0, len(selects))
+	seen := make(map[string]bool, len(selects))
+	for _, raw := range selects {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" || seen[name] {
+			continue
+		}
+		key, ok := statsKeys[name]
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown --select %q; valid values are: %s", raw, strings.Join(defaultStatsKeys(), ", "))
+		}
+		seen[name] = true
+		keys = append(keys, name)
+		attrs = append(attrs, key.attr)
+	}
+	if len(keys) == 0 {
+		return nil, nil, fmt.Errorf("--select was given but resolved to no stats")
+	}
+	return keys, attrs, nil
+}
+
+// selectedStats projects a response onto the requested keys.
+//
+// A stat nobody asked for is left out entirely rather than serialized from its
+// zero value: runStats is a fixed struct, so an unselected run_count or
+// error_rate would otherwise read as a real 0 and be indistinguishable from a
+// measured one.
+func selectedStats(s runStats, keys []string) map[string]any {
+	out := make(map[string]any, len(keys))
+	for _, k := range keys {
+		if key, ok := statsKeys[k]; ok {
+			out[k] = key.get(s)
+		}
+	}
+	return out
 }
 
 // traceStatsSelect is the metric set requested for every trace stats call.
@@ -243,13 +333,34 @@ func parseFlexTime(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", s)
 }
 
-func printStatsPretty(primary, compare *runStats, hasCompare bool) {
+func printStatsPretty(primary, compare *runStats, hasCompare bool, selectedKeys []string) {
 	if primary == nil {
 		fmt.Println("No stats returned.")
 		return
 	}
 	p := primary
 	c := compare
+	// Drop rows for stats nobody asked for; their struct fields are zero, which
+	// would render as a measured 0.
+	selected := make(map[string]bool, len(selectedKeys))
+	for _, k := range selectedKeys {
+		selected[k] = true
+	}
+	keep := func(rows [][]string, rowKeys []string) [][]string {
+		out := rows[:0]
+		for i, row := range rows {
+			if selected[rowKeys[i]] {
+				out = append(out, row)
+			}
+		}
+		return out
+	}
+	rowKeys := []string{
+		"run_count", "error_rate", "latency_p50", "latency_p99",
+		"total_tokens", "prompt_tokens", "completion_tokens",
+		"median_tokens", "tokens_p99",
+		"total_cost", "prompt_cost", "completion_cost", "cost_p50", "cost_p99",
+	}
 
 	// ── Overview ──────────────────────────────────────────────────────────────
 	if hasCompare && c != nil {
@@ -270,7 +381,7 @@ func printStatsPretty(primary, compare *runStats, hasCompare bool) {
 			{"Cost p50 / trace", fmtCost(p.CostP50), fmtCost(c.CostP50), fmtDeltaCost(p.CostP50, c.CostP50)},
 			{"Cost p99 / trace", fmtCost(p.CostP99), fmtCost(c.CostP99), fmtDeltaCost(p.CostP99, c.CostP99)},
 		}
-		output.OutputTable(cols, rows, "Overview")
+		output.OutputTable(cols, keep(rows, rowKeys), "Overview")
 	} else {
 		cols := []string{"Metric", "Value"}
 		rows := [][]string{
@@ -289,10 +400,13 @@ func printStatsPretty(primary, compare *runStats, hasCompare bool) {
 			{"Cost p50 / trace", fmtCost(p.CostP50)},
 			{"Cost p99 / trace", fmtCost(p.CostP99)},
 		}
-		output.OutputTable(cols, rows, "Overview")
+		output.OutputTable(cols, keep(rows, rowKeys), "Overview")
 	}
 
 	// ── Feedback keys ─────────────────────────────────────────────────────────
+	if !selected["feedback_stats"] {
+		return
+	}
 	if len(p.FeedbackStats) == 0 {
 		fmt.Println("No feedback stats available for this window.")
 		return
