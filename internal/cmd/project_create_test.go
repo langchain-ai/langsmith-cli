@@ -39,6 +39,7 @@ func TestProjectCreateCmd_UsesSDKAndWorkspace(t *testing.T) {
 				_, _ = w.Write([]byte(`{"id":"new-project","name":"demo app; $(not-a-command)","tenant_id":"demo-workspace"}`))
 			})
 			defer setupTestEnv(t, ts.URL)()
+			flagOutputFormat = "json"
 			flagWorkspaceID = "demo-workspace"
 			cmd := newProjectCreateCmd()
 			args := []string{"--name", "demo app; $(not-a-command)"}
@@ -55,8 +56,70 @@ func TestProjectCreateCmd_UsesSDKAndWorkspace(t *testing.T) {
 			if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 				t.Fatal(err)
 			}
-			if calls != 1 || result["status"] != "created" || result["id"] != "new-project" {
+			if calls != 1 || result["status"] != "created" || result["id"] != "new-project" || result["workspace_id"] != "demo-workspace" {
 				t.Fatalf("calls=%d result=%#v", calls, result)
+			}
+		})
+	}
+}
+
+func TestProjectCreateOutputAndRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		name, format, response, workspace, code string
+		status                                  int
+	}{
+		{"pretty", "pretty", `{"id":"project-id","name":"my-app","tenant_id":"actual-workspace"}`, "selected-workspace", "", 200},
+		{"fallback", "json", `{"id":"project-id","name":"my-app"}`, "selected-workspace", "", 200},
+		{"unknown", "json", `{"id":"project-id","name":"my-app"}`, "", "", 200},
+		{"empty-response", "json", `{}`, "", "project_creation_unverified", 200},
+		{"server-error", "json", `{"detail":"private-response-text"}`, "", "project_creation_unverified", 500},
+		{"forbidden", "json", `{"detail":"private-response-text"}`, "", "project_permission_denied", 403},
+		{"invalid", "json", `{"detail":"private-response-text"}`, "", "invalid_project_request", 422},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.response))
+			})
+			defer setupTestEnv(t, ts.URL)()
+			isolateConfig(t)
+			t.Setenv("LANGSMITH_WORKSPACE_ID", "")
+			flagOutputFormat, flagWorkspaceID = tc.format, tc.workspace
+			cmd := newProjectCreateCmd()
+			cmd.SetArgs([]string{"--name", "my-app"})
+			var err error
+			out := captureStdout(t, func() { err = cmd.Execute() })
+			if calls != 1 {
+				t.Fatalf("unexpected retries: %d", calls)
+			}
+			if tc.code != "" {
+				d, ok := err.(commandDiagnostic)
+				if !ok || d.code != tc.code || d.next == "" || out != "" || strings.Contains(d.Error(), "private-response-text") {
+					t.Fatalf("incorrect recovery output: %v %s", err, out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.format == "pretty" {
+				if !strings.Contains(out, `Created tracing project "my-app"`) || !strings.Contains(out, "actual-workspace") || strings.Contains(out, "selected-workspace") {
+					t.Fatalf("incorrect confirmation: %s", out)
+				}
+				return
+			}
+			var result map[string]any
+			if err := json.Unmarshal([]byte(out), &result); err != nil {
+				t.Fatal(err)
+			}
+			if tc.workspace == "" && result["workspace_id"] != nil {
+				t.Fatal("unknown workspace must remain null")
+			}
+			if tc.workspace != "" && result["workspace_id"] != tc.workspace {
+				t.Fatal("selected workspace missing")
 			}
 		})
 	}
