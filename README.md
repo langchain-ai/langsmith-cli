@@ -1,5 +1,10 @@
 # langsmith-cli
 
+> **Integration testing branch — do not merge into main.** This checkout combines
+> the capability PRs for manual testing. Start with [MANUAL-TESTING.md](MANUAL-TESTING.md).
+> Review and merge the individual PRs, not this branch. Proposed Engine and rule
+> additions are not included.
+
 An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
 
 Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads.
