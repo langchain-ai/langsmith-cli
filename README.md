@@ -503,6 +503,68 @@ values. Sources are `api`, `app`, `model`, and `auto_eval`. Omitted presence fil
 include both cases; `--has-score=false` and `--has-comment=false` explicitly select
 missing values. Time bounds apply to feedback creation, not the source run.
 
+### Curate traces into a dataset
+
+Use an existing destination dataset. Inputs-only is the default: a failed agent's
+output should not silently become the expected answer.
+
+```bash
+# One explicit root trace; no default time window is applied to this ID.
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
+  --trace-id <trace-uuid> --dry-run --output root-selection.json
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
+  --selection root-selection.json
+
+# Preview a bounded sample using the existing trace filters, then import exactly it.
+langsmith dataset add --dry-run --dataset regression-tests --project-id <project-uuid> \
+  --error --last-n-minutes 1440 --limit 20 --output selection.json
+langsmith dataset add --dataset regression-tests --project-id <project-uuid> \
+  --selection selection.json
+
+# A specific child run, extracting an object within its inputs.
+langsmith dataset add --dry-run --dataset tool-tests --project-id <project-uuid> \
+  --run-ids <run-uuid> --inputs-pointer /request --output step-selection.json
+```
+
+Preview always emits JSON containing the actual example payloads. `--output` creates
+a new private file and refuses to overwrite; protect it as trace data. Filter-based
+selection defaults to 20 roots in the last seven days; use time bounds and `--limit`
+explicitly for your sample. This is not representative sampling.
+
+New previews include `workspace_id` when resolved and `selection_info` with `limit`,
+`selected`, `has_more`, and `scope`. Filter/thread discovery probes one extra eligible
+root to detect truncation; only the selected examples are saved for import. Completeness
+describes discovery time, not a snapshot guarantee against later changes. A thread
+becomes separate root-turn examples, not a merged conversation. Older selection files
+remain accepted but lack completeness metadata.
+
+Selection files reject unknown envelope/example fields, duplicate JSON keys (including
+within inputs and outputs), and excessive nesting. Large JSON integers are preserved.
+When the plan records a workspace, replay requires that same selected workspace.
+
+Use `--reference-mode observed` only when the selected outputs are suitable references.
+`--outputs-pointer` can select a nested output object in that mode. For corrected
+references, edit the selection's `reference_mode` to `corrected` and supply an `outputs`
+object for every example. Review the file before importing it. Pointers are JSON
+Pointers (including array indices) and must resolve to objects, not scalar values.
+
+Import checks the explicit destination, API endpoint, and access to the selected
+source runs. It does not rerun a filter or replace frozen IO. Source run/trace/project
+provenance is recorded. Identical imports use content-derived IDs and are skipped;
+changed payloads or extraction settings create new examples. This does not deduplicate
+older examples created by other commands. Existing examples are never overwritten.
+Each result reports its example ID and created/skipped/recovered/failed status;
+partial failure exits nonzero. Retry the same file to reconcile successful writes.
+
+Import JSON includes `workspace_id`, `project_id`, `dataset_id`, `total`, and `counts`
+for `created`, `skipped`, `recovered`, and `failed`. Existing `results` and `failed`
+fields remain available. The added preview context does not change example IDs.
+
+Annotation-queue promotion and representative sampling are not included in these commands.
+
+
+Use `dataset add --dry-run --output selection.json` to preview roots, child runs (`--run-id`), or thread turns (`--thread-id`); apply the frozen payload with `dataset add --selection selection.json`. Dataset creation returns `status: created` and disables automatic retries.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
