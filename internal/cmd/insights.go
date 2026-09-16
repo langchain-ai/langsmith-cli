@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -17,8 +17,8 @@ import (
 func newInsightsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Query insights reports for a project",
-		Long: `Query insights reports for a project.
+		Short: "Create and query insights reports for a project",
+		Long: `Create and query insights reports for a project.
 
 The Insights Agent automatically analyzes traces to detect usage patterns,
 common agent behaviors, and failure modes using hierarchical categorization.
@@ -26,12 +26,15 @@ Each report organizes traces into top-level categories and subcategories,
 with an executive summary of key findings and highlighted traces.
 
 Examples:
+  langsmith insights create --project my-app --last-n-hours 24 --sample 20 --model openai
   langsmith insights list --project my-app
   langsmith insights get INSIGHT_ID --project my-app
   langsmith insights get INSIGHT_ID --project my-app --format pretty`,
 	}
 
 	cmd.AddCommand(newInsightsListCmd())
+	cmd.AddCommand(newInsightsCreateCmd())
+	cmd.AddCommand(newInsightsRunsCmd())
 	cmd.AddCommand(newInsightsGetCmd())
 	return cmd
 }
@@ -43,11 +46,15 @@ func newInsightsListCmd() *cobra.Command {
 		limit      int
 		outputFile string
 	)
+	var configID string
+	var offset int64
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List insight reports for a project",
-		Long: `List all insight reports for a project.
+		Long: `List one page of insight reports for a project (default 20, maximum 100).
+Use --offset to continue. A full page does not prove more reports exist;
+advance the offset by the number returned. An empty page ends the listing.
 
 Returns summary information for each report including name, status,
 and category distribution. Use 'insights get' with the report ID
@@ -55,30 +62,40 @@ for full details including the executive summary and category breakdown.`,
 		Example: `  langsmith insights list --project my-app
   langsmith insights list --project my-app --limit 5
   langsmith insights list --project my-app --format pretty`,
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 || limit > 100 || offset < 0 {
+				return fmt.Errorf("--limit must be 1-100 and --offset must be nonnegative")
+			}
+			if cmd.Flags().Changed("config-id") {
+				if _, err := uuid.Parse(configID); err != nil {
+					return fmt.Errorf("--config-id must be a UUID")
+				}
+			}
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "insights list")
 			if err != nil {
-				ExitErrorf("%v", err)
+				return err
 			}
 
-			var jobs []langsmith.SessionInsightListResponse
-			pager := c.SDK.Sessions.Insights.ListAutoPaging(ctx, sessionID, langsmith.SessionInsightListParams{})
-			for pager.Next() {
-				jobs = append(jobs, pager.Current())
-				if limit > 0 && len(jobs) >= limit {
-					break
-				}
+			query := langsmith.SessionInsightListParams{Limit: langsmith.F(int64(limit)), Offset: langsmith.F(offset)}
+			if configID != "" {
+				query.ConfigID = langsmith.F(configID)
 			}
-			if err := pager.Err(); err != nil {
-				ExitErrorf("listing insights: %v", err)
+			page, err := c.SDK.Sessions.Insights.List(ctx, sessionID, query)
+			if err != nil {
+				return fmt.Errorf("listing insights: %w", err)
 			}
+			jobs := page.ClusteringJobs
 
 			fmt_ := GetFormat()
 
-			if fmt_ == "pretty" {
+			if fmt_ == "pretty" && outputFile == "" {
 				columns := []string{"Name", "ID", "Status", "Created", "Clusters"}
 				var rows [][]string
 				for _, job := range jobs {
@@ -92,19 +109,25 @@ for full details including the executive summary and category breakdown.`,
 				}
 				output.OutputTable(columns, rows, "Insight Reports")
 			} else {
-				var data []map[string]any
+				data := []map[string]any{}
 				for _, job := range jobs {
-					data = append(data, insightJobToMap(job))
+					item := insightJobToMap(job)
+					item["project_id"] = sessionID
+					item["workspace_id"] = nilStr(GetWorkspaceID())
+					data = append(data, item)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					return err
 				}
 			}
+			return nil
 		},
 	}
 
 	addProjectFlags(cmd, &project, &projectID)
-	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of reports to return")
+	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum reports to return (1-100; use --offset for more)")
+	cmd.Flags().Int64Var(&offset, "offset", 0, "Number of reports to skip")
+	cmd.Flags().StringVar(&configID, "config-id", "", "Filter reports by saved configuration UUID")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -128,31 +151,40 @@ statistics (error rates, latency, costs, token usage, feedback scores).`,
 		Example: `  langsmith insights get e4040294-44af-4866-b1dd-3c566a8d42f0 --project my-app
   langsmith insights get e4040294-44af-4866-b1dd-3c566a8d42f0 --project my-app --format pretty`,
 		Args: cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			insightID := args[0]
-			c := MustGetClient()
-			ctx := context.Background()
+			if _, err := uuid.Parse(insightID); err != nil {
+				return fmt.Errorf("report ID must be a UUID")
+			}
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "insights get")
 			if err != nil {
-				ExitErrorf("%v", err)
+				return err
 			}
 
 			detail, err := c.SDK.Sessions.Insights.GetJob(ctx, sessionID, insightID)
 			if err != nil {
-				ExitErrorf("fetching insight: %v", err)
+				return fmt.Errorf("fetching insight: %w", err)
 			}
 
 			fmt_ := GetFormat()
 
-			if fmt_ == "pretty" {
+			if fmt_ == "pretty" && outputFile == "" {
 				printInsightPretty(detail)
 			} else {
 				data := buildInsightDetailJSON(detail)
+				data["project_id"] = sessionID
+				data["workspace_id"] = nilStr(GetWorkspaceID())
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					return err
 				}
 			}
+			return nil
 		},
 	}
 
@@ -293,18 +325,18 @@ func printInsightPretty(d *langsmith.SessionInsightGetJobResponse) {
 				levelStr = "subcategory"
 			}
 
-			errRate := "0.0%"
+			errRate := "N/A"
 			latency := "N/A"
 			cost := "N/A"
 
 			if stats := cl.Stats; stats != nil {
-				if v, ok := stats["error_rate"].(float64); ok && v > 0 {
+				if v, ok := stats["error_rate"].(float64); ok {
 					errRate = fmt.Sprintf("%.1f%%", v*100)
 				}
-				if v, ok := stats["latency_p50"].(float64); ok && v > 0 {
+				if v, ok := stats["latency_p50"].(float64); ok {
 					latency = formatTimedelta(v)
 				}
-				if v, ok := stats["cost_p50"].(float64); ok && v > 0 {
+				if v, ok := stats["cost_p50"].(float64); ok {
 					cost = fmt.Sprintf("$%.4f", v)
 				}
 			}
