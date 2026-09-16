@@ -658,6 +658,34 @@ Use `dataset add --dry-run --output selection.json` to preview roots, child runs
 
 ### Annotation queues
 
+#### Import assertion-based reference examples
+
+For one explicit trace or run, save an array in `assertions.json`:
+
+```json
+[
+  {"key":"must_confirm","comment":"Ask for confirmation before canceling."},
+  {"key":"must_verify_owner","comment":"Verify reservation ownership before changing it."}
+]
+```
+
+```bash
+langsmith dataset add --dataset <dataset-id> --project-id <project-id> \
+  --trace-id <trace-id> --assertions assertions.json --dry-run --output selection.json
+langsmith dataset add --dataset <dataset-id> --project-id <project-id> --selection selection.json
+```
+
+The frozen selection uses `reference_mode: corrected` and outputs containing
+`{"assertions":[...]}`. Actual agent outputs are not copied. It preserves the run's
+inputs (or the selected input object) and uses the existing repeat-safe import.
+Keys must be unique and nonblank; comments must be nonblank. No thread/batch
+assertion import, automatic scoring, queue review submission, or UI editor update
+is performed. Evaluate the resulting example using an offline evaluator that reads
+`reference_outputs.assertions`. Do not combine assertions with observed outputs,
+an output pointer, or selection replay overrides.
+
+#### Queue commands
+
 ```bash
 langsmith queue create --name review --dataset <dataset-id>
 langsmith queue get <queue-id>
@@ -704,8 +732,16 @@ Configure requires exactly one of `--dry-run` or `--apply`. Omitted fields are
 unchanged; a supplied rubric replaces all criteria. Use a file containing `[]`
 to clear the rubric or `--instructions ""` to clear instructions. Rubric items
 support `feedback_key`, `description`, `score_descriptions`, `value_descriptions`,
-`is_required`, and `is_assertion`. Files are bounded to 8 MiB and reject unknown
+`is_required`, and legacy `is_assertion: false`. Queue-wide assertion criteria are
+rejected because the current UI does not render them. Files are bounded to 8 MiB and reject unknown
 fields, duplicate JSON keys, and duplicate or blank feedback keys.
+
+Create and configure verify rubric keys against workspace feedback configurations
+before writing. Missing configurations fail with `queue_feedback_config_missing`;
+an unavailable configuration read fails closed. Use existing configured keys or
+create their workspace configuration first. The CLI never creates shared feedback
+schemas implicitly. This check uses the existing feedback-configs API because the
+pinned SDK does not expose its list operation.
 
 The preview is not a frozen plan: file and queue changes between preview and apply
 are not detected. The API resets omitted reviewer settings, so configure reads
@@ -714,8 +750,8 @@ that snapshot. Concurrent updates between the read and write can be overwritten.
 Apply returns `status: updated` and
 `verification: acknowledged_not_read_back`; use `queue get` to verify storage.
 These settings guide human reviewers; they do not create automated evaluators,
-rescore existing feedback, or create workspace feedback schemas. All commands use
-the existing Go SDK with no API or SDK changes.
+rescore existing feedback, or create workspace feedback schemas. Queue writes use
+the existing Go SDK; no API or SDK changes are needed.
 
 ### `insights` — Create and inspect Insights reports
 

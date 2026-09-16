@@ -100,6 +100,7 @@ func TestQueueRubricValidation(t *testing.T) {
 		`[{"feedback_key":" x"}]`, `[{"feedback_key":"x","unknown":true}]`,
 		`[{"feedback_key":"x","feedback_key":"y"}]`,
 		`[{"feedback_key":"x","is_required":"true"}]`, `[] []`,
+		`[{"feedback_key":"x","is_assertion":true}]`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			cmd := newQueueConfigureCmd()
@@ -122,12 +123,55 @@ func TestQueueRubricValidation(t *testing.T) {
 	}
 }
 
+func TestQueueFeedbackConfigPreflight(t *testing.T) {
+	for _, operation := range []string{"create", "configure"} {
+		for _, response := range []string{`[]`, `[{"feedback_key":"correctness","feedback_config":null}]`, `invalid`} {
+			t.Run(operation+response, func(t *testing.T) {
+				writes := 0
+				ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+					if r.Method != http.MethodGet {
+						writes++
+					}
+					w.Header().Set("Content-Type", "application/json")
+					if r.URL.Path == "/api/v1/feedback-configs" {
+						fmt.Fprint(w, response)
+						return
+					}
+					fmt.Fprintf(w, `{"id":%q}`, importDatasetID)
+				})
+				defer setupTestEnv(t, ts.URL)()
+				file := workflowFile(t, `[{"feedback_key":"correctness"}]`)
+				args := []string{"create", "--name", "test", "--rubric", file}
+				if operation == "configure" {
+					args = []string{"configure", importDatasetID, "--rubric", file, "--dry-run"}
+				}
+				cmd := newQueueCmd()
+				cmd.SetArgs(args)
+				var err error
+				out := captureStdout(t, func() { err = cmd.Execute() })
+				var diagnostic commandDiagnostic
+				if !errors.As(err, &diagnostic) || writes != 0 || out != "" {
+					t.Fatalf("preflight err=%v writes=%d output=%s", err, writes, out)
+				}
+				code, _, _ := diagnostic.CLIDiagnostic()
+				if code != "queue_feedback_config_missing" && code != "queue_feedback_configs_unavailable" {
+					t.Fatal(code)
+				}
+			})
+		}
+	}
+}
+
 func TestQueueRubricRequests(t *testing.T) {
 	for _, mode := range []string{"create", "preview", "apply", "clear", "instructions-only", "rubric-only", "failure"} {
 		t.Run(mode, func(t *testing.T) {
 			writes := 0
 			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/v1/feedback-configs" {
+					fmt.Fprint(w, `[{"feedback_key":"correctness","feedback_config":{"type":"continuous"}}]`)
+					return
+				}
 				if r.Method == http.MethodGet {
 					fmt.Fprintf(w, `{"id":%q,"num_reviewers_per_item":3,"enable_reservations":false,"reservation_minutes":7}`, importDatasetID)
 					return

@@ -182,9 +182,21 @@ func readTraceSelection(path string) (traceSelection, error) {
 func newDatasetSelectionPreviewCmd() *cobra.Command {
 	var ff FilterFlags
 	var dataset, runIDs, traceID, mode, inputPath, outputPath, path string
+	var assertionsFile string
 	cmd := &cobra.Command{Use: "add", Short: "Preview trace examples and freeze a selection for import", Args: cobra.NoArgs,
 		Long: "Read-only preview. Defaults to inputs-only: observed agent outputs are not trusted references.\nUse --run-ids for individual child steps, --trace-id for one root, or existing trace\nfilters for a bounded root sample. JSON pointers must select objects. Output files\ncontain trace data and are created privately without overwriting existing files.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var assertions []datasetAssertion
+			if cmd.Flags().Changed("assertions") {
+				if mode != "inputs-only" || cmd.Flags().Changed("outputs-pointer") || (traceID == "" && runIDs == "") || strings.Contains(runIDs, ",") {
+					return invalidAssertions("assertions require one explicit trace/run and cannot be combined with observed outputs or output pointers")
+				}
+				var err error
+				assertions, err = readDatasetAssertions(assertionsFile)
+				if err != nil {
+					return err
+				}
+			}
 			for _, flag := range []string{"trace-id", "run-ids", "trace-ids"} {
 				if cmd.Flags().Changed(flag) {
 					value, _ := cmd.Flags().GetString(flag)
@@ -278,6 +290,12 @@ func newDatasetSelectionPreviewCmd() *cobra.Command {
 				scope = "explicit_ids"
 			}
 			s := traceSelection{Version: traceSelectionVersion, APIURL: c.APIURL(), ProjectID: project, DatasetID: ds.ID, ReferenceMode: mode, InputsPointer: inputPath, OutputsPointer: outputPath, Examples: []traceExample{}, WorkspaceID: resultWorkspaceID(), SelectionInfo: &traceSelectionInfo{Limit: ff.Limit, Selected: len(runs), HasMore: hasMore, Scope: scope}}
+			if assertions != nil {
+				if len(runs) != 1 {
+					return invalidAssertions("assertions require exactly one matching run")
+				}
+				s.ReferenceMode = "corrected"
+			}
 			for _, run := range runs {
 				io, err := preciseTraceIO(run.JSON.RawJSON())
 				if err != nil {
@@ -288,6 +306,9 @@ func newDatasetSelectionPreviewCmd() *cobra.Command {
 					return fmt.Errorf("run %s inputs: %w", run.ID, err)
 				}
 				ex := traceExample{RunID: run.ID, TraceID: run.TraceID, StartTime: run.StartTime, Inputs: inputs}
+				if assertions != nil {
+					ex.Outputs = map[string]any{"assertions": assertions}
+				}
 				if mode == "observed" {
 					ex.Outputs, err = objectAtPointer(io.Outputs, outputPath)
 					if err != nil {
@@ -309,6 +330,7 @@ func newDatasetSelectionPreviewCmd() *cobra.Command {
 	cmd.Flags().StringVar(&runIDs, "run-ids", "", "Comma-separated explicit run UUIDs, including child steps")
 	cmd.MarkFlagsMutuallyExclusive("trace-id", "run-ids")
 	cmd.Flags().StringVar(&mode, "reference-mode", "inputs-only", "inputs-only or observed (explicitly trust the selected outputs)")
+	cmd.Flags().StringVar(&assertionsFile, "assertions", "", "JSON array of key/comment criteria for one trace/run; replaces observed reference output, does not evaluate or submit review")
 	cmd.Flags().StringVar(&inputPath, "inputs-pointer", "", "JSON pointer within run inputs; default is the whole object")
 	cmd.Flags().StringVar(&outputPath, "outputs-pointer", "", "JSON pointer within run outputs; default is the whole object")
 	cmd.Flags().StringVarP(&path, "output", "o", "", "Save frozen JSON selection to a new private file")

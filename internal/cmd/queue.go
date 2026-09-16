@@ -54,6 +54,9 @@ func newQueueCmd() *cobra.Command {
 			return err
 		}
 		p := langsmith.AnnotationQueueAnnotationQueuesParams{Name: langsmith.F(name), Description: langsmith.F(description), RubricItems: settings.RubricItems, RubricInstructions: settings.RubricInstructions}
+		if err := validateQueueFeedbackConfigs(cmd.Context(), c, settings); err != nil {
+			return err
+		}
 		if dataset != "" {
 			ds, err := resolveDataset(cmd.Context(), c, dataset)
 			if err != nil {

@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-go/option"
@@ -52,6 +54,9 @@ func (f *queueRubricFlags) params(cmd *cobra.Command) (langsmith.AnnotationQueue
 	rubric := make([]langsmith.AnnotationQueueRubricItemSchemaParam, 0, len(items))
 	seen := map[string]bool{}
 	for _, item := range items {
+		if item.IsAssertion != nil && *item.IsAssertion {
+			return p, invalidQueueConfiguration("queue-wide assertion rubric items are not supported by the current UI; use dataset add --assertions to curate reference criteria")
+		}
 		key := strings.TrimSpace(item.FeedbackKey)
 		if key == "" || key != item.FeedbackKey || seen[key] {
 			return p, invalidQueueConfiguration("rubric feedback keys must be unique, nonblank, and have no surrounding whitespace")
@@ -134,6 +139,9 @@ is not rescored, and score descriptions do not create workspace feedback schemas
 			return err
 		}
 		result := map[string]any{"queue_id": id, "workspace_id": resultWorkspaceID(), "changes": params, "status": "dry_run"}
+		if err := validateQueueFeedbackConfigs(cmd.Context(), c, params); err != nil {
+			return err
+		}
 		current, err := c.SDK.AnnotationQueues.Get(cmd.Context(), id)
 		if err != nil {
 			return err
@@ -157,6 +165,34 @@ is not rescored, and score descriptions do not create workspace feedback schemas
 		return output.OutputJSON(result, "")
 	}
 	return cmd
+}
+
+func validateQueueFeedbackConfigs(ctx context.Context, c *client.Client, params langsmith.AnnotationQueueUpdateParams) error {
+	if len(params.RubricItems.Value) == 0 {
+		return nil
+	}
+	var configs []struct {
+		Key    string `json:"feedback_key"`
+		Config *struct {
+			Type string `json:"type"`
+		} `json:"feedback_config"`
+	}
+	// The pinned SDK exposes deletion but not listing of feedback configurations.
+	if err := c.RawGet(ctx, "/api/v1/feedback-configs", &configs); err != nil {
+		return commandDiagnostic{"queue_feedback_configs_unavailable", "could not verify workspace feedback configurations; no queue write attempted", "Check the profile, workspace permissions, and deployment support for GET /api/v1/feedback-configs before retrying."}
+	}
+	keys := map[string]bool{}
+	for _, config := range configs {
+		if config.Config != nil && config.Config.Type != "" {
+			keys[config.Key] = true
+		}
+	}
+	for _, item := range params.RubricItems.Value {
+		if !keys[item.FeedbackKey.Value] {
+			return commandDiagnostic{"queue_feedback_config_missing", "one or more rubric feedback keys lack a workspace configuration; no queue write attempted", "Inspect langsmith api feedback-configs. Use configured keys, or create the missing feedback configuration in workspace settings before retrying. A rubric alone does not create score controls."}
+		}
+	}
+	return nil
 }
 
 // The update API assigns defaults to these omitted fields instead of preserving
