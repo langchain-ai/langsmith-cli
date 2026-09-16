@@ -481,9 +481,7 @@ tag via ldflags, so `git tag` is the only bump. Find the latest tag with `git ta
 The install scripts and `langsmith self-update` both read the latest GitHub Release, so a tag push
 is all that's needed to ship to users.
 
-## License
-
-### Shared command behavior
+## Shared command behavior
 
 JSON command errors are written to stderr with a stable code, safe message, and
 recovery steps. Typed diagnostics also show recovery steps in terminal output.
@@ -495,5 +493,7 @@ Manual error check (expected nonzero exit):
 ```bash
 bin/langsmith --format json unknown-command
 ```
+
+## License
 
 MIT
