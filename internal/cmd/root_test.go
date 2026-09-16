@@ -34,6 +34,15 @@ func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	}
 }
 
+func TestRootCmd_DoesNotExposeFleet(t *testing.T) {
+	root := NewRootCmd("1.0.0", "1.0.0")
+	for _, command := range root.Commands() {
+		if command.Name() == "fleet" {
+			t.Fatal("root command should not expose Fleet commands")
+		}
+	}
+}
+
 func TestRootCmd_Version(t *testing.T) {
 	root := NewRootCmd("2.3.4", "2.3.4 (commit: abc, built: now)")
 	if root.Version != "2.3.4 (commit: abc, built: now)" {
