@@ -127,10 +127,10 @@ func newQueueAddCmd() *cobra.Command {
 					return err
 				}
 				if len(runs) > limit {
-					return fmt.Errorf("selection exceeds --limit; narrow filter")
+					return commandDiagnostic{"queue_selection_too_large", "selection exceeds --limit; no items were added", "Narrow --filter or raise --limit up to 1000, then repeat --dry-run and review the saved plan."}
 				}
 				if len(runs) == 0 {
-					return fmt.Errorf("no matching runs in project")
+					return commandDiagnostic{"queue_selection_empty", "no matching runs in the selected project", "Check the project and source ID or filter with trace list/run list. --trace-id accepts only root runs; use --run-id for a child run."}
 				}
 				for _, r := range runs {
 					plan.Items = append(plan.Items, queueAddItem{RunID: r.ID, StartTime: r.StartTime})

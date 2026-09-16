@@ -708,7 +708,10 @@ support `feedback_key`, `description`, `score_descriptions`, `value_descriptions
 fields, duplicate JSON keys, and duplicate or blank feedback keys.
 
 The preview is not a frozen plan: file and queue changes between preview and apply
-are not detected. Apply returns `status: updated` and
+are not detected. The API resets omitted reviewer settings, so configure reads
+and resends reviewer count and reservation settings; `preserved_settings` shows
+that snapshot. Concurrent updates between the read and write can be overwritten.
+Apply returns `status: updated` and
 `verification: acknowledged_not_read_back`; use `queue get` to verify storage.
 These settings guide human reviewers; they do not create automated evaluators,
 rescore existing feedback, or create workspace feedback schemas. All commands use

@@ -25,14 +25,14 @@ func resolveQueue(ctx context.Context, c *client.Client, name string) (string, e
 		return q.ID, nil
 	}
 	if strings.TrimSpace(name) == "" {
-		return "", fmt.Errorf("queue name or UUID is required")
+		return "", commandDiagnostic{"invalid_queue", "queue name or UUID is required", "Use queue list to find the queue, then pass its name or UUID."}
 	}
 	page, err := c.SDK.AnnotationQueues.GetAnnotationQueues(ctx, langsmith.AnnotationQueueGetAnnotationQueuesParams{Name: langsmith.F(name), Limit: langsmith.F(int64(2))})
 	if err != nil {
 		return "", err
 	}
 	if len(page.Items) != 1 || page.Items[0].Name != name {
-		return "", fmt.Errorf("queue name is absent or ambiguous; use a UUID")
+		return "", commandDiagnostic{"queue_not_resolved", "queue name was not found or is ambiguous", "Check the selected workspace with queue list, then pass the exact queue UUID."}
 	}
 	return page.Items[0].ID, nil
 }
@@ -43,7 +43,7 @@ func newQueueCmd() *cobra.Command {
 	var rubric queueRubricFlags
 	create := &cobra.Command{Use: "create", Short: "Create an annotation queue", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if strings.TrimSpace(name) == "" {
-			return fmt.Errorf("--name is required")
+			return commandDiagnostic{"invalid_queue_name", "--name must not be blank", "Pass --name with a descriptive queue name, such as restaurant-policy-review."}
 		}
 		settings, err := rubric.params(cmd)
 		if err != nil {
@@ -86,7 +86,7 @@ func newQueueCmd() *cobra.Command {
 	var limit, offset int64
 	list := &cobra.Command{Use: "list", Short: "List annotation queues", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if limit < 1 || limit > 1000 || offset < 0 || offset > (1<<63-1)-limit {
-			return fmt.Errorf("limit must be 1–1000; offset must be nonnegative and leave room for the next page")
+			return commandDiagnostic{"invalid_queue_pagination", "limit must be 1–1000; offset must be nonnegative and leave room for the next page", "Use queue list --limit 20 --offset 0, then use pagination.next_offset for subsequent pages."}
 		}
 		c, err := getClient()
 		if err != nil {
@@ -96,7 +96,11 @@ func newQueueCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), "items": page.Items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, len(page.Items),
+		items := make([]json.RawMessage, 0, len(page.Items))
+		for _, item := range page.Items {
+			items = append(items, json.RawMessage(item.JSON.RawJSON()))
+		}
+		return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), "items": items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, len(page.Items),
 			"No annotation queues returned on this page.", "Confirm the workspace and retry with --offset 0 before concluding there are no queues.", "Use queue create --help to create a queue after confirming one is needed."), "")
 	}}
 	list.Flags().Int64Var(&limit, "limit", 100, "Page size (1–1000)")
@@ -130,8 +134,11 @@ func newQueueCmd() *cobra.Command {
 	var pageSize int64
 	items := &cobra.Command{Use: "items NAME_OR_ID", Short: "List a page of queue items awaiting review", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s := langsmith.AnnotationQueueItemListParamsStatus(status)
-		if !s.IsKnown() || pageSize < 1 || pageSize > 100 {
-			return fmt.Errorf("invalid review status or page size (1–100)")
+		if !s.IsKnown() {
+			return commandDiagnostic{"invalid_queue_status", "unsupported queue review status", "Use --status needs_my_review, needs_others_review, or archived."}
+		}
+		if pageSize < 1 || pageSize > 100 {
+			return commandDiagnostic{"invalid_queue_page_size", "queue item page size must be 1–100", "Use --limit 20, then pass the returned next_cursor using --cursor."}
 		}
 		c, err := getClient()
 		if err != nil {

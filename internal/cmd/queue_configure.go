@@ -7,6 +7,7 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-go/option"
+	"github.com/langchain-ai/langsmith-go/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -133,6 +134,16 @@ is not rescored, and score descriptions do not create workspace feedback schemas
 			return err
 		}
 		result := map[string]any{"queue_id": id, "workspace_id": resultWorkspaceID(), "changes": params, "status": "dry_run"}
+		current, err := c.SDK.AnnotationQueues.Get(cmd.Context(), id)
+		if err != nil {
+			return err
+		}
+		preserved, err := preserveQueueReviewSettings(current, &params)
+		if err != nil {
+			return err
+		}
+		result["preserved_settings"] = preserved
+		result["warnings"] = []string{"Reviewer settings are read and resent because the API resets omitted values. Concurrent changes between this read and update can be overwritten."}
 		if dryRun {
 			result["next_steps"] = []string{"Review the replacement rubric and instructions. Repeat with --apply instead of --dry-run; the file and queue can change between commands."}
 			return output.OutputJSON(result, "")
@@ -146,4 +157,41 @@ is not rescored, and score descriptions do not create workspace feedback schemas
 		return output.OutputJSON(result, "")
 	}
 	return cmd
+}
+
+// The update API assigns defaults to these omitted fields instead of preserving
+// their stored values. Resend the snapshot, retaining nulls rather than zeros.
+func preserveQueueReviewSettings(current *langsmith.AnnotationQueueGetResponse, params *langsmith.AnnotationQueueUpdateParams) (map[string]json.RawMessage, error) {
+	if current == nil {
+		return nil, invalidQueueConfiguration("cannot preserve reviewer settings without a queue response")
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(current.JSON.RawJSON()), &raw); err != nil {
+		return nil, invalidQueueConfiguration("cannot read stored reviewer settings")
+	}
+	preserved := map[string]json.RawMessage{}
+	for _, key := range []string{"num_reviewers_per_item", "enable_reservations", "reservation_minutes"} {
+		if raw[key] == nil {
+			return nil, invalidQueueConfiguration("service omitted reviewer settings; refusing an update that could reset them")
+		}
+		preserved[key] = raw[key]
+	}
+	var state struct {
+		Reviewers *int64 `json:"num_reviewers_per_item"`
+		Enabled   *bool  `json:"enable_reservations"`
+		Minutes   *int64 `json:"reservation_minutes"`
+	}
+	if err := json.Unmarshal([]byte(current.JSON.RawJSON()), &state); err != nil || state.Enabled == nil {
+		return nil, invalidQueueConfiguration("stored reviewer settings cannot be safely preserved")
+	}
+	params.EnableReservations = langsmith.F(*state.Enabled)
+	params.NumReviewersPerItem = langsmith.Null[langsmith.AnnotationQueueUpdateParamsNumReviewersPerItemUnion]()
+	if state.Reviewers != nil {
+		params.NumReviewersPerItem = langsmith.F[langsmith.AnnotationQueueUpdateParamsNumReviewersPerItemUnion](shared.UnionInt(*state.Reviewers))
+	}
+	params.ReservationMinutes = langsmith.Null[int64]()
+	if state.Minutes != nil {
+		params.ReservationMinutes = langsmith.F(*state.Minutes)
+	}
+	return preserved, nil
 }

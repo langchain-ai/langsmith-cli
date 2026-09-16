@@ -2,11 +2,96 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+func TestQueueReviewerSettingsPreserveNulls(t *testing.T) {
+	var current langsmith.AnnotationQueueGetResponse
+	if err := json.Unmarshal([]byte(`{"num_reviewers_per_item":null,"enable_reservations":false,"reservation_minutes":null}`), &current); err != nil {
+		t.Fatal(err)
+	}
+	params := langsmith.AnnotationQueueUpdateParams{}
+	if _, err := preserveQueueReviewSettings(&current, &params); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["num_reviewers_per_item"]) != "null" || string(fields["reservation_minutes"]) != "null" || string(fields["enable_reservations"]) != "false" {
+		t.Fatalf("null/false converted: %s", b)
+	}
+	if _, err := preserveQueueReviewSettings(nil, &params); err == nil {
+		t.Fatal("accepted missing queue")
+	}
+	if err := json.Unmarshal([]byte(`{"enable_reservations":true}`), &current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := preserveQueueReviewSettings(&current, &params); err == nil {
+		t.Fatal("accepted incomplete reviewer settings")
+	}
+}
+
+func TestQueueListPreservesNullSettings(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `[{"id":%q,"reservation_minutes":null,"enable_reservations":false}]`, importDatasetID)
+	})
+	defer setupTestEnv(t, ts.URL)()
+	cmd := newQueueCmd()
+	cmd.SetArgs([]string{"list", "--limit", "1"})
+	out := captureStdout(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var result struct {
+		Items []map[string]json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || string(result.Items[0]["reservation_minutes"]) != "null" || string(result.Items[0]["enable_reservations"]) != "false" {
+		t.Fatalf("null/false not preserved: %s", out)
+	}
+}
+
+func TestQueueValidationDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		code string
+	}{
+		{[]string{"create", "--name", " "}, "invalid_queue_name"},
+		{[]string{"list", "--limit", "0"}, "invalid_queue_pagination"},
+		{[]string{"list", "--offset", "-1"}, "invalid_queue_pagination"},
+		{[]string{"items", importDatasetID, "--status", "invalid"}, "invalid_queue_status"},
+		{[]string{"items", importDatasetID, "--limit", "101"}, "invalid_queue_page_size"},
+	} {
+		t.Run(tc.code+strings.Join(tc.args, " "), func(t *testing.T) {
+			cmd := newQueueCmd()
+			cmd.SetArgs(tc.args)
+			err := cmd.Execute()
+			var diagnostic commandDiagnostic
+			if !errors.As(err, &diagnostic) {
+				t.Fatalf("expected actionable diagnostic, got %v", err)
+			}
+			code, message, next := diagnostic.CLIDiagnostic()
+			if code != tc.code || message == "" || next == "" {
+				t.Fatalf("diagnostic=%v", diagnostic)
+			}
+		})
+	}
+}
 
 func TestQueueRubricValidation(t *testing.T) {
 	for _, body := range []string{
@@ -44,7 +129,7 @@ func TestQueueRubricRequests(t *testing.T) {
 			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if r.Method == http.MethodGet {
-					fmt.Fprintf(w, `{"id":%q}`, importDatasetID)
+					fmt.Fprintf(w, `{"id":%q,"num_reviewers_per_item":3,"enable_reservations":false,"reservation_minutes":7}`, importDatasetID)
 					return
 				}
 				writes++
@@ -59,6 +144,14 @@ func TestQueueRubricRequests(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
 					return
+				}
+				if mode != "create" {
+					if string(body["num_reviewers_per_item"]) != "3" || string(body["enable_reservations"]) != "false" || string(body["reservation_minutes"]) != "7" {
+						t.Errorf("reviewer settings not preserved: %v", body)
+					}
+					delete(body, "num_reviewers_per_item")
+					delete(body, "enable_reservations")
+					delete(body, "reservation_minutes")
 				}
 				if mode == "instructions-only" {
 					if len(body) != 1 || body["rubric_instructions"] == nil {
@@ -155,7 +248,13 @@ func TestQueueGetRubric(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.QueueID != importDatasetID || string(result.Queue["rubric_instructions"]) != "null" || !strings.Contains(string(result.Queue["rubric_items"]), `"is_required":false`) {
+	var items []struct {
+		IsRequired *bool `json:"is_required"`
+	}
+	if err := json.Unmarshal(result.Queue["rubric_items"], &items); err != nil {
+		t.Fatal(err)
+	}
+	if result.QueueID != importDatasetID || string(result.Queue["rubric_instructions"]) != "null" || len(items) != 1 || items[0].IsRequired == nil || *items[0].IsRequired {
 		t.Fatalf("raw queue fields not preserved: %s", out)
 	}
 }
