@@ -436,6 +436,10 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### Agent-facing errors
+
+With `--format json`, returned errors are emitted as JSON on stderr with a nonzero exit. Stdout is reserved for results. Diagnostics include safe codes, messages, and next steps; raw upstream messages are omitted. Legacy commands that exit directly are not covered. Always inspect remote state before retrying writes.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
@@ -476,6 +480,19 @@ tag via ldflags, so `git tag` is the only bump. Find the latest tag with `git ta
 
 The install scripts and `langsmith self-update` both read the latest GitHub Release, so a tag push
 is all that's needed to ship to users.
+
+## Shared command behavior
+
+JSON command errors are written to stderr with a stable code, safe message, and
+recovery steps. Typed diagnostics also show recovery steps in terminal output.
+Shared resource helpers validate UUIDs and JSON objects; paginated workflows
+preserve unknown completeness instead of claiming that a full page is the last.
+
+Manual error check (expected nonzero exit):
+
+```bash
+bin/langsmith --format json unknown-command
+```
 
 ## License
 
