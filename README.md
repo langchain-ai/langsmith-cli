@@ -188,6 +188,9 @@ Results are **paginated** — by default, only the first **50** runs are returne
 langsmith run list --project my-app --run-type llm
 langsmith run list --project my-app --run-type tool --name search
 
+# --name is an exact match; use --filter for a substring match
+langsmith run list --project my-app --filter 'like(name, "%search%")'
+
 # Find expensive calls
 langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
 
@@ -427,7 +430,7 @@ Most `trace` and `run` commands share these filter options:
 | `--last-n-minutes` | Time window (overrides 7-day default) | `--last-n-minutes 60` |
 | `--since` | After ISO timestamp (overrides 7-day default) | `--since 2024-01-15T00:00:00Z` |
 | `--error / --no-error` | Error status | `--error` |
-| `--name` | Exact run name (substring: `--filter 'like(name, "%x%")'`) | `--name ChatOpenAI` |
+| `--name` | Filter by run name (exact match) | `--name ChatOpenAI` |
 | `--run-type` | Run type (run commands only) | `--run-type llm` |
 | `--min-latency` | Min latency (seconds) | `--min-latency 2.5` |
 | `--max-latency` | Max latency (seconds) | `--max-latency 10` |
