@@ -469,6 +469,40 @@ langsmith example update <example-id> --outputs '{"answer":"reviewed reference"}
 
 Accepts JSON objects or `@file`. Omitted fields are preserved. Writes are not automatically retried.
 
+### Run feedback
+
+```bash
+langsmith run feedback create --project-id <project-id> --run-id <run-id> --key quality --score 0 --id <feedback-id>
+langsmith run feedback list --run-id <run-id> --limit 20
+langsmith run feedback get <feedback-id> --format json
+langsmith run feedback list --run-id <run-id> --key quality --has-score --format json
+langsmith run feedback list --run-id <run-id> --source app --has-comment \
+  --start-time 2026-09-01T00:00:00Z --end-time 2026-09-02T00:00:00Z
+```
+
+An explicit feedback ID enables retry reconciliation: identical writes are skipped and conflicting content is refused. List results expose offset pagination; full-page completeness is unknown until the next page.
+
+Use `--format json` for coding agents and scripts. Creation returns resource IDs,
+the feedback record, and `status`: `created` (verified), `skipped` (identical existing
+ID), `recovered` (read-back verified after a failed write response), or `unverified`
+(unknown outcome with a nonzero exit). For an unverified write, inspect the emitted
+ID with `run feedback get` and retry with that same `--id`, not a new ID.
+Permission and validation failures include targeted recovery guidance.
+
+Pretty output shows write status or feedback tables; missing scores display as
+`N/A`, not zero. JSON get output includes `workspace_id`, `project_id`, `run_id`,
+`feedback_id`, and the full `feedback` record. List output preserves its `items`
+and pagination metadata.
+
+List pages accept `--limit` from 1 to 100, matching the API. Comment-only creation
+requires a nonblank comment; a score of zero is still valid. Terminal errors show
+recovery guidance as well as the error message when a command diagnostic is available.
+
+List filters run on the service: repeat `--key` and `--source` or use comma-separated
+values. Sources are `api`, `app`, `model`, and `auto_eval`. Omitted presence filters
+include both cases; `--has-score=false` and `--has-comment=false` explicitly select
+missing values. Time bounds apply to feedback creation, not the source run.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
