@@ -468,6 +468,17 @@ a new private file and refuses to overwrite; protect it as trace data. Filter-ba
 selection defaults to 20 roots in the last seven days; use time bounds and `--limit`
 explicitly for your sample. This is not representative sampling.
 
+New previews include `workspace_id` when resolved and `selection_info` with `limit`,
+`selected`, `has_more`, and `scope`. Filter/thread discovery probes one extra eligible
+root to detect truncation; only the selected examples are saved for import. Completeness
+describes discovery time, not a snapshot guarantee against later changes. A thread
+becomes separate root-turn examples, not a merged conversation. Older selection files
+remain accepted but lack completeness metadata.
+
+Selection files reject unknown envelope/example fields, duplicate JSON keys (including
+within inputs and outputs), and excessive nesting. Large JSON integers are preserved.
+When the plan records a workspace, replay requires that same selected workspace.
+
 Use `--reference-mode observed` only when the selected outputs are suitable references.
 `--outputs-pointer` can select a nested output object in that mode. For corrected
 references, edit the selection's `reference_mode` to `corrected` and supply an `outputs`
@@ -481,6 +492,10 @@ changed payloads or extraction settings create new examples. This does not dedup
 older examples created by other commands. Existing examples are never overwritten.
 Each result reports its example ID and created/skipped/recovered/failed status;
 partial failure exits nonzero. Retry the same file to reconcile successful writes.
+
+Import JSON includes `workspace_id`, `project_id`, `dataset_id`, `total`, and `counts`
+for `created`, `skipped`, `recovered`, and `failed`. Existing `results` and `failed`
+fields remain available. The added preview context does not change example IDs.
 
 Annotation-queue promotion and representative sampling are not included in these commands.
 

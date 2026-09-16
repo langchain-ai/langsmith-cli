@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,14 +31,23 @@ type traceExample struct {
 }
 
 type traceSelection struct {
-	Version        int            `json:"version"`
-	APIURL         string         `json:"api_url"`
-	ProjectID      string         `json:"project_id"`
-	DatasetID      string         `json:"dataset_id"`
-	ReferenceMode  string         `json:"reference_mode"`
-	InputsPointer  string         `json:"inputs_pointer"`
-	OutputsPointer string         `json:"outputs_pointer"`
-	Examples       []traceExample `json:"examples"`
+	Version        int                 `json:"version"`
+	APIURL         string              `json:"api_url"`
+	ProjectID      string              `json:"project_id"`
+	DatasetID      string              `json:"dataset_id"`
+	ReferenceMode  string              `json:"reference_mode"`
+	InputsPointer  string              `json:"inputs_pointer"`
+	OutputsPointer string              `json:"outputs_pointer"`
+	Examples       []traceExample      `json:"examples"`
+	WorkspaceID    *string             `json:"workspace_id,omitempty"`
+	SelectionInfo  *traceSelectionInfo `json:"selection_info,omitempty"`
+}
+
+type traceSelectionInfo struct {
+	Limit    int    `json:"limit"`
+	Selected int    `json:"selected"`
+	HasMore  bool   `json:"has_more"`
+	Scope    string `json:"scope"`
 }
 
 // objectAtPointer uses JSON Pointer, not executable expressions or environment access.
@@ -164,7 +172,7 @@ func readTraceSelection(path string) (traceSelection, error) {
 	if len(b) > 32*1024*1024 {
 		return s, fmt.Errorf("selection exceeds 32 MiB")
 	}
-	err = json.Unmarshal(b, &s)
+	err = decodeTraceSelection(b, &s)
 	if err != nil {
 		return s, err
 	}
@@ -249,22 +257,39 @@ func newDatasetSelectionPreviewCmd() *cobra.Command {
 				fields = append(fields, "outputs")
 			}
 			params.Select = langsmith.F(fields)
-			runs, err := queryRuns(ctx, c, params, project, ff.Limit, ff.MinTokens)
+			queryLimit := ff.Limit
+			if len(ids) == 0 {
+				queryLimit++ // Probe one extra eligible root to disclose truncation.
+				params.Limit = langsmith.F(int64(min(queryLimit, 100)))
+			}
+			runs, err := queryRuns(ctx, c, params, project, queryLimit, ff.MinTokens)
 			if err != nil {
 				return err
 			}
 			if len(ids) > 0 && len(runs) != len(ids) {
 				return fmt.Errorf("not all requested runs were found in the selected project; no selection created")
 			}
-			s := traceSelection{Version: traceSelectionVersion, APIURL: c.APIURL(), ProjectID: project, DatasetID: ds.ID, ReferenceMode: mode, InputsPointer: inputPath, OutputsPointer: outputPath, Examples: []traceExample{}}
+			hasMore := len(runs) > ff.Limit
+			if hasMore {
+				runs = runs[:ff.Limit]
+			}
+			scope := "matching_roots"
+			if len(ids) > 0 {
+				scope = "explicit_ids"
+			}
+			s := traceSelection{Version: traceSelectionVersion, APIURL: c.APIURL(), ProjectID: project, DatasetID: ds.ID, ReferenceMode: mode, InputsPointer: inputPath, OutputsPointer: outputPath, Examples: []traceExample{}, WorkspaceID: resultWorkspaceID(), SelectionInfo: &traceSelectionInfo{Limit: ff.Limit, Selected: len(runs), HasMore: hasMore, Scope: scope}}
 			for _, run := range runs {
-				inputs, err := objectAtPointer(run.Inputs, inputPath)
+				io, err := preciseTraceIO(run.JSON.RawJSON())
+				if err != nil {
+					return err
+				}
+				inputs, err := objectAtPointer(io.Inputs, inputPath)
 				if err != nil {
 					return fmt.Errorf("run %s inputs: %w", run.ID, err)
 				}
 				ex := traceExample{RunID: run.ID, TraceID: run.TraceID, StartTime: run.StartTime, Inputs: inputs}
 				if mode == "observed" {
-					ex.Outputs, err = objectAtPointer(run.Outputs, outputPath)
+					ex.Outputs, err = objectAtPointer(io.Outputs, outputPath)
 					if err != nil {
 						return fmt.Errorf("run %s outputs: %w", run.ID, err)
 					}
@@ -311,6 +336,9 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 			if s.APIURL != c.APIURL() {
 				return fmt.Errorf("selection API URL differs from the configured API URL")
 			}
+			if s.WorkspaceID != nil && *s.WorkspaceID != GetWorkspaceID() {
+				return fmt.Errorf("selection workspace does not match the selected workspace; select the original workspace explicitly")
+			}
 			pid, err := resolveSessionID(ctx, c, project, projectID, "dataset add")
 			if err != nil {
 				return err
@@ -344,12 +372,17 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 			}
 			results := []map[string]any{}
 			failed := 0
+			counts := map[string]int{"created": 0, "skipped": 0, "recovered": 0, "failed": 0}
 			for _, ex := range s.Examples {
 				id, digest := selectionIdentity(s, ex)
 				row := map[string]any{"run_id": ex.RunID, "example_id": id, "status": "failed"}
 				existing, getErr := c.SDK.Examples.Get(ctx, id, langsmith.ExampleGetParams{})
 				matches := func(got *langsmith.Example) bool {
-					return got.DatasetID == ds.ID && reflect.DeepEqual(got.Inputs, ex.Inputs) && reflect.DeepEqual(got.Outputs, ex.Outputs) && got.Metadata["cli_trace_import_hash"] == digest
+					if got == nil {
+						return false
+					}
+					io, err := preciseTraceIO(got.JSON.RawJSON())
+					return err == nil && got.DatasetID == ds.ID && equalTraceJSON(io.Inputs, ex.Inputs) && equalTraceJSON(io.Outputs, ex.Outputs) && got.Metadata["cli_trace_import_hash"] == digest
 				}
 				if getErr == nil {
 					if matches(existing) {
@@ -388,8 +421,9 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 					failed++
 				}
 				results = append(results, row)
+				counts[row["status"].(string)]++
 			}
-			if err := output.OutputJSON(map[string]any{"dataset_id": ds.ID, "results": results, "failed": failed}, ""); err != nil {
+			if err := output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "dataset_id": ds.ID, "results": results, "failed": failed, "counts": counts, "total": len(results)}, ""); err != nil {
 				return err
 			}
 			if failed > 0 {

@@ -14,6 +14,11 @@ func newDatasetAddCmd() *cobra.Command {
 	preview.Use = "add"
 	preview.Short = "Preview or apply trace/run examples to a dataset"
 	preview.Long = "Select a trace, run, root-run filter, or thread, bounded by --limit. Thread import\ncreates one example per selected root turn (not a merged conversation or necessarily\nthe entire thread). With --dry-run --output selection.json, freeze inputs for review;\napply with --selection selection.json. Observed outputs become references only with\n--reference-mode observed. Selection replay reconciles existing examples without\nrerunning discovery. For conversation-level evaluation, curate a combined example."
+	preview.Example = `  langsmith dataset add --dataset DATASET_ID --project-id PROJECT_ID --trace-id TRACE_ID --dry-run --output selection.json
+  langsmith dataset add --dataset DATASET_ID --project-id PROJECT_ID --error --limit 20 --dry-run --output selection.json
+  langsmith dataset add --dataset DATASET_ID --project-id PROJECT_ID --thread-id THREAD_ID --dry-run --output thread-selection.json
+  langsmith dataset add --dataset DATASET_ID --project-id PROJECT_ID --selection selection.json`
+	preview.Long += "\nPreview selection_info reports the effective limit, selected count and whether more matching roots existed during discovery. Thread selection is turn-level; has_more does not refer to a merged conversation. Import returns resource IDs, per-item results and counts."
 	var dryRun bool
 	var selection, runID, threadID string
 	preview.Flags().BoolVar(&dryRun, "dry-run", false, "Read-only preview; use --output to freeze a selection")

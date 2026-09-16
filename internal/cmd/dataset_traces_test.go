@@ -214,6 +214,9 @@ func TestDatasetTracePreview(t *testing.T) {
 			if len(s.Examples) != 1 || (s.Examples[0].Outputs != nil) != observed {
 				t.Fatalf("bad selection %+v", s)
 			}
+			if s.SelectionInfo == nil || s.SelectionInfo.HasMore || s.SelectionInfo.Selected != 1 || s.SelectionInfo.Scope != "explicit_ids" {
+				t.Fatalf("incorrect explicit selection metadata: %+v", s.SelectionInfo)
+			}
 		})
 	}
 }
