@@ -565,6 +565,19 @@ Annotation-queue promotion and representative sampling are not included in these
 
 Use `dataset add --dry-run --output selection.json` to preview roots, child runs (`--run-id`), or thread turns (`--thread-id`); apply the frozen payload with `dataset add --selection selection.json`. Dataset creation returns `status: created` and disables automatic retries.
 
+### Annotation queues
+
+```bash
+langsmith queue create --name review --dataset <dataset-id>
+langsmith queue list --limit 20
+langsmith queue add <queue-id> --project-id <project-id> --trace-id <trace-id> --dry-run --output plan.json
+langsmith queue add <queue-id> --project-id <project-id> --plan plan.json
+langsmith queue items <queue-id> --limit 20
+langsmith queue delete <queue-id> --yes
+```
+
+Additions support root traces, individual runs, and threads. Filter selections operate on roots and must fit the limit. Plans freeze source IDs and scope. Queue items use cursor pagination and default to pending review. Deletion requires explicit confirmation. Re-adding an item can reopen its review; submissions are not automatically retried.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
