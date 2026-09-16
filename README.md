@@ -439,6 +439,14 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+### Automation rules
+
+```bash
+langsmith rule list --project-id <project-id>
+```
+
+Read-only listing of automation rules scoped to one project.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:

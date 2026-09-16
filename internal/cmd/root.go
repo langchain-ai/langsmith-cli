@@ -67,6 +67,7 @@ Quick start:
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProjectCmd())
+	rootCmd.AddCommand(newRuleCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newThreadCmd())
