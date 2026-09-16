@@ -16,7 +16,10 @@ func TestExampleUpdate(t *testing.T) {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
 		if len(body) != 1 || body["outputs"] == nil {
 			t.Errorf("must only patch outputs: %#v", body)
 		}

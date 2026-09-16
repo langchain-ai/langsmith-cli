@@ -64,7 +64,10 @@ func TestDatasetVersionRequests(t *testing.T) {
 				case r.Method != "GET":
 					writes++
 					var body map[string]any
-					json.NewDecoder(r.Body).Decode(&body)
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						return
+					}
 					if body["as_of"] != workflowTime || body["tag"] != "reviewed" {
 						t.Error(body)
 					}
@@ -277,7 +280,10 @@ func TestExampleBulkPreflightAndApply(t *testing.T) {
 				var body map[string]any
 				d := json.NewDecoder(r.Body)
 				d.UseNumber()
-				d.Decode(&body)
+				if err := d.Decode(&body); err != nil {
+					t.Error(err)
+					return
+				}
 				if body["outputs"].(map[string]any)["number"] != json.Number("9007199254740993") {
 					t.Error(body)
 				}
@@ -417,7 +423,10 @@ func TestDatasetConfigureDryRunAndApply(t *testing.T) {
 				if r.Method == "PATCH" {
 					writes++
 					var body map[string]any
-					json.NewDecoder(r.Body).Decode(&body)
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+						return
+					}
 					if len(body) != 2 || body["inputs_schema_definition"] == nil || body["transformations"] == nil {
 						t.Error(body)
 					}

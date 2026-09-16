@@ -47,9 +47,12 @@ func TestEvaluatorAdvancedSettingsRequest(t *testing.T) {
 				writes++
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
+					return
 				}
 				body["id"] = workflowExample
-				json.NewEncoder(w).Encode(body)
+				if err := json.NewEncoder(w).Encode(body); err != nil {
+					t.Error(err)
+				}
 			})
 			defer setupTestEnv(t, ts.URL)()
 			model := workflowFile(t, `{"secret":"never-preview-model"}`)
