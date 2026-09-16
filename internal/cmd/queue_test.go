@@ -31,7 +31,10 @@ func TestQueueAdd(t *testing.T) {
 						ItemType  string `json:"item_type"`
 					} `json:"items"`
 				}
-				json.NewDecoder(r.Body).Decode(&body)
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+					return
+				}
 				if len(body.Items) != 1 || body.Items[0].ProjectID != deleteTestProjectID || body.Items[0].ThreadID != "conversation" || body.Items[0].ItemType != "THREAD" {
 					t.Errorf("bad body %#v", body)
 				}

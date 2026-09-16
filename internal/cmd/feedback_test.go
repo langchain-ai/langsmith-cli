@@ -20,7 +20,10 @@ func TestFeedbackCreate(t *testing.T) {
 					return
 				}
 				var body map[string]any
-				json.NewDecoder(r.Body).Decode(&body)
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+					return
+				}
 				switch r.URL.Path {
 				case "/api/v1/runs/query":
 					sessions, _ := body["session"].([]any)
