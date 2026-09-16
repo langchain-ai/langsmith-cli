@@ -169,9 +169,7 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (exact match). search() takes a single argument and cannot be
-	// scoped to a field, so search(name, x) is rejected with a 400. For
-	// substring matching use --filter 'like(name, "%value%")'.
+	// Name filter (exact match)
 	if f.Name != "" {
 		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
 	}
