@@ -106,13 +106,33 @@ func TestFeedbackListLimitMatchesAPI(t *testing.T) {
 	})
 	defer setupTestEnv(t, ts.URL)()
 	flagOutputFormat = "json"
-	for _, limit := range []string{"100", "101", "1000", "0"} {
+	for _, tc := range []struct {
+		limit, offset string
+		valid         bool
+	}{
+		{"100", "0", true},
+		{"101", "0", false},
+		{"1000", "0", false},
+		{"0", "0", false},
+		{"-1", "0", false},
+		{"100", "-1", false},
+		{"100", "9223372036854775807", false},
+	} {
 		cmd := newFeedbackListCmd()
-		cmd.SetArgs([]string{"--run-id", "11111111-1111-4111-8111-111111111111", "--limit", limit})
+		cmd.SetArgs([]string{"--run-id", "11111111-1111-4111-8111-111111111111", "--limit", tc.limit, "--offset", tc.offset})
 		var err error
-		captureStdout(t, func() { err = cmd.Execute() })
-		if (err == nil) != (limit == "100") {
-			t.Errorf("limit %s: %v", limit, err)
+		out := captureStdout(t, func() { err = cmd.Execute() })
+		if (err == nil) != tc.valid {
+			t.Errorf("limit %s offset %s: %v", tc.limit, tc.offset, err)
+		}
+		if !tc.valid {
+			d, ok := err.(commandDiagnostic)
+			if !ok || d.code != "invalid_feedback_pagination" || !strings.Contains(d.message, "--limit must be 1–100") || d.next == "" {
+				t.Errorf("missing pagination diagnostic: %v", err)
+			}
+			if out != "" {
+				t.Errorf("invalid pagination emitted stdout: %q", out)
+			}
 		}
 	}
 	if calls != 1 {

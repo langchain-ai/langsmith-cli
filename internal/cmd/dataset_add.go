@@ -43,7 +43,7 @@ func newDatasetAddCmd() *cobra.Command {
 		}
 		if selection != "" {
 			if dryRun {
-				return fmt.Errorf("--selection cannot be combined with --dry-run")
+				return commandDiagnostic{"invalid_selection_mode", "--selection cannot be combined with --dry-run", "Review the frozen selection file first, then apply with --selection without discovery or dry-run flags."}
 			}
 			var conflict string
 			cmd.Flags().Visit(func(f *pflag.Flag) {
@@ -56,13 +56,13 @@ func newDatasetAddCmd() *cobra.Command {
 				}
 			})
 			if conflict != "" {
-				return fmt.Errorf("--selection cannot be combined with --%s", conflict)
+				return commandDiagnostic{"invalid_selection_mode", "--selection cannot be combined with --" + conflict, "Apply the reviewed file using only dataset/project selectors and --selection; do not rerun discovery or override reviewed values."}
 			}
 			apply := newDatasetSelectionApplyCmd()
 			return executeDatasetSubcommand(cmd, apply, append(target, "--selection", selection))
 		}
 		if !dryRun {
-			return fmt.Errorf("use --dry-run --output selection.json first, then --selection selection.json")
+			return commandDiagnostic{"selection_required", "use --dry-run --output selection.json first, then --selection selection.json", "Preview with the intended source and dataset, review the saved inputs and reference outputs, then apply that file with --selection."}
 		}
 		forwarded := []string{}
 		fresh := newDatasetSelectionPreviewCmd()

@@ -11,7 +11,7 @@ func TestDatasetCmd_Subcommands(t *testing.T) {
 	expected := map[string]bool{
 		"list": false, "get": false, "create": false,
 		"delete": false, "export": false, "upload": false,
-		"add": false,
+		"add": false, "version": false, "split": false, "configure": false,
 	}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; !ok {
@@ -36,8 +36,8 @@ func TestDatasetCmd_UseField(t *testing.T) {
 
 func TestDatasetCmd_SubcommandCount(t *testing.T) {
 	cmd := newDatasetCmd()
-	if got := len(cmd.Commands()); got != 7 {
-		t.Errorf("expected 7 subcommands, got %d", got)
+	if got := len(cmd.Commands()); got != 10 {
+		t.Errorf("expected 10 subcommands, got %d", got)
 	}
 }
 

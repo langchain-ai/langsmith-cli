@@ -55,16 +55,16 @@ func newQueueAddCmd() *cobra.Command {
 				}
 			}
 			if count != 1 {
-				return fmt.Errorf("choose exactly one of --run-id, --trace-id, --thread-id, --filter, or --plan")
+				return commandDiagnostic{"invalid_selector", "choose exactly one queue source", "Use --run-id, --trace-id, --thread-id, --filter, or --plan. Run 'langsmith queue add --help' for selection semantics."}
 			}
 			if limit < 1 || limit > 1000 {
-				return fmt.Errorf("limit must be 1–1000")
+				return commandDiagnostic{"invalid_queue_limit", "limit must be 1–1000", "Set --limit between 1 and 1000; narrow the filter if the selection is larger."}
 			}
 			if filter != "" && !dryRun {
-				return fmt.Errorf("filter writes require --dry-run --output followed by --plan")
+				return commandDiagnostic{"queue_plan_required", "filter writes require a reviewed plan", "Use --filter with --dry-run --output plan.json, then apply with --plan plan.json instead of --filter."}
 			}
 			if out != "" && !dryRun {
-				return fmt.Errorf("--output requires --dry-run")
+				return commandDiagnostic{"invalid_queue_output", "--output requires --dry-run", "Add --dry-run to save a selection plan without writing queue items."}
 			}
 			for _, id := range []string{runID, traceID} {
 				if id != "" {
@@ -188,21 +188,26 @@ func newQueueAddCmd() *cobra.Command {
 				}
 				result, err := c.SDK.AnnotationQueues.Items.New(cmd.Context(), qid, langsmith.AnnotationQueueItemNewParams{Items: langsmith.F([]langsmith.AnnotationQueueItemNewParamsItem{p})}, option.WithMaxRetries(0))
 				row := map[string]any{"source": item, "status": "submitted", "result": result}
+				row["verification"] = "response_matched"
 				if err != nil || !queueAdditionMatches(result, qid, pid, item) {
 					failed++
 					row["status"] = "unverified"
+					row["verification"] = "unverified"
 					row["error"] = "write could not be verified; inspect queue before retrying"
 				}
 				results = append(results, row)
 			}
-			if err := output.OutputJSON(map[string]any{"queue_id": qid, "project_id": pid, "results": results, "failed": failed}, ""); err != nil {
+			if err := output.OutputJSON(map[string]any{"queue_id": qid, "project_id": pid, "results": results, "failed": failed, "atomic": false, "unverified": failed, "next_steps": []string{"Inspect queue items and the per-item results. Submitted means the response matched the requested item, not that it was reviewed or independently read back. The legacy failed count includes uncertain outcomes, not proven absence of writes.", "Read the queue before retrying unverified items; writes may already have applied. Do not blindly repeat the batch."}}, ""); err != nil {
 				return err
 			}
 			if failed > 0 {
-				return fmt.Errorf("%d queue additions unverified", failed)
+				return commandDiagnostic{"queue_additions_unverified", "One or more queue additions could not be verified", "Inspect the emitted per-item results and read queue items before retrying. Some writes may have applied; the batch is not atomic."}
 			}
 			return nil
 		}}
+	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return commandDiagnostic{"invalid_queue_flag", "invalid queue add flag or value", "Run 'langsmith queue add --help'. Select one item with --trace-id, --run-id, or --thread-id; use --filter and a dry-run plan for batches."}
+	})
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&runID, "run-id", "", "Individual run UUID")
 	cmd.Flags().StringVar(&traceID, "trace-id", "", "Root trace UUID")

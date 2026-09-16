@@ -87,14 +87,15 @@ func newQueueCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "items": page.Items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, "")
+		return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), "items": page.Items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, len(page.Items),
+			"No annotation queues returned on this page.", "Confirm the workspace and retry with --offset 0 before concluding there are no queues.", "Use queue create --help to create a queue after confirming one is needed."), "")
 	}}
 	list.Flags().Int64Var(&limit, "limit", 100, "Page size (1–1000)")
 	list.Flags().Int64Var(&offset, "offset", 0, "Pagination offset")
 	var yes bool
 	del := &cobra.Command{Use: "delete NAME_OR_ID", Short: "Delete an annotation queue", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if !yes && (GetFormat() == "json" || !inputIsTerminal(cmd.InOrStdin())) {
-			return fmt.Errorf("deletion requires explicit --yes in noninteractive mode")
+			return commandDiagnostic{"confirmation_required", "deletion requires explicit --yes in noninteractive mode", "Inspect the queue and its ID with queue list; pass --yes only after approving deletion."}
 		}
 		c, err := getClient()
 		if err != nil {
@@ -139,7 +140,8 @@ func newQueueCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "queue_id": id, "items": page.Items, "next_cursor": page.NextCursor, "has_more": page.NextCursor != "", "returned": len(page.Items)}, "")
+		return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), "queue_id": id, "items": page.Items, "next_cursor": page.NextCursor, "has_more": page.NextCursor != "", "returned": len(page.Items)}, len(page.Items),
+			"No queue items returned for this status and page.", "Check --status and the pagination cursor; other reviewers or statuses may still have items.", "Use queue add --help to preview adding traces, runs, or thread turns."), "")
 	}}
 	items.Flags().StringVar(&status, "status", "needs_my_review", "needs_my_review, needs_others_review, or archived")
 	items.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")

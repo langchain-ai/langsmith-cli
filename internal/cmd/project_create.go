@@ -59,7 +59,7 @@ Examples:
 				if workspaceID != nil {
 					workspace = *workspaceID
 				}
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Created tracing project %q\nID: %s\nWorkspace: %s\n", project.Name, project.ID, workspace)
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Created tracing project %q\nID: %s\nWorkspace: %s\nNext: configure tracing in your application and run it; project creation alone does not enable tracing. Verify with langsmith trace list --project-id %s in this workspace.\n", project.Name, project.ID, workspace, project.ID)
 				return err
 			}
 			return output.OutputJSON(map[string]any{
@@ -67,6 +67,7 @@ Examples:
 				"id":           project.ID,
 				"name":         project.Name,
 				"workspace_id": workspaceID,
+				"next_steps":   []string{"Configure tracing credentials and LANGSMITH_PROJECT in your application, then run it. Creating a project does not instrument the application or create evaluators.", "Verify ingestion with trace list --project-id using the returned id in the same workspace."},
 			}, "")
 		},
 	}

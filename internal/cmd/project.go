@@ -36,6 +36,7 @@ Examples:
 
 	cmd.AddCommand(newProjectListCmd())
 	cmd.AddCommand(newProjectCreateCmd())
+	cmd.AddCommand(newProjectConfigureCmd())
 	cmd.AddCommand(newProjectDeleteCmd())
 	cmd.AddCommand(newProjectIssuesCmd())
 	return cmd

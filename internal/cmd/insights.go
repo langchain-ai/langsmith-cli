@@ -108,6 +108,9 @@ for full details including the executive summary and category breakdown.`,
 					})
 				}
 				output.OutputTable(columns, rows, "Insight Reports")
+				if len(jobs) == 0 {
+					fmt.Fprintln(cmd.ErrOrStderr(), "No reports returned on this page. Check the project, saved-config filter and offset. Use insights create --help to prepare a report; creation may incur model usage.")
+				}
 			} else {
 				data := []map[string]any{}
 				for _, job := range jobs {

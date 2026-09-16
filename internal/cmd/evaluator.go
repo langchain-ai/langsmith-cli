@@ -106,6 +106,7 @@ Examples:
 					"is_enabled":    r.IsEnabled,
 					"dataset_id":    nilStr(r.DatasetID),
 					"session_id":    nilStr(r.SessionID),
+					"settings":      evaluatorRuleSettings(r),
 				}
 				if len(r.CodeEvaluators) > 0 {
 					entry["type"] = "code"
@@ -355,6 +356,7 @@ func newEvaluatorCreateLLMCmd() *cobra.Command {
 		promptPath      string
 		schemaPath      string
 		modelConfigPath string
+		modelPresetID   string
 		variableMapping string
 		replace         bool
 		yes             bool
@@ -363,19 +365,28 @@ func newEvaluatorCreateLLMCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create-llm",
 		Short: "Create an LLM-as-judge evaluator rule",
-		Long: `Create an LLM-as-judge run rule. --model-config is always required.
+		Long: `Create an LLM-as-judge run rule. Choose --model-id for a saved workspace
+configuration (discover IDs with 'model list') or --model-config for a local JSON file.
 
 Provide the judge prompt inline with --prompt and --schema, or point at Prompt Hub
 with --hub-ref (which replaces --prompt and --schema). The model is configured separately.
 
 Examples:
   langsmith evaluator create-llm --name relevance --project my-app \
+    --prompt prompt.json --schema schema.json --model-id <configuration-uuid> --dry-run
+  langsmith evaluator create-llm --name relevance --project my-app \
     --prompt prompt.json --schema schema.json --model-config model.json
   langsmith evaluator create-llm --name relevance --project my-app \
     --hub-ref my-org/relevance:latest --model-config model.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := MustGetClient()
-			ctx := context.Background()
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
 
 			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject, targetProjectID)
 			if err != nil {
@@ -385,12 +396,52 @@ Examples:
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
-			payload, err := buildLLMEvaluatorPayload(
-				name, target, samplingRate, traceFilter, hubRef,
-				promptPath, schemaPath, modelConfigPath, mapping,
-			)
+			var payload map[string]any
+			var selectedPreset map[string]any
+			if modelPresetID != "" {
+				preset, presetErr := getModelPreset(ctx, c, modelPresetID)
+				if presetErr != nil {
+					return presetErr
+				}
+				selectedPreset = preset.view()
+				selectedPreset["binding"] = "snapshot"
+				selectedPreset["note"] = "Current model settings are copied into the evaluator; later changes to the saved configuration do not update it. Secret references are resolved by the service."
+				model, presetErr := preset.evaluatorModel()
+				if presetErr != nil {
+					return presetErr
+				}
+				payload, err = buildLLMEvaluatorPayloadWithModel(name, target, samplingRate, traceFilter, hubRef, promptPath, schemaPath, model, mapping)
+			} else {
+				payload, err = buildLLMEvaluatorPayload(
+					name, target, samplingRate, traceFilter, hubRef,
+					promptPath, schemaPath, modelConfigPath, mapping,
+				)
+			}
 			if err != nil {
 				ExitErrorf("%v", err)
+			}
+			if replace {
+				for flag, key := range map[string]string{"enabled": "is_enabled", "include-extended-stats": "include_extended_stats", "sampling-rate": "sampling_rate"} {
+					if !cmd.Flags().Changed(flag) {
+						delete(payload, key)
+					}
+				}
+			}
+			if err := applyEvaluatorSettings(cmd, payload); err != nil {
+				return err
+			}
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			modelResultKey := "model"
+			if cmd.Flags().Changed("model-preset") {
+				modelResultKey = "model_preset"
+			}
+			if dryRun {
+				return output.OutputJSON(map[string]any{"status": "dry_run", "workspace_id": resultWorkspaceID(), "settings": evaluatorSettingsView(payload), "replace": replace, modelResultKey: selectedPreset,
+					"next_steps": []string{"Review the prompt, scoring schema, input mapping, filters, sampling and spend limit. Remove --dry-run only after approving the evaluator and any requested backfill."},
+					"note":       "No write or inference. Shows requested settings, not effective defaults. Existing-rule compatibility, model credentials, filters and backfill permissions are not validated. Thread rules initialize project idle time if absent."}, "")
+			}
+			if replace && !yes && GetFormat() == "json" {
+				return commandDiagnostic{"confirmation_required", "replacement requires explicit confirmation in JSON mode", "Review with --dry-run; pass --yes only after approving the replacement."}
 			}
 			existing, err := findLLMEvaluatorForCreate(ctx, c, name, target, replace, yes)
 			if err != nil {
@@ -404,20 +455,34 @@ Examples:
 			}
 
 			var result map[string]any
+			status := "created"
 			if existing != nil {
+				status = "updated"
 				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing LLM evaluator: %v", err)
 				}
-			} else if err := c.RawPost(ctx, "/api/v1/runs/rules", payload, &result); err != nil {
-				ExitErrorf("creating LLM evaluator: %v", err)
+			} else {
+				// --replace also permits creation when no matching rule exists.
+				for key, value := range map[string]any{"sampling_rate": samplingRate, "is_enabled": true, "include_extended_stats": false} {
+					if _, supplied := payload[key]; !supplied {
+						payload[key] = value
+					}
+				}
+				if err := c.RawPost(ctx, "/api/v1/runs/rules", payload, &result); err != nil {
+					ExitErrorf("creating LLM evaluator: %v", err)
+				}
 			}
 			targetLabel := "project"
 			if target.datasetID != "" {
 				targetLabel = "dataset"
 			}
 			return output.OutputJSON(map[string]any{
-				"status": "created", "type": "llm",
-				"id": result["id"], "name": name, "target": targetLabel,
+				"status": status, "type": "llm", "workspace_id": resultWorkspaceID(),
+				"verification": "acknowledged_not_read_back",
+				"next_steps":   []string{"Inspect the saved evaluator with evaluator get using its returned id. Creation does not verify inference access or produce scores by itself.", "Verify execution and actual feedback on eligible data. Respect sampling, thread idle time, and whether the rule is enabled; missing feedback is not a passing score."},
+				modelResultKey: selectedPreset,
+				"settings":     evaluatorSettingsView(result),
+				"id":           result["id"], "name": name, "target": targetLabel,
 			}, "")
 		},
 	}
@@ -432,12 +497,17 @@ Examples:
 	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "Prompt Hub reference; replaces --prompt and --schema (e.g. my-org/prompt:latest)")
 	cmd.Flags().StringVar(&promptPath, "prompt", "", "Prompt JSON file ([[role,content],...] or [{role,content},...]); omit if --hub-ref is set")
 	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")
-	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON (required; copy from UI or GET /runs/rules)")
+	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON file; alternative to --model-id")
+	cmd.Flags().StringVar(&modelPresetID, "model-id", "", "Saved configuration UUID from model list (not a model name); copies settings; inference is not verified")
+	cmd.Flags().StringVar(&modelPresetID, "model-preset", "", "Compatibility alias for --model-id")
+	_ = cmd.Flags().MarkHidden("model-preset")
 	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths (JSON or @file.json)`)
 	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation when replacing")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("model-config")
+	cmd.MarkFlagsOneRequired("model-config", "model-id", "model-preset")
+	cmd.MarkFlagsMutuallyExclusive("model-config", "model-id", "model-preset")
+	addEvaluatorSettingsFlags(cmd)
 
 	return cmd
 }

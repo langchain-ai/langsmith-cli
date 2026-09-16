@@ -227,6 +227,7 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 			}
 			if dryRun {
 				result := map[string]any{"status": "dry_run", "project_id": id,
+					"next_steps":   []string{"Review the request and optional trace preview. Remove --dry-run only after approving model usage; the workspace needs server-side model credentials."},
 					"workspace_id": nilStr(GetWorkspaceID()), "request": params,
 					"saved_config_resolved": false, "authorization_validated": false,
 					"note": "No job created. Saved configuration, provider availability, service limits and write permission are not validated."}
@@ -242,10 +243,12 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 			// A retried POST could create a second paid job after an ambiguous response.
 			job, err := c.SDK.Sessions.Insights.New(cmd.Context(), id, params, option.WithMaxRetries(0))
 			if err != nil {
-				return fmt.Errorf("creating Insights job: %w", err)
+				return commandDiagnostic{"insights_creation_unverified", "creating Insights job: no confirmed job response", "Check insights list for this project before retrying; the paid job may already exist. Verify workspace permissions and model configuration. No automatic creation retry was performed."}
 			}
 			return output.OutputJSON(map[string]any{
-				"id": job.ID, "name": job.Name, "status": job.Status,
+				"message":    "The service returned an Insights job. Its status, not successful submission alone, determines whether results are ready.",
+				"next_steps": []string{"Use insights get with the returned id and --project-id in the same workspace to check status. Do not create another report merely because this one is pending.", "After successful completion, use insights runs with the report id and --project-id to inspect evidence. Empty or missing results are not evidence of a healthy agent."},
+				"id":         job.ID, "name": job.Name, "status": job.Status,
 				"error": nilStr(job.Error), "project_id": id, "workspace_id": nilStr(GetWorkspaceID()),
 			}, outputFile)
 		},

@@ -41,6 +41,9 @@ Examples:
 	cmd.AddCommand(newDatasetExportCmd())
 	cmd.AddCommand(newDatasetUploadCmd())
 	cmd.AddCommand(newDatasetAddCmd())
+	cmd.AddCommand(newDatasetVersionCmd())
+	cmd.AddCommand(newDatasetSplitCmd())
+	cmd.AddCommand(newDatasetConfigureCmd())
 
 	return cmd
 }
@@ -104,7 +107,7 @@ func newDatasetListCmd() *cobra.Command {
 				}
 				output.OutputTable(columns, rows, "Datasets")
 			} else {
-				var data []map[string]any
+				data := make([]map[string]any, 0, len(datasets))
 				for _, ds := range datasets {
 					data = append(data, map[string]any{
 						"id":            ds.ID,
@@ -146,12 +149,15 @@ func newDatasetGetCmd() *cobra.Command {
 			}
 
 			data := map[string]any{
-				"id":            ds.ID,
-				"name":          ds.Name,
-				"description":   nilStr(ds.Description),
-				"data_type":     nilStr(string(ds.DataType)),
-				"example_count": ds.ExampleCount,
-				"created_at":    formatTimeISO(ds.CreatedAt),
+				"id":                        ds.ID,
+				"name":                      ds.Name,
+				"description":               nilStr(ds.Description),
+				"data_type":                 nilStr(string(ds.DataType)),
+				"example_count":             ds.ExampleCount,
+				"inputs_schema_definition":  ds.InputsSchemaDefinition,
+				"outputs_schema_definition": ds.OutputsSchemaDefinition,
+				"transformations":           ds.Transformations,
+				"created_at":                formatTimeISO(ds.CreatedAt),
 			}
 
 			fmt_ := GetFormat()
@@ -265,11 +271,18 @@ func newDatasetDeleteCmd() *cobra.Command {
 
 func newDatasetExportCmd() *cobra.Command {
 	var limit int
+	var filters exampleReadFilters
 
 	cmd := &cobra.Command{
 		Use:   "export NAME_OR_ID OUTPUT_FILE",
 		Short: "Export dataset examples to a JSON file",
 		Args:  cobra.ExactArgs(2),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 {
+				return datasetInputError("--limit must be positive")
+			}
+			return filters.apply(&langsmith.ExampleListParams{})
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			nameOrID := args[0]
 			outputFile := args[1]
@@ -287,10 +300,14 @@ func newDatasetExportCmd() *cobra.Command {
 				exportPageSize = int64(limit)
 			}
 			var allExamples []langsmith.Example
-			pager := c.SDK.Examples.ListAutoPaging(ctx, langsmith.ExampleListParams{
+			params := langsmith.ExampleListParams{
 				Dataset: langsmith.F(ds.ID),
 				Limit:   langsmith.F(exportPageSize),
-			})
+			}
+			if err := filters.apply(&params); err != nil {
+				ExitErrorf("%v", err)
+			}
+			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
 			for pager.Next() {
 				allExamples = append(allExamples, pager.Current())
 				if limit > 0 && len(allExamples) >= limit {
@@ -326,6 +343,7 @@ func newDatasetExportCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&limit, "limit", "n", 100, "Maximum number of examples to export")
+	filters.flags(cmd)
 	return cmd
 }
 

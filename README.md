@@ -1,5 +1,93 @@
 # langsmith-cli
 
+### Client-side safety boundaries
+
+- Model selection copies an LC v1 serialized configuration, not a live link.
+  Evaluator results label this `binding: snapshot`. Nested constructor/secret nodes
+  are structurally validated with bounded depth; OAuth, unknown serialized node
+  types and malformed references are rejected. This does not validate provider
+  compatibility or inference access. Secret references remain service-resolved.
+- Idle-time updates re-read project `extra` immediately before sending an update
+  and abort if it changed. This narrows but does not eliminate the race: there is
+  no server-side compare-and-swap. Other field edits do not rewrite `extra`.
+- Queue responses distinguish matching acknowledgements from unverified outcomes;
+  they do not claim independent read-back or completed annotation. Batches are not
+  atomic, and the legacy `failed` count includes uncertain outcomes. Bulk example
+  updates expose `verification: acknowledged_not_read_back` on acknowledged writes.
+  Inspect uncertain items before retrying; never equate a failed request with proof
+  that no write occurred.
+
+### Project settings
+
+```bash
+langsmith project configure --project-id PROJECT_ID --format json
+langsmith project configure --project-id PROJECT_ID \
+  --description 'Support agent' --default-dataset DATASET_ID --dry-run
+# After review, rerun with --apply instead of --dry-run.
+```
+
+Supported edits: `--name`, `--description` (empty string clears text),
+`--default-dataset` (name or UUID), `--trace-tier shortlived|longlived`, and
+`--thread-idle-seconds` (at least 120). Only supplied fields are updated.
+Reads show stored `settings`; null values do not claim effective defaults.
+Previews show `previous_settings`, proposed `settings`, `changes`, and warnings.
+Apply performs one update without automatic retries and verifies requested values
+by reading them back. An unverified outcome requires inspection before retrying.
+
+Renaming can affect applications tracing by name. Default dataset selection does
+not import traces. Trace tier changes can affect retention/billing; the CLI does
+not verify retroactive retention changes. Idle time is shared by all project thread
+evaluators. Concurrent edits can race idle-time changes because they preserve and
+rewrite existing `extra`. Previews are not frozen plans. Clearing default datasets,
+resetting inherited tiers, arbitrary `extra`, and end timestamps are not exposed.
+
+### Agent-facing guidance
+
+Successful empty reads are not errors. Model, queue, feedback, dataset version/split,
+and Insights evidence envelopes include `message` and `next_steps` when appropriate.
+An empty page is not proof that a workspace has no resources; check filters and
+pagination. Authentication failures still return errors, never synthetic empty lists.
+
+Project creation explains that application tracing must be configured separately.
+Example updates acknowledge the update; bulk and queue results explain per-item
+verification and uncertain-write recovery. Dataset imports remind users to curate
+reference outputs. Configuration and evaluator previews explain how to apply them
+and what the preview cannot validate. Insights creation directs callers to inspect
+job status and evidence, without treating submission as completed analysis.
+
+JSON stays machine-readable and noninteractive. Existing result keys, array-shaped
+read responses, and frozen selection/plan files retain their shapes. Guidance is
+additive on result objects; Insights list remains an array (empty-state guidance is
+shown only in pretty mode). No backend APIs or write behavior were changed.
+
+### Saved workspace models
+
+```bash
+langsmith --format json model list
+langsmith --format json model get CONFIG_UUID
+langsmith evaluator create-llm --name policy-compliance --project my-project \
+  --prompt prompt.json --schema schema.json --model-id CONFIG_UUID --dry-run
+# Remove --dry-run after reviewing the intended evaluator settings.
+```
+
+Use `--profile` and `--workspace` to select the account and workspace. Model summaries
+include IDs, names, identifiable model names, availability flags, and
+`inference_verified: false`, without raw settings, credentials, or headers.
+These are saved configurations, not a provider catalog. Missing fields remain null.
+
+List returns `{workspace_id, models: [...]}`; get returns `{workspace_id, model: {...}}`.
+Use the configuration's `id`, not its provider model name, with `--model-id`.
+Preview and creation results include the selected safe `model` summary; file-based
+model configurations return null for that summary.
+
+`--model-id` and `--model-config` are mutually exclusive. Model selection copies
+the current model settings into the evaluator; later preset edits do not update it.
+The preset must explicitly allow evaluators. OAuth presets and unsupported model
+serialization are rejected. Creation and dry-run do not verify credentials or
+inference access. Existing JSON model files remain supported. No API or SDK changes.
+The hidden `model preset list/get` and `--model-preset` spellings remain compatible
+with earlier scripts, including their original JSON envelope keys.
+
 > **Integration testing branch — do not merge into main.** This checkout combines
 > the capability PRs for manual testing. Start with [MANUAL-TESTING.md](MANUAL-TESTING.md).
 > Review and merge the individual PRs, not this branch. Proposed Engine and rule
@@ -585,6 +673,20 @@ Additions support root traces, individual runs, and threads. Filter selections o
 
 ### `insights` — Create and inspect Insights reports
 
+`insights create` creates a **report run**, not a saved Insight/dashboard card.
+To run an existing dashboard Insight, pass its saved configuration ID with
+`--config-id`. An unlinked one-off job can finish successfully without appearing
+as a new card on the Insights dashboard. Saved-configuration authoring and
+scheduling are not first-class commands in this build; those operations currently
+require the UI or the generic `api` command.
+
+Attributes belong to the analysis configuration and are supported on both inline
+reports and saved-config runs. A numeric attribute's description can request a
+1–10 scale, but this is not an enforced minimum/maximum constraint. Inspect actual
+evidence values and missingness before treating inferred satisfaction as a measured
+customer rating. Report narrative highlights can cover fewer examples than the
+evidence list; do not treat their percentages as whole-project rates.
+
 #### Configure an analysis
 
 Use `--file/-f` for a reviewable JSON analysis. File keys match the API:
@@ -766,6 +868,187 @@ Manual error check (expected nonzero exit):
 ```bash
 bin/langsmith --format json unknown-command
 ```
+
+## Online judge settings
+
+`evaluator create-llm` supports these explicit rule settings using the existing
+run-rule API (no SDK upgrade required):
+
+| Flag | Meaning |
+| --- | --- |
+| `--group-by thread_id` / `--group-by none` | Whole-thread / individual-run evaluation |
+| `--filter`, `--trace-filter`, `--tree-filter` | Existing service filter expressions; these select data, not prompt variables |
+| `--sampling-rate 0.1` | Sample 10% of eligible evaluation units; not an exact count or cost ceiling |
+| `--enabled=false` | Create or replace a paused evaluator |
+| `--extend-trace-retention=false` | Explicit project evaluator retention override |
+| `--trace-evaluator-runs=false` | Disable tracing of judge execution |
+| `--include-extended-stats` | Include feedback/cost/token stats; incompatible with thread mode |
+| `--backfill-from TIMESTAMP` | Explicit historical evaluation, potentially billable; server permissions/feature gates apply |
+| `--spend-limit 1` | Weekly USD rule limit; service enforcement applies, not a per-request hard cap |
+| `--dry-run` | Validate local inputs and preview requested settings without saving or inference |
+
+```bash
+langsmith evaluator create-llm --name conversation-quality --project-id PROJECT_ID \
+  --prompt judge-prompt.json --schema judge-schema.json --model-config model.json \
+  --group-by thread_id --sampling-rate 0.1 --enabled=false --spend-limit 1 --dry-run
+```
+
+Remove `--dry-run` to save. With `--enabled=false`, saving does not activate the
+judge. Inspect saved settings using `evaluator get --session-id PROJECT_ID`.
+The preview excludes prompt/model configuration to avoid leaking credentials.
+It shows requested settings, not resolved defaults, and does not validate model
+credentials, filter semantics, inherited settings, or permission to backfill.
+It is not an inference test or frozen apply plan.
+
+`--replace` updates a matching rule. Omitted advanced settings, sampling rate and
+enabled state are preserved. Explicit empty filter values clear those filters;
+`--group-by none` clears thread grouping. JSON replacement never prompts and
+requires explicit `--yes` approval. Switching modes can require explicitly disabling
+incompatible existing settings. Judge prompts must consume the appropriate thread
+content; grouping alone does not rewrite a run-oriented prompt.
+
+Thread idle time is project-wide, not per judge. Creating the first thread rule
+may initialize the service default when no project idle time exists. Inspect or
+explicitly change it separately:
+
+```bash
+langsmith project configure --project-id PROJECT_ID --format json
+langsmith project configure --project-id PROJECT_ID --thread-idle-seconds 600 --dry-run
+langsmith project configure --project-id PROJECT_ID --thread-idle-seconds 600 --apply
+```
+
+The CLI requires at least 120 seconds; deployment-specific server limits may differ.
+Updates preserve other project extra settings and verify the idle time by reading it
+back, but concurrent project configuration edits can race the read-modify-write.
+Missing idle time is returned as null rather than an invented effective default.
+
+UI inference testing, application associations, and resolved organization spend
+defaults are not exposed by these additions.
+
+## Dataset versions, splits, and reviewed edits
+
+These commands use the existing Go SDK and API. Dataset versions are created by
+the service when examples change; tags name snapshots, while splits select subsets.
+Use explicit `--profile` and `--workspace` settings for your environment.
+
+```bash
+# Read-only: inspect history and resolve a version tag.
+langsmith dataset version list --dataset DATASET_ID --limit 20 --format json
+langsmith dataset version get --dataset DATASET_ID --as-of prod --format json
+langsmith dataset version diff --dataset DATASET_ID --from prod --to latest --format json
+langsmith dataset split list --dataset DATASET_ID --as-of prod --format json
+
+# Read examples from a snapshot; split names are arbitrary, not a fixed enum.
+langsmith example list --dataset DATASET_ID --as-of prod \
+  --split test --split refunds --metadata '{"reviewed":true}' --limit 20 --format json
+langsmith example list --dataset DATASET_ID --filter 'exists(metadata,"source")' \
+  --search refund --limit 20 --format json
+langsmith dataset export DATASET_ID ./examples.json --as-of prod --split test --limit 100
+
+# Writes: replace one example's memberships, or clear them explicitly.
+langsmith example update EXAMPLE_ID --split test --split refunds --format json
+langsmith example update EXAMPLE_ID --clear-splits --format json
+```
+
+Version diffs return added/modified/removed example IDs, not full before/after IO.
+Use historical example reads to inspect content. List/export remain bounded by
+`--limit`; these are not automatically complete dataset snapshots. Use `--offset`
+to page example lists. Export retains its existing inputs/outputs-only file shape.
+Example list includes `dataset_id` and `modified_at` for preparing reviewed edits.
+
+### Multimodal attachments: Go SDK limitation
+
+LangSmith supports dataset attachments, including PDFs, images, and audio, through
+the existing multipart examples API. However, the CLI's pinned Go SDK (`v0.26.2`)
+does not expose the multipart methods needed to upload local attachment files.
+This is an SDK coverage gap, not a missing platform API. Local attachment upload
+is therefore not supported by these CLI commands yet; a JSON file path does not
+upload the referenced file.
+
+Follow-up: expose the existing multipart API in the generated Go SDK, then add
+CLI attachment upload and safe update support. For now, use the UI or documented
+Python/TypeScript SDK workflows in the
+[multimodal evaluation guide](https://docs.langchain.com/langsmith/evaluate-with-attachments).
+
+### Bulk edits
+
+Prepare an array in `edits.json`, using IDs and exact `modified_at` timestamps from
+the **latest** example list:
+
+```json
+[
+  {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "expected_modified_at": "2026-09-16T00:00:00Z",
+    "outputs": {"answer": "Reviewed reference answer"},
+    "splits": ["test", "refunds"]
+  }
+]
+```
+
+```bash
+langsmith example update-bulk --dataset DATASET_ID --file edits.json --dry-run --format json
+langsmith example update-bulk --dataset DATASET_ID --file edits.json --apply --format json
+```
+
+The same file supplies the exact edit IDs and payloads in both commands; discovery
+is not rerun. Files are limited to 100 edits and 8 MiB. Every example's dataset and
+timestamp are checked before any writes. Updates are sequential, **not atomic**:
+another writer can still change an example after preflight. Each result is
+`updated` (API acknowledged) or `unverified`; unverified outcomes exit nonzero.
+There are no automatic write retries. Read back affected examples before retrying,
+and prepare a new file with current timestamps. An unchanged replay normally fails
+the stale-timestamp check rather than writing again.
+
+Omitted fields are unchanged. Inputs, outputs, and metadata are replacement
+objects, not key-level patches. **Metadata includes `dataset_split`: preserve that
+key or explicitly supply split memberships when replacing metadata.** Use `splits:
+[]` to clear memberships. Keep local edit files private; they contain evaluation IO.
+
+### Tag a reviewed version
+
+```bash
+# Resolve the current timestamp, inspect a diff, then use that fixed timestamp.
+langsmith dataset version get --dataset DATASET_ID --format json
+langsmith dataset version tag --dataset DATASET_ID --as-of TIMESTAMP --tag prod --dry-run --format json
+langsmith dataset version tag --dataset DATASET_ID --as-of TIMESTAMP --tag prod --format json
+```
+
+Tagging can move an existing tag. Prefer a fixed timestamp over `latest` when
+applying a reviewed change. No separate version-creation step is needed.
+Omitting `--as-of` from `version get` resolves `latest`. Version timestamps retain
+subsecond precision. A tag write returns `updated` only after reading the tag back
+and matching the resolved snapshot; a failed or mismatched read-back returns
+`dataset_write_unverified`. Inspect the tag before retrying because the write may
+have applied.
+
+### Configure schemas and transformations
+
+Read the current configuration with `dataset get DATASET_ID`. Put only the fields
+you intend to replace in `dataset-config.json`:
+
+```json
+{
+  "inputs_schema_definition": {
+    "type": "object",
+    "properties": {"question": {"type": "string"}},
+    "required": ["question"]
+  },
+  "outputs_schema_definition": {"type": "object"},
+  "transformations": []
+}
+```
+
+```bash
+langsmith dataset configure --dataset DATASET_ID --file dataset-config.json --dry-run --format json
+langsmith dataset configure --dataset DATASET_ID --file dataset-config.json --apply --format json
+```
+
+Omitted settings are unchanged. `{}` allows an unrestricted schema; `[]` clears
+transformations. Transformation entries use API fields `path` and
+`transformation_type`; see the [transformation reference](https://docs.langchain.com/langsmith/dataset-transformations).
+Dry-run checks local structure and reads the dataset, but does not validate server
+permissions or the full JSON schema. Apply invokes the service's validation.
 
 ## License
 

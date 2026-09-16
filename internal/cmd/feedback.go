@@ -127,7 +127,11 @@ func newFeedbackListCmd() *cobra.Command {
 			return err
 		}
 		if limit < 1 || limit > 100 || offset < 0 || offset > (1<<63-1)-limit {
-			return fmt.Errorf("limit must be 1–100; offset must be nonnegative and leave room for the next page")
+			return commandDiagnostic{
+				"invalid_feedback_pagination",
+				"--limit must be 1–100; --offset must be nonnegative and leave room for the next page",
+				"Set --limit to an integer from 1 to 100 and --offset to a nonnegative integer whose sum with --limit does not exceed 9223372036854775807.",
+			}
 		}
 		params, err := filters.params(cmd)
 		if err != nil {
@@ -144,11 +148,15 @@ func newFeedbackListCmd() *cobra.Command {
 			return err
 		}
 		if GetFormat() == "pretty" {
+			if len(page.Items) == 0 {
+				fmt.Fprintln(cmd.ErrOrStderr(), "No feedback returned for these filters and page. Check the run ID, filters and offset; evaluator feedback may still be pending. Missing feedback is not a passing or failing score.")
+			}
 			printFeedback(page.Items)
 			fmt.Fprintf(cmd.ErrOrStderr(), "Returned %d feedback items (offset %d). A full page may have more; use --offset %d to continue.\n", len(page.Items), offset, offset+limit)
 			return nil
 		}
-		return output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "run_id": runID, "items": page.Items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, "")
+		return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), "run_id": runID, "items": page.Items, "limit": limit, "offset": offset, "pagination": describeOffsetPage(len(page.Items), limit, offset)}, len(page.Items),
+			"No feedback returned for these filters and page. Missing feedback is not a score.", "Check the run ID, metric filters, and offset. Evaluator feedback may still be pending; inspect evaluator execution before treating missing feedback as a result."), "")
 	}}
 	cmd.Long = "List one page of feedback for a run. Filters are applied by the service. Use --format json for feedback records and pagination metadata; a full page does not prove another page exists."
 	cmd.Example = "  langsmith run feedback list --run-id RUN_ID --key correctness --has-score\n  langsmith run feedback list --run-id RUN_ID --source app --has-comment --limit 20"

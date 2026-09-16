@@ -1,10 +1,41 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
+
+func TestQueueAddInputDiagnostics(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		code string
+	}{
+		{"missing source", nil, "invalid_selector"},
+		{"conflicting sources", []string{"--run-id", workflowExample, "--trace-id", workflowExample}, "invalid_selector"},
+		{"limit", []string{"--trace-id", workflowExample, "--limit", "0"}, "invalid_queue_limit"},
+		{"filter apply", []string{"--filter", "secret-input"}, "queue_plan_required"},
+		{"output apply", []string{"--trace-id", workflowExample, "--output", "secret-input"}, "invalid_queue_output"},
+		{"plural flag", []string{"--trace-ids", "secret-input"}, "invalid_queue_flag"},
+		{"invalid number", []string{"--limit", "secret-input"}, "invalid_queue_flag"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newQueueAddCmd()
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			cmd.SetArgs(append([]string{"queue"}, tc.args...))
+			err := cmd.Execute()
+			diagnostic, ok := err.(commandDiagnostic)
+			if !ok || diagnostic.code != tc.code || diagnostic.next == "" {
+				t.Fatalf("expected %s with recovery guidance, got %v", tc.code, err)
+			}
+			if strings.Contains(diagnostic.message+diagnostic.next, "secret-input") {
+				t.Fatal("diagnostic echoed argument value")
+			}
+		})
+	}
+}
 
 func TestQueueAdditionVerifiesIdentity(t *testing.T) {
 	for _, mode := range []string{"run", "thread"} {

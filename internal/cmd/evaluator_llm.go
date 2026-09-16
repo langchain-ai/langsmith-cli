@@ -174,7 +174,10 @@ func buildLLMEvaluatorPayload(
 	if err := loadJSONFile(modelConfigPath, &model); err != nil {
 		return nil, err
 	}
+	return buildLLMEvaluatorPayloadWithModel(name, target, samplingRate, traceFilter, hubRef, promptPath, schemaPath, model, variableMapping)
+}
 
+func buildLLMEvaluatorPayloadWithModel(name string, target llmEvaluatorTarget, samplingRate float64, traceFilter, hubRef, promptPath, schemaPath string, model map[string]any, variableMapping map[string]string) (map[string]any, error) {
 	structured := map[string]any{"model": model}
 	if hubRef != "" {
 		structured["hub_ref"] = hubRef

@@ -62,6 +62,9 @@ func newInsightsRunsCmd() *cobra.Command {
 				page.Runs = []map[string]interface{}{}
 			}
 			if GetFormat() == "pretty" && outputFile == "" {
+				if len(page.Runs) == 0 {
+					fmt.Fprintln(cmd.ErrOrStderr(), "No evidence returned on this page. Check report status with insights get, the category filter and offset; this does not prove the project has no traces.")
+				}
 				rows := make([][]string, 0, len(page.Runs))
 				for _, run := range page.Runs {
 					rows = append(rows, []string{fmt.Sprint(run["id"]), fmt.Sprint(run["name"]), fmt.Sprint(run["summary"])})
@@ -70,8 +73,9 @@ func newInsightsRunsCmd() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Returned %d runs; next offset: %v. IO is preview-only.\n", len(rows), next)
 				return nil
 			}
-			return output.OutputJSON(map[string]any{"project_id": id, "workspace_id": nilStr(GetWorkspaceID()), "job_id": args[0], "cluster_id": nilStr(clusterID),
-				"runs": page.Runs, "io_mode": "preview", "sort_scope": "page", "pagination": map[string]any{"limit": limit, "offset": offset, "returned": len(page.Runs), "next_offset": next}}, outputFile)
+			return output.OutputJSON(emptyResultGuidance(map[string]any{"project_id": id, "workspace_id": nilStr(GetWorkspaceID()), "job_id": args[0], "cluster_id": nilStr(clusterID),
+				"runs": page.Runs, "io_mode": "preview", "sort_scope": "page", "pagination": map[string]any{"limit": limit, "offset": offset, "returned": len(page.Runs), "next_offset": next}}, len(page.Runs),
+				"No report evidence returned on this page.", "Check report status with insights get, the category filter, and offset. Missing evidence does not prove the project has no traces."), outputFile)
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)

@@ -423,7 +423,7 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 				results = append(results, row)
 				counts[row["status"].(string)]++
 			}
-			if err := output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "dataset_id": ds.ID, "results": results, "failed": failed, "counts": counts, "total": len(results)}, ""); err != nil {
+			if err := output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "dataset_id": ds.ID, "results": results, "failed": failed, "counts": counts, "total": len(results), "next_steps": []string{"Inspect per-item results and reference outputs before using this dataset for evaluation. Observed agent outputs are not automatically correct gold answers.", "For failed or uncertain items, replay the same reviewed selection to reconcile deterministic example IDs; do not regenerate discovery merely to retry."}}, ""); err != nil {
 				return err
 			}
 			if failed > 0 {
