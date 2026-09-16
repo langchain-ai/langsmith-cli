@@ -165,6 +165,24 @@ lsdemo queue items "$LS_QUEUE_ID" --limit 20
 Expect the selected run in the new queue. Do not use replay as a no-op assertion:
 re-adding a queue item can reopen its review.
 
+### Reviewer instructions and rubric (writes only to the new queue)
+
+Use the rubric JSON example in [README.md](README.md#reviewer-instructions-and-rubric)
+to prepare `rubric.json`, then run:
+
+```bash
+lsdemo queue get "$LS_QUEUE_ID"
+lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json \
+  --instructions 'Check correctness and explain errors.' --dry-run
+lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json \
+  --instructions 'Check correctness and explain errors.' --apply
+lsdemo queue get "$LS_QUEUE_ID"
+```
+
+The preview must not change the queue. Apply acknowledges the update; the final
+read should show the rubric and instructions under `queue`, with the name and
+default dataset unchanged. Rubric replacement does not merge old criteria.
+
 ## 8. Validate Insights (no model job yet)
 
 These commands sample up to 5 eligible roots from the last 24 hours.

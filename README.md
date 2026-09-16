@@ -660,6 +660,7 @@ Use `dataset add --dry-run --output selection.json` to preview roots, child runs
 
 ```bash
 langsmith queue create --name review --dataset <dataset-id>
+langsmith queue get <queue-id>
 langsmith queue list --limit 20
 langsmith queue add <queue-id> --project-id <project-id> --trace-id <trace-id> --dry-run --output plan.json
 langsmith queue add <queue-id> --project-id <project-id> --plan plan.json
@@ -668,6 +669,50 @@ langsmith queue delete <queue-id> --yes
 ```
 
 Additions support root traces, individual runs, and threads. Filter selections operate on roots and must fit the limit. Plans freeze source IDs and scope. Queue items use cursor pagination and default to pending review. Deletion requires explicit confirmation. Re-adding an item can reopen its review; submissions are not automatically retried.
+
+#### Reviewer instructions and rubric
+
+Save a rubric array as `rubric.json`:
+
+```json
+[
+  {
+    "feedback_key": "correctness",
+    "description": "Does the answer give the correct cookie count?",
+    "score_descriptions": {"0": "Incorrect", "1": "Correct"},
+    "is_required": true
+  }
+]
+```
+
+```bash
+langsmith queue create --name cookie-review --dataset <dataset-id> \
+  --rubric rubric.json --instructions "Check arithmetic against the reference answer."
+langsmith queue configure <queue-id> --rubric rubric.json \
+  --instructions "Check arithmetic and explain incorrect answers." --dry-run
+# Review the preview, then apply the same flags.
+langsmith queue configure <queue-id> --rubric rubric.json \
+  --instructions "Check arithmetic and explain incorrect answers." --apply
+langsmith queue get <queue-id> --format json
+```
+
+`queue get` returns `queue_id`, `workspace_id`, and the stored `queue` including
+`rubric_items` and `rubric_instructions`. Missing values remain missing or null.
+The queue description is separate from reviewer instructions.
+
+Configure requires exactly one of `--dry-run` or `--apply`. Omitted fields are
+unchanged; a supplied rubric replaces all criteria. Use a file containing `[]`
+to clear the rubric or `--instructions ""` to clear instructions. Rubric items
+support `feedback_key`, `description`, `score_descriptions`, `value_descriptions`,
+`is_required`, and `is_assertion`. Files are bounded to 8 MiB and reject unknown
+fields, duplicate JSON keys, and duplicate or blank feedback keys.
+
+The preview is not a frozen plan: file and queue changes between preview and apply
+are not detected. Apply returns `status: updated` and
+`verification: acknowledged_not_read_back`; use `queue get` to verify storage.
+These settings guide human reviewers; they do not create automated evaluators,
+rescore existing feedback, or create workspace feedback schemas. All commands use
+the existing Go SDK with no API or SDK changes.
 
 ### `insights` — Create and inspect Insights reports
 

@@ -19,6 +19,9 @@ func resolveQueue(ctx context.Context, c *client.Client, name string) (string, e
 		if err != nil {
 			return "", err
 		}
+		if q == nil || !sameResourceID(q.ID, name) {
+			return "", fmt.Errorf("service returned no matching queue")
+		}
 		return q.ID, nil
 	}
 	if strings.TrimSpace(name) == "" {
@@ -37,15 +40,20 @@ func resolveQueue(ctx context.Context, c *client.Client, name string) (string, e
 func newQueueCmd() *cobra.Command {
 	group := &cobra.Command{Use: "queue", Short: "Manage annotation queues"}
 	var name, description, dataset string
+	var rubric queueRubricFlags
 	create := &cobra.Command{Use: "create", Short: "Create an annotation queue", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("--name is required")
+		}
+		settings, err := rubric.params(cmd)
+		if err != nil {
+			return err
 		}
 		c, err := getClient()
 		if err != nil {
 			return err
 		}
-		p := langsmith.AnnotationQueueAnnotationQueuesParams{Name: langsmith.F(name), Description: langsmith.F(description)}
+		p := langsmith.AnnotationQueueAnnotationQueuesParams{Name: langsmith.F(name), Description: langsmith.F(description), RubricItems: settings.RubricItems, RubricInstructions: settings.RubricInstructions}
 		if dataset != "" {
 			ds, err := resolveDataset(cmd.Context(), c, dataset)
 			if err != nil {
@@ -74,6 +82,7 @@ func newQueueCmd() *cobra.Command {
 	create.Flags().StringVar(&name, "name", "", "Queue name (required)")
 	create.Flags().StringVar(&description, "description", "", "Queue description")
 	create.Flags().StringVar(&dataset, "dataset", "", "Default dataset name or UUID")
+	rubric.addFlags(create)
 	var limit, offset int64
 	list := &cobra.Command{Use: "list", Short: "List annotation queues", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if limit < 1 || limit > 1000 || offset < 0 || offset > (1<<63-1)-limit {
@@ -146,6 +155,6 @@ func newQueueCmd() *cobra.Command {
 	items.Flags().StringVar(&status, "status", "needs_my_review", "needs_my_review, needs_others_review, or archived")
 	items.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
 	items.Flags().Int64Var(&pageSize, "limit", 20, "Page size (1–100)")
-	group.AddCommand(create, list, del, items, newQueueAddCmd())
+	group.AddCommand(create, list, del, items, newQueueAddCmd(), newQueueGetCmd(), newQueueConfigureCmd())
 	return group
 }
