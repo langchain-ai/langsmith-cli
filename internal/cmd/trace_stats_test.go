@@ -55,7 +55,7 @@ func TestTraceStatsCmd_RequestsAndDecodesTotalCost(t *testing.T) {
 	})
 	defer setupTestEnv(t, ts.URL)()
 
-	stats, err := fetchRunStats(t.Context(), MustGetClient(), "00000000-0000-0000-0000-000000000000", "2026-01-01", "2026-01-02", 0, "")
+	stats, err := fetchRunStats(t.Context(), MustGetClient(), "00000000-0000-0000-0000-000000000000", "2026-01-01", "2026-01-02", 0, "", traceStatsSelect())
 	if err != nil {
 		t.Fatalf("fetchRunStats: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestPrintStatsPretty_RendersTokenAndCostMetrics(t *testing.T) {
 		CostP50: smallExponentCost, CostP99: 0.2922659788,
 	}
 
-	out := captureStdout(t, func() { printStatsPretty(&stats, nil, false) })
+	out := captureStdout(t, func() { printStatsPretty(&stats, nil, false, defaultStatsKeys()) })
 
 	for _, want := range []string{
 		"53654",    // tokens p50
@@ -128,7 +128,7 @@ func TestPrintStatsPretty_ComparesCosts(t *testing.T) {
 	primary := runStats{TotalTokens: 300, TokensP99: 120, TotalCost: 1.5, CostP99: 0.25}
 	compare := runStats{TotalTokens: 200, TokensP99: 100, TotalCost: 1.0, CostP99: 0.30}
 
-	out := captureStdout(t, func() { printStatsPretty(&primary, &compare, true) })
+	out := captureStdout(t, func() { printStatsPretty(&primary, &compare, true, defaultStatsKeys()) })
 
 	for _, want := range []string{"+0.5000", "-0.0500", "+20"} {
 		if !strings.Contains(out, want) {
@@ -151,6 +151,76 @@ func TestFmtCost(t *testing.T) {
 	for _, c := range cases {
 		if got := fmtCost(c.in); got != c.want {
 			t.Errorf("fmtCost(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestResolveStatsSelectDefaultsToEveryStat(t *testing.T) {
+	keys, attrs, err := resolveStatsSelect(nil)
+	if err != nil {
+		t.Fatalf("resolveStatsSelect: %v", err)
+	}
+	if len(keys) != len(statsKeys) || len(attrs) != len(statsKeys) {
+		t.Fatalf("default select = %d keys / %d attrs, want %d of each", len(keys), len(attrs), len(statsKeys))
+	}
+	// The default must stay what the command requested before --select existed.
+	if len(attrs) != len(traceStatsSelect()) {
+		t.Fatalf("default select has %d attrs, legacy set has %d", len(attrs), len(traceStatsSelect()))
+	}
+}
+
+func TestResolveStatsSelectNormalizesAndRejects(t *testing.T) {
+	keys, attrs, err := resolveStatsSelect([]string{" Run_Count ", "run_count", "error_rate"})
+	if err != nil {
+		t.Fatalf("resolveStatsSelect: %v", err)
+	}
+	// Case and whitespace normalized; the repeat collapses rather than being
+	// requested twice.
+	if len(keys) != 2 || keys[0] != "run_count" || keys[1] != "error_rate" {
+		t.Fatalf("keys = %v, want [run_count error_rate]", keys)
+	}
+	if len(attrs) != 2 {
+		t.Fatalf("attrs = %d, want 2", len(attrs))
+	}
+	if _, _, err := resolveStatsSelect([]string{"run_count", "nope"}); err == nil {
+		t.Fatal("unknown select accepted; it should fail before any request is sent")
+	}
+}
+
+func TestSelectedStatsOmitsUnselectedRatherThanZeroingThem(t *testing.T) {
+	// runStats is a fixed struct, so an unselected field is indistinguishable
+	// from a measured zero once serialized. It has to be absent instead.
+	s := runStats{RunCount: 251, ErrorRate: 0.004}
+	out := selectedStats(s, []string{"run_count", "error_rate"})
+	if got, ok := out["run_count"]; !ok || got.(int64) != 251 {
+		t.Fatalf("run_count = %v (present=%v), want 251", got, ok)
+	}
+	for _, absent := range []string{"total_tokens", "cost_p99", "feedback_stats", "latency_p50"} {
+		if _, ok := out[absent]; ok {
+			t.Fatalf("%q present in a projection that did not select it", absent)
+		}
+	}
+	if len(out) != 2 {
+		t.Fatalf("projection has %d keys, want 2", len(out))
+	}
+}
+
+func TestSelectedStatsDefaultCarriesEveryKey(t *testing.T) {
+	out := selectedStats(runStats{}, defaultStatsKeys())
+	if len(out) != len(statsKeys) {
+		t.Fatalf("default projection has %d keys, want %d", len(out), len(statsKeys))
+	}
+}
+
+func TestEveryStatsKeyIsReadable(t *testing.T) {
+	// A key that can be requested but not read back would silently return null.
+	s := runStats{RunCount: 1, LatencyP50: 1, LatencyP99: 1, TotalTokens: 1,
+		PromptTokens: 1, CompletionTokens: 1, MedianTokens: 1, TokensP99: 1,
+		TotalCost: 1, PromptCost: 1, CompletionCost: 1, CostP50: 1, CostP99: 1,
+		ErrorRate: 1, FeedbackStats: map[string]any{"k": 1}}
+	for name := range statsKeys {
+		if v := selectedStats(s, []string{name})[name]; v == nil {
+			t.Fatalf("select %q reads back nil", name)
 		}
 	}
 }
