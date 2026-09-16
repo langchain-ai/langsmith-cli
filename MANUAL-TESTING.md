@@ -167,15 +167,19 @@ re-adding a queue item can reopen its review.
 
 ## 8. Validate Insights (no model job yet)
 
-The supplied configuration samples up to 5 eligible roots from the last 24 hours.
-Edit it to fit the demo application's business logic and trace time range. Provider
+These commands sample up to 5 eligible roots from the last 24 hours.
+Adjust the business context and trace time range for your application. Provider
 availability comes from workspace settings, not your local application.
 
 ```bash
 lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --file manual-testing/insights-analysis.json --dry-run
+  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
+  --user-context '{"Business goal":"Resolve support requests accurately"}' --dry-run
 lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --file manual-testing/insights-analysis.json --dry-run --preview-run "$LS_TRACE_ID"
+  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
+  --user-context '{"Business goal":"Resolve support requests accurately"}' \
+  --summary-prompt 'Summarize the request and outcome. Inputs: {{run.inputs}} Outputs: {{run.outputs}}' \
+  --dry-run --preview-run "$LS_TRACE_ID"
 ```
 
 Expect `status: dry_run`, the proposed request, and variable bindings/missing paths
@@ -189,7 +193,9 @@ only after approving the configuration and scope:
 
 ```bash
 lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --file manual-testing/insights-analysis.json | tee "$LS_TEST_DIR/insights.json"
+  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
+  --user-context '{"Business goal":"Resolve support requests accurately"}' \
+  | tee "$LS_TEST_DIR/insights.json"
 ```
 
 Capture the returned job ID (creation is asynchronous):
