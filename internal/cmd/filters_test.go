@@ -18,23 +18,9 @@ func TestBuildFilterDSL_Empty(t *testing.T) {
 func TestBuildFilterDSL_SingleName(t *testing.T) {
 	f := &FilterFlags{Name: "ChatOpenAI"}
 	result := buildFilterDSL(f)
-	expected := `like(name, "%ChatOpenAI%")`
+	expected := `eq(name, "ChatOpenAI")`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
-	}
-}
-
-func TestBuildFilterDSL_NameEscapesLikeWildcards(t *testing.T) {
-	// %, _ and \ are LIKE wildcards; a name containing them must still match
-	// literally rather than turning into a pattern.
-	for _, tc := range []struct{ name, want string }{
-		{"100%", `like(name, "%100\\%%")`},
-		{"a_b", `like(name, "%a\\_b%")`},
-		{`a\b`, `like(name, "%a\\\\b%")`},
-	} {
-		if got := buildFilterDSL(&FilterFlags{Name: tc.name}); got != tc.want {
-			t.Errorf("name %q: expected %s, got %s", tc.name, tc.want, got)
-		}
 	}
 }
 
@@ -109,7 +95,7 @@ func TestBuildFilterDSL_Combined(t *testing.T) {
 		Tags:       "prod",
 	}
 	result := buildFilterDSL(f)
-	expected := `and(like(name, "%ChatOpenAI%"), gte(latency, 2.5), has(tags, "prod"))`
+	expected := `and(eq(name, "ChatOpenAI"), gte(latency, 2.5), has(tags, "prod"))`
 	if result != expected {
 		t.Errorf("expected %q, got %q", expected, result)
 	}
@@ -282,7 +268,7 @@ func TestBuildRunQueryParams_FilterDSLWithName(t *testing.T) {
 	if !params.Filter.Present {
 		t.Fatal("expected Filter to be set")
 	}
-	expected := `like(name, "%ChatOpenAI%")`
+	expected := `eq(name, "ChatOpenAI")`
 	if params.Filter.Value != expected {
 		t.Errorf("expected %q, got %q", expected, params.Filter.Value)
 	}

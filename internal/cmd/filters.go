@@ -57,7 +57,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
-	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (case-sensitive substring)")
+	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
 	cmd.Flags().Float64Var(&f.MinLatency, "min-latency", 0, "Minimum latency in seconds")
 	cmd.Flags().Float64Var(&f.MaxLatency, "max-latency", 0, "Maximum latency in seconds")
 	cmd.Flags().IntVar(&f.MinTokens, "min-tokens", 0, "Minimum total tokens")
@@ -153,12 +153,6 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 	return params
 }
 
-// likeContains wraps v as a LIKE substring pattern, escaping the wildcards % and
-// _ (and the escape character itself) so the value matches literally.
-func likeContains(v string) string {
-	return "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(v) + "%"
-}
-
 // buildFilterDSL builds the LangSmith filter DSL string from filter flags.
 func buildFilterDSL(f *FilterFlags) string {
 	var parts []string
@@ -175,12 +169,11 @@ func buildFilterDSL(f *FilterFlags) string {
 		}
 	}
 
-	// Name filter (case-sensitive substring). search() takes a single argument
-	// and cannot be scoped to a field, so search(name, x) is rejected with a
-	// 400; like() is the name-scoped form, and both the v1 and v2 backends
-	// accept it. There is no ilike(), so this cannot be case-insensitive.
+	// Name filter (exact match). search() takes a single argument and cannot be
+	// scoped to a field, so search(name, x) is rejected with a 400. For
+	// substring matching use --filter 'like(name, "%value%")'.
 	if f.Name != "" {
-		parts = append(parts, fmt.Sprintf("like(name, %q)", likeContains(f.Name)))
+		parts = append(parts, fmt.Sprintf("eq(name, %q)", f.Name))
 	}
 
 	// Latency filters

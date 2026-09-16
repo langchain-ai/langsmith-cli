@@ -427,7 +427,7 @@ Most `trace` and `run` commands share these filter options:
 | `--last-n-minutes` | Time window (overrides 7-day default) | `--last-n-minutes 60` |
 | `--since` | After ISO timestamp (overrides 7-day default) | `--since 2024-01-15T00:00:00Z` |
 | `--error / --no-error` | Error status | `--error` |
-| `--name` | Name substring (case-sensitive) | `--name ChatOpenAI` |
+| `--name` | Exact run name (substring: `--filter 'like(name, "%x%")'`) | `--name ChatOpenAI` |
 | `--run-type` | Run type (run commands only) | `--run-type llm` |
 | `--min-latency` | Min latency (seconds) | `--min-latency 2.5` |
 | `--max-latency` | Max latency (seconds) | `--max-latency 10` |
