@@ -2,51 +2,36 @@ package cmd
 
 import (
 	"fmt"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
-func hubFilesToSDKFiles(files map[string]hubFileEntry) map[string]interface{} {
-	out := make(map[string]interface{}, len(files))
+func hubFilesToSDKFiles(files map[string]hubFileEntry) map[string]langsmith.RepoDirectoryCommitParamsFilesUnion {
+	out := make(map[string]langsmith.RepoDirectoryCommitParamsFilesUnion, len(files))
 	for path, entry := range files {
-		out[path] = map[string]interface{}{
-			"type":    entry.Type,
-			"content": entry.Content,
+		out[path] = langsmith.FileEntryParam{
+			Type:    langsmith.F(langsmith.FileEntryType(entry.Type)),
+			Content: langsmith.F(entry.Content),
 		}
 	}
 	return out
 }
 
-func sdkFilesToHubFiles(files map[string]interface{}) (map[string]hubFileEntry, error) {
+func sdkFilesToHubFiles(files map[string]langsmith.RepoDirectoryListResponseFile) (map[string]hubFileEntry, error) {
 	out := make(map[string]hubFileEntry, len(files))
 	for path, raw := range files {
-		entryMap, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("invalid file entry for %q", path)
-		}
-
-		rawType, ok := entryMap["type"]
-		if !ok {
-			return nil, fmt.Errorf("missing entry type for %q", path)
-		}
-		entryType, ok := rawType.(string)
-		if !ok || entryType == "" {
+		entryType := string(raw.Type)
+		if entryType == "" {
 			return nil, fmt.Errorf("invalid entry type for %q", path)
 		}
 
-		entry := hubFileEntry{Type: entryType}
-		if content, ok := entryMap["content"].(string); ok {
-			entry.Content = content
+		out[path] = hubFileEntry{
+			Type:       entryType,
+			Content:    raw.Content,
+			RepoHandle: raw.RepoHandle,
+			Owner:      raw.Owner,
+			CommitHash: raw.CommitHash,
 		}
-		if repoHandle, ok := entryMap["repo_handle"].(string); ok {
-			entry.RepoHandle = repoHandle
-		}
-		if owner, ok := entryMap["owner"].(string); ok {
-			entry.Owner = owner
-		}
-		if commitHash, ok := entryMap["commit_hash"].(string); ok {
-			entry.CommitHash = commitHash
-		}
-
-		out[path] = entry
 	}
 	return out, nil
 }
