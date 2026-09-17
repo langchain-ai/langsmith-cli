@@ -138,6 +138,8 @@ func newInsightsCreateCmd() *cobra.Command {
 	var file, categoriesFile, attributesFile, outputFile string
 	var dryRun bool
 	var previewRun string
+	var configFile string
+	var wait bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Start a one-off Insights analysis of selected project traces",
@@ -171,6 +173,21 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
   langsmith insights create --project my-app --start-time 2026-09-01T00:00:00Z --end-time 2026-09-02T00:00:00Z --sample 100 --model anthropic --user-context '{"Business goal":"Resolve eligible refund requests"}'`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("config") {
+				configured := newInsightsConfigCreateCmd()
+				for _, name := range []string{"config", "wait", "project", "project-id", "output"} {
+					if cmd.Flags().Changed(name) {
+						if err := configured.Flags().Set(name, cmd.Flags().Lookup(name).Value.String()); err != nil {
+							return err
+						}
+					}
+				}
+				configured.SetContext(cmd.Context())
+				return configured.RunE(configured, args)
+			}
+			if wait {
+				return commandDiagnostic{"invalid_flag_combination", "--wait requires --config", "Use --config FILE --wait, or poll a one-off report with insights get."}
+			}
 			options.summaryPromptSet = cmd.Flags().Changed("summary-prompt")
 			if cmd.Flags().Changed("preview-run") {
 				if !dryRun || options.configID != "" {
@@ -254,6 +271,8 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)
+	cmd.Flags().StringVar(&configFile, "config", "", "Save a manual report configuration from JSON and start it; use - for stdin")
+	cmd.Flags().BoolVar(&wait, "wait", false, "With --config, wait for the report to succeed or fail")
 	cmd.Flags().StringVar(&options.name, "name", "", "Optional report name")
 	cmd.Flags().StringVar(&options.model, "model", "", "Workspace provider: openai or anthropic; prompts only in interactive pretty mode")
 	cmd.Flags().Int64Var(&options.sample, "sample", 0, "Requested sample count (1–1000; required unless using --file or --config-id)")
@@ -273,8 +292,12 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 	cmd.Flags().StringVar(&previewRun, "preview-run", "", "With --dry-run, inspect prompt variable bindings against this root run UUID")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	cmd.MarkFlagsMutuallyExclusive("file", "config-id")
+	for _, name := range []string{"file", "config-id", "dry-run", "preview-run"} {
+		cmd.MarkFlagsMutuallyExclusive("config", name)
+	}
 	for _, name := range []string{"name", "model", "sample", "last-n-hours", "start-time", "end-time", "filter", "summary-prompt", "user-context", "categories", "attributes", "cluster-model", "summary-model"} {
 		cmd.MarkFlagsMutuallyExclusive("file", name)
+		cmd.MarkFlagsMutuallyExclusive("config", name)
 		cmd.MarkFlagsMutuallyExclusive("config-id", name)
 	}
 	cmd.MarkFlagsMutuallyExclusive("start-time", "last-n-hours")

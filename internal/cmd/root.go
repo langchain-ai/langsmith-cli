@@ -80,7 +80,6 @@ Quick start:
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newInsightsCmd())
-	rootCmd.AddCommand(newFleetCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newAppsCmd())
 	rootCmd.AddCommand(newPromptCmd())

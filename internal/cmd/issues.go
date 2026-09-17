@@ -235,7 +235,7 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			issue, err := c.SDK.Issues.Get(ctx, args[0])
+			issue, err := c.SDK.Issues.Get(ctx, args[0], langsmith.IssueGetParams{})
 			if err != nil {
 				ExitErrorf("getting issue: %v", err)
 			}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -183,5 +184,57 @@ func TestNewCmd_InvalidMethod(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid HTTP method") {
 		t.Errorf("expected helpful error, got %q", err.Error())
+	}
+}
+
+// The SDK consumes an error response body to build its error type and only
+// re-exposes it when it parsed as JSON, so a non-JSON error page would reach
+// the user empty. The buffering middleware is what prevents that.
+func TestNewCmd_PrintsNonJSONErrorBody(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("<!doctype html><title>429</title>429 Too Many Requests"))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions"})
+	_ = root.Execute() // a 4xx is reported, not swallowed; the body is what matters here
+
+	if !strings.Contains(out.String(), "429 Too Many Requests") {
+		t.Fatalf("error body missing from output:\n%s", out.String())
+	}
+}
+
+func TestNewCmd_RetriesRetryableStatus(t *testing.T) {
+	var attempts int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempts, 1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"detail":"slow down"}`))
+			return
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "sessions"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := atomic.LoadInt32(&attempts); got < 2 {
+		t.Fatalf("server saw %d attempt(s); a 429 should have been retried", got)
+	}
+	if !strings.Contains(out.String(), `"ok"`) {
+		t.Fatalf("retry result missing from output:\n%s", out.String())
 	}
 }

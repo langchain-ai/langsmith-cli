@@ -293,6 +293,9 @@ Results are **paginated** — by default, only the first **50** runs are returne
 langsmith run list --project my-app --run-type llm
 langsmith run list --project my-app --run-type tool --name search
 
+# --name is an exact match; use --filter for a substring match
+langsmith run list --project my-app --filter 'like(name, "%search%")'
+
 # Find expensive calls
 langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
 
@@ -322,6 +325,41 @@ langsmith thread list --project my-chatbot --last-n-minutes 120
 # Get all turns in a thread
 langsmith thread get <thread-id> --project my-chatbot --full
 ```
+
+### `insights` — Create and query insight reports
+
+Insight reports analyze traces in a project to identify usage patterns, common
+behaviors, and failure modes. Creating a report is asynchronous and may incur
+model costs. Define the report with a manual-mode JSON configuration:
+
+```json
+{
+  "name": "Weekly reliability review",
+  "summary_prompt": "Identify the request and outcome: {{run.inputs}} {{run.outputs}}",
+  "last_n_hours": 168,
+  "filter": "eq(is_root, true)",
+  "model": "openai"
+}
+```
+
+Create the report asynchronously, or wait for it to finish:
+
+```bash
+langsmith insights create --project my-app --config insights.json
+langsmith insights create --project my-app --config insights.json --wait
+
+# List reports and fetch a completed result
+langsmith insights list --project my-app
+langsmith insights get <insight-id> --project my-app
+```
+
+The summary prompt is a Mustache template and must reference at least one of
+`{{run.inputs}}`, `{{run.outputs}}`, `{{run.error}}`, `{{run.feedback}}`, or
+`{{all_thread_messages}}`. Auto mode and `user_context` are not supported;
+express the report's intent directly in `summary_prompt`. Use `--config -` to
+read the JSON from stdin. The configuration also supports `start_time`,
+`end_time`, `sample`, `hierarchy`, `partitions`, `attribute_schemas`,
+`cluster_model`, and `summary_model`.
 
 ### `dataset` — Manage evaluation datasets
 
@@ -532,7 +570,7 @@ Most `trace` and `run` commands share these filter options:
 | `--last-n-minutes` | Time window (overrides 7-day default) | `--last-n-minutes 60` |
 | `--since` | After ISO timestamp (overrides 7-day default) | `--since 2024-01-15T00:00:00Z` |
 | `--error / --no-error` | Error status | `--error` |
-| `--name` | Name search (case-insensitive) | `--name ChatOpenAI` |
+| `--name` | Filter by run name (exact match) | `--name ChatOpenAI` |
 | `--run-type` | Run type (run commands only) | `--run-type llm` |
 | `--min-latency` | Min latency (seconds) | `--min-latency 2.5` |
 | `--max-latency` | Max latency (seconds) | `--max-latency 10` |
