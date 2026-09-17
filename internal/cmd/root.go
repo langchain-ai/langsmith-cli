@@ -66,6 +66,7 @@ Quick start:
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
 
 	// Register all subcommand groups
+	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
