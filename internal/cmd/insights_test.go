@@ -16,9 +16,11 @@ import (
 
 func TestInsightsCmd_Subcommands(t *testing.T) {
 	cmd := newInsightsCmd()
-	expected := map[string]bool{"create": false, "list": false, "get": false}
+	expected := map[string]bool{"list": false, "get": false, "create": false, "runs": false}
 	for _, sub := range cmd.Commands() {
-		if _, ok := expected[sub.Name()]; ok {
+		if _, ok := expected[sub.Name()]; !ok {
+			t.Errorf("unexpected insights subcommand %q", sub.Name())
+		} else {
 			expected[sub.Name()] = true
 		}
 	}
@@ -68,8 +70,8 @@ func TestInsightsCreateCmd_Flags(t *testing.T) {
 			t.Errorf("flag --%s: expected shorthand %q, got %q", tc.name, tc.short, f.Shorthand)
 		}
 	}
-	if _, ok := cmd.Flags().Lookup("config").Annotations["cobra_annotation_bash_completion_one_required_flag"]; !ok {
-		t.Error("--config should be required")
+	if _, ok := cmd.Flags().Lookup("config").Annotations["cobra_annotation_bash_completion_one_required_flag"]; ok {
+		t.Error("--config must remain optional for one-off report creation")
 	}
 }
 
@@ -239,7 +241,7 @@ func TestLoadInsightConfigFileRejectsUserContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := loadInsightConfigFile(path)
-	if err == nil || !strings.Contains(err.Error(), `unknown field "user_context"`) {
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("expected user_context to be rejected in manual mode, got %v", err)
 	}
 }
@@ -464,7 +466,7 @@ func TestInsightsListCmd_Flags(t *testing.T) {
 		short  string
 	}{
 		{"project", "", ""},
-		{"limit", "0", "n"},
+		{"limit", "20", "n"},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {

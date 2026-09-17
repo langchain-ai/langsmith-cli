@@ -44,6 +44,7 @@ func TestResolveSessionID_InvalidProjectID(t *testing.T) {
 }
 
 func TestResolveSessionID_NeitherProvided(t *testing.T) {
+	isolateConfig(t)
 	t.Setenv("LANGSMITH_PROJECT", "")
 	_, err := resolveSessionID(context.Background(), nil, "", "", "trace stats")
 	if err == nil {

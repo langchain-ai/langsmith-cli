@@ -44,7 +44,7 @@ func newHubDeleteCmd() *cobra.Command {
 				"owner":  owner,
 				"repo":   name,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			return nil
 		},

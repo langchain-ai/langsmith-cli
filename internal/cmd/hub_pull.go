@@ -71,7 +71,7 @@ func newHubPullCmd() *cobra.Command {
 				out["linked_children"] = linked
 			}
 			if err := output.OutputJSON(out, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			return nil
 		},

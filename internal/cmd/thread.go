@@ -62,7 +62,7 @@ func newThreadListCmd() *cobra.Command {
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread list")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			// Name the table by whichever identifier the caller gave.
 			projectLabel := ResolveProject(project)
@@ -171,7 +171,7 @@ func newThreadListCmd() *cobra.Command {
 					})
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -216,7 +216,7 @@ func newThreadGetCmd() *cobra.Command {
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread get")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			// Query root runs filtered by thread_id
@@ -252,7 +252,7 @@ func newThreadGetCmd() *cobra.Command {
 					"runs":      extracted,
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -306,7 +306,7 @@ Examples:
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "thread messages")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			q := url.Values{}
@@ -326,7 +326,7 @@ Examples:
 			extraHeaders := http.Header{"Accept": {"text/event-stream"}}
 			_, _, _, body, err := c.RawDo(ctx, http.MethodGet, path, nil, extraHeaders)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			groups, nextCursor, prevCursor, sseErr := parseSSEGroups(body)
@@ -348,7 +348,7 @@ Examples:
 				printThreadMessages(result)
 			} else {
 				if err := output.OutputJSON(result, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
