@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -17,8 +20,8 @@ import (
 func newInsightsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Query insights reports for a project",
-		Long: `Query insights reports for a project.
+		Short: "Create and query insight reports for a project",
+		Long: `Create and query insight reports for a project.
 
 The Insights Agent automatically analyzes traces to detect usage patterns,
 common agent behaviors, and failure modes using hierarchical categorization.
@@ -27,13 +30,307 @@ with an executive summary of key findings and highlighted traces.
 
 Examples:
   langsmith insights list --project my-app
+  langsmith insights create --project my-app --config insights.json
   langsmith insights get INSIGHT_ID --project my-app
   langsmith insights get INSIGHT_ID --project my-app --format pretty`,
 	}
 
+	cmd.AddCommand(newInsightsCreateCmd())
 	cmd.AddCommand(newInsightsListCmd())
 	cmd.AddCommand(newInsightsGetCmd())
 	return cmd
+}
+
+type insightCreateOptions struct {
+	project    string
+	projectID  string
+	configFile string
+	wait       bool
+	outputFile string
+}
+
+// insightConfigFile is the public, JSON-serializable report definition used by
+// the Insights config API. A separate input type is necessary because the
+// generated SDK's param.Field wrappers are designed for marshaling requests,
+// not unmarshaling user-authored JSON.
+type insightConfigFile struct {
+	AttributeSchemas map[string]any                                `json:"attribute_schemas"`
+	ClusterModel     *string                                       `json:"cluster_model"`
+	EndTime          *time.Time                                    `json:"end_time"`
+	Filter           *string                                       `json:"filter"`
+	Hierarchy        []int64                                       `json:"hierarchy"`
+	LastNHours       *int64                                        `json:"last_n_hours"`
+	Model            *langsmith.CreateRunClusteringJobRequestModel `json:"model"`
+	Name             string                                        `json:"name"`
+	Partitions       map[string]string                             `json:"partitions"`
+	Sample           *float64                                      `json:"sample"`
+	StartTime        *time.Time                                    `json:"start_time"`
+	SummaryModel     *string                                       `json:"summary_model"`
+	SummaryPrompt    string                                        `json:"summary_prompt"`
+}
+
+const (
+	insightWaitInterval = 30 * time.Second
+	insightWaitTimeout  = 30 * time.Minute
+)
+
+func newInsightsCreateCmd() *cobra.Command {
+	var opts insightCreateOptions
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create an insight report for a project",
+		Long: `Create an insight report using a manual-mode JSON configuration.
+
+The summary prompt controls how each trace is summarized before patterns are
+identified. It is a Mustache template and must reference at least one supported
+trace field, such as {{run.inputs}}, {{run.outputs}}, {{run.error}},
+{{run.feedback}}, or {{all_thread_messages}}.
+
+Auto mode and user_context are not supported. Express the report's intent
+directly in summary_prompt.
+
+Report generation runs asynchronously and may incur model costs. The workspace
+must have secrets configured for the selected models. Use --wait to poll for a
+terminal status; waiting can take up to 30 minutes.`,
+		Example: `  langsmith insights create --project my-app \
+    --config insights.json
+
+  langsmith insights create --project-id PROJECT_ID \
+    --config insights.json --wait --format json
+
+  cat insights.json | langsmith insights create --project my-app --config -`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configInput, err := loadInsightConfigFile(opts.configFile)
+			if err != nil {
+				return err
+			}
+			request, err := configInput.toSDKParams()
+			if err != nil {
+				return err
+			}
+
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			sessionID, err := resolveSessionID(ctx, c, opts.project, opts.projectID, "insights create")
+			if err != nil {
+				return err
+			}
+
+			config, err := c.SDK.Sessions.Insights.Configs.New(ctx, sessionID, langsmith.SessionInsightConfigNewParams{
+				Name:   langsmith.F(configInput.Name),
+				Config: langsmith.F(request),
+			})
+			if err != nil {
+				return fmt.Errorf("creating insight config: %w", err)
+			}
+
+			created, err := c.SDK.Sessions.Insights.New(ctx, sessionID, langsmith.SessionInsightNewParams{
+				CreateRunClusteringJobRequest: langsmith.CreateRunClusteringJobRequestParam{
+					ConfigID: langsmith.F(config.ID),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("insight config %s was saved, but starting the report failed: %w", config.ID, err)
+			}
+			if opts.wait {
+				waitCtx, cancel := context.WithTimeout(ctx, insightWaitTimeout)
+				defer cancel()
+				completed, err := waitForInsight(waitCtx, c.SDK, sessionID, created.ID, insightWaitInterval)
+				if err != nil {
+					return err
+				}
+				created.Name = completed.Name
+				created.Status = completed.Status
+			}
+
+			if GetFormat() == "pretty" {
+				printInsightCreatePretty(created, sessionID, config.ID, opts.wait)
+				return nil
+			}
+			if err := output.OutputJSON(insightCreateResponseToMap(created, sessionID, config.ID), opts.outputFile); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	addProjectFlags(cmd, &opts.project, &opts.projectID)
+	cmd.Flags().StringVar(&opts.configFile, "config", "", `Report definition JSON file (use "-" for stdin)`)
+	cmd.Flags().BoolVar(&opts.wait, "wait", false, "Wait for the report to succeed or fail")
+	cmd.Flags().StringVarP(&opts.outputFile, "output", "o", "", "Write JSON output to a file")
+	_ = cmd.MarkFlagRequired("config")
+
+	return cmd
+}
+
+func loadInsightConfigFile(path string) (insightConfigFile, error) {
+	var config insightConfigFile
+	if strings.TrimSpace(path) == "" {
+		return config, fmt.Errorf("--config must not be empty")
+	}
+
+	var reader io.Reader
+	if path == "-" {
+		reader = os.Stdin
+	} else {
+		file, err := os.Open(path)
+		if err != nil {
+			return config, fmt.Errorf("opening --config file %q: %w", path, err)
+		}
+		defer file.Close()
+		reader = file
+	}
+
+	decoder := json.NewDecoder(reader)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
+		return config, fmt.Errorf("parsing --config file %q: %w", path, err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return config, fmt.Errorf("parsing --config file %q: multiple JSON values", path)
+		}
+		return config, fmt.Errorf("parsing --config file %q: %w", path, err)
+	}
+	return config, nil
+}
+
+func (c insightConfigFile) toSDKParams() (langsmith.CreateRunClusteringJobRequestParam, error) {
+	var request langsmith.CreateRunClusteringJobRequestParam
+	c.Name = strings.TrimSpace(c.Name)
+	if c.Name == "" {
+		return request, fmt.Errorf("--config field name must not be empty")
+	}
+	if strings.TrimSpace(c.SummaryPrompt) == "" {
+		return request, fmt.Errorf("--config field summary_prompt must not be empty")
+	}
+	if c.Model != nil && !c.Model.IsKnown() {
+		return request, fmt.Errorf("--config field model %q must be openai or anthropic", *c.Model)
+	}
+	if (c.ClusterModel == nil) != (c.SummaryModel == nil) {
+		return request, fmt.Errorf("--config fields cluster_model and summary_model must be specified together")
+	}
+	if c.EndTime != nil && c.StartTime == nil {
+		return request, fmt.Errorf("--config field end_time requires start_time")
+	}
+	if c.StartTime != nil && c.EndTime != nil && !c.EndTime.After(*c.StartTime) {
+		return request, fmt.Errorf("--config field end_time must be after start_time")
+	}
+	if c.LastNHours != nil {
+		if *c.LastNHours <= 0 {
+			return request, fmt.Errorf("--config field last_n_hours must be greater than 0")
+		}
+		if c.StartTime != nil || c.EndTime != nil {
+			return request, fmt.Errorf("--config field last_n_hours cannot be combined with start_time or end_time")
+		}
+	}
+	if c.Sample != nil && *c.Sample <= 0 {
+		return request, fmt.Errorf("--config field sample must be greater than 0")
+	}
+
+	request.Name = langsmith.F(c.Name)
+	request.SummaryPrompt = langsmith.F(c.SummaryPrompt)
+	if c.Model == nil {
+		request.Model = langsmith.F(langsmith.CreateRunClusteringJobRequestModelOpenAI)
+	} else {
+		request.Model = langsmith.F(*c.Model)
+	}
+	if c.AttributeSchemas != nil {
+		request.AttributeSchemas = langsmith.F(c.AttributeSchemas)
+	}
+	if c.ClusterModel != nil {
+		request.ClusterModel = langsmith.F(*c.ClusterModel)
+		request.SummaryModel = langsmith.F(*c.SummaryModel)
+	}
+	if c.EndTime != nil {
+		request.EndTime = langsmith.F(*c.EndTime)
+	}
+	if c.Filter != nil {
+		request.Filter = langsmith.F(*c.Filter)
+	}
+	if c.Hierarchy != nil {
+		request.Hierarchy = langsmith.F(c.Hierarchy)
+	}
+	if c.LastNHours != nil {
+		request.LastNHours = langsmith.F(*c.LastNHours)
+	}
+	if c.Partitions != nil {
+		request.Partitions = langsmith.F(c.Partitions)
+	}
+	if c.Sample != nil {
+		request.Sample = langsmith.F(*c.Sample)
+	}
+	if c.StartTime != nil {
+		request.StartTime = langsmith.F(*c.StartTime)
+	}
+	return request, nil
+}
+
+func waitForInsight(ctx context.Context, sdk *langsmith.Client, sessionID, insightID string, interval time.Duration) (*langsmith.SessionInsightGetJobResponse, error) {
+	for {
+		detail, err := sdk.Sessions.Insights.GetJob(ctx, sessionID, insightID)
+		if err != nil {
+			return nil, fmt.Errorf("polling insight report %s: %w", insightID, err)
+		}
+		switch detail.Status {
+		case "success":
+			return detail, nil
+		case "error":
+			if detail.Error == "" {
+				return nil, fmt.Errorf("insight report %s failed", insightID)
+			}
+			return nil, fmt.Errorf("insight report %s failed: %s", insightID, detail.Error)
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			if ctx.Err() == context.DeadlineExceeded {
+				return nil, fmt.Errorf("timed out waiting for insight report %s", insightID)
+			}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func insightCreateResponseToMap(created *langsmith.SessionInsightNewResponse, sessionID, configID string) map[string]any {
+	result := map[string]any{
+		"id":         created.ID,
+		"name":       created.Name,
+		"status":     created.Status,
+		"project_id": sessionID,
+		"config_id":  configID,
+	}
+	if created.JSON.Error.IsNull() {
+		result["error"] = nil
+	} else {
+		result["error"] = created.Error
+	}
+	return result
+}
+
+func printInsightCreatePretty(created *langsmith.SessionInsightNewResponse, sessionID, configID string, waited bool) {
+	if waited {
+		fmt.Println("Insight report completed")
+	} else {
+		fmt.Println("Insight report created")
+	}
+	fmt.Println()
+	fmt.Printf("Name:       %s\n", created.Name)
+	fmt.Printf("ID:         %s\n", created.ID)
+	fmt.Printf("Config ID:  %s\n", configID)
+	fmt.Printf("Status:     %s\n", created.Status)
+	fmt.Println()
+	fmt.Println("View it with:")
+	fmt.Printf("  langsmith insights get %s --project-id %s\n", created.ID, sessionID)
 }
 
 func newInsightsListCmd() *cobra.Command {
