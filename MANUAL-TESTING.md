@@ -1,266 +1,324 @@
-# CLI integration testing
+# Manual testing
 
-All commands below use the local `bin/langsmith` build, not your globally installed
-release. The walkthrough creates disposable resources and optionally invokes
-model inference; review each step's scope before running it.
+Use this checklist with the local build, a test workspace, and synthetic traces.
+Run sections in order; stop on unexpected errors. **Nothing is deleted by default.**
+Paid inference is optional. Requires bash/zsh and `jq`; keep generated files private.
 
-## 1. Build and select the demo workspace
+## 1. Build and sign in
 
 From the repository root:
 
 ```bash
 make build
-bin/langsmith --version
-```
-
-Use your configured `demo` profile. List workspaces and copy the Demo Workspace ID:
-
-```bash
-env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY bin/langsmith --profile demo --format json workspace list
-```
-
-Replace placeholders before continuing. These commands assume bash/zsh and `jq`.
-The wrapper ignores ambient API keys so the saved profile is used, without changing
-your shell's credentials. It always requests JSON for copy/paste and assertions.
-
-```bash
-LS_WORKSPACE_ID='REPLACE_WITH_DEMO_WORKSPACE_ID'
-LS_TEST_TAG="cli-integration-$(date +%Y%m%d-%H%M%S)"
+./bin/langsmith --version
+LS_PROFILE='cli-review'
 LS_TEST_DIR="$(mktemp -d)"
+LS_TEST_TAG="cli-review-$(date +%Y%m%d-%H%M%S)"
 set -o pipefail
-lsdemo() {
-  env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY ./bin/langsmith \
-    --profile demo --workspace "${LS_WORKSPACE_ID:?Set the demo workspace ID}" \
-    --format json "$@"
+
+lsreview() {
+  env -u LANGSMITH_API_KEY -u LANGCHAIN_API_KEY \
+    -u LANGSMITH_PROJECT -u LANGSMITH_ENDPOINT \
+    -u LANGSMITH_WORKSPACE_ID -u LANGSMITH_TENANT_ID \
+    ./bin/langsmith --profile "$LS_PROFILE" "$@"
 }
+lsreview auth login
+lsreview workspace list
 ```
 
-Stop if any command fails. JSON files in `LS_TEST_DIR` can contain trace data; keep
-them private. Capturing an ID in a shell variable prints nothing—that is normal.
-Commands piped through `tee` below show and save the actual responses.
+Complete browser authorization. Copy a test workspace ID, then:
 
-## 2. Choose an existing synthetic trace (read-only)
+```bash
+LS_WORKSPACE_ID='REPLACE_WITH_TEST_WORKSPACE_ID'
+lsreview workspace set-default "$LS_WORKSPACE_ID"
+lsdemo() { lsreview --workspace "$LS_WORKSPACE_ID" --format json "$@"; }
+```
+
+The wrapper ignores ambient overrides without changing your shell. A custom
+`LANGSMITH_CONFIG_FILE`, if set, remains in effect. Never paste credentials into
+commands or review notes. A revoked login requires another `lsreview auth login`.
+
+## 2. Create a project and test defaults — writes
+
+```bash
+lsdemo project create --name "$LS_TEST_TAG" --set-default | tee "$LS_TEST_DIR/project.json"
+LS_TEST_PROJECT_ID="$(jq -er '.id' "$LS_TEST_DIR/project.json")"
+lsdemo trace list --limit 5
+lsdemo project configure
+lsdemo project clear-default
+lsdemo project set-default "$LS_TEST_PROJECT_ID"
+```
+
+Expect `status: created`, `default_saved: true`, then no traces. Defaults are scoped
+to the profile, workspace, and endpoint. Project creation does not instrument an app.
+Clearing the default removes only the local selection, not the project.
+
+Choose an existing **synthetic** source project and root trace:
 
 ```bash
 lsdemo project list --limit 20
+LS_SOURCE_PROJECT_ID='REPLACE_WITH_SYNTHETIC_PROJECT_ID'
+lsdemo trace list --project-id "$LS_SOURCE_PROJECT_ID" --limit 3 --include-io
+LS_TRACE_ID='REPLACE_WITH_ROOT_RUN_ID'
 ```
 
-Choose a demo tracing project you own. This is the **source** project, not the empty
-project we create in step 3. Never use customer or production traces for this guide.
+This explicit project must override the saved empty project. Keep the source ID
+separate from `LS_TEST_PROJECT_ID`; never use production data for this walkthrough.
+
+## 3. Import a trace into a dataset — preview, write, retry
 
 ```bash
-LS_SOURCE_PROJECT_ID='REPLACE_WITH_SOURCE_PROJECT_ID'
-lsdemo trace list --project-id "$LS_SOURCE_PROJECT_ID" --limit 3
-LS_TRACE_ID='REPLACE_WITH_ONE_ROOT_RUN_ID_FROM_THAT_PROJECT'
-```
-
-These reads should return resources from the selected workspace. Check the project
-and root-run ID before continuing; feedback and queue steps will reference this run.
-
-## 3. Create a project and dataset (writes)
-
-```bash
-lsdemo project create --name "$LS_TEST_TAG" --description 'Disposable CLI integration project' \
-  | tee "$LS_TEST_DIR/project.json"
-LS_TEST_PROJECT_ID="$(jq -er '.id' "$LS_TEST_DIR/project.json")"
-
 lsdemo dataset create --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/dataset.json"
 LS_DATASET_ID="$(jq -er '.id' "$LS_TEST_DIR/dataset.json")"
-```
-
-Expect `status: created` and resource IDs. Project output includes `workspace_id`.
-The new project is empty: creating it does not instrument an agent or create traces.
-If creation is unverified, inspect the workspace before repeating the write.
-
-## 4. Preview, import, and retry a trace (preview read-only; apply writes)
-
-```bash
 lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
   --trace-id "$LS_TRACE_ID" --dry-run --output "$LS_TEST_DIR/selection.json"
 jq . "$LS_TEST_DIR/selection.json"
 ```
 
-Expect one example, `reference_mode: inputs-only`, and `selection_info.has_more:
-false` for this explicit ID. Inspect the actual input payload before applying.
-The preview file is created privately and refuses to overwrite an existing file.
+Inspect the IDs and input payload. Expect one inputs-only example; no reference
+answer is inferred. The output file is private and refuses to overwrite a file.
 
 ```bash
 lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
   --selection "$LS_TEST_DIR/selection.json" | tee "$LS_TEST_DIR/import.json"
 LS_EXAMPLE_ID="$(jq -er '.results[0].example_id' "$LS_TEST_DIR/import.json")"
-
 lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
-  --selection "$LS_TEST_DIR/selection.json"
+  --selection "@$LS_TEST_DIR/selection.json"
 ```
 
-First apply: expect `counts.created: 1`, `failed: 0`, and source/destination IDs.
-Second apply: expect `counts.skipped: 1` and the same example ID, with no duplicate.
+Expect `counts.created: 1`, then `counts.skipped: 1`, the same example ID, and
+`failed: 0`. Complete this retry **before** editing the example.
 
-Optional filter preview (still no dataset write):
+For bounded filter discovery, preview with `--error --last-n-minutes 1440 --limit 2`
+instead of `--trace-id`. Inspect `selection_info.has_more`; a page is not a complete
+dataset. Thread imports produce separate root-turn examples, not one conversation.
+
+## 4. Edit examples, splits, and versions — writes
 
 ```bash
-lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
-  --error --last-n-minutes 1440 --limit 2 --dry-run --output "$LS_TEST_DIR/filtered.json"
-jq '.selection_info' "$LS_TEST_DIR/filtered.json"
+lsdemo dataset version get --dataset "$LS_DATASET_ID" | tee "$LS_TEST_DIR/version.json"
+LS_BEFORE="$(jq -er '.version.as_of' "$LS_TEST_DIR/version.json")"
+lsdemo example update "$LS_EXAMPLE_ID" --outputs '{"answer":"Reviewed test answer"}' --split test
+lsdemo example list --dataset "$LS_DATASET_ID" --split test --limit 20
+lsdemo dataset split list --dataset "$LS_DATASET_ID"
+lsdemo dataset version diff --dataset "$LS_DATASET_ID" --from "$LS_BEFORE" --to latest
+lsdemo example update "$LS_EXAMPLE_ID" --clear-splits
+lsdemo dataset split list --dataset "$LS_DATASET_ID"
 ```
 
-Expect 0–2 selected roots; `has_more` indicates whether more eligible roots were
-found. Thread imports likewise select separate root turns, not a merged conversation.
-Observed outputs only become references when explicitly requested with
-`--reference-mode observed`; that is intentionally not used in this guide.
+Expect the replacement output, `test` membership, and a modified example ID in the
+diff. Clearing memberships does not delete the example. Versions are automatic;
+splits are memberships, not separately created resources.
 
-## 5. Update the imported example (write)
+For bulk edits, read current IDs/timestamps and prepare `edits.json` using the
+[bulk-edit format](README.md#bulk-edits). Only use examples in this test dataset:
 
 ```bash
 lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
-lsdemo example update "$LS_EXAMPLE_ID" --outputs '{"answer":"Manually reviewed demo reference"}'
+lsdemo example update-bulk --dataset "$LS_DATASET_ID" --file edits.json --dry-run
+lsdemo example update-bulk --dataset "$LS_DATASET_ID" --file @edits.json --apply
 lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
 ```
 
-Expect the new reference output and unchanged inputs. This answer is only a test
-fixture, not a useful gold label. Do the retry test in step 4 **before** this edit:
-replaying the original selection afterward should protect the changed example,
-not overwrite your correction.
+Expect per-example results and the intended changes on readback. Replaying an old
+edit file should fail its timestamp check. Writes are non-atomic; read unverified
+items before preparing a retry.
 
-## 6. Create, inspect, and filter feedback (creates one feedback item)
+Tag the original snapshot and inspect history:
 
-Only use the synthetic trace chosen above. The feedback is attached to that source
-run, not the new empty project. Use the UI to remove it later if desired.
+```bash
+lsdemo dataset version tag --dataset "$LS_DATASET_ID" --as-of "$LS_BEFORE" --tag before-edits --dry-run
+lsdemo dataset version tag --dataset "$LS_DATASET_ID" --as-of "$LS_BEFORE" --tag before-edits
+lsdemo dataset version get --dataset "$LS_DATASET_ID" --as-of before-edits
+lsdemo dataset version list --dataset "$LS_DATASET_ID" --limit 20
+```
+
+Expect the tag to resolve to `LS_BEFORE`. Tags can move; use fixed timestamps for
+reviewed writes. Version diffs return IDs, not full before/after content.
+
+Test configuration with a permissive schema on this dataset only:
+
+```bash
+lsdemo dataset configure --dataset "$LS_DATASET_ID" \
+  --file '{"outputs_schema_definition":{"type":"object"}}' --dry-run
+lsdemo dataset configure --dataset "$LS_DATASET_ID" \
+  --file '{"outputs_schema_definition":{"type":"object"}}' --apply
+lsdemo dataset get "$LS_DATASET_ID"
+```
+
+Expect the stored schema. Omitted settings stay unchanged; server validation runs
+on apply. See [configuration](README.md#configure-schemas-and-transformations) for transformations.
+
+## 5. Import assertion references — writes
+
+```bash
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --trace-id "$LS_TRACE_ID" --assertions '[{"key":"helpful","comment":"Address the request clearly."}]' \
+  --dry-run --output "$LS_TEST_DIR/assertions.json"
+jq . "$LS_TEST_DIR/assertions.json"
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --selection "$LS_TEST_DIR/assertions.json"
+```
+
+Expect a new example with `outputs.assertions`, not copied agent output. This stores
+criteria; it does not run an evaluator. Offline experiments remain SDK workflows.
+
+## 6. Add feedback and a review queue — writes
 
 ```bash
 lsdemo run feedback create --project-id "$LS_SOURCE_PROJECT_ID" --run-id "$LS_TRACE_ID" \
-  --key "$LS_TEST_TAG" --score 0 --comment 'CLI integration test' \
-  | tee "$LS_TEST_DIR/feedback.json"
+  --key "$LS_TEST_TAG" --score 0 --comment 'Synthetic review test' | tee "$LS_TEST_DIR/feedback.json"
 LS_FEEDBACK_ID="$(jq -er '.feedback_id' "$LS_TEST_DIR/feedback.json")"
 lsdemo run feedback get "$LS_FEEDBACK_ID"
 lsdemo run feedback list --run-id "$LS_TRACE_ID" --key "$LS_TEST_TAG" --has-score --limit 20
-
-lsdemo run feedback create --project-id "$LS_SOURCE_PROJECT_ID" --run-id "$LS_TRACE_ID" \
-  --id "$LS_FEEDBACK_ID" --key "$LS_TEST_TAG" --score 0 --comment 'CLI integration test'
-```
-
-Expect `created`, exact score `0`, a matching filtered item, then `skipped` on retry.
-`unverified` exits nonzero: inspect the returned ID before retrying, and reuse it.
-`--has-score=false` selects missing scores; omitting the flag selects both cases.
-
-## 7. Create and populate an annotation queue (writes)
-
-```bash
-lsdemo queue create --name "$LS_TEST_TAG" --description 'Disposable CLI review queue' \
-  --dataset "$LS_DATASET_ID" | tee "$LS_TEST_DIR/queue.json"
+lsdemo queue create --name "$LS_TEST_TAG" --dataset "$LS_DATASET_ID" | tee "$LS_TEST_DIR/queue.json"
 LS_QUEUE_ID="$(jq -er '.id' "$LS_TEST_DIR/queue.json")"
 lsdemo queue list --limit 20
 lsdemo queue add "$LS_QUEUE_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
   --trace-id "$LS_TRACE_ID" --dry-run --output "$LS_TEST_DIR/queue-plan.json"
 jq . "$LS_TEST_DIR/queue-plan.json"
-```
-
-Check that the plan references only the new queue and selected source run. Then:
-
-```bash
 lsdemo queue add "$LS_QUEUE_ID" --project-id "$LS_SOURCE_PROJECT_ID" --plan "$LS_TEST_DIR/queue-plan.json"
 lsdemo queue items "$LS_QUEUE_ID" --limit 20
 ```
 
-Expect the selected run in the new queue. Do not use replay as a no-op assertion:
-re-adding a queue item can reopen its review.
+Expect score `0` (not missing) and the selected run in the new queue. Queue replay
+is not a no-op test: re-adding can reopen review. Feedback belongs to the source run.
 
-### Reviewer instructions and rubric (writes only to the new queue)
-
-Use the rubric JSON example in [README.md](README.md#reviewer-instructions-and-rubric)
-to prepare `rubric.json`, then run:
+Prepare `rubric.json` using an **existing workspace feedback key** and the
+[rubric format](README.md#reviewer-instructions-and-rubric):
 
 ```bash
-lsdemo queue get "$LS_QUEUE_ID"
-lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json \
-  --instructions 'Check correctness and explain errors.' --dry-run
-lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json \
-  --instructions 'Check correctness and explain errors.' --apply
+lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json --instructions 'Explain incorrect answers.' --dry-run
+lsdemo queue configure "$LS_QUEUE_ID" --rubric @rubric.json --instructions 'Explain incorrect answers.' --apply
 lsdemo queue get "$LS_QUEUE_ID"
 ```
 
-The preview must not change the queue. Apply acknowledges the update; the final
-read should show the rubric and instructions under `queue`, with the name and
-default dataset unchanged. Rubric replacement does not merge old criteria.
+Expect stored `queue.rubric_items` and `queue.rubric_instructions`. Missing feedback
+configurations must fail before writing. On this test queue, `--rubric '[]'` clears
+the rubric; preview before applying. Rubrics do not create automated judges.
 
-## 8. Validate Insights (no model job yet)
-
-These commands sample up to 5 eligible roots from the last 24 hours.
-Adjust the business context and trace time range for your application. Provider
-availability comes from workspace settings, not your local application.
+## 7. Preview online judges; optionally enable them
 
 ```bash
-lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
-  --user-context '{"Business goal":"Resolve support requests accurately"}' --dry-run
-lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
-  --user-context '{"Business goal":"Resolve support requests accurately"}' \
-  --summary-prompt 'Summarize the request and outcome. Inputs: {{run.inputs}} Outputs: {{run.outputs}}' \
-  --dry-run --preview-run "$LS_TRACE_ID"
+lsdemo model list
+LS_MODEL_ID='REPLACE_WITH_EVALUATOR_CAPABLE_CONFIGURATION_ID'
+lsdemo model get "$LS_MODEL_ID"
+LS_EVAL_FILTER="and(eq(is_root,true),has(tags,\"$LS_TEST_TAG\"))"
+judge_args=(--name "$LS_TEST_TAG-llm" --project-id "$LS_SOURCE_PROJECT_ID"
+  --model-id "$LS_MODEL_ID"
+  --prompt '[["system","Score 1 when the response is helpful, including a necessary clarification; score 0 for an empty or unhelpful response."],["human","Request: {{question}} Response: {{answer}}"]]'
+  --schema '{"type":"object","properties":{"helpfulness":{"type":"integer","enum":[0,1]}},"required":["helpfulness"]}'
+  --variable-mapping '{"question":"input.message","answer":"output.response"}'
+  --filter "$LS_EVAL_FILTER" --sampling-rate 1 --spend-limit 1)
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run --preview-run "$LS_TRACE_ID"
 ```
 
-Expect `status: dry_run`, the proposed request, and variable bindings/missing paths
-for the explicit run. No report is created. Preview does not prove that this run
-matches the time window, will be sampled, or that model access is configured.
+Use a source trace with `inputs.message` and `outputs.response`, or adjust the
+mapping to its actual fields. Expect real bindings and `bindings_validated: true`.
+Mappings use singular `input`/`output`. Model availability does not verify credentials.
 
-### Optional: create a paid report
-
-**The next command invokes workspace model inference and may incur cost.** Run it
-only after approving the configuration and scope:
+**Optional, potentially billable:** after reviewing the prompt, filter, and budget:
 
 ```bash
-lsdemo insights create --project-id "$LS_SOURCE_PROJECT_ID" \
-  --name "$LS_TEST_TAG" --model openai --sample 5 --last-n-hours 24 \
-  --user-context '{"Business goal":"Resolve support requests accurately"}' \
-  | tee "$LS_TEST_DIR/insights.json"
+lsdemo evaluator create-llm "${judge_args[@]}"
+lsdemo evaluator get "$LS_TEST_TAG-llm" --session-id "$LS_SOURCE_PROJECT_ID"
 ```
 
-Capture the returned job ID (creation is asynchronous):
+The $1 weekly limit is service-enforced, not a per-call hard cap. No backfill is
+requested. The unique tag restricts eligibility to your upcoming test runs.
+
+For a code evaluator, save this as `response_present.py`:
+
+```python
+def response_present(run):
+    response = (run.get("outputs") or {}).get("response")
+    present = isinstance(response, str) and bool(response.strip())
+    return {"score": int(present), "comment": "Nonempty response" if present else "Empty response"}
+```
+
+**Optional write:** upload it with the same filter:
 
 ```bash
-LS_INSIGHTS_JOB_ID="$(jq -er '.id' "$LS_TEST_DIR/insights.json")"
-lsdemo insights get "$LS_INSIGHTS_JOB_ID" --project-id "$LS_SOURCE_PROJECT_ID"
+lsdemo evaluator upload response_present.py --function response_present \
+  --name "$LS_TEST_TAG-code" --project-id "$LS_SOURCE_PROJECT_ID" --trace-filter "$LS_EVAL_FILTER"
+```
+
+Run your synthetic app twice in the source project **after** creating the rules,
+with tag `LS_TEST_TAG`: once with a helpful response, once with an empty response.
+Use your app's tracing instrumentation; the CLI does not run the app for you.
+Copy each resulting root ID and check:
+
+```bash
+LS_EVAL_RUN_ID='REPLACE_WITH_NEW_TAGGED_ROOT_ID'
+lsdemo run feedback list --run-id "$LS_EVAL_RUN_ID" --limit 20
+```
+
+Allow time for processing. Code should score nonempty/empty as `1`/`0`. Inspect the
+LLM's actual inputs and judgment if its score differs from your expectation.
+An empty feedback list is **pending/unverified**, not a pass. Do not recreate a
+rule to poll it. Thread judges and historical backfills require separate validation;
+see [online judge settings](README.md#online-judge-settings).
+
+## 8. Preview Insights; optionally run a report
+
+```bash
+insight_args=(--project-id "$LS_SOURCE_PROJECT_ID" --name "$LS_TEST_TAG"
+  --model openai --sample 5 --last-n-hours 24
+  --categories '{"Reservations":"Booking requests","Cancellations":"Canceling a booking","Complaints":"Service problems"}'
+  --attributes '{"user_satisfaction":{"type":"number","description":"Infer satisfaction from 1 to 10 using trace evidence."}}')
+lsdemo insights create "${insight_args[@]}" --dry-run
+```
+
+Expect a preview, **not sampling or model inference**. Choose a provider configured
+in your workspace and categories relevant to your traces. Requested attribute
+bounds are descriptive, not enforced. Samples may contain fewer than five runs.
+
+**Optional, billable:** remove `--dry-run` only after approval:
+
+```bash
+lsdemo insights create "${insight_args[@]}" | tee "$LS_TEST_DIR/report.json"
+LS_REPORT_ID="$(jq -er '.id' "$LS_TEST_DIR/report.json")"
+lsdemo insights get "$LS_REPORT_ID" --project-id "$LS_SOURCE_PROJECT_ID"
 lsdemo insights list --project-id "$LS_SOURCE_PROJECT_ID" --limit 20
+lsdemo insights runs "$LS_REPORT_ID" --project-id "$LS_SOURCE_PROJECT_ID" --limit 20
 ```
 
-After the report completes, inspect its evidence:
+Read evidence after success; do not repeat creation to poll. A one-off report need
+not appear as a saved dashboard card. For saved manual configurations, use the
+documented [configuration workflow](README.md#reuse-configurations-and-investigate-results).
 
-```bash
-lsdemo insights runs "$LS_INSIGHTS_JOB_ID" --project-id "$LS_SOURCE_PROJECT_ID" --limit 20
-```
+## 9. Input forms and expected failures — no writes
 
-Expect report status/results and a page of evidence. Evidence IO is preview-only;
-read the source run for full payloads. Do not repeat `create` to poll a report.
+Repeat a judge **dry-run** with the same prompt saved to `prompt.json`: compare
+inline JSON, `--prompt prompt.json`, and `--prompt @prompt.json` using the actual
+JSON from section 7. Settings/bindings should match. Do not publish preview output;
+it may contain private trace data.
 
-## 9. Local error checks (expected nonzero exits, no writes)
-
-Run individually; these failures are intentional:
+Run failures individually and expect nonzero exits with JSON diagnostics on stderr:
 
 ```bash
 lsdemo project create --name ' '
 lsdemo run feedback list --run-id "$LS_TRACE_ID" --limit 101
-lsdemo run feedback create --run-id "$LS_TRACE_ID" --key review --comment ' '
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run \
+  --variable-mapping '{"answer":"outputs.response"}'
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run --preview-run "$LS_TRACE_ID" \
+  --variable-mapping '{"answer":"output.nonexistent_field"}'
 ```
 
-Expect no success result on stdout and a JSON error on stderr. To inspect terminal
-formatting, repeat a **read** command with a final `--format pretty`:
+The missing-binding check also returns preview JSON on stdout. Invalid plural roots
+must not create a judge. To inspect readable terminal output, repeat a read with
+`--format pretty`. These checks do not establish full backend or deployment coverage.
+
+## 10. Retain results; cleanup is optional
+
+Keep resources for review. If you explicitly want to delete the **test queue only**:
 
 ```bash
-lsdemo run feedback get "$LS_FEEDBACK_ID" --format pretty
+lsdemo queue get "${LS_QUEUE_ID:?Set the test queue ID}"
+lsdemo queue delete "$LS_QUEUE_ID" --yes
 ```
 
-## 10. Optional cleanup (deletion)
-
-This deletes only the queue created in this guide; check its ID first:
-
-```bash
-printf 'Queue to delete: %s\n' "$LS_QUEUE_ID"
-lsdemo queue delete "${LS_QUEUE_ID:?Queue ID must be set}" --yes
-```
-
-Retain the dataset, empty tracing project, feedback, and optional report for team
-review, or delete those exact test resources through the UI. Do not delete the
-source tracing project. Local JSON artifacts remain in `LS_TEST_DIR`; handle them
-as trace data and remove them when no longer needed. This guide does not claim
-that a general automated cleanup command has been tested.
+Never delete the source project. The test dataset, project, feedback, evaluators,
+and report remain. Disable the test evaluators in the UI when finished; their tag
+filters remain configured until you change/remove them. Local artifacts remain in
+`LS_TEST_DIR`; handle them as private trace data.

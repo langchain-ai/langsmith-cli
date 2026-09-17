@@ -1,5 +1,25 @@
 # langsmith-cli
 
+An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com)
+projects, traces, datasets, evaluators, annotation queues, and Insights.
+
+Start with [Quick Start](#quick-start). Use the [manual testing checklist](MANUAL-TESTING.md)
+to verify workflows with synthetic data, expected results, and optional paid steps.
+
+## Workflow overview
+
+| Task | Commands |
+| --- | --- |
+| Set up a project | `project create/configure/set-default/clear-default` |
+| Curate reference data | `dataset add/configure`, `example update/update-bulk` |
+| Organize datasets | `dataset split list`, `dataset version list/get/diff/tag` |
+| Configure judges | `model list/get`, `evaluator create-llm/upload/get` |
+| Review runs | `run feedback create/get/list`, `queue create/get/configure/list/add/items/delete` |
+| Analyze traces | `insights create/list/get/runs` |
+
+The CLI configures and inspects resources; application instrumentation and local
+experiment execution remain application/SDK responsibilities.
+
 ### Client-side safety boundaries
 
 - Model selection copies an LC v1 serialized configuration, not a live link.
@@ -119,13 +139,6 @@ inference access. Existing JSON model files remain supported. No API or SDK chan
 The hidden `model preset list/get` and `--model-preset` spellings remain compatible
 with earlier scripts, including their original JSON envelope keys.
 
-See [MANUAL-TESTING.md](MANUAL-TESTING.md) for a bounded walkthrough using synthetic
-traces and disposable resources.
-
-An agent-first CLI for querying and managing [LangSmith](https://smith.langchain.com) resources.
-
-Built for AI coding agents (deepagents, Claude Code, Cursor, etc.) and developers who need fast, scriptable access to projects, traces, runs, datasets, evaluators, experiments, and threads.
-
 ## Installation
 
 ### Install script (recommended)
@@ -186,25 +199,34 @@ langsmith --workspace <workspace-id> trace list --project my-app
 
 ## Quick Start
 
+Use your installed `langsmith`, or replace it with `./bin/langsmith` after `make build`
+when testing a checkout. Use an explicit profile to avoid changing another login.
+Ambient API-key, endpoint, workspace, and project variables can override saved
+settings; the [testing guide](MANUAL-TESTING.md#1-build-and-sign-in) isolates them.
+
 ```bash
-# List tracing projects
-langsmith project list
+langsmith auth login --profile quickstart
+langsmith --profile quickstart workspace list
+# Replace WORKSPACE_ID with an ID from the list.
+langsmith --profile quickstart workspace set-default WORKSPACE_ID
 
-# List recent traces in a project
-langsmith trace list --project my-app --limit 5
-
-# Get a specific trace with full detail
-langsmith trace get <trace-id> --project my-app --full
-
-# List LLM calls with token counts
-langsmith run list --project my-app --run-type llm --include-metadata
-
-# List datasets
-langsmith dataset list
-
-# List experiments for a dataset
-langsmith experiment list --dataset my-eval-set
+# Creates an empty project and saves the CLI default.
+langsmith --profile quickstart project create --name my-app --set-default
+langsmith --profile quickstart trace list --limit 5
 ```
+
+Expect no traces until your application is instrumented and run. Configure its
+tracing credentials and `LANGSMITH_PROJECT` separately. Then inspect data:
+
+```bash
+langsmith --profile quickstart trace list --limit 5
+langsmith --profile quickstart model list
+langsmith --profile quickstart dataset list
+```
+
+Continue with [manual testing](MANUAL-TESTING.md) for dataset imports, versions,
+online judges, annotation queues, and Insights. Start with dry-runs; creating a
+judge or submitting a report is not proof of successful evaluation.
 
 ## Output Formats
 
@@ -224,7 +246,9 @@ langsmith trace list --project my-app -o traces.json
 
 Every command that operates on a project takes either `--project <name>` or
 `--project-id <session UUID>`, and `$LANGSMITH_PROJECT` supplies the name when
-neither is set. The two flags are mutually exclusive.
+neither is set. Otherwise, the selected profile's saved project is used when
+available. The two flags are mutually exclusive; see [Project selection](#project-selection)
+for default scope and precedence.
 
 ```bash
 langsmith trace list --project 'my-app'
@@ -242,7 +266,7 @@ lookup, saving a round-trip.
 
 ## Command Reference
 
-### `project` — List and delete tracing projects
+### `project` — Create, configure, select, and inspect tracing projects
 
 A tracing project (session) is a namespace that groups related traces together. This lists only tracing projects, not experiments — use `experiment list` for those.
 
@@ -824,12 +848,12 @@ the existing Go SDK; no API or SDK changes are needed.
 
 ### `insights` — Create and inspect Insights reports
 
-`insights create` creates a **report run**, not a saved Insight/dashboard card.
-To run an existing dashboard Insight, pass its saved configuration ID with
-`--config-id`. An unlinked one-off job can finish successfully without appearing
-as a new card on the Insights dashboard. Saved-configuration authoring and
-scheduling are not first-class commands in this build; those operations currently
-require the UI or the generic `api` command.
+`insights create` with flags or `--file` starts a **one-off report run**; it need not
+appear as a saved dashboard card. `--config` saves a manual configuration and
+starts its report; `--config-id` runs an existing configuration. Creation modes
+cannot be mixed. Recurring scheduling requires the UI or the generic `api` command.
+Use `get` to check completion and `runs` to inspect evidence; do not recreate a
+report to poll it. A dry-run previews configuration without sampling or inference.
 
 Attributes belong to the analysis configuration and are supported on both inline
 reports and saved-config runs. A numeric attribute's description can request a
@@ -922,7 +946,11 @@ bin/langsmith --format json insights runs JOB_ID --project-id PROJECT_ID --clust
 
 `--config-id` runs the saved configuration exactly as stored and rejects analysis overrides.
 Its dry-run shows the ID but cannot resolve the saved settings with the current SDK.
-Configuration authoring and scheduling remain in the UI.
+To save a new manual configuration and start its report, use `insights create
+--config manual-report.json`; add `--wait` to wait for completion. This is a write
+and may incur inference cost. The `--config` report-definition schema differs from
+the one-off `--file` analysis schema; see `insights create --help` and the earlier
+command reference. Recurring scheduling remains in the UI or generic `api` command.
 
 Report listing defaults to **20 reports** (previously unbounded), with a maximum page size
 of 100. The JSON list remains an array. Advance `--offset` by the number returned;
@@ -1184,12 +1212,10 @@ Example list includes `dataset_id` and `modified_at` for preparing reviewed edit
 
 ### Multimodal attachments: Go SDK limitation
 
-LangSmith supports dataset attachments, including PDFs, images, and audio, through
-the existing multipart examples API. However, the CLI's pinned Go SDK (`v0.26.2`)
-does not expose the multipart methods needed to upload local attachment files.
-This is an SDK coverage gap, not a missing platform API. Local attachment upload
-is therefore not supported by these CLI commands yet; a JSON file path does not
-upload the referenced file.
+LangSmith supports PDFs, images, and audio through the existing multipart examples
+API. These CLI commands do not yet upload local attachment files; a JSON file path
+does not upload the referenced content. Attachment support needs additional Go SDK
+integration, not a new platform API. See `go.mod` for the current SDK version.
 
 Follow-up: expose the existing multipart API in the generated Go SDK, then add
 CLI attachment upload and safe update support. For now, use the UI or documented
