@@ -104,7 +104,7 @@ Examples:
 					result["compare"] = compare
 				}
 				if err := output.OutputJSON(result, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 			return nil

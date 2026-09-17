@@ -41,6 +41,20 @@ evaluators. Concurrent edits can race idle-time changes because they preserve an
 rewrite existing `extra`. Previews are not frozen plans. Clearing default datasets,
 resetting inherited tiers, arbitrary `extra`, and end timestamps are not exposed.
 
+### Project selection
+
+Set `LANGSMITH_PROJECT` to use a project name for project-scoped commands in the
+current terminal. An explicit `--project` or `--project-id` overrides it; supplying
+both flags is an error. For evaluator creation and upload, an explicit `--dataset`
+selects offline evaluation and ignores the environment project. Selecting a CLI
+project does not configure tracing in an application running in another process.
+
+```bash
+export LANGSMITH_PROJECT='my-project'
+langsmith trace list --limit 5
+langsmith project configure
+```
+
 ### Agent-facing guidance
 
 Successful empty reads are not errors. Model, queue, feedback, dataset version/split,

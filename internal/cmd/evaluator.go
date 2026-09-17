@@ -183,7 +183,7 @@ func newEvaluatorListCmd() *cobra.Command {
 					})
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -212,6 +212,9 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			evaluatorFile := args[0]
+			if targetDataset == "" && targetProjectID == "" {
+				targetProject = ResolveProject(targetProject)
+			}
 
 			if err := validateEvaluatorTargetFlags(targetDataset, targetProject, targetProjectID); err != nil {
 				return err
@@ -224,14 +227,14 @@ func newEvaluatorUploadCmd() *cobra.Command {
 			if targetDataset != "" {
 				ds, err := resolveDataset(ctx, c, targetDataset)
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 				datasetID = ds.ID
 			}
 			if targetProject != "" || targetProjectID != "" {
 				sid, err := resolveSessionID(ctx, c, targetProject, targetProjectID, "evaluator upload")
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 				projectID = sid
 			}
@@ -390,11 +393,11 @@ Examples:
 
 			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject, targetProjectID)
 			if err != nil {
-				ExitErrorf("%v", err)
+				return err
 			}
 			mapping, err := parseVariableMapping(variableMapping)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			var payload map[string]any
 			var selectedPreset map[string]any
@@ -418,7 +421,7 @@ Examples:
 				)
 			}
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			if replace {
 				for flag, key := range map[string]string{"enabled": "is_enabled", "include-extended-stats": "include_extended_stats", "sampling-rate": "sampling_rate"} {
@@ -451,7 +454,7 @@ Examples:
 				if existing != nil {
 					return err
 				}
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			var result map[string]any

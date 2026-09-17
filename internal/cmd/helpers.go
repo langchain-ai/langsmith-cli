@@ -30,7 +30,7 @@ func resolveSessionID(ctx context.Context, c *client.Client, projectName, projec
 	}
 	name := ResolveProject(projectName)
 	if name == "" {
-		return "", fmt.Errorf("--project or --project-id is required for %s (or set LANGSMITH_PROJECT)", cmdName)
+		return "", commandDiagnostic{"project_required", "A project is required for " + cmdName, "Pass --project NAME or --project-id UUID, or set LANGSMITH_PROJECT for this terminal."}
 	}
 	return c.ResolveSessionID(ctx, name)
 }
@@ -119,7 +119,7 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
-		ExitErrorf("%v", err)
+		ExitCommandError(err)
 	}
 	if !useV2 {
 		ExitErrorf("%s is only available on LangSmith Cloud or self-hosted >= 0.16 (SmithDB); this deployment does not support it", feature)

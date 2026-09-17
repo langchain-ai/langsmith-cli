@@ -10,6 +10,43 @@ import (
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
+func TestEvaluatorTargetEnvironment(t *testing.T) {
+	for _, dataset := range []string{"", importDatasetID} {
+		t.Run(dataset, func(t *testing.T) {
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if dataset != "" {
+					if r.URL.Path != "/api/v1/datasets/"+dataset {
+						t.Errorf("unexpected project lookup for offline target: %s", r.URL.Path)
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"id": dataset})
+					return
+				}
+				if r.URL.Path != "/api/v1/sessions" || r.URL.Query().Get("name") != "env-project" {
+					t.Errorf("incorrect project lookup: %s", r.URL)
+				}
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"id": deleteTestProjectID, "name": "env-project"}})
+			})
+			defer setupTestEnv(t, ts.URL)()
+			t.Setenv("LANGSMITH_PROJECT", "env-project")
+			c, err := getClient()
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := resolveLLMEvaluatorTarget(t.Context(), c, dataset, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if dataset != "" && (target.datasetID != dataset || target.projectID != "") {
+				t.Fatalf("offline target inherited project: %+v", target)
+			}
+			if dataset == "" && target.projectID != deleteTestProjectID {
+				t.Fatalf("environment project not resolved: %+v", target)
+			}
+		})
+	}
+}
+
 // testRule is a minimal JSON-serializable struct used by mock server handlers
 // to produce responses that the SDK can decode into langsmith.Evaluator.
 type testRule struct {

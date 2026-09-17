@@ -137,7 +137,7 @@ Examples:
 			if projectID != "" {
 				id, err := validateProjectID(projectID)
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 				params.SessionID = langsmith.F(id)
 			} else {
@@ -201,7 +201,7 @@ Examples:
 				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectLabel))
 			} else {
 				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -240,7 +240,7 @@ Examples:
 				ExitErrorf("getting issue: %v", err)
 			}
 			if err := output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -291,7 +291,7 @@ Examples:
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "project issues events")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			// Name the board by whichever identifier the caller gave.
 			projectLabel := ResolveProject(project)
@@ -353,7 +353,7 @@ Examples:
 					data = append(data, m)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -466,7 +466,7 @@ Examples:
 				ExitErrorf("updating issue: %v", err)
 			}
 			if err := output.OutputJSON(issueToMap(issue), outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -812,7 +812,7 @@ Examples:
 				ExitErrorf("proposing example: %v", err)
 			}
 			if err := output.OutputJSON(result, outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

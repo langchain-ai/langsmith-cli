@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
+
+	"github.com/langchain-ai/langsmith-cli/internal/cmd"
 )
 
 func TestCLIErrorProcessHelper(t *testing.T) {
@@ -15,6 +18,11 @@ func TestCLIErrorProcessHelper(t *testing.T) {
 	for i, arg := range os.Args {
 		if arg == "--" {
 			os.Args = append([]string{"langsmith"}, os.Args[i+1:]...)
+			if len(os.Args) > 1 && os.Args[1] == "legacy-error" {
+				root := cmd.NewRootCmd("test", "test")
+				_ = root.PersistentFlags().Set("format", "json")
+				cmd.ExitError("secret-value")
+			}
 			main()
 			return
 		}
@@ -28,6 +36,12 @@ func TestCLIErrorStreams(t *testing.T) {
 		args []string
 		code string
 	}{
+		{"legacy error", []string{"legacy-error"}, "command_failed"},
+		{"missing project name", []string{"project", "create", "--format=json"}, "missing_required_flag"},
+		{"missing dataset name", []string{"dataset", "create", "--format=json"}, "missing_required_flag"},
+		{"missing example ID", []string{"example", "update", "--format=json"}, "invalid_arguments"},
+		{"invalid flag value", []string{"--format=json", "trace", "list", "--limit=secret-value"}, "invalid_flag"},
+		{"conflicting project flags", []string{"--format=json", "trace", "list", "--project=a", "--project-id=b"}, "invalid_flag_combination"},
 		{"unknown before flags", []string{"does-not-exist", "--format=json"}, "command_failed"},
 		{"unknown after flags", []string{"--format", "json", "does-not-exist"}, "command_failed"},
 	} {
@@ -43,6 +57,9 @@ func TestCLIErrorStreams(t *testing.T) {
 			}
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout contains diagnostic: %s", stdout.String())
+			}
+			if strings.Contains(stderr.String(), "secret-value") {
+				t.Fatal("argument or upstream error value leaked")
 			}
 			var result commandErrorEnvelope
 			if err := json.Unmarshal(stderr.Bytes(), &result); err != nil {

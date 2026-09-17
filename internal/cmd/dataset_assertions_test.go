@@ -50,7 +50,7 @@ func TestDatasetAssertionsPreview(t *testing.T) {
 			if s.ReferenceMode != "corrected" || len(s.Examples) != 1 {
 				t.Fatalf("invalid selection: %+v", s)
 			}
-			want := map[string]any{"assertions": []datasetAssertion{{Key: "must_confirm", Comment: "Ask before canceling."}}}
+			want := map[string]any{"assertions": []any{map[string]any{"key": "must_confirm", "comment": "Ask before canceling."}}}
 			if !equalTraceJSON(s.Examples[0].Outputs, want) || s.Examples[0].Inputs["query"] != "Cancel?" {
 				t.Fatal("incorrect input/reference payload")
 			}

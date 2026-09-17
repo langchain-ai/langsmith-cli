@@ -140,7 +140,7 @@ Examples:
 
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace messages")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			// Build base request body for POST /v2/traces/messages
@@ -189,7 +189,7 @@ Examples:
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 
 				traces, _ := result["items"].([]any)
@@ -219,7 +219,7 @@ Examples:
 					printTraceMessages(combined)
 				} else {
 					if err := output.OutputJSON(combined, outputFile); err != nil {
-						ExitErrorf("%v", err)
+						ExitCommandError(err)
 
 						// Paginate: fetch up to ff.Limit traces using pages of <= maxPageSize
 					}
@@ -240,7 +240,7 @@ Examples:
 
 				var result map[string]any
 				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 
 				traces, _ := result["items"].([]any)
@@ -278,7 +278,7 @@ Examples:
 				printTraceMessages(combined)
 			} else {
 				if err := output.OutputJSON(combined, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},

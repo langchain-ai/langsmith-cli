@@ -130,7 +130,7 @@ func newProjectListCmd() *cobra.Command {
 					data = append(data, entry)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},

@@ -64,7 +64,7 @@ func newExampleListCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			pageSize := int64(20)
@@ -73,7 +73,7 @@ func newExampleListCmd() *cobra.Command {
 			}
 			params := exampleListParams(ds.ID, pageSize, offset, "")
 			if err := filters.apply(&params); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			var examples []langsmith.Example
 			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
@@ -124,7 +124,7 @@ func newExampleListCmd() *cobra.Command {
 					data = append(data, entry)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -205,7 +205,7 @@ func newExampleCreateCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := exampleCreateParams(ds.ID, parsedInputs, parsedOutputs, parsedMetadata, split)
@@ -290,7 +290,7 @@ func newExampleDeleteCmd() *cobra.Command {
 				"status": "deleted",
 				"id":     exampleID,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

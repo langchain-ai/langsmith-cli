@@ -119,7 +119,7 @@ func newDatasetListCmd() *cobra.Command {
 					})
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -145,7 +145,7 @@ func newDatasetGetCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			data := map[string]any{
@@ -163,11 +163,11 @@ func newDatasetGetCmd() *cobra.Command {
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			} else {
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -238,7 +238,7 @@ func newDatasetDeleteCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			if !yes {
@@ -260,7 +260,7 @@ func newDatasetDeleteCmd() *cobra.Command {
 				"id":     ds.ID,
 				"name":   ds.Name,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -292,7 +292,7 @@ func newDatasetExportCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, nameOrID)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			exportPageSize := int64(20)
@@ -305,7 +305,7 @@ func newDatasetExportCmd() *cobra.Command {
 				Limit:   langsmith.F(exportPageSize),
 			}
 			if err := filters.apply(&params); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
 			for pager.Next() {
@@ -337,7 +337,7 @@ func newDatasetExportCmd() *cobra.Command {
 				"count":   len(data),
 				"path":    outputFile,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -432,7 +432,7 @@ func newDatasetUploadCmd() *cobra.Command {
 				"dataset_name":  name,
 				"example_count": len(items),
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

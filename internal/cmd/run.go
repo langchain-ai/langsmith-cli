@@ -63,7 +63,7 @@ func newRunListCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "run list")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
@@ -72,7 +72,7 @@ func newRunListCmd() *cobra.Command {
 			}
 			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			fmt_ := GetFormat()
@@ -83,7 +83,7 @@ func newRunListCmd() *cobra.Command {
 			} else {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -129,7 +129,7 @@ func newRunGetCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "run get")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := langsmith.RunQueryParams{
@@ -153,11 +153,11 @@ func newRunGetCmd() *cobra.Command {
 
 			if fmt_ == "pretty" {
 				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			} else {
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -205,7 +205,7 @@ func newRunExportCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "run export")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := BuildRunQueryParams(&ff, false, ff.Limit)
@@ -214,12 +214,12 @@ func newRunExportCmd() *cobra.Command {
 			}
 			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 			if err := output.OutputJSONL(data, outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

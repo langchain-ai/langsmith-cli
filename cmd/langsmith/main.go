@@ -22,7 +22,7 @@ func main() {
 		if executed == nil || !executed.Flags().Parsed() {
 			format = errorOutputFormat(os.Args[1:], format)
 		}
-		_ = writeCommandError(os.Stderr, err, format)
+		_ = writeCommandError(os.Stderr, cmd.DiagnoseCommandError(executed, err), format)
 		os.Exit(1)
 	}
 }

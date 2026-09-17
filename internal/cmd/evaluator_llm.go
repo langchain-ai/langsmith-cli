@@ -102,16 +102,20 @@ func validateEvaluatorTargetFlags(dataset, project, projectID string) error {
 		}
 	}
 	if set == 0 {
-		return fmt.Errorf("must specify --dataset, --project, or --project-id (global evaluators not supported)")
+		return commandDiagnostic{"evaluator_target_required", "must specify an evaluator target", "Pass --dataset for offline evaluation, or --project/--project-id or LANGSMITH_PROJECT for online evaluation."}
 	}
 	if set > 1 {
-		return fmt.Errorf("specify only one of --dataset, --project, or --project-id")
+		return commandDiagnostic{"conflicting_evaluator_targets", "specify only one of --dataset, --project, or --project-id", "Choose a dataset for offline evaluation or a project for online evaluation."}
 	}
 	return nil
 }
 
 // Finds the dataset or project this evaluator should run on.
 func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, project, projectID string) (llmEvaluatorTarget, error) {
+	// An explicit offline target must not inherit an ambient online project.
+	if dataset == "" && projectID == "" {
+		project = ResolveProject(project)
+	}
 	if err := validateEvaluatorTargetFlags(dataset, project, projectID); err != nil {
 		return llmEvaluatorTarget{}, err
 	}
