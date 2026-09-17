@@ -9,6 +9,7 @@ import (
 	"time"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/spf13/cobra"
 )
 
 func TestProductFeedbackCommandMetadata(t *testing.T) {
@@ -122,6 +123,53 @@ func TestProductFeedbackUnavailable(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "unavailable on this LangSmith deployment") {
 		t.Fatalf("unavailable error = %v", err)
+	}
+}
+
+func TestFeedbackHint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	oldFormat := flagOutputFormat
+	t.Cleanup(func() { flagOutputFormat = oldFormat })
+	root := &cobra.Command{Use: "langsmith"}
+	feedback := &cobra.Command{Use: "feedback"}
+	auth := &cobra.Command{Use: "auth"}
+	login := &cobra.Command{Use: "login"}
+	project := &cobra.Command{Use: "project"}
+	root.AddCommand(feedback, auth, project)
+	auth.AddCommand(login)
+
+	var output bytes.Buffer
+	for _, test := range []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{name: "root", cmd: root},
+		{name: "feedback", cmd: feedback},
+		{name: "auth", cmd: auth},
+		{name: "auth login", cmd: login},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output.Reset()
+			test.cmd.SetErr(&output)
+			showFeedbackHint(test.cmd)
+			if output.Len() != 0 {
+				t.Fatalf("hint = %q", output.String())
+			}
+		})
+	}
+
+	flagOutputFormat = "json"
+	project.SetErr(&output)
+	showFeedbackHint(project)
+	if output.Len() != 0 {
+		t.Fatalf("JSON hint = %q", output.String())
+	}
+
+	flagOutputFormat = "pretty"
+	showFeedbackHint(project)
+	showFeedbackHint(project)
+	if got := strings.Count(output.String(), "langsmith feedback"); got != 1 {
+		t.Fatalf("feedback hints = %d, output = %q", got, output.String())
 	}
 }
 
