@@ -22,7 +22,7 @@ func newDatasetAddCmd() *cobra.Command {
 	var dryRun bool
 	var selection, runID, threadID string
 	preview.Flags().BoolVar(&dryRun, "dry-run", false, "Read-only preview; use --output to freeze a selection")
-	preview.Flags().StringVar(&selection, "selection", "", "Apply a frozen selection from a prior dry run")
+	preview.Flags().StringVar(&selection, "selection", "", "Apply a frozen dry-run selection: inline JSON, file.json, or @file.json")
 	preview.Flags().StringVar(&runID, "run-id", "", "Individual run UUID (alias of --run-ids for one run)")
 	preview.Flags().StringVar(&threadID, "thread-id", "", "Import the thread's root turns as separate examples")
 	preview.RunE = func(cmd *cobra.Command, args []string) error {

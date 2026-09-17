@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -160,12 +159,7 @@ func writeTraceSelection(s traceSelection, path string) error {
 
 func readTraceSelection(path string) (traceSelection, error) {
 	var s traceSelection
-	f, err := os.Open(path)
-	if err != nil {
-		return s, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 32*1024*1024+1))
+	b, err := readJSONInput(path, 32*1024*1024)
 	if err != nil {
 		return s, err
 	}
@@ -330,7 +324,7 @@ func newDatasetSelectionPreviewCmd() *cobra.Command {
 	cmd.Flags().StringVar(&runIDs, "run-ids", "", "Comma-separated explicit run UUIDs, including child steps")
 	cmd.MarkFlagsMutuallyExclusive("trace-id", "run-ids")
 	cmd.Flags().StringVar(&mode, "reference-mode", "inputs-only", "inputs-only or observed (explicitly trust the selected outputs)")
-	cmd.Flags().StringVar(&assertionsFile, "assertions", "", "JSON array of key/comment criteria for one trace/run; replaces observed reference output, does not evaluate or submit review")
+	cmd.Flags().StringVar(&assertionsFile, "assertions", "", "Key/comment criteria array: inline JSON, file.json, or @file.json; one trace/run only; replaces reference output, does not evaluate")
 	cmd.Flags().StringVar(&inputPath, "inputs-pointer", "", "JSON pointer within run inputs; default is the whole object")
 	cmd.Flags().StringVar(&outputPath, "outputs-pointer", "", "JSON pointer within run outputs; default is the whole object")
 	cmd.Flags().StringVarP(&path, "output", "o", "", "Save frozen JSON selection to a new private file")
@@ -445,7 +439,7 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 				results = append(results, row)
 				counts[row["status"].(string)]++
 			}
-			if err := output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "dataset_id": ds.ID, "results": results, "failed": failed, "counts": counts, "total": len(results), "next_steps": []string{"Inspect per-item results and reference outputs before using this dataset for evaluation. Observed agent outputs are not automatically correct gold answers.", "For failed or uncertain items, replay the same reviewed selection to reconcile deterministic example IDs; do not regenerate discovery merely to retry."}}, ""); err != nil {
+			if err := output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "dataset_id": ds.ID, "results": results, "failed": failed, "counts": counts, "total": len(results), "message": "Import processed. Review per-item results and reference answers before evaluation.", "warnings": []string{"Agent outputs are not verified reference answers. Retry uncertain items with the same reviewed selection, not new discovery."}, "next_steps": []string{readNextStep("example", "list", "--dataset", ds.ID)}}, ""); err != nil {
 				return err
 			}
 			if failed > 0 {
@@ -455,7 +449,7 @@ func newDatasetSelectionApplyCmd() *cobra.Command {
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)
-	cmd.Flags().StringVar(&file, "selection", "", "Reviewed JSON file from dataset add --dry-run")
+	cmd.Flags().StringVar(&file, "selection", "", "Reviewed dataset add dry-run payload: inline JSON, file.json, or @file.json")
 	_ = cmd.MarkFlagRequired("selection")
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Destination dataset name or UUID; must match selection (required)")
 	_ = cmd.MarkFlagRequired("dataset")

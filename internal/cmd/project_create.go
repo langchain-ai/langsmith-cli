@@ -13,6 +13,7 @@ import (
 
 func newProjectCreateCmd() *cobra.Command {
 	var name, description string
+	var setDefault bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a tracing project in the selected workspace",
@@ -54,6 +55,26 @@ Examples:
 			if project.TenantID != "" {
 				workspaceID = &project.TenantID
 			}
+			if setDefault {
+				workspace := ""
+				if workspaceID != nil {
+					workspace = *workspaceID
+				}
+				profile, saveErr := saveProjectDefault(project.ID, project.Name, workspace)
+				if GetFormat() == "pretty" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Created tracing project %q\nID: %s\nWorkspace: %s\nDefault saved: %t\n", project.Name, project.ID, workspace, saveErr == nil)
+					for _, warning := range projectDefaultWarnings() {
+						fmt.Fprintln(cmd.OutOrStdout(), warning)
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), "Application tracing still requires its own project configuration.")
+				} else if err := output.OutputJSON(map[string]any{"status": "created", "id": project.ID, "name": project.Name, "workspace_id": workspaceID, "profile": profile, "default_saved": saveErr == nil, "warnings": projectDefaultWarnings()}, ""); err != nil {
+					return err
+				}
+				if saveErr != nil {
+					return commandDiagnostic{"project_default_save_failed", "Project created, but its default selection could not be saved.", "Do not repeat project create. Use the returned project ID with project set-default after checking profile, workspace and config-file permissions."}
+				}
+				return nil
+			}
 			if GetFormat() == "pretty" {
 				workspace := "unknown"
 				if workspaceID != nil {
@@ -67,12 +88,14 @@ Examples:
 				"id":           project.ID,
 				"name":         project.Name,
 				"workspace_id": workspaceID,
-				"next_steps":   []string{"Configure tracing credentials and LANGSMITH_PROJECT in your application, then run it. Creating a project does not instrument the application or create evaluators.", "Verify ingestion with trace list --project-id using the returned id in the same workspace."},
+				"message":      "Project created. Configure application tracing separately, then run your application.",
+				"next_steps":   []string{readNextStep("trace", "list", "--project-id", project.ID, "--limit", "5")},
 			}, "")
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Name of the new tracing project (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description of the tracing project")
+	cmd.Flags().BoolVar(&setDefault, "set-default", false, "Save the created project as this profile's default; application tracing is configured separately")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }

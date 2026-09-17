@@ -143,9 +143,15 @@ Examples:
 			} else {
 				projectLabel = ResolveProject(project)
 				if projectLabel == "" {
-					ExitError("--project or --project-id is required (or set LANGSMITH_PROJECT)")
+					id, err := resolveSessionID(ctx, c, project, projectID, "project issues list")
+					if err != nil {
+						ExitCommandError(err)
+					}
+					params.SessionID = langsmith.F(id)
+					projectLabel = id
+				} else {
+					params.SessionName = langsmith.F(projectLabel)
 				}
-				params.SessionName = langsmith.F(projectLabel)
 			}
 			// Validate both filters before sending: an unknown --status used to
 			// cost a round-trip and return a server 400, and an unknown

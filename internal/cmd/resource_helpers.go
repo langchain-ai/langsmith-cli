@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+
 	"github.com/google/uuid"
-	"os"
-	"strings"
 )
 
 func sameResourceID(a, b string) bool {
@@ -30,13 +29,9 @@ func resourceUUID(value string) error {
 }
 
 func resourceObject(value string) (map[string]interface{}, error) {
-	data := []byte(value)
-	if strings.HasPrefix(value, "@") {
-		var err error
-		data, err = os.ReadFile(value[1:])
-		if err != nil {
-			return nil, err
-		}
+	data, err := readJSONInput(value, 8*1024*1024)
+	if err != nil {
+		return nil, commandDiagnostic{"invalid_json_object", "expected a JSON object or readable file", "Provide inline JSON, a file path, or @file; maximum size is 8 MiB."}
 	}
 	var obj map[string]interface{}
 	if err := json.Unmarshal(data, &obj); err != nil || obj == nil {

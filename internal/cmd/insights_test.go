@@ -241,7 +241,7 @@ func TestLoadInsightConfigFileRejectsUserContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := loadInsightConfigFile(path)
-	if err == nil || !strings.Contains(err.Error(), `unknown field "user_context"`) {
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("expected user_context to be rejected in manual mode, got %v", err)
 	}
 }

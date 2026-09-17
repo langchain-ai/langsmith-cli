@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -87,12 +86,7 @@ func newQueueAddCmd() *cobra.Command {
 			}
 			plan := queueAddPlan{Version: 1, APIURL: c.APIURL(), WorkspaceID: GetWorkspaceID(), ProjectID: pid, QueueID: qid, Items: []queueAddItem{}}
 			if planFile != "" {
-				f, err := os.Open(planFile)
-				if err != nil {
-					return err
-				}
-				b, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-				f.Close()
+				b, err := readJSONInput(planFile, 1<<20)
 				if err != nil {
 					return err
 				}
@@ -197,7 +191,7 @@ func newQueueAddCmd() *cobra.Command {
 				}
 				results = append(results, row)
 			}
-			if err := output.OutputJSON(map[string]any{"queue_id": qid, "project_id": pid, "results": results, "failed": failed, "atomic": false, "unverified": failed, "next_steps": []string{"Inspect queue items and the per-item results. Submitted means the response matched the requested item, not that it was reviewed or independently read back. The legacy failed count includes uncertain outcomes, not proven absence of writes.", "Read the queue before retrying unverified items; writes may already have applied. Do not blindly repeat the batch."}}, ""); err != nil {
+			if err := output.OutputJSON(map[string]any{"queue_id": qid, "project_id": pid, "results": results, "failed": failed, "atomic": false, "unverified": failed, "message": "Queue batch processed. Submitted items are acknowledged, not reviewed or read back.", "warnings": []string{"Failed includes uncertain writes. Read the queue before retrying; some writes may already have applied."}, "next_steps": []string{readNextStep("queue", "items", qid)}}, ""); err != nil {
 				return err
 			}
 			if failed > 0 {
@@ -215,7 +209,7 @@ func newQueueAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&filter, "filter", "", "LangSmith filter DSL selecting root runs")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Maximum filter matches; never silently truncate")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview without adding queue items")
-	cmd.Flags().StringVar(&planFile, "plan", "", "Apply frozen plan file")
+	cmd.Flags().StringVar(&planFile, "plan", "", "Apply a frozen plan: inline JSON, file.json, or @file.json")
 	cmd.Flags().StringVar(&out, "output", "", "Save dry-run plan to a new file")
 	return cmd
 }

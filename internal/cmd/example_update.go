@@ -61,7 +61,8 @@ func newExampleUpdateCmd() *cobra.Command {
 			return datasetWriteError()
 		}
 		return output.OutputJSON(map[string]any{"status": "updated", "verification": "acknowledged_not_read_back", "workspace_id": resultWorkspaceID(), "example_id": args[0], "result": result,
-			"next_steps": []string{"Read the example with example get to inspect its inputs, reference outputs, metadata, and split memberships. Existing experiment results were not rerun."}}, "")
+			"message":    "Example update acknowledged. Existing experiments were not rerun.",
+			"next_steps": []string{readNextStep("api", "examples/"+args[0])}}, "")
 	}}
 	cmd.Flags().StringVar(&inputs, "inputs", "", "Replacement inputs JSON object or @file")
 	cmd.Flags().StringVar(&outputs, "outputs", "", "Replacement reference outputs JSON object or @file")

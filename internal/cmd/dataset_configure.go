@@ -66,10 +66,10 @@ func newDatasetConfigureCmd() *cobra.Command {
 		if err != nil {
 			return datasetWriteError()
 		}
-		return output.OutputJSON(map[string]any{"status": "updated", "dataset_id": ds.ID, "workspace_id": resultWorkspaceID(), "result": result}, "")
+		return output.OutputJSON(map[string]any{"status": "updated", "dataset_id": ds.ID, "workspace_id": resultWorkspaceID(), "result": result, "verification": "acknowledged_not_read_back", "next_steps": []string{readNextStep("dataset", "get", ds.ID)}}, "")
 	}
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Dataset name or UUID (required)")
-	cmd.Flags().StringVar(&file, "file", "", "Configuration JSON file (required; at most 8 MiB)")
+	cmd.Flags().StringVar(&file, "file", "", "Configuration: inline JSON, file.json, or @file.json (required; at most 8 MiB)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Validate and preview without updating configuration")
 	cmd.Flags().BoolVar(&apply, "apply", false, "Apply the supplied configuration")
 	_ = cmd.MarkFlagRequired("dataset")

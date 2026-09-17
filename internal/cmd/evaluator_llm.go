@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,12 +17,17 @@ type llmEvaluatorTarget struct {
 }
 
 func loadJSONFile(path string, dest any) error {
-	data, err := os.ReadFile(path)
+	data, err := readJSONInput(path, 8*1024*1024)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", path, err)
+		return err
+	}
+	keys := json.NewDecoder(bytes.NewReader(data))
+	keys.UseNumber()
+	if err := checkSelectionJSONKeys(keys, 0); err != nil {
+		return fmt.Errorf("invalid JSON input; duplicate keys and excessive nesting are not supported")
 	}
 	if err := json.Unmarshal(data, dest); err != nil {
-		return fmt.Errorf("parsing JSON in %s: %w", path, err)
+		return fmt.Errorf("invalid JSON input; check syntax and value types")
 	}
 	return nil
 }
@@ -80,16 +86,18 @@ func parseVariableMapping(raw string) (map[string]string, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	if strings.HasPrefix(raw, "@") {
-		var mapping map[string]string
-		if err := loadJSONFile(raw[1:], &mapping); err != nil {
-			return nil, err
-		}
-		return mapping, nil
-	}
 	var mapping map[string]string
-	if err := json.Unmarshal([]byte(raw), &mapping); err != nil {
+	if err := loadJSONFile(raw, &mapping); err != nil {
 		return nil, fmt.Errorf("parsing --variable-mapping: %w", err)
+	}
+	for key, path := range mapping {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(path) == "" || strings.TrimSpace(path) != path || strings.TrimSpace(key) != key {
+			return nil, commandDiagnostic{"invalid_variable_mapping", "Variable names and mapping paths must be nonempty and have no surrounding whitespace.", "Use paths such as input.message and output.response."}
+		}
+		root := strings.FieldsFunc(path, func(r rune) bool { return r == '.' || r == '[' })
+		if len(root) > 0 && (root[0] == "inputs" || root[0] == "outputs") {
+			return nil, commandDiagnostic{"invalid_variable_mapping", "Judge mappings use singular input and output roots, not inputs or outputs.", `Use --variable-mapping '{"question":"input.message","answer":"output.response"}'. Verify bindings with --dry-run --preview-run RUN_ID.`}
+		}
 	}
 	return mapping, nil
 }
@@ -115,6 +123,13 @@ func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, p
 	// An explicit offline target must not inherit an ambient online project.
 	if dataset == "" && projectID == "" {
 		project = ResolveProject(project)
+		if project == "" {
+			var err error
+			projectID, err = resolveSavedProject(ctx, c)
+			if err != nil {
+				return llmEvaluatorTarget{}, err
+			}
+		}
 	}
 	if err := validateEvaluatorTargetFlags(dataset, project, projectID); err != nil {
 		return llmEvaluatorTarget{}, err
@@ -189,11 +204,11 @@ func buildLLMEvaluatorPayloadWithModel(name string, target llmEvaluatorTarget, s
 		if promptPath == "" || schemaPath == "" {
 			return nil, fmt.Errorf("--prompt and --schema are required unless --hub-ref is set")
 		}
-		data, err := os.ReadFile(promptPath)
+		data, err := readJSONInput(promptPath, 8*1024*1024)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", promptPath, err)
+			return nil, err
 		}
-		messages, err := loadPromptMessagesFromJSON(promptPath, data)
+		messages, err := loadPromptMessagesFromJSON("--prompt", data)
 		if err != nil {
 			return nil, err
 		}

@@ -163,7 +163,7 @@ terminal status; waiting can take up to 30 minutes.`,
 	}
 
 	addProjectFlags(cmd, &opts.project, &opts.projectID)
-	cmd.Flags().StringVar(&opts.configFile, "config", "", `Report definition JSON file (use "-" for stdin)`)
+	cmd.Flags().StringVar(&opts.configFile, "config", "", `Report definition: inline JSON, file.json, @file.json, or "-" for stdin`)
 	cmd.Flags().BoolVar(&opts.wait, "wait", false, "Wait for the report to succeed or fail")
 	cmd.Flags().StringVarP(&opts.outputFile, "output", "o", "", "Write JSON output to a file")
 	_ = cmd.MarkFlagRequired("config")
@@ -181,25 +181,27 @@ func loadInsightConfigFile(path string) (insightConfigFile, error) {
 	if path == "-" {
 		reader = os.Stdin
 	} else {
-		file, err := os.Open(path)
+		data, err := readJSONInput(path, 1024*1024)
 		if err != nil {
-			return config, fmt.Errorf("opening --config file %q: %w", path, err)
+			return config, err
 		}
-		defer file.Close()
-		reader = file
+		reader = strings.NewReader(string(data))
 	}
 
 	decoder := json.NewDecoder(reader)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config); err != nil {
-		return config, fmt.Errorf("parsing --config file %q: %w", path, err)
+		if strings.HasPrefix(err.Error(), "json: unknown field") {
+			return config, fmt.Errorf("--config contains an unknown field; check the report definition schema")
+		}
+		return config, fmt.Errorf("invalid --config JSON; check syntax, field names and types")
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return config, fmt.Errorf("parsing --config file %q: multiple JSON values", path)
+			return config, fmt.Errorf("--config must contain exactly one JSON value")
 		}
-		return config, fmt.Errorf("parsing --config file %q: %w", path, err)
+		return config, fmt.Errorf("invalid trailing data in --config JSON")
 	}
 	return config, nil
 }

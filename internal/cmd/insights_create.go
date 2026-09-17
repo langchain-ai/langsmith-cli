@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -114,7 +113,7 @@ func insightsCreateParams(o insightsCreateOptions) (langsmith.SessionInsightNewP
 	}
 	if o.userContext != "" {
 		var context map[string]string
-		if err := json.Unmarshal([]byte(o.userContext), &context); err != nil {
+		if err := readInsightsJSON(o.userContext, &context); err != nil {
 			return fail("--user-context must be a JSON object of question-to-answer strings")
 		}
 		hasAnswer := false
@@ -262,16 +261,33 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 			if err != nil {
 				return commandDiagnostic{"insights_creation_unverified", "creating Insights job: no confirmed job response", "Check insights list for this project before retrying; the paid job may already exist. Verify workspace permissions and model configuration. No automatic creation retry was performed."}
 			}
+			check := readNextStep("insights", "get", job.ID, "--project-id", id)
+			evidence := readNextStep("insights", "runs", job.ID, "--project-id", id)
+			message := "Report submitted. Check status before reading results."
+			switch string(job.Status) {
+			case "queued", "pending":
+				message = "Report queued. Results are not ready yet."
+			case "running":
+				message = "Report running. Results are not ready yet."
+			case "success":
+				message = "Report complete. Results are ready."
+			case "error", "failed":
+				message = "Report failed. Inspect the report before retrying."
+			}
+			if GetFormat() == "pretty" && outputFile == "" {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n\nName: %s\nReport ID: %s\nProject ID: %s\nStatus: %s\n\nCheck report:\n  %s\n\nAfter completion, inspect evidence:\n  %s\n", message, job.Name, job.ID, id, job.Status, check, evidence)
+				return err
+			}
 			return output.OutputJSON(map[string]any{
-				"message":    "The service returned an Insights job. Its status, not successful submission alone, determines whether results are ready.",
-				"next_steps": []string{"Use insights get with the returned id and --project-id in the same workspace to check status. Do not create another report merely because this one is pending.", "After successful completion, use insights runs with the report id and --project-id to inspect evidence. Empty or missing results are not evidence of a healthy agent."},
+				"message":    message,
+				"next_steps": []string{check},
 				"id":         job.ID, "name": job.Name, "status": job.Status,
 				"error": nilStr(job.Error), "project_id": id, "workspace_id": nilStr(GetWorkspaceID()),
 			}, outputFile)
 		},
 	}
 	addProjectFlags(cmd, &project, &projectID)
-	cmd.Flags().StringVar(&configFile, "config", "", "Save a manual report configuration from JSON and start it; use - for stdin")
+	cmd.Flags().StringVar(&configFile, "config", "", "Save and start a manual report: inline JSON, file.json, @file.json, or - for stdin")
 	cmd.Flags().BoolVar(&wait, "wait", false, "With --config, wait for the report to succeed or fail")
 	cmd.Flags().StringVar(&options.name, "name", "", "Optional report name")
 	cmd.Flags().StringVar(&options.model, "model", "", "Workspace provider: openai or anthropic; prompts only in interactive pretty mode")
@@ -281,10 +297,10 @@ Use 'langsmith insights get <id> --project-id <project-id>' to inspect the repor
 	cmd.Flags().StringVar(&options.end, "end-time", "", "End timestamp in RFC3339 format; requires --start-time")
 	cmd.Flags().StringVar(&options.filter, "filter", "", "LangSmith run filter DSL; defaults to root runs on the service")
 	cmd.Flags().StringVar(&options.summaryPrompt, "summary-prompt", "", "Per-run summary template with trace variables; omitted uses service default")
-	cmd.Flags().StringVar(&options.userContext, "user-context", "", "JSON object mapping business questions to answers")
-	cmd.Flags().StringVarP(&file, "file", "f", "", "Analysis JSON file; cannot combine with analysis flags or --config-id")
-	cmd.Flags().StringVar(&categoriesFile, "categories", "", "JSON file mapping category names to descriptions (1-10)")
-	cmd.Flags().StringVar(&attributesFile, "attributes", "", "JSON file defining named string/number/boolean attributes")
+	cmd.Flags().StringVar(&options.userContext, "user-context", "", "Business questions and answers: inline JSON object, file.json, or @file.json")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "Analysis: inline JSON, file.json, or @file.json; cannot combine with analysis flags or --config-id")
+	cmd.Flags().StringVar(&categoriesFile, "categories", "", "Category names and descriptions (1-10): inline JSON, file.json, or @file.json")
+	cmd.Flags().StringVar(&attributesFile, "attributes", "", "Named string/number/boolean attributes: inline JSON, file.json, or @file.json")
 	cmd.Flags().StringVar(&options.configID, "config-id", "", "Run a saved configuration UUID without overrides")
 	cmd.Flags().StringVar(&options.clusterModel, "cluster-model", "", "Clustering provider or workspace model-settings UUID")
 	cmd.Flags().StringVar(&options.summaryModel, "summary-model", "", "Summarization provider or workspace model-settings UUID")

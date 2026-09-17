@@ -19,7 +19,8 @@ import (
 // either an explicit project ID or a project name. Precedence:
 //
 //	--project-id (an explicit session UUID; takes precedence) →
-//	--project / $LANGSMITH_PROJECT (a project name, looked up via the API).
+//	--project / $LANGSMITH_PROJECT (a project name, looked up via the API) →
+//	the selected profile's saved project (scoped to workspace and endpoint).
 //
 // projectID, when set, must be a well-formed UUID and is returned as-is without a
 // name lookup (saving a Sessions.List round-trip). cmdName is used only to build
@@ -30,7 +31,11 @@ func resolveSessionID(ctx context.Context, c *client.Client, projectName, projec
 	}
 	name := ResolveProject(projectName)
 	if name == "" {
-		return "", commandDiagnostic{"project_required", "A project is required for " + cmdName, "Pass --project NAME or --project-id UUID, or set LANGSMITH_PROJECT for this terminal."}
+		id, err := resolveSavedProject(ctx, c)
+		if err != nil || id != "" {
+			return id, err
+		}
+		return "", commandDiagnostic{"project_required", "A project is required for " + cmdName, "Pass --project NAME or --project-id UUID, set LANGSMITH_PROJECT, or run project set-default PROJECT."}
 	}
 	return c.ResolveSessionID(ctx, name)
 }

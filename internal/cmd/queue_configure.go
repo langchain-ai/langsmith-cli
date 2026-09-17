@@ -32,7 +32,7 @@ func invalidQueueConfiguration(message string) error {
 }
 
 func (f *queueRubricFlags) addFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.file, "rubric", "", "JSON file containing the complete rubric array; [] clears it")
+	cmd.Flags().StringVar(&f.file, "rubric", "", "Complete rubric array: inline JSON, file.json, or @file.json; [] clears it")
 	cmd.Flags().StringVar(&f.instructions, "instructions", "", "Reviewer instructions; an explicit empty string clears them")
 }
 
@@ -161,7 +161,8 @@ is not rescored, and score descriptions do not create workspace feedback schemas
 		}
 		result["status"] = "updated"
 		result["verification"] = "acknowledged_not_read_back"
-		result["next_steps"] = []string{"Use queue get with the returned queue_id to verify saved settings before retrying a write."}
+		result["message"] = "Queue update acknowledged. Read back settings before retrying."
+		result["next_steps"] = []string{readNextStep("queue", "get", id)}
 		return output.OutputJSON(result, "")
 	}
 	return cmd

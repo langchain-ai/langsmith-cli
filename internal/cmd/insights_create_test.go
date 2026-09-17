@@ -43,6 +43,27 @@ func TestInsightsProviderSelection(t *testing.T) {
 	}
 }
 
+func TestInsightsCreatePrettyGuidance(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"report-id","name":"Test report","status":"queued"}`))
+	})
+	defer setupTestEnv(t, ts.URL)()
+	setupProjectDefaultConfig(t, ts.URL)
+	cmd := newInsightsCreateCmd()
+	cmd.SetArgs([]string{"--project-id", deleteTestProjectID, "--last-n-hours", "24", "--sample", "6", "--model", "openai"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Report queued. Results are not ready yet.", "Report ID: report-id", "insights get report-id", "insights runs report-id", "--project-id " + deleteTestProjectID} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q in %s", want, out.String())
+		}
+	}
+}
+
 func TestInsightsCreateParamsValidation(t *testing.T) {
 	valid := insightsCreateOptions{model: "openai", sample: 20, lastNHours: 24}
 	for _, tc := range []struct {
@@ -126,6 +147,7 @@ func TestInsightsCreateCmdRequestAndQueuedStatus(t *testing.T) {
 	})
 	defer setupTestEnv(t, ts.URL)()
 	flagWorkspaceID = "demo-workspace"
+	flagOutputFormat = "json"
 	cmd := newInsightsCreateCmd()
 	cmd.SetArgs([]string{"--project-id", deleteTestProjectID, "--last-n-hours", "24", "--sample", "20", "--model", "openai", "--user-context", `{"Business goal":"Resolve refunds"}`})
 	var err error

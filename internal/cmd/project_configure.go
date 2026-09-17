@@ -154,7 +154,8 @@ when changing idle time. Preview is not a frozen plan or authorization check.`
 			result["thread_idle_seconds"] = actual["thread_idle_seconds"]
 			result["status"] = "updated"
 			result["verification"] = "read_back"
-			result["next_steps"] = []string{"Requested settings were read back and verified. This operation does not instrument applications, import examples, backfill evaluators, or verify existing traces' retention. Use the project ID for subsequent commands, especially after a rename."}
+			result["message"] = "Project settings updated and verified. Application tracing must still be configured separately."
+			result["next_steps"] = []string{readNextStep("project", "configure", "--project-id", id)}
 		}
 		return output.OutputJSON(result, "")
 	}

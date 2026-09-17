@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"unicode"
 
@@ -36,13 +35,8 @@ type insightsAttribute struct {
 }
 
 func readInsightsJSON(path string, target any) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("opening Insights JSON file: %w", err)
-	}
-	defer f.Close()
 	const maxSize = 1024 * 1024
-	b, err := io.ReadAll(io.LimitReader(f, maxSize+1))
+	b, err := readJSONInput(path, maxSize)
 	if err != nil {
 		return fmt.Errorf("reading Insights JSON file: %w", err)
 	}

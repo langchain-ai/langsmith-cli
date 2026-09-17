@@ -18,10 +18,19 @@ const (
 
 // Profile represents one named LangSmith CLI profile.
 type Profile struct {
-	APIKey      string `json:"api_key,omitempty"`
-	APIURL      string `json:"api_url,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	OAuth       OAuth  `json:"oauth,omitempty"`
+	ProjectDefault *ProjectDefault `json:"project_default,omitempty"`
+	APIKey         string          `json:"api_key,omitempty"`
+	APIURL         string          `json:"api_url,omitempty"`
+	WorkspaceID    string          `json:"workspace_id,omitempty"`
+	OAuth          OAuth           `json:"oauth,omitempty"`
+}
+
+// ProjectDefault is valid only in the workspace and endpoint where it was selected.
+type ProjectDefault struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	WorkspaceID string `json:"workspace_id"`
+	APIURL      string `json:"api_url"`
 }
 
 // OAuth stores OAuth tokens written by `langsmith auth login`.

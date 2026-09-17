@@ -212,6 +212,16 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			evaluatorFile := args[0]
+			if targetDataset == "" && targetProjectID == "" && ResolveProject(targetProject) == "" {
+				c, err := getClient()
+				if err != nil {
+					return err
+				}
+				targetProjectID, err = resolveSavedProject(cmd.Context(), c)
+				if err != nil {
+					return err
+				}
+			}
 			if targetDataset == "" && targetProjectID == "" {
 				targetProject = ResolveProject(targetProject)
 			}
@@ -361,6 +371,7 @@ func newEvaluatorCreateLLMCmd() *cobra.Command {
 		modelConfigPath string
 		modelPresetID   string
 		variableMapping string
+		previewRun      string
 		replace         bool
 		yes             bool
 	)
@@ -382,6 +393,11 @@ Examples:
   langsmith evaluator create-llm --name relevance --project my-app \
     --hub-ref my-org/relevance:latest --model-config model.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			groupBy, _ := cmd.Flags().GetString("group-by")
+			if previewRun != "" && (!dryRun || targetDataset != "" || groupBy == "thread_id" || hubRef != "") {
+				return commandDiagnostic{"invalid_evaluator_preview", "--preview-run requires --dry-run and a single-run project evaluator with a local prompt.", "Do not combine it with --dataset, --hub-ref, or --group-by thread_id."}
+			}
 			c, err := getClient()
 			if err != nil {
 				return err
@@ -397,7 +413,7 @@ Examples:
 			}
 			mapping, err := parseVariableMapping(variableMapping)
 			if err != nil {
-				ExitCommandError(err)
+				return err
 			}
 			var payload map[string]any
 			var selectedPreset map[string]any
@@ -421,7 +437,7 @@ Examples:
 				)
 			}
 			if err != nil {
-				ExitCommandError(err)
+				return err
 			}
 			if replace {
 				for flag, key := range map[string]string{"enabled": "is_enabled", "include-extended-stats": "include_extended_stats", "sampling-rate": "sampling_rate"} {
@@ -433,15 +449,28 @@ Examples:
 			if err := applyEvaluatorSettings(cmd, payload); err != nil {
 				return err
 			}
-			dryRun, _ := cmd.Flags().GetBool("dry-run")
 			modelResultKey := "model"
 			if cmd.Flags().Changed("model-preset") {
 				modelResultKey = "model_preset"
 			}
 			if dryRun {
-				return output.OutputJSON(map[string]any{"status": "dry_run", "workspace_id": resultWorkspaceID(), "settings": evaluatorSettingsView(payload), "replace": replace, modelResultKey: selectedPreset,
+				result := map[string]any{"status": "dry_run", "workspace_id": resultWorkspaceID(), "settings": evaluatorSettingsView(payload), "replace": replace, modelResultKey: selectedPreset,
 					"next_steps": []string{"Review the prompt, scoring schema, input mapping, filters, sampling and spend limit. Remove --dry-run only after approving the evaluator and any requested backfill."},
-					"note":       "No write or inference. Shows requested settings, not effective defaults. Existing-rule compatibility, model credentials, filters and backfill permissions are not validated. Thread rules initialize project idle time if absent."}, "")
+					"note":       "No write or inference. Shows requested settings, not effective defaults. Model credentials, filters and backfill permissions are not validated."}
+				if previewRun != "" {
+					preview, err := previewEvaluatorRun(ctx, c, target.projectID, previewRun, mapping)
+					if err != nil {
+						return err
+					}
+					result["preview"] = preview
+					if preview["bindings_validated"] != true {
+						if err := output.OutputJSON(result, ""); err != nil {
+							return err
+						}
+						return commandDiagnostic{"evaluator_bindings_missing", "Preview found missing or null judge inputs.", "Inspect preview bindings and fix the mapping or source data before enabling the evaluator."}
+					}
+				}
+				return output.OutputJSON(result, "")
 			}
 			if replace && !yes && GetFormat() == "json" {
 				return commandDiagnostic{"confirmation_required", "replacement requires explicit confirmation in JSON mode", "Review with --dry-run; pass --yes only after approving the replacement."}
@@ -479,10 +508,15 @@ Examples:
 			if target.datasetID != "" {
 				targetLabel = "dataset"
 			}
+			readArgs := []string{"evaluator", "get", "--session-id", target.projectID, "--", name}
+			if target.datasetID != "" {
+				readArgs = []string{"evaluator", "get", "--", name}
+			}
 			return output.OutputJSON(map[string]any{
 				"status": status, "type": "llm", "workspace_id": resultWorkspaceID(),
 				"verification": "acknowledged_not_read_back",
-				"next_steps":   []string{"Inspect the saved evaluator with evaluator get using its returned id. Creation does not verify inference access or produce scores by itself.", "Verify execution and actual feedback on eligible data. Respect sampling, thread idle time, and whether the rule is enabled; missing feedback is not a passing score."},
+				"message":      "Evaluator saved. Model access and scoring are not verified; check feedback after eligible runs are evaluated.",
+				"next_steps":   []string{readNextStep(readArgs...)},
 				modelResultKey: selectedPreset,
 				"settings":     evaluatorSettingsView(result),
 				"id":           result["id"], "name": name, "target": targetLabel,
@@ -498,13 +532,14 @@ Examples:
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
 	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
 	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "Prompt Hub reference; replaces --prompt and --schema (e.g. my-org/prompt:latest)")
-	cmd.Flags().StringVar(&promptPath, "prompt", "", "Prompt JSON file ([[role,content],...] or [{role,content},...]); omit if --hub-ref is set")
-	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")
-	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON file; alternative to --model-id")
+	cmd.Flags().StringVar(&promptPath, "prompt", "", "Messages ([[role,content],...] or [{role,content},...]): inline JSON, file.json, or @file.json; omit with --hub-ref")
+	cmd.Flags().StringVar(&schemaPath, "schema", "", "Structured output schema: inline JSON, file.json, or @file.json; omit with --hub-ref")
+	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model: inline JSON, file.json, or @file.json; prefer --model-id to avoid secrets in shell history")
 	cmd.Flags().StringVar(&modelPresetID, "model-id", "", "Saved configuration UUID from model list (not a model name); copies settings; inference is not verified")
 	cmd.Flags().StringVar(&modelPresetID, "model-preset", "", "Compatibility alias for --model-id")
 	_ = cmd.Flags().MarkHidden("model-preset")
-	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths (JSON or @file.json)`)
+	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths: inline JSON, file.json, or @file.json`)
+	cmd.Flags().StringVar(&previewRun, "preview-run", "", "With --dry-run, show actual mapped input/output values from a project root run (may contain private trace data)")
 	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation when replacing")
 	_ = cmd.MarkFlagRequired("name")

@@ -151,10 +151,9 @@ func newModelListCmd(resultKey string) *cobra.Command {
 				views = append(views, p.view())
 			}
 			return output.OutputJSON(emptyResultGuidance(map[string]any{"workspace_id": resultWorkspaceID(), resultKey: views}, len(views),
-				"No saved model configurations found. This does not indicate whether provider credentials are configured.",
-				"Confirm the selected profile and workspace.",
-				"Create a saved model configuration in LangSmith workspace settings, then rerun model list.",
-				"Alternatively, use evaluator create-llm --model-config model.json with credentials configured in the workspace. Do not paste provider keys into agent messages."), "")
+				"No saved model configurations found in this workspace. Provider credential availability is unknown.",
+				"Save a model configuration in LangSmith, then list it here. Keep provider keys out of agent messages.",
+				readNextStep("model", "list")), "")
 		}}
 }
 

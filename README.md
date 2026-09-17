@@ -43,6 +43,23 @@ resetting inherited tiers, arbitrary `extra`, and end timestamps are not exposed
 
 ### Project selection
 
+Save a default project for the selected profile:
+
+```bash
+langsmith project set-default my-project
+langsmith trace list --limit 5
+langsmith project create --name another-project --set-default
+langsmith project clear-default
+```
+
+Explicit project flags override `LANGSMITH_PROJECT`, which overrides the saved
+default. The saved project ID survives renames and is scoped to its workspace and
+API endpoint. Selecting another workspace or endpoint requires an explicit project
+or a new saved selection. `set-default` warns when the environment overrides it.
+The selection applies to CLI commands; configure application tracing separately.
+Creation with `--set-default` reports the created ID even when saving the local
+selection fails. In that case, retry `project set-default`, not project creation.
+
 Set `LANGSMITH_PROJECT` to use a project name for project-scoped commands in the
 current terminal. An explicit `--project` or `--project-id` overrides it; supplying
 both flags is an error. For evaluator creation and upload, an explicit `--dataset`
@@ -992,6 +1009,58 @@ is all that's needed to ship to users.
 
 ## Shared command behavior
 
+### JSON inputs for agents and terminals
+
+The workflow commands accept inline JSON, a bare file path, or `@file.json`.
+Existing file-based invocations remain valid. Quote inline JSON so the shell passes
+it as a single argument; use files for large payloads or private content. Never put
+provider API keys in inline model configuration (shell history and process listings
+can expose arguments); prefer `--model-id` with a saved workspace configuration.
+
+| Input | Supported flags |
+| --- | --- |
+| LLM judge | `--prompt`, `--schema`, `--model-config`, `--variable-mapping` |
+| Insights | `--file`, `--config`, `--categories`, `--attributes`, `--user-context` |
+| Dataset configuration | `dataset configure --file` |
+| Example edits | `example update --inputs/--outputs/--metadata`, `example update-bulk --file` |
+| Assertions | `dataset add --assertions` |
+| Annotation rubric | `queue create/configure --rubric` |
+| Frozen imports | `dataset add --selection`, `queue add --plan` |
+
+```bash
+# Equivalent prompt inputs
+langsmith evaluator create-llm --name helpfulness --model-id MODEL_ID \
+  --prompt '[["human","Grade this response: {{answer}}"]]' \
+  --schema '{"type":"object","properties":{"score":{"type":"number"}},"required":["score"]}' \
+  --variable-mapping '{"answer":"output.response"}' --dry-run
+
+# File forms remain supported for each JSON argument
+# --prompt judge-prompt.json
+# --prompt @judge-prompt.json
+
+langsmith insights create --name restaurant-review --last-n-hours 24 \
+  --sample 6 --model openai \
+  --categories '{"Reservations":"Booking requests","Cancellations":"Cancellation requests","Complaints":"Unhappy customers"}' \
+  --dry-run
+```
+
+Inline plans must contain the complete reviewed dry-run payload, not a new filter
+or a hand-written list of IDs. File and inline plans use the same context and
+selection validation and do not rerun discovery. File size limits also apply to
+inline input. `--config -` retains its existing stdin support; `-` is not a universal
+stdin convention for the other flags. Output flags remain file paths.
+
+### Responses
+
+Mutation responses retain resource IDs, status, and verification details. Follow-up
+`next_steps` use read commands with concrete IDs and selected connection context;
+they do not automatically repeat writes. Treat `queued`, `acknowledged_not_read_back`,
+and `unverified` as distinct from completion. Insights creation prints a short
+confirmation in pretty mode; use `--format json` (or `--output`) for structured data.
+Generated commands use POSIX shell quoting and preserve `LANGSMITH_CONFIG_FILE`
+when a custom profile file is selected. Environment credential overrides still
+apply; the commands never contain credentials.
+
 JSON command errors are written to stderr with a stable code, safe message, and
 recovery steps. Typed diagnostics also show recovery steps in terminal output.
 Shared resource helpers validate UUIDs and JSON objects; paginated workflows
@@ -1004,6 +1073,29 @@ bin/langsmith --format json unknown-command
 ```
 
 ## Online judge settings
+
+Judge variable mappings use **singular** `input` and `output` roots, even though a
+trace's JSON fields are named `inputs` and `outputs`. For example:
+
+```bash
+langsmith evaluator create-llm --name helpfulness --project-id PROJECT_ID \
+  --model-id MODEL_ID --prompt judge-prompt.json --schema judge-schema.json \
+  --variable-mapping '{"question":"input.message","answer":"output.response"}' \
+  --dry-run --preview-run RUN_ID
+```
+
+The preview shows the actual mapped values from that root run without executing a
+judge. Missing or null mapped values produce a nonzero exit alongside the preview;
+an empty string, zero, or false remains a real value. Preview supports simple
+input/output object paths only, not thread, reference, attachment, wildcard, indexed,
+or run-stat mappings. Those backend-supported mappings remain available for evaluator
+creation but require separate inspection. Preview output can contain private trace
+data; do not publish it without review. It does not validate prompt coverage or prove
+that future runs will contain the same fields. `--preview-run` requires `--dry-run`.
+
+The CLI rejects `inputs.*` and `outputs.*` mappings rather than silently rewriting
+them. Older evaluators with incorrect mappings need an explicit reviewed replacement;
+existing feedback is not automatically corrected.
 
 `evaluator create-llm` supports these explicit rule settings using the existing
 run-rule API (no SDK upgrade required):

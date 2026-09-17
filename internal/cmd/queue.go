@@ -80,6 +80,11 @@ func newQueueCmd() *cobra.Command {
 			return fmt.Errorf("queue creation returned no resource ID")
 		}
 		response["status"] = json.RawMessage(`"created"`)
+		next, err := json.Marshal([]string{readNextStep("queue", "get", result.ID)})
+		if err != nil {
+			return err
+		}
+		response["next_steps"] = next
 		return output.OutputJSON(response, "")
 	}}
 	create.Flags().StringVar(&name, "name", "", "Queue name (required)")

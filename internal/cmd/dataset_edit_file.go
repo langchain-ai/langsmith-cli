@@ -4,18 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"os"
 )
 
 // Bound local edit files and reject ambiguous JSON before making any requests.
 func readDatasetEditFile(path string, target any) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return datasetInputError("cannot open dataset edit file")
-	}
-	defer f.Close()
 	const maxBytes = 8 * 1024 * 1024
-	b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	b, err := readJSONInput(path, maxBytes)
 	if err != nil || len(b) > maxBytes {
 		return datasetInputError("dataset edit file must be readable and at most 8 MiB")
 	}

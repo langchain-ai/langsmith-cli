@@ -79,7 +79,7 @@ func newFeedbackCreateCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Feedback %s: %s\nRun: %s\n", status, id, runID)
 				return nil
 			}
-			return output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "run_id": runID, "feedback_id": id, "status": status, "feedback": got}, "")
+			return output.OutputJSON(map[string]any{"workspace_id": resultWorkspaceID(), "project_id": pid, "run_id": runID, "feedback_id": id, "status": status, "feedback": got, "next_steps": []string{readNextStep("run", "feedback", "list", "--run-id", runID)}}, "")
 		}
 		if cmd.Flags().Changed("id") {
 			got, getErr := c.SDK.Feedback.Get(cmd.Context(), id, langsmith.FeedbackGetParams{})

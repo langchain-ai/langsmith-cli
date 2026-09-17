@@ -131,7 +131,7 @@ func newExampleUpdateBulkCmd() *cobra.Command {
 			}
 			results = append(results, row)
 		}
-		if err := output.OutputJSON(map[string]any{"dataset_id": ds.ID, "workspace_id": resultWorkspaceID(), "results": results, "total": len(edits), "updated": len(edits) - failed, "unverified": failed, "next_steps": []string{"Inspect per-example results. Read any unverified examples before retrying; they may already be updated. This batch is not atomic and does not rerun experiments."}}, ""); err != nil {
+		if err := output.OutputJSON(map[string]any{"dataset_id": ds.ID, "workspace_id": resultWorkspaceID(), "results": results, "total": len(edits), "updated": len(edits) - failed, "unverified": failed, "message": "Example batch processed. Existing experiments were not rerun.", "warnings": []string{"Writes are not atomic. Read unverified examples before retrying; updates may already have applied."}, "next_steps": []string{readNextStep("example", "list", "--dataset", ds.ID)}}, ""); err != nil {
 			return err
 		}
 		if failed > 0 {
@@ -140,7 +140,7 @@ func newExampleUpdateBulkCmd() *cobra.Command {
 		return nil
 	}
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Dataset name or UUID (required)")
-	cmd.Flags().StringVar(&file, "file", "", "Reviewed JSON array of edits (required; at most 8 MiB)")
+	cmd.Flags().StringVar(&file, "file", "", "Reviewed edits array: inline JSON, file.json, or @file.json (required; at most 8 MiB)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Validate all edits and current dataset membership without writes")
 	cmd.Flags().BoolVar(&apply, "apply", false, "Apply this exact file after validating memberships and timestamps")
 	_ = cmd.MarkFlagRequired("dataset")
