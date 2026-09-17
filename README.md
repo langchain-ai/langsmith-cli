@@ -233,10 +233,7 @@ model costs. Define the report with a manual-mode JSON configuration:
   "summary_prompt": "Identify the request and outcome: {{run.inputs}} {{run.outputs}}",
   "last_n_hours": 168,
   "filter": "eq(is_root, true)",
-  "model": "openai",
-  "user_context": {
-    "goal": "Find common reliability problems"
-  }
+  "model": "openai"
 }
 ```
 
@@ -253,9 +250,11 @@ langsmith insights get <insight-id> --project my-app
 
 The summary prompt is a Mustache template and must reference at least one of
 `{{run.inputs}}`, `{{run.outputs}}`, `{{run.error}}`, `{{run.feedback}}`, or
-`{{all_thread_messages}}`. Use `--config -` to read the JSON from stdin. The
-configuration also supports `start_time`, `end_time`, `sample`, `hierarchy`,
-`partitions`, `attribute_schemas`, `cluster_model`, and `summary_model`.
+`{{all_thread_messages}}`. Auto mode and `user_context` are not supported;
+express the report's intent directly in `summary_prompt`. Use `--config -` to
+read the JSON from stdin. The configuration also supports `start_time`,
+`end_time`, `sample`, `hierarchy`, `partitions`, `attribute_schemas`,
+`cluster_model`, and `summary_model`.
 
 ### `dataset` — Manage evaluation datasets
 

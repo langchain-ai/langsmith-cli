@@ -87,8 +87,7 @@ func TestLoadInsightConfigFile(t *testing.T) {
 		"sample": 0.25,
 		"partitions": {"environment": "metadata.env"},
 		"attribute_schemas": {"failure": {"type": "boolean"}},
-		"hierarchy": [4, 12],
-		"user_context": {"goal": "Find reliability problems"}
+		"hierarchy": [4, 12]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -135,9 +134,6 @@ func TestLoadInsightConfigFile(t *testing.T) {
 	}
 	if got["attribute_schemas"].(map[string]any)["failure"] == nil {
 		t.Errorf("unexpected attribute_schemas: %#v", got["attribute_schemas"])
-	}
-	if got["user_context"].(map[string]any)["goal"] != "Find reliability problems" {
-		t.Errorf("unexpected user_context: %#v", got["user_context"])
 	}
 	if len(got["hierarchy"].([]any)) != 2 {
 		t.Errorf("unexpected hierarchy: %#v", got["hierarchy"])
@@ -233,6 +229,21 @@ func TestLoadInsightConfigFileRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestLoadInsightConfigFileRejectsUserContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "insights.json")
+	if err := os.WriteFile(path, []byte(`{
+		"name":"Report",
+		"summary_prompt":"{{run.inputs}}",
+		"user_context":{"goal":"Find failures"}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadInsightConfigFile(path)
+	if err == nil || !strings.Contains(err.Error(), `unknown field "user_context"`) {
+		t.Fatalf("expected user_context to be rejected in manual mode, got %v", err)
+	}
+}
+
 func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	const projectID = "0199321d-e2b4-7000-8000-000000000001"
 	const configID = "0199321d-e2b4-7000-8000-000000000002"
@@ -241,8 +252,7 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`{
 		"name":"Reliability review",
 		"summary_prompt":"Diagnose {{run.error}}",
-		"last_n_hours":24,
-		"user_context":{"goal":"Find failures"}
+		"last_n_hours":24
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}

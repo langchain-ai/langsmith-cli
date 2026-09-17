@@ -67,7 +67,6 @@ type insightConfigFile struct {
 	StartTime        *time.Time                                    `json:"start_time"`
 	SummaryModel     *string                                       `json:"summary_model"`
 	SummaryPrompt    string                                        `json:"summary_prompt"`
-	UserContext      map[string]string                             `json:"user_context"`
 }
 
 const (
@@ -87,6 +86,9 @@ The summary prompt controls how each trace is summarized before patterns are
 identified. It is a Mustache template and must reference at least one supported
 trace field, such as {{run.inputs}}, {{run.outputs}}, {{run.error}},
 {{run.feedback}}, or {{all_thread_messages}}.
+
+Auto mode and user_context are not supported. Express the report's intent
+directly in summary_prompt.
 
 Report generation runs asynchronously and may incur model costs. The workspace
 must have secrets configured for the selected models. Use --wait to poll for a
@@ -266,9 +268,6 @@ func (c insightConfigFile) toSDKParams() (langsmith.CreateRunClusteringJobReques
 	}
 	if c.StartTime != nil {
 		request.StartTime = langsmith.F(*c.StartTime)
-	}
-	if c.UserContext != nil {
-		request.UserContext = langsmith.F(c.UserContext)
 	}
 	return request, nil
 }
