@@ -482,7 +482,7 @@ Most `trace` and `run` commands share these filter options:
 | Models | `model list/get` | Discover saved workspace model configurations. |
 | Datasets | `dataset add/configure` | Import reviewed traces, runs, or thread turns; configure schemas. |
 | Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
-| Examples | `example update/update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
+| Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
 | Feedback | `run feedback create/get/list` | Attach and inspect run feedback. |
 | Review queues | `queue create/get/configure/list/add/items/delete` | Manage queues, rubrics, and reviewed imports. |
 | Insights | Extended `insights create/list/get`; `insights runs` | Configure reports and inspect their evidence. |
