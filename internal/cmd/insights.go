@@ -20,8 +20,8 @@ import (
 func newInsightsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
-		Short: "Query insights reports for a project",
-		Long: `Query insights reports for a project.
+		Short: "Create and query insight reports for a project",
+		Long: `Create and query insight reports for a project.
 
 The Insights Agent automatically analyzes traces to detect usage patterns,
 common agent behaviors, and failure modes using hierarchical categorization.

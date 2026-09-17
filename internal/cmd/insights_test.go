@@ -29,6 +29,17 @@ func TestInsightsCmd_Subcommands(t *testing.T) {
 	}
 }
 
+func TestInsightsCmd_HelpDescribesCreateAndQuery(t *testing.T) {
+	cmd := newInsightsCmd()
+	const description = "Create and query insight reports for a project"
+	if cmd.Short != description {
+		t.Errorf("expected Short=%q, got %q", description, cmd.Short)
+	}
+	if !strings.HasPrefix(cmd.Long, description+".") {
+		t.Errorf("expected Long to start with %q, got %q", description+".", cmd.Long)
+	}
+}
+
 // ==================== insights create ====================
 
 func TestInsightsCreateCmd_Flags(t *testing.T) {
