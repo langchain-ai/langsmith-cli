@@ -500,6 +500,7 @@ Most `trace` and `run` commands share these filter options:
 | Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
 | Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
 | Feedback | `run feedback create/get/list` | Attach and inspect run feedback. |
+| Review queues | `queue create/get/configure/list/add/items/delete` | Manage queues, rubrics, and reviewed imports. |
 
 Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
 copy/paste commands and expected results. Review dry-runs before writes.
@@ -527,6 +528,23 @@ retrying. Use `example update --clear-splits` to remove an example's memberships
 Assertion imports use `dataset add --assertions` with key/comment criteria;
 they store reference criteria, not automatic scores.
 
+
+### Reviewer instructions and rubric
+
+Use `queue configure QUEUE_ID --rubric rubric.json --instructions TEXT` with
+`--dry-run`, then `--apply`. Rubric keys must already be configured in the workspace:
+
+```json
+[{
+  "feedback_key": "correctness",
+  "description": "Is the answer correct?",
+  "score_descriptions": {"0": "Incorrect", "1": "Correct"},
+  "is_required": true
+}]
+```
+
+A supplied rubric replaces the existing criteria; `[]` clears them.
+Read back with `queue get`. Re-adding queue items can reopen review.
 
 ### Configure schemas and transformations
 
