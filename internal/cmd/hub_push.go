@@ -102,7 +102,7 @@ func newHubPushCmd() *cobra.Command {
 				"created_at":  resp.Commit.CreatedAt,
 				"files":       paths,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			return nil
 		},
