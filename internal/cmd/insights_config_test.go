@@ -25,7 +25,7 @@ func TestInsightsConfigCmd_Subcommands(t *testing.T) {
 	}
 }
 
-func TestInsightsRunCmd_MatchesUIRunNowRequest(t *testing.T) {
+func TestInsightsRunCmd_PostsConfigIDOnly(t *testing.T) {
 	const projectID = "0199321d-e2b4-7000-8000-000000000001"
 	const configID = "0199321d-e2b4-7000-8000-000000000002"
 	const jobID = "0199321d-e2b4-7000-8000-000000000003"

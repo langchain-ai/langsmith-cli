@@ -291,8 +291,7 @@ func newInsightsRunCmd() *cobra.Command {
 		Short: "Run an existing Insights job configuration now",
 		Long: `Start an Insights job from an existing saved configuration.
 
-This sends the same request as the Insights UI's "Run now" action. The saved
-configuration and its schedule are not changed.`,
+The saved configuration and its schedule are not changed.`,
 		Example: `  langsmith insights run CONFIG_ID --project my-app
   langsmith insights run CONFIG_ID --project-id PROJECT_ID --wait --format json`,
 		Args: cobra.ExactArgs(1),

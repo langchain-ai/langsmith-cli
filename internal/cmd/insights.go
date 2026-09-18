@@ -101,8 +101,8 @@ together. Each value must be openai, anthropic, or the UUID of a workspace
 model configuration; model display names are not accepted.
 
 Set schedule_cron in the JSON configuration to run the report repeatedly. The
-first job starts immediately, matching creation in the Insights UI. Omit the
-field for a one-time report.
+first job starts immediately, and future jobs start on the specified schedule.
+Omit the field for a one-time report.
 
 Report generation runs asynchronously and may incur model costs. The workspace
 must have secrets configured for the selected models. Use --wait to poll for a
