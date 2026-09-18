@@ -24,7 +24,7 @@ var (
 	flagOutputFormat string
 )
 
-const feedbackHintInterval = 7 * 24 * time.Hour
+const feedbackHintInterval = 24 * time.Hour
 
 // NewRootCmd creates the top-level `langsmith` command.
 func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {

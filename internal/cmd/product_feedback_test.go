@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 )
@@ -170,6 +173,18 @@ func TestFeedbackHint(t *testing.T) {
 	showFeedbackHint(project)
 	if got := strings.Count(output.String(), "langsmith feedback"); got != 1 {
 		t.Fatalf("feedback hints = %d, output = %q", got, output.String())
+	}
+
+	for _, age := range []time.Duration{23 * time.Hour, 25 * time.Hour} {
+		output.Reset()
+		modified := time.Now().Add(-age)
+		if err := os.Chtimes(filepath.Join(cache.DefaultDir(), "feedback-hint"), modified, modified); err != nil {
+			t.Fatal(err)
+		}
+		showFeedbackHint(project)
+		if got, want := strings.Contains(output.String(), "langsmith feedback"), age > 24*time.Hour; got != want {
+			t.Fatalf("hint after %s = %t, want %t", age, got, want)
+		}
 	}
 }
 
