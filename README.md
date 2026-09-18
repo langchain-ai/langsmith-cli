@@ -501,6 +501,7 @@ Most `trace` and `run` commands share these filter options:
 | Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
 | Feedback | `run feedback create/get/list` | Attach and inspect run feedback. |
 | Review queues | `queue create/get/configure/list/add/items/delete` | Manage queues, rubrics, and reviewed imports. |
+| Insights | Extended `insights create/list/get`; `insights runs` | Configure reports and inspect their evidence. |
 
 Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
 copy/paste commands and expected results. Review dry-runs before writes.
@@ -562,6 +563,17 @@ Use `dataset configure --dataset DATASET_ID --file config.json` with
 `[]` clears transformations. Local attachment upload is not supported by these
 commands; a JSON file path does not upload a PDF or image.
 
+
+### Reuse configurations and investigate results
+
+`insights create` supports one-off flags or `--file`, including categories,
+attributes, and business context. The existing `--config` manual-report workflow
+remains available; `--config-id` runs a saved configuration without overrides.
+Do not mix creation modes. Dry-runs do not sample traces or run inference.
+
+After submission, poll `insights get`; use `insights runs` after completion.
+A one-off report need not appear as a saved dashboard card. Scheduling requires
+the UI or generic `api` command. Numeric attribute bounds are descriptive, not enforced.
 
 ## Local Development
 

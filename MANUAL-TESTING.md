@@ -197,6 +197,34 @@ Expect stored `queue.rubric_items` and `queue.rubric_instructions`. Missing feed
 configurations must fail before writing. On this test queue, `--rubric '[]'` clears
 the rubric; preview before applying. Rubrics do not create automated judges.
 
+## 8. Preview Insights; optionally run a report
+
+```bash
+insight_args=(--project-id "$LS_SOURCE_PROJECT_ID" --name "$LS_TEST_TAG"
+  --model openai --sample 5 --last-n-hours 24
+  --categories '{"Reservations":"Booking requests","Cancellations":"Canceling a booking","Complaints":"Service problems"}'
+  --attributes '{"user_satisfaction":{"type":"number","description":"Infer satisfaction from 1 to 10 using trace evidence."}}')
+lsdemo insights create "${insight_args[@]}" --dry-run
+```
+
+Expect a preview, **not sampling or model inference**. Choose a provider configured
+in your workspace and categories relevant to your traces. Requested attribute
+bounds are descriptive, not enforced. Samples may contain fewer than five runs.
+
+**Optional, billable:** remove `--dry-run` only after approval:
+
+```bash
+lsdemo insights create "${insight_args[@]}" | tee "$LS_TEST_DIR/report.json"
+LS_REPORT_ID="$(jq -er '.id' "$LS_TEST_DIR/report.json")"
+lsdemo insights get "$LS_REPORT_ID" --project-id "$LS_SOURCE_PROJECT_ID"
+lsdemo insights list --project-id "$LS_SOURCE_PROJECT_ID" --limit 20
+lsdemo insights runs "$LS_REPORT_ID" --project-id "$LS_SOURCE_PROJECT_ID" --limit 20
+```
+
+Read evidence after success; do not repeat creation to poll. A one-off report need
+not appear as a saved dashboard card. For saved manual configurations, use the
+documented [configuration workflow](README.md#reuse-configurations-and-investigate-results).
+
 ## 10. Retain results; cleanup is optional
 
 Keep resources for review. If you explicitly want to delete the **test queue only**:
@@ -206,5 +234,5 @@ lsdemo queue get "${LS_QUEUE_ID:?Set the test queue ID}"
 lsdemo queue delete "$LS_QUEUE_ID" --yes
 ```
 
-Never delete the source project. The test dataset, project, and feedback remain. Local artifacts remain in
+Never delete the source project. The test dataset, project, feedback, and report remain. Local artifacts remain in
 `LS_TEST_DIR`; handle them as private trace data.
