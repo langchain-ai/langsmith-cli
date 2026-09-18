@@ -47,6 +47,9 @@ type sandboxCreateInput struct {
 	RootFS      string
 	ProxyConfig string
 
+	DelegateAccess      bool
+	DelegatePermissions []string
+
 	Console         bool
 	Shell           string
 	ForwardSSHAgent bool
@@ -76,6 +79,11 @@ var sandboxBoxDetailRender = structured.PropertyList{
 		{Label: "Rootfs", Template: "{{formatBytesOrDash .FsCapacityBytes}}"},
 		{Label: "Snapshot", Template: "{{shortID .SnapshotID}}"},
 		{Label: "Idle TTL", Template: "{{formatCount .IdleTtlSeconds}}s"},
+		{
+			Label:     "Delegated access",
+			Template:  "{{.AccessDelegation.Mode}}{{with .AccessDelegation.Permissions}} ({{joinOrDash .}}){{end}}",
+			OmitEmpty: true,
+		},
 		{Label: "Created", Template: "{{formatTime .CreatedAt}}"},
 	},
 }
@@ -120,6 +128,21 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 		}
 		params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
 	}
+	switch {
+	case in.DelegateAccess && len(in.DelegatePermissions) > 0:
+		return langsmith.SandboxBoxNewParams{}, fmt.Errorf(
+			"use either --delegate-access or --delegate-permission, not both",
+		)
+	case len(in.DelegatePermissions) > 0:
+		params.AccessDelegation = langsmith.F(langsmith.SandboxBoxNewParamsAccessDelegation{
+			Mode:        langsmith.F(langsmith.SandboxBoxNewParamsAccessDelegationModeExplicit),
+			Permissions: langsmith.F(in.DelegatePermissions),
+		})
+	case in.DelegateAccess:
+		params.AccessDelegation = langsmith.F(langsmith.SandboxBoxNewParamsAccessDelegation{
+			Mode: langsmith.F(langsmith.SandboxBoxNewParamsAccessDelegationModeInherit),
+		})
+	}
 	return params, nil
 }
 
@@ -158,6 +181,19 @@ A rule's "env_vars" are plaintext variables set for every command in the sandbox
 while the rule is enabled, for tools that refuse to run without a credential
 variable even though the proxy injects the real credential on the wire.
 
+--delegate-access and --delegate-permission let code inside the sandbox call
+the LangSmith API as you, with no API key of its own: LANGSMITH_ENDPOINT and a
+placeholder LANGSMITH_API_KEY are set in the sandbox and the proxy swaps the
+credential in on the wire. --delegate-access grants everything you can do;
+--delegate-permission grants only the permissions you list, and is repeatable.
+Permissions are a ceiling re-checked on every request, not a snapshot, so
+losing access yourself revokes it here too. Administering the workspace or
+organization is never delegatable.
+
+The grant belongs to the sandbox, not to you: anyone who can exec into it can
+make calls under the grant, so prefer --delegate-permission for a sandbox
+others can reach.
+
 Examples:
   langsmith sandbox create
   langsmith sandbox create my-vm
@@ -165,7 +201,9 @@ Examples:
   langsmith sandbox create my-vm --snapshot-id <id>
   langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
   langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json
-  langsmith sandbox create my-vm --snapshot-id <id> --console`,
+  langsmith sandbox create my-vm --snapshot-id <id> --console
+  langsmith sandbox create my-vm --delegate-access
+  langsmith sandbox create my-vm --delegate-permission tracer_sessions:read`,
 	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{}
@@ -175,6 +213,8 @@ Examples:
 		cmd.Flags().StringVar(&in.Memory, "memory", in.Memory, "Memory with unit (e.g. 4gb, 8gb); must be within 50% of 4gb per vCPU")
 		cmd.Flags().StringVar(&in.RootFS, "rootfs-capacity", in.RootFS, "Root filesystem capacity with unit (e.g. 4gb, 8gb)")
 		cmd.Flags().StringVar(&in.ProxyConfig, "proxy-config", in.ProxyConfig, "Proxy config as JSON or @file.json")
+		cmd.Flags().BoolVar(&in.DelegateAccess, "delegate-access", in.DelegateAccess, "Let code inside the sandbox call the LangSmith API as you, with everything you can do")
+		cmd.Flags().StringArrayVar(&in.DelegatePermissions, "delegate-permission", nil, "Let code inside the sandbox call the LangSmith API as you, limited to this permission (repeatable)")
 		cmd.Flags().BoolVar(&in.Console, "console", in.Console, "Open an interactive console once the sandbox is ready")
 		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use for --console (default: sandbox default, usually /bin/bash)")
 		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the --console session")
