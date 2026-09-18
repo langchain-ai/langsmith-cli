@@ -82,6 +82,7 @@ Quick start:
 	rootCmd.AddCommand(newDatasetCmd())
 	rootCmd.AddCommand(newExampleCmd())
 	rootCmd.AddCommand(newEvaluatorCmd())
+	rootCmd.AddCommand(newModelCmd())
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newInsightsCmd())

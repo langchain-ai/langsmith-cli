@@ -197,6 +197,68 @@ Expect stored `queue.rubric_items` and `queue.rubric_instructions`. Missing feed
 configurations must fail before writing. On this test queue, `--rubric '[]'` clears
 the rubric; preview before applying. Rubrics do not create automated judges.
 
+## 7. Preview online judges; optionally enable them
+
+```bash
+lsdemo model list
+LS_MODEL_ID='REPLACE_WITH_EVALUATOR_CAPABLE_CONFIGURATION_ID'
+lsdemo model get "$LS_MODEL_ID"
+LS_EVAL_FILTER="and(eq(is_root,true),has(tags,\"$LS_TEST_TAG\"))"
+judge_args=(--name "$LS_TEST_TAG-llm" --project-id "$LS_SOURCE_PROJECT_ID"
+  --model-id "$LS_MODEL_ID"
+  --prompt '[["system","Score 1 when the response is helpful, including a necessary clarification; score 0 for an empty or unhelpful response."],["human","Request: {{question}} Response: {{answer}}"]]'
+  --schema '{"type":"object","properties":{"helpfulness":{"type":"integer","enum":[0,1]}},"required":["helpfulness"]}'
+  --variable-mapping '{"question":"input.message","answer":"output.response"}'
+  --filter "$LS_EVAL_FILTER" --sampling-rate 1 --spend-limit 1)
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run --preview-run "$LS_TRACE_ID"
+```
+
+Use a source trace with `inputs.message` and `outputs.response`, or adjust the
+mapping to its actual fields. Expect real bindings and `bindings_validated: true`.
+Mappings use singular `input`/`output`. Model availability does not verify credentials.
+
+**Optional, potentially billable:** after reviewing the prompt, filter, and budget:
+
+```bash
+lsdemo evaluator create-llm "${judge_args[@]}"
+lsdemo evaluator get "$LS_TEST_TAG-llm" --session-id "$LS_SOURCE_PROJECT_ID"
+```
+
+The $1 weekly limit is service-enforced, not a per-call hard cap. No backfill is
+requested. The unique tag restricts eligibility to your upcoming test runs.
+
+For a code evaluator, save this as `response_present.py`:
+
+```python
+def response_present(run):
+    response = (run.get("outputs") or {}).get("response")
+    present = isinstance(response, str) and bool(response.strip())
+    return {"score": int(present), "comment": "Nonempty response" if present else "Empty response"}
+```
+
+**Optional write:** upload it with the same filter:
+
+```bash
+lsdemo evaluator upload response_present.py --function response_present \
+  --name "$LS_TEST_TAG-code" --project-id "$LS_SOURCE_PROJECT_ID" --trace-filter "$LS_EVAL_FILTER"
+```
+
+Run your synthetic app twice in the source project **after** creating the rules,
+with tag `LS_TEST_TAG`: once with a helpful response, once with an empty response.
+Use your app's tracing instrumentation; the CLI does not run the app for you.
+Copy each resulting root ID and check:
+
+```bash
+LS_EVAL_RUN_ID='REPLACE_WITH_NEW_TAGGED_ROOT_ID'
+lsdemo run feedback list --run-id "$LS_EVAL_RUN_ID" --limit 20
+```
+
+Allow time for processing. Code should score nonempty/empty as `1`/`0`. Inspect the
+LLM's actual inputs and judgment if its score differs from your expectation.
+An empty feedback list is **pending/unverified**, not a pass. Do not recreate a
+rule to poll it. Thread judges and historical backfills require separate validation;
+see [online judge settings](README.md#online-judge-settings).
+
 ## 8. Preview Insights; optionally run a report
 
 ```bash
@@ -225,6 +287,28 @@ Read evidence after success; do not repeat creation to poll. A one-off report ne
 not appear as a saved dashboard card. For saved manual configurations, use the
 documented [configuration workflow](README.md#reuse-configurations-and-investigate-results).
 
+## 9. Input forms and expected failures — no writes
+
+Repeat a judge **dry-run** with the same prompt saved to `prompt.json`: compare
+inline JSON, `--prompt prompt.json`, and `--prompt @prompt.json` using the actual
+JSON from section 7. Settings/bindings should match. Do not publish preview output;
+it may contain private trace data.
+
+Run failures individually and expect nonzero exits with JSON diagnostics on stderr:
+
+```bash
+lsdemo project create --name ' '
+lsdemo run feedback list --run-id "$LS_TRACE_ID" --limit 101
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run \
+  --variable-mapping '{"answer":"outputs.response"}'
+lsdemo evaluator create-llm "${judge_args[@]}" --dry-run --preview-run "$LS_TRACE_ID" \
+  --variable-mapping '{"answer":"output.nonexistent_field"}'
+```
+
+The missing-binding check also returns preview JSON on stdout. Invalid plural roots
+must not create a judge. To inspect readable terminal output, repeat a read with
+`--format pretty`. These checks do not establish full backend or deployment coverage.
+
 ## 10. Retain results; cleanup is optional
 
 Keep resources for review. If you explicitly want to delete the **test queue only**:
@@ -234,5 +318,7 @@ lsdemo queue get "${LS_QUEUE_ID:?Set the test queue ID}"
 lsdemo queue delete "$LS_QUEUE_ID" --yes
 ```
 
-Never delete the source project. The test dataset, project, feedback, and report remain. Local artifacts remain in
+Never delete the source project. The test dataset, project, feedback, evaluators,
+and report remain. Disable the test evaluators in the UI when finished; their tag
+filters remain configured until you change/remove them. Local artifacts remain in
 `LS_TEST_DIR`; handle them as private trace data.
