@@ -491,6 +491,98 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+## Additional workflow commands
+
+| Area | Commands | Purpose |
+| --- | --- | --- |
+| Projects | `project create/configure/set-default/clear-default` | Create projects, edit settings, and save a CLI default. |
+| Models | `model list/get` | Discover saved workspace model configurations. |
+| Datasets | `dataset add/configure` | Import reviewed traces, runs, or thread turns; configure schemas. |
+| Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
+| Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
+| Feedback | `run feedback create/get/list` | Attach and inspect run feedback. |
+| Review queues | `queue create/get/configure/list/add/items/delete` | Manage queues, rubrics, and reviewed imports. |
+| Insights | Extended `insights create/list/get`; `insights runs` | Configure reports and inspect their evidence. |
+
+Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
+copy/paste commands and expected results. Workflow JSON inputs accept inline JSON,
+`file.json`, or `@file.json`. Review dry-runs before writes or paid inference.
+
+Saved project defaults apply only when explicit flags and `LANGSMITH_PROJECT` are
+absent. They are scoped to profile, workspace, and endpoint; they do not configure
+application tracing. Create and select together with `project create --set-default`.
+
+### Online judge settings
+
+`evaluator create-llm` now accepts `--model-id` as an alternative to
+`--model-config`, plus filters, sampling, thread grouping, and weekly spend limits.
+Use `--dry-run --preview-run RUN_ID` to inspect single-run input/output bindings.
+Mappings use singular roots: `input.message` and `output.response`.
+Missing/null bindings fail validation; creating a judge does not verify its scores.
+
+### Bulk edits
+
+Use `example update-bulk --dataset DATASET_ID --file edits.json --dry-run`, then
+`--apply` after review. Supply current IDs and exact timestamps from `example list`:
+
+```json
+[{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "expected_modified_at": "2026-09-16T00:00:00Z",
+  "outputs": {"answer": "Reviewed answer"},
+  "splits": ["test"]
+}]
+```
+
+Edits replace supplied fields and are non-atomic. Read unverified items before
+retrying. Use `example update --clear-splits` to remove an example's memberships.
+Assertion imports use `dataset add --assertions` with key/comment criteria;
+they store reference criteria, not automatic scores.
+
+### Reviewer instructions and rubric
+
+Use `queue configure QUEUE_ID --rubric rubric.json --instructions TEXT` with
+`--dry-run`, then `--apply`. Rubric keys must already be configured in the workspace:
+
+```json
+[{
+  "feedback_key": "correctness",
+  "description": "Is the answer correct?",
+  "score_descriptions": {"0": "Incorrect", "1": "Correct"},
+  "is_required": true
+}]
+```
+
+A supplied rubric replaces the existing criteria; `[]` clears them.
+Read back with `queue get`. Re-adding queue items can reopen review.
+
+### Configure schemas and transformations
+
+Use `dataset configure --dataset DATASET_ID --file config.json` with
+`--dry-run`, then `--apply`. Omitted settings remain unchanged:
+
+```json
+{
+  "inputs_schema_definition": {"type": "object"},
+  "outputs_schema_definition": {"type": "object"},
+  "transformations": []
+}
+```
+
+`[]` clears transformations. Local attachment upload is not supported by these
+commands; a JSON file path does not upload a PDF or image.
+
+### Reuse configurations and investigate results
+
+`insights create` supports one-off flags or `--file`, including categories,
+attributes, and business context. The existing `--config` manual-report workflow
+remains available; `--config-id` runs a saved configuration without overrides.
+Do not mix creation modes. Dry-runs do not sample traces or run inference.
+
+After submission, poll `insights get`; use `insights runs` after completion.
+A one-off report need not appear as a saved dashboard card. Scheduling requires
+the UI or generic `api` command. Numeric attribute bounds are descriptive, not enforced.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:

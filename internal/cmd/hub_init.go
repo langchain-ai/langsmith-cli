@@ -43,7 +43,7 @@ func newHubInitCmd() *cobra.Command {
 				"name":   name,
 				"files":  written,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			return nil
 		},

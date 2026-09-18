@@ -89,7 +89,7 @@ func newHubListCmd() *cobra.Command {
 				"total": int(resp.Total),
 				"repos": repos,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			return nil
 		},

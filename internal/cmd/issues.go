@@ -137,15 +137,21 @@ Examples:
 			if projectID != "" {
 				id, err := validateProjectID(projectID)
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 				params.SessionID = langsmith.F(id)
 			} else {
 				projectLabel = ResolveProject(project)
 				if projectLabel == "" {
-					ExitError("--project or --project-id is required (or set LANGSMITH_PROJECT)")
+					id, err := resolveSessionID(ctx, c, project, projectID, "project issues list")
+					if err != nil {
+						ExitCommandError(err)
+					}
+					params.SessionID = langsmith.F(id)
+					projectLabel = id
+				} else {
+					params.SessionName = langsmith.F(projectLabel)
 				}
-				params.SessionName = langsmith.F(projectLabel)
 			}
 			// Validate both filters before sending: an unknown --status used to
 			// cost a round-trip and return a server 400, and an unknown
@@ -201,7 +207,7 @@ Examples:
 				output.OutputTable(columns, rows, fmt.Sprintf("Issues for %s", projectLabel))
 			} else {
 				if err := output.OutputJSON(json.RawMessage(page.JSON.RawJSON()), outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -240,7 +246,7 @@ Examples:
 				ExitErrorf("getting issue: %v", err)
 			}
 			if err := output.OutputJSON(json.RawMessage(issue.JSON.RawJSON()), outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -291,7 +297,7 @@ Examples:
 
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "project issues events")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 			// Name the board by whichever identifier the caller gave.
 			projectLabel := ResolveProject(project)
@@ -353,7 +359,7 @@ Examples:
 					data = append(data, m)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -466,7 +472,7 @@ Examples:
 				ExitErrorf("updating issue: %v", err)
 			}
 			if err := output.OutputJSON(issueToMap(issue), outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -812,7 +818,7 @@ Examples:
 				ExitErrorf("proposing example: %v", err)
 			}
 			if err := output.OutputJSON(result, outputFile); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
