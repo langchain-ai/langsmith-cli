@@ -84,6 +84,23 @@ langsmith dataset list
 langsmith experiment list --dataset my-eval-set
 ```
 
+## Product feedback
+
+Submit feedback about the CLI directly from the terminal:
+
+```bash
+langsmith feedback "Trace output is hard to scan"
+langsmith feedback --category bug "The command fails on Windows"
+```
+
+`--category` accepts `bug`, `feature-request`, `usability` (the default),
+`documentation`, or `other`. The feedback payload contains the note, category,
+CLI version, operating system, architecture, and a fixed CLI source value. It
+does not collect command arguments, output, environment variables, file paths,
+traces, prompts, or other local context. Authentication, routing, idempotency,
+and standard client headers accompany the request. The collector is available
+on LangSmith Cloud and BYOC, not standalone self-hosted deployments.
+
 ## Output Formats
 
 ```bash

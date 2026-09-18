@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
@@ -21,6 +23,8 @@ var (
 	flagWorkspaceID  string
 	flagOutputFormat string
 )
+
+const feedbackHintInterval = 24 * time.Hour
 
 // NewRootCmd creates the top-level `langsmith` command.
 func NewRootCmd(rawVersion, displayVersion string) *cobra.Command {
@@ -64,8 +68,13 @@ Quick start:
 	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace-id", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
 	_ = rootCmd.PersistentFlags().MarkHidden("workspace-id")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		showFeedbackHint(cmd)
+		return err
+	})
 
 	// Register all subcommand groups
+	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
@@ -115,6 +124,22 @@ func GetWorkspaceID() string {
 // GetFormat returns the output format.
 func GetFormat() string {
 	return flagOutputFormat
+}
+
+func showFeedbackHint(cmd *cobra.Command) {
+	if flagOutputFormat != "pretty" || cmd == nil {
+		return
+	}
+	path := cmd.CommandPath()
+	if path == "langsmith" || path == "langsmith feedback" || path == "langsmith auth" || path == "langsmith auth login" {
+		return
+	}
+	marker := filepath.Join(cache.DefaultDir(), "feedback-hint")
+	if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < feedbackHintInterval {
+		return
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), "Tip: report CLI friction with 'langsmith feedback \"note\"'.")
+	_ = cache.Write(marker, nil)
 }
 
 // MustGetClient creates a LangSmith client or exits with an error.
