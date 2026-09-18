@@ -499,6 +499,7 @@ Most `trace` and `run` commands share these filter options:
 | Datasets | `dataset add/configure` | Import reviewed traces, runs, or thread turns; configure schemas. |
 | Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
 | Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
+| Feedback | `run feedback create/get/list` | Attach and inspect run feedback. |
 
 Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
 copy/paste commands and expected results. Review dry-runs before writes.

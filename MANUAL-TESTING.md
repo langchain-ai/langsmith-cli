@@ -162,3 +162,15 @@ lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_I
 
 Expect a new example with `outputs.assertions`, not copied agent output. This stores
 criteria; it does not run an evaluator. Offline experiments remain SDK workflows.
+
+## 6. Add run feedback — writes
+
+```bash
+lsdemo run feedback create --project-id "$LS_SOURCE_PROJECT_ID" --run-id "$LS_TRACE_ID" \
+  --key "$LS_TEST_TAG" --score 0 --comment 'Synthetic review test' | tee "$LS_TEST_DIR/feedback.json"
+LS_FEEDBACK_ID="$(jq -er '.feedback_id' "$LS_TEST_DIR/feedback.json")"
+lsdemo run feedback get "$LS_FEEDBACK_ID"
+lsdemo run feedback list --run-id "$LS_TRACE_ID" --key "$LS_TEST_TAG" --has-score --limit 20
+```
+
+Expect score `0` (not missing). Feedback belongs to the selected source run.
