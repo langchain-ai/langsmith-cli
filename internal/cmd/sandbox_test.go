@@ -383,6 +383,73 @@ func TestSandboxCreateParams_IncludesSnapshotIDWhenSet(t *testing.T) {
 	assert.Equal(t, "snap-123", body["snapshot_id"])
 }
 
+func TestSandboxCreateParams_AccessDelegation(t *testing.T) {
+	tests := []struct {
+		name  string
+		in    sandboxCreateInput
+		want  any
+		error string
+	}{
+		{
+			name: "omitted without either flag",
+			in:   sandboxCreateInput{},
+		},
+		{
+			name: "delegate-access is inherit",
+			in:   sandboxCreateInput{DelegateAccess: true},
+			want: map[string]any{"mode": "INHERIT"},
+		},
+		{
+			name: "delegate-permission is explicit",
+			in:   sandboxCreateInput{DelegatePermissions: []string{"datasets:read"}},
+			want: map[string]any{
+				"mode":        "EXPLICIT",
+				"permissions": []any{"datasets:read"},
+			},
+		},
+		{
+			name: "repeated delegate-permission accumulates",
+			in: sandboxCreateInput{
+				DelegatePermissions: []string{"datasets:read", "tracer_sessions:read"},
+			},
+			want: map[string]any{
+				"mode":        "EXPLICIT",
+				"permissions": []any{"datasets:read", "tracer_sessions:read"},
+			},
+		},
+		{
+			name: "both flags is an error",
+			in: sandboxCreateInput{
+				DelegateAccess:      true,
+				DelegatePermissions: []string{"datasets:read"},
+			},
+			error: "not both",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			params, err := sandboxCreateParams("my-vm", &tc.in)
+			if tc.error != "" {
+				require.ErrorContains(t, err, tc.error)
+				return
+			}
+			require.NoError(t, err)
+
+			raw, err := json.Marshal(params)
+			require.NoError(t, err)
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+
+			if tc.want == nil {
+				assert.NotContains(t, body, "access_delegation")
+				return
+			}
+			assert.Equal(t, tc.want, body["access_delegation"])
+		})
+	}
+}
+
 func TestSandboxUpdateCmd_SizeFlags(t *testing.T) {
 	cmd := sandboxUpdateCommand.Cobra()
 	for _, name := range []string{"memory", "rootfs-capacity"} {
