@@ -37,3 +37,30 @@ lsdemo() { lsreview --workspace "$LS_WORKSPACE_ID" --format json "$@"; }
 The wrapper ignores ambient overrides without changing your shell. A custom
 `LANGSMITH_CONFIG_FILE`, if set, remains in effect. Never paste credentials into
 commands or review notes. A revoked login requires another `lsreview auth login`.
+
+## 2. Create a project and test defaults — writes
+
+```bash
+lsdemo project create --name "$LS_TEST_TAG" --set-default | tee "$LS_TEST_DIR/project.json"
+LS_TEST_PROJECT_ID="$(jq -er '.id' "$LS_TEST_DIR/project.json")"
+lsdemo trace list --limit 5
+lsdemo project configure
+lsdemo project clear-default
+lsdemo project set-default "$LS_TEST_PROJECT_ID"
+```
+
+Expect `status: created`, `default_saved: true`, then no traces. Defaults are scoped
+to the profile, workspace, and endpoint. Project creation does not instrument an app.
+Clearing the default removes only the local selection, not the project.
+
+Choose an existing **synthetic** source project and root trace:
+
+```bash
+lsdemo project list --limit 20
+LS_SOURCE_PROJECT_ID='REPLACE_WITH_SYNTHETIC_PROJECT_ID'
+lsdemo trace list --project-id "$LS_SOURCE_PROJECT_ID" --limit 3 --include-io
+LS_TRACE_ID='REPLACE_WITH_ROOT_RUN_ID'
+```
+
+This explicit project must override the saved empty project. Keep the source ID
+separate from `LS_TEST_PROJECT_ID`; never use production data for this walkthrough.

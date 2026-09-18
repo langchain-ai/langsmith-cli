@@ -13,8 +13,8 @@ import (
 func newProjectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
-		Short: "List and inspect tracing projects (sessions)",
-		Long: `List and inspect tracing projects (sessions).
+		Short: "Create, list, and manage tracing projects (sessions)",
+		Long: `Create, list, and manage tracing projects (sessions).
 
 Tracing projects collect runs from your application. Each project
 is a namespace that groups related traces together.
@@ -27,6 +27,7 @@ Note: This lists tracing projects only (not experiments). Use
 'langsmith experiment list' for experiments.
 
 Examples:
+  langsmith project create --name my-app
   langsmith project list                        # first 20 projects, most recently active first
   langsmith project list --limit 10             # first 10 projects
   langsmith project list --name-contains chatbot
@@ -34,6 +35,10 @@ Examples:
 	}
 
 	cmd.AddCommand(newProjectListCmd())
+	cmd.AddCommand(newProjectCreateCmd())
+	cmd.AddCommand(newProjectConfigureCmd())
+	cmd.AddCommand(newProjectSetDefaultCmd())
+	cmd.AddCommand(newProjectClearDefaultCmd())
 	cmd.AddCommand(newProjectDeleteCmd())
 	cmd.AddCommand(newProjectIssuesCmd())
 	return cmd
@@ -127,7 +132,7 @@ func newProjectListCmd() *cobra.Command {
 					data = append(data, entry)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},

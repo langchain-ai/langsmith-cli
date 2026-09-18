@@ -44,7 +44,8 @@ Authentication:
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
   Pass --workspace to target a specific workspace for one command.
   Set a default workspace with 'langsmith profile set-workspace <workspace-id>'.
-  Set LANGSMITH_PROJECT as a default project name for trace/run queries.
+  Set LANGSMITH_PROJECT as a default project name for project-scoped commands.
+  Or save a profile default with 'langsmith project set-default PROJECT'.
 
 Quick start:
   langsmith project list
