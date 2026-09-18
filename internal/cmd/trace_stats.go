@@ -110,7 +110,7 @@ Examples:
 					result["compare"] = selectedStats(*compare, keys)
 				}
 				if err := output.OutputJSON(result, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 			return nil
