@@ -496,6 +496,9 @@ Most `trace` and `run` commands share these filter options:
 | Area | Commands | Purpose |
 | --- | --- | --- |
 | Projects | `project create/configure/set-default/clear-default` | Create projects, edit settings, and save a CLI default. |
+| Datasets | `dataset configure` | Configure schemas and transformations. |
+| Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
+| Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
 
 Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
 copy/paste commands and expected results. Review dry-runs before writes.
@@ -503,6 +506,41 @@ copy/paste commands and expected results. Review dry-runs before writes.
 Saved project defaults apply only when explicit flags and `LANGSMITH_PROJECT` are
 absent. They are scoped to profile, workspace, and endpoint; they do not configure
 application tracing. Create and select together with `project create --set-default`.
+
+### Bulk edits
+
+Use `example update-bulk --dataset DATASET_ID --file edits.json --dry-run`, then
+`--apply` after review. Supply current IDs and exact timestamps from `example list`:
+
+```json
+[{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "expected_modified_at": "2026-09-16T00:00:00Z",
+  "outputs": {"answer": "Reviewed answer"},
+  "splits": ["test"]
+}]
+```
+
+Edits replace supplied fields and are non-atomic. Read unverified items before
+retrying. Use `example update --clear-splits` to remove an example's memberships.
+
+
+### Configure schemas and transformations
+
+Use `dataset configure --dataset DATASET_ID --file config.json` with
+`--dry-run`, then `--apply`. Omitted settings remain unchanged:
+
+```json
+{
+  "inputs_schema_definition": {"type": "object"},
+  "outputs_schema_definition": {"type": "object"},
+  "transformations": []
+}
+```
+
+`[]` clears transformations. Local attachment upload is not supported by these
+commands; a JSON file path does not upload a PDF or image.
+
 
 ## Local Development
 

@@ -64,3 +64,71 @@ LS_TRACE_ID='REPLACE_WITH_ROOT_RUN_ID'
 
 This explicit project must override the saved empty project. Keep the source ID
 separate from `LS_TEST_PROJECT_ID`; never use production data for this walkthrough.
+
+## Prepare examples for editing — writes
+
+After signing in, create a synthetic dataset and copy an example ID from the list:
+
+```bash
+printf '%s\n' '[{"inputs":{"question":"Test request"},"outputs":{"answer":"Test answer"}}]' > "$LS_TEST_DIR/examples.json"
+lsdemo dataset upload "$LS_TEST_DIR/examples.json" --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/dataset.json"
+LS_DATASET_ID="$(jq -er '.dataset_id' "$LS_TEST_DIR/dataset.json")"
+lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
+LS_EXAMPLE_ID='REPLACE_WITH_EXAMPLE_ID_FROM_LIST'
+```
+
+## 4. Edit examples, splits, and versions — writes
+
+```bash
+lsdemo dataset version get --dataset "$LS_DATASET_ID" | tee "$LS_TEST_DIR/version.json"
+LS_BEFORE="$(jq -er '.version.as_of' "$LS_TEST_DIR/version.json")"
+lsdemo example update "$LS_EXAMPLE_ID" --outputs '{"answer":"Reviewed test answer"}' --split test
+lsdemo example list --dataset "$LS_DATASET_ID" --split test --limit 20
+lsdemo dataset split list --dataset "$LS_DATASET_ID"
+lsdemo dataset version diff --dataset "$LS_DATASET_ID" --from "$LS_BEFORE" --to latest
+lsdemo example update "$LS_EXAMPLE_ID" --clear-splits
+lsdemo dataset split list --dataset "$LS_DATASET_ID"
+```
+
+Expect the replacement output, `test` membership, and a modified example ID in the
+diff. Clearing memberships does not delete the example. Versions are automatic;
+splits are memberships, not separately created resources.
+
+For bulk edits, read current IDs/timestamps and prepare `edits.json` using the
+[bulk-edit format](README.md#bulk-edits). Only use examples in this test dataset:
+
+```bash
+lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
+lsdemo example update-bulk --dataset "$LS_DATASET_ID" --file edits.json --dry-run
+lsdemo example update-bulk --dataset "$LS_DATASET_ID" --file @edits.json --apply
+lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
+```
+
+Expect per-example results and the intended changes on readback. Replaying an old
+edit file should fail its timestamp check. Writes are non-atomic; read unverified
+items before preparing a retry.
+
+Tag the original snapshot and inspect history:
+
+```bash
+lsdemo dataset version tag --dataset "$LS_DATASET_ID" --as-of "$LS_BEFORE" --tag before-edits --dry-run
+lsdemo dataset version tag --dataset "$LS_DATASET_ID" --as-of "$LS_BEFORE" --tag before-edits
+lsdemo dataset version get --dataset "$LS_DATASET_ID" --as-of before-edits
+lsdemo dataset version list --dataset "$LS_DATASET_ID" --limit 20
+```
+
+Expect the tag to resolve to `LS_BEFORE`. Tags can move; use fixed timestamps for
+reviewed writes. Version diffs return IDs, not full before/after content.
+
+Test configuration with a permissive schema on this dataset only:
+
+```bash
+lsdemo dataset configure --dataset "$LS_DATASET_ID" \
+  --file '{"outputs_schema_definition":{"type":"object"}}' --dry-run
+lsdemo dataset configure --dataset "$LS_DATASET_ID" \
+  --file '{"outputs_schema_definition":{"type":"object"}}' --apply
+lsdemo dataset get "$LS_DATASET_ID"
+```
+
+Expect the stored schema. Omitted settings stay unchanged; server validation runs
+on apply. See [configuration](README.md#configure-schemas-and-transformations) for transformations.

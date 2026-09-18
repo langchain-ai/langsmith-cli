@@ -9,6 +9,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +40,9 @@ Examples:
 	cmd.AddCommand(newDatasetDeleteCmd())
 	cmd.AddCommand(newDatasetExportCmd())
 	cmd.AddCommand(newDatasetUploadCmd())
+	cmd.AddCommand(newDatasetVersionCmd())
+	cmd.AddCommand(newDatasetSplitCmd())
+	cmd.AddCommand(newDatasetConfigureCmd())
 
 	return cmd
 }
@@ -102,7 +106,7 @@ func newDatasetListCmd() *cobra.Command {
 				}
 				output.OutputTable(columns, rows, "Datasets")
 			} else {
-				var data []map[string]any
+				data := make([]map[string]any, 0, len(datasets))
 				for _, ds := range datasets {
 					data = append(data, map[string]any{
 						"id":            ds.ID,
@@ -114,7 +118,7 @@ func newDatasetListCmd() *cobra.Command {
 					})
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -140,26 +144,29 @@ func newDatasetGetCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			data := map[string]any{
-				"id":            ds.ID,
-				"name":          ds.Name,
-				"description":   nilStr(ds.Description),
-				"data_type":     nilStr(string(ds.DataType)),
-				"example_count": ds.ExampleCount,
-				"created_at":    formatTimeISO(ds.CreatedAt),
+				"id":                        ds.ID,
+				"name":                      ds.Name,
+				"description":               nilStr(ds.Description),
+				"data_type":                 nilStr(string(ds.DataType)),
+				"example_count":             ds.ExampleCount,
+				"inputs_schema_definition":  ds.InputsSchemaDefinition,
+				"outputs_schema_definition": ds.OutputsSchemaDefinition,
+				"transformations":           ds.Transformations,
+				"created_at":                formatTimeISO(ds.CreatedAt),
 			}
 
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			} else {
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -178,9 +185,15 @@ func newDatasetCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new empty dataset",
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
-			ctx := context.Background()
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("--name must not be blank")
+			}
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
 
 			params := langsmith.DatasetNewParams{
 				Name: langsmith.F(name),
@@ -189,20 +202,18 @@ func newDatasetCreateCmd() *cobra.Command {
 				params.Description = langsmith.F(description)
 			}
 
-			ds, err := c.SDK.Datasets.New(ctx, params)
+			ds, err := c.SDK.Datasets.New(cmd.Context(), params, option.WithMaxRetries(0))
 			if err != nil {
-				ExitErrorf("creating dataset: %v", err)
+				return fmt.Errorf("creating dataset: %w", err)
 			}
 
-			if err := output.OutputJSON(map[string]any{
+			return output.OutputJSON(map[string]any{
 				"status":      "created",
 				"id":          ds.ID,
 				"name":        ds.Name,
 				"description": nilStr(ds.Description),
 				"created_at":  formatTimeISO(ds.CreatedAt),
-			}, ""); err != nil {
-				ExitErrorf("%v", err)
-			}
+			}, "")
 		},
 	}
 
@@ -226,7 +237,7 @@ func newDatasetDeleteCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, args[0])
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			if !yes {
@@ -248,7 +259,7 @@ func newDatasetDeleteCmd() *cobra.Command {
 				"id":     ds.ID,
 				"name":   ds.Name,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
@@ -259,11 +270,18 @@ func newDatasetDeleteCmd() *cobra.Command {
 
 func newDatasetExportCmd() *cobra.Command {
 	var limit int
+	var filters exampleReadFilters
 
 	cmd := &cobra.Command{
 		Use:   "export NAME_OR_ID OUTPUT_FILE",
 		Short: "Export dataset examples to a JSON file",
 		Args:  cobra.ExactArgs(2),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 {
+				return datasetInputError("--limit must be positive")
+			}
+			return filters.apply(&langsmith.ExampleListParams{})
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			nameOrID := args[0]
 			outputFile := args[1]
@@ -273,7 +291,7 @@ func newDatasetExportCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, nameOrID)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			exportPageSize := int64(20)
@@ -281,10 +299,14 @@ func newDatasetExportCmd() *cobra.Command {
 				exportPageSize = int64(limit)
 			}
 			var allExamples []langsmith.Example
-			pager := c.SDK.Examples.ListAutoPaging(ctx, langsmith.ExampleListParams{
+			params := langsmith.ExampleListParams{
 				Dataset: langsmith.F(ds.ID),
 				Limit:   langsmith.F(exportPageSize),
-			})
+			}
+			if err := filters.apply(&params); err != nil {
+				ExitCommandError(err)
+			}
+			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
 			for pager.Next() {
 				allExamples = append(allExamples, pager.Current())
 				if limit > 0 && len(allExamples) >= limit {
@@ -314,12 +336,13 @@ func newDatasetExportCmd() *cobra.Command {
 				"count":   len(data),
 				"path":    outputFile,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
 
 	cmd.Flags().IntVarP(&limit, "limit", "n", 100, "Maximum number of examples to export")
+	filters.flags(cmd)
 	return cmd
 }
 
@@ -408,7 +431,7 @@ func newDatasetUploadCmd() *cobra.Command {
 				"dataset_name":  name,
 				"example_count": len(items),
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}
