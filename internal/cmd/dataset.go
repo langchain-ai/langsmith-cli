@@ -40,6 +40,7 @@ Examples:
 	cmd.AddCommand(newDatasetDeleteCmd())
 	cmd.AddCommand(newDatasetExportCmd())
 	cmd.AddCommand(newDatasetUploadCmd())
+	cmd.AddCommand(newDatasetAddCmd())
 	cmd.AddCommand(newDatasetVersionCmd())
 	cmd.AddCommand(newDatasetSplitCmd())
 	cmd.AddCommand(newDatasetConfigureCmd())
