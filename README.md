@@ -283,7 +283,12 @@ express the report's intent directly in `summary_prompt`. Use `--config -` to
 read the JSON from stdin. The configuration also supports `start_time`,
 `end_time`, `sample`, `hierarchy`, `partitions`, `attribute_schemas`,
 `cluster_model`, `summary_model`, `description`, and `schedule_cron`. Set
-`schedule_cron` to `null` when updating a configuration to disable its schedule.
+`cluster_model` and `summary_model` together to `openai`, `anthropic`, or
+workspace model-configuration UUIDs; model display names are not accepted.
+When updating, the file replaces the saved name and analysis configuration.
+Omit `description` or `schedule_cron` to preserve its current value; use an empty
+description to clear its contents or set `schedule_cron` to `null` to disable
+the schedule.
 
 ### `dataset` — Manage evaluation datasets
 

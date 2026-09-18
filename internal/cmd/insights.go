@@ -96,6 +96,10 @@ trace field, such as {{run.inputs}}, {{run.outputs}}, {{run.error}},
 Auto mode and user_context are not supported. Express the report's intent
 directly in summary_prompt.
 
+When selecting models explicitly, cluster_model and summary_model must be set
+together. Each value must be openai, anthropic, or the UUID of a workspace
+model configuration; model display names are not accepted.
+
 Set schedule_cron in the JSON configuration to run the report repeatedly. The
 first job starts immediately, matching creation in the Insights UI. Omit the
 field for a one-time report.

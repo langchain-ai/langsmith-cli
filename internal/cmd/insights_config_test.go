@@ -109,7 +109,7 @@ func TestInsightsConfigUpdateCmd_UpdatesDefinitionAndClearsSchedule(t *testing.T
 	const configID = "0199321d-e2b4-7000-8000-000000000002"
 	configPath := writeInsightConfigFile(t, `{
 		"name":"Updated reliability review",
-		"description":null,
+		"description":"",
 		"summary_prompt":"Find failures in {{run.error}}",
 		"last_n_hours":48,
 		"schedule_cron":null
@@ -127,7 +127,7 @@ func TestInsightsConfigUpdateCmd_UpdatesDefinitionAndClearsSchedule(t *testing.T
 		response := insightConfigListFixture(configID, nil)
 		delete(response, "prebuilt")
 		response["name"] = "Updated reliability review"
-		response["description"] = nil
+		response["description"] = ""
 		response["config"].(map[string]any)["name"] = "Updated reliability review"
 		response["config"].(map[string]any)["summary_prompt"] = "Find failures in {{run.error}}"
 		response["config"].(map[string]any)["last_n_hours"] = 48
@@ -146,8 +146,8 @@ func TestInsightsConfigUpdateCmd_UpdatesDefinitionAndClearsSchedule(t *testing.T
 	if value, ok := requestBody["schedule_cron"]; !ok || value != nil {
 		t.Errorf("expected explicit null schedule_cron, got %#v", requestBody)
 	}
-	if value, ok := requestBody["description"]; !ok || value != nil {
-		t.Errorf("expected explicit null description, got %#v", requestBody)
+	if value, ok := requestBody["description"]; !ok || value != "" {
+		t.Errorf("expected empty description, got %#v", requestBody)
 	}
 	config, ok := requestBody["config"].(map[string]any)
 	if !ok || config["summary_prompt"] != "Find failures in {{run.error}}" || config["last_n_hours"] != float64(48) {

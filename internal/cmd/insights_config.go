@@ -13,7 +13,7 @@ import (
 )
 
 // nullableStringInput distinguishes an omitted JSON field from an explicit
-// null, which is needed to clear optional config metadata with PATCH.
+// null, which is needed to clear a schedule with PATCH.
 type nullableStringInput struct {
 	Set   bool
 	Value *string
@@ -162,8 +162,16 @@ func newInsightsConfigUpdateCmd() *cobra.Command {
 		Short: "Update an Insights job configuration",
 		Long: `Update an Insights job configuration from a manual-mode JSON file.
 
-Omitting description or schedule_cron preserves its current value. Set either
-field to null to clear it. Updating a configuration does not start a job.`,
+The file replaces the saved name and analysis configuration. Omitting description
+preserves its current value; set it to an empty string to clear its contents.
+Omitting schedule_cron preserves its current value; set it to null to disable
+the schedule.
+
+When selecting models explicitly, cluster_model and summary_model must be set
+together. Each value must be openai, anthropic, or the UUID of a workspace
+model configuration; model display names are not accepted.
+
+Updating a configuration does not start a job.`,
 		Example: `  langsmith insights config update CONFIG_ID --project my-app --config insights.json
   cat insights.json | langsmith insights config update CONFIG_ID --project my-app --config -`,
 		Args: cobra.ExactArgs(1),
