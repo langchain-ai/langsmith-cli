@@ -31,13 +31,17 @@ with an executive summary of key findings and highlighted traces.
 Examples:
   langsmith insights list --project my-app
   langsmith insights create --project my-app --config insights.json
+  langsmith insights run CONFIG_ID --project my-app
+  langsmith insights config list --project my-app
   langsmith insights get INSIGHT_ID --project my-app
   langsmith insights get INSIGHT_ID --project my-app --format pretty`,
 	}
 
 	cmd.AddCommand(newInsightsCreateCmd())
+	cmd.AddCommand(newInsightsRunCmd())
 	cmd.AddCommand(newInsightsListCmd())
 	cmd.AddCommand(newInsightsGetCmd())
+	cmd.AddCommand(newInsightsConfigCmd())
 	return cmd
 }
 
@@ -56,6 +60,7 @@ type insightCreateOptions struct {
 type insightConfigFile struct {
 	AttributeSchemas map[string]any                                `json:"attribute_schemas"`
 	ClusterModel     *string                                       `json:"cluster_model"`
+	Description      nullableStringInput                           `json:"description"`
 	EndTime          *time.Time                                    `json:"end_time"`
 	Filter           *string                                       `json:"filter"`
 	Hierarchy        []int64                                       `json:"hierarchy"`
@@ -64,6 +69,7 @@ type insightConfigFile struct {
 	Name             string                                        `json:"name"`
 	Partitions       map[string]string                             `json:"partitions"`
 	Sample           *float64                                      `json:"sample"`
+	ScheduleCron     nullableStringInput                           `json:"schedule_cron"`
 	StartTime        *time.Time                                    `json:"start_time"`
 	SummaryModel     *string                                       `json:"summary_model"`
 	SummaryPrompt    string                                        `json:"summary_prompt"`
@@ -89,6 +95,10 @@ trace field, such as {{run.inputs}}, {{run.outputs}}, {{run.error}},
 
 Auto mode and user_context are not supported. Express the report's intent
 directly in summary_prompt.
+
+Set schedule_cron in the JSON configuration to run the report repeatedly. The
+first job starts immediately, matching creation in the Insights UI. Omit the
+field for a one-time report.
 
 Report generation runs asynchronously and may incur model costs. The workspace
 must have secrets configured for the selected models. Use --wait to poll for a
@@ -121,10 +131,12 @@ terminal status; waiting can take up to 30 minutes.`,
 				return err
 			}
 
-			config, err := c.SDK.Sessions.Insights.Configs.New(ctx, sessionID, langsmith.SessionInsightConfigNewParams{
-				Name:   langsmith.F(configInput.Name),
+			configParams := langsmith.SessionInsightConfigNewParams{
+				Name:   langsmith.F(strings.TrimSpace(configInput.Name)),
 				Config: langsmith.F(request),
-			})
+			}
+			applyInsightConfigMetadataToNewParams(configInput, &configParams)
+			config, err := c.SDK.Sessions.Insights.Configs.New(ctx, sessionID, configParams)
 			if err != nil {
 				return fmt.Errorf("creating insight config: %w", err)
 			}
@@ -147,12 +159,22 @@ terminal status; waiting can take up to 30 minutes.`,
 				created.Name = completed.Name
 				created.Status = completed.Status
 			}
+			schedule := ""
+			if !config.JSON.ScheduleCron.IsNull() {
+				schedule = config.ScheduleCron
+			}
 
 			if GetFormat() == "pretty" {
-				printInsightCreatePretty(created, sessionID, config.ID, opts.wait)
+				printInsightCreatePretty(created, sessionID, config.ID, opts.wait, schedule)
 				return nil
 			}
-			if err := output.OutputJSON(insightCreateResponseToMap(created, sessionID, config.ID), opts.outputFile); err != nil {
+			result := insightCreateResponseToMap(created, sessionID, config.ID)
+			if config.JSON.ScheduleCron.IsNull() {
+				result["schedule_cron"] = nil
+			} else {
+				result["schedule_cron"] = config.ScheduleCron
+			}
+			if err := output.OutputJSON(result, opts.outputFile); err != nil {
 				return err
 			}
 			return nil
@@ -317,7 +339,7 @@ func insightCreateResponseToMap(created *langsmith.SessionInsightNewResponse, se
 	return result
 }
 
-func printInsightCreatePretty(created *langsmith.SessionInsightNewResponse, sessionID, configID string, waited bool) {
+func printInsightCreatePretty(created *langsmith.SessionInsightNewResponse, sessionID, configID string, waited bool, schedule string) {
 	if waited {
 		fmt.Println("Insight report completed")
 	} else {
@@ -328,6 +350,9 @@ func printInsightCreatePretty(created *langsmith.SessionInsightNewResponse, sess
 	fmt.Printf("ID:         %s\n", created.ID)
 	fmt.Printf("Config ID:  %s\n", configID)
 	fmt.Printf("Status:     %s\n", created.Status)
+	if schedule != "" {
+		fmt.Printf("Schedule:   %s\n", schedule)
+	}
 	fmt.Println()
 	fmt.Println("View it with:")
 	fmt.Printf("  langsmith insights get %s --project-id %s\n", created.ID, sessionID)
