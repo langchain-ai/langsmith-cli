@@ -60,7 +60,7 @@ type insightCreateOptions struct {
 type insightConfigFile struct {
 	AttributeSchemas map[string]any                                `json:"attribute_schemas"`
 	ClusterModel     *string                                       `json:"cluster_model"`
-	Description      nullableStringInput                           `json:"description"`
+	Description      *string                                       `json:"description"`
 	EndTime          *time.Time                                    `json:"end_time"`
 	Filter           *string                                       `json:"filter"`
 	Hierarchy        []int64                                       `json:"hierarchy"`

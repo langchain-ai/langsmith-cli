@@ -34,12 +34,8 @@ func (v *nullableStringInput) UnmarshalJSON(data []byte) error {
 }
 
 func applyInsightConfigMetadataToNewParams(input insightConfigFile, params *langsmith.SessionInsightConfigNewParams) {
-	if input.Description.Set {
-		if input.Description.Value == nil {
-			params.Description = langsmith.Null[string]()
-		} else {
-			params.Description = langsmith.F(*input.Description.Value)
-		}
+	if input.Description != nil {
+		params.Description = langsmith.F(*input.Description)
 	}
 	if input.ScheduleCron.Set {
 		if input.ScheduleCron.Value == nil {
@@ -51,12 +47,8 @@ func applyInsightConfigMetadataToNewParams(input insightConfigFile, params *lang
 }
 
 func applyInsightConfigMetadataToUpdateParams(input insightConfigFile, params *langsmith.SessionInsightConfigUpdateParams) {
-	if input.Description.Set {
-		if input.Description.Value == nil {
-			params.Description = langsmith.Null[string]()
-		} else {
-			params.Description = langsmith.F(*input.Description.Value)
-		}
+	if input.Description != nil {
+		params.Description = langsmith.F(*input.Description)
 	}
 	if input.ScheduleCron.Set {
 		if input.ScheduleCron.Value == nil {
@@ -131,13 +123,9 @@ func newInsightsConfigListCmd() *cobra.Command {
 				return nil
 			}
 
-			data := make([]map[string]any, 0, len(*configs))
+			data := make([]json.RawMessage, 0, len(*configs))
 			for _, config := range *configs {
-				item, err := insightConfigRawJSONToMap(config.JSON.RawJSON())
-				if err != nil {
-					return err
-				}
-				data = append(data, item)
+				data = append(data, json.RawMessage(config.JSON.RawJSON()))
 			}
 			return output.OutputJSON(data, outputFile)
 		},
@@ -215,11 +203,7 @@ Updating a configuration does not start a job.`,
 				fmt.Printf("Schedule:  %s\n", schedule)
 				return nil
 			}
-			data, err := insightConfigRawJSONToMap(updated.JSON.RawJSON())
-			if err != nil {
-				return err
-			}
-			return output.OutputJSON(data, outputFile)
+			return output.OutputJSON(json.RawMessage(updated.JSON.RawJSON()), outputFile)
 		},
 	}
 
@@ -335,12 +319,4 @@ The saved configuration and its schedule are not changed.`,
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for the report to succeed or fail")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
-}
-
-func insightConfigRawJSONToMap(raw string) (map[string]any, error) {
-	var data map[string]any
-	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		return nil, fmt.Errorf("decoding insight config response: %w", err)
-	}
-	return data, nil
 }
