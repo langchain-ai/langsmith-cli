@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -221,6 +222,35 @@ func TestInsightsConfigDeleteCmd_DeletesByID(t *testing.T) {
 	}
 	if !called || !strings.Contains(out, configID) || !strings.Contains(out, "deleted") {
 		t.Errorf("unexpected delete result: called=%t output=%q", called, out)
+	}
+}
+
+func TestInsightsConfigDeleteCmd_WarnsAboutAssociatedJobsAndReports(t *testing.T) {
+	const projectID = "0199321d-e2b4-7000-8000-000000000001"
+	const configID = "0199321d-e2b4-7000-8000-000000000002"
+	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/sessions/"+projectID+"/insights/configs/"+configID {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": configID, "message": "deleted"})
+	})
+	defer setupTestEnv(t, server.URL)()
+	flagOutputFormat = "json"
+
+	cmd := newInsightsConfigDeleteCmd()
+	cmd.SetArgs([]string{configID, "--project-id", projectID})
+	cmd.SetIn(strings.NewReader("yes\n"))
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	var runErr error
+	_ = captureStdout(t, func() { runErr = cmd.Execute() })
+	if runErr != nil {
+		t.Fatalf("execute config delete: %v", runErr)
+	}
+	if warning := stderr.String(); !strings.Contains(warning, "all associated jobs and reports") {
+		t.Fatalf("delete warning does not describe cascading deletion: %q", warning)
 	}
 }
 

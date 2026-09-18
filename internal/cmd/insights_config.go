@@ -247,7 +247,7 @@ func newInsightsConfigDeleteCmd() *cobra.Command {
 			}
 			if !yes {
 				if err := confirmDelete(cmd, deleteConfirmation{
-					target:   "an Insights job configuration",
+					target:   "the Insights job configuration and all associated jobs and reports",
 					identity: fmt.Sprintf("Config ID: %s", configID),
 				}); err != nil {
 					return err
