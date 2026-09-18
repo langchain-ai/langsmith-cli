@@ -65,17 +65,33 @@ LS_TRACE_ID='REPLACE_WITH_ROOT_RUN_ID'
 This explicit project must override the saved empty project. Keep the source ID
 separate from `LS_TEST_PROJECT_ID`; never use production data for this walkthrough.
 
-## Prepare examples for editing — writes
-
-After signing in, create a synthetic dataset and copy an example ID from the list:
+## 3. Import a trace into a dataset — preview, write, retry
 
 ```bash
-printf '%s\n' '[{"inputs":{"question":"Test request"},"outputs":{"answer":"Test answer"}}]' > "$LS_TEST_DIR/examples.json"
-lsdemo dataset upload "$LS_TEST_DIR/examples.json" --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/dataset.json"
-LS_DATASET_ID="$(jq -er '.dataset_id' "$LS_TEST_DIR/dataset.json")"
-lsdemo example list --dataset "$LS_DATASET_ID" --limit 20
-LS_EXAMPLE_ID='REPLACE_WITH_EXAMPLE_ID_FROM_LIST'
+lsdemo dataset create --name "$LS_TEST_TAG" | tee "$LS_TEST_DIR/dataset.json"
+LS_DATASET_ID="$(jq -er '.id' "$LS_TEST_DIR/dataset.json")"
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --trace-id "$LS_TRACE_ID" --dry-run --output "$LS_TEST_DIR/selection.json"
+jq . "$LS_TEST_DIR/selection.json"
 ```
+
+Inspect the IDs and input payload. Expect one inputs-only example; no reference
+answer is inferred. The output file is private and refuses to overwrite a file.
+
+```bash
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --selection "$LS_TEST_DIR/selection.json" | tee "$LS_TEST_DIR/import.json"
+LS_EXAMPLE_ID="$(jq -er '.results[0].example_id' "$LS_TEST_DIR/import.json")"
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --selection "@$LS_TEST_DIR/selection.json"
+```
+
+Expect `counts.created: 1`, then `counts.skipped: 1`, the same example ID, and
+`failed: 0`. Complete this retry **before** editing the example.
+
+For bounded filter discovery, preview with `--error --last-n-minutes 1440 --limit 2`
+instead of `--trace-id`. Inspect `selection_info.has_more`; a page is not a complete
+dataset. Thread imports produce separate root-turn examples, not one conversation.
 
 ## 4. Edit examples, splits, and versions — writes
 
@@ -132,3 +148,17 @@ lsdemo dataset get "$LS_DATASET_ID"
 
 Expect the stored schema. Omitted settings stay unchanged; server validation runs
 on apply. See [configuration](README.md#configure-schemas-and-transformations) for transformations.
+
+## 5. Import assertion references — writes
+
+```bash
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --trace-id "$LS_TRACE_ID" --assertions '[{"key":"helpful","comment":"Address the request clearly."}]' \
+  --dry-run --output "$LS_TEST_DIR/assertions.json"
+jq . "$LS_TEST_DIR/assertions.json"
+lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --selection "$LS_TEST_DIR/assertions.json"
+```
+
+Expect a new example with `outputs.assertions`, not copied agent output. This stores
+criteria; it does not run an evaluator. Offline experiments remain SDK workflows.

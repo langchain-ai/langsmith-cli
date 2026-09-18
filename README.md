@@ -496,7 +496,7 @@ Most `trace` and `run` commands share these filter options:
 | Area | Commands | Purpose |
 | --- | --- | --- |
 | Projects | `project create/configure/set-default/clear-default` | Create projects, edit settings, and save a CLI default. |
-| Datasets | `dataset configure` | Configure schemas and transformations. |
+| Datasets | `dataset add/configure` | Import reviewed traces, runs, or thread turns; configure schemas. |
 | Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
 | Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
 
@@ -523,6 +523,8 @@ Use `example update-bulk --dataset DATASET_ID --file edits.json --dry-run`, then
 
 Edits replace supplied fields and are non-atomic. Read unverified items before
 retrying. Use `example update --clear-splits` to remove an example's memberships.
+Assertion imports use `dataset add --assertions` with key/comment criteria;
+they store reference criteria, not automatic scores.
 
 
 ### Configure schemas and transformations
