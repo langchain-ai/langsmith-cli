@@ -491,6 +491,19 @@ Most `trace` and `run` commands share these filter options:
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |
 
+## Additional workflow commands
+
+| Area | Commands | Purpose |
+| --- | --- | --- |
+| Projects | `project create/configure/set-default/clear-default` | Create projects, edit settings, and save a CLI default. |
+
+Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
+copy/paste commands and expected results. Review dry-runs before writes.
+
+Saved project defaults apply only when explicit flags and `LANGSMITH_PROJECT` are
+absent. They are scoped to profile, workspace, and endpoint; they do not configure
+application tracing. Create and select together with `project create --set-default`.
+
 ## Local Development
 
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:

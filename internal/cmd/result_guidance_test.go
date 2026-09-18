@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -29,5 +30,24 @@ func TestReadNextStepQuotesCustomConfig(t *testing.T) {
 	t.Setenv("LANGSMITH_CONFIG_FILE", "")
 	if got := readNextStep("model", "list"); !strings.HasPrefix(got, "langsmith ") {
 		t.Fatalf("unexpected environment prefix: %s", got)
+	}
+}
+
+func TestReadNextStepPinsContextAndQuotesNames(t *testing.T) {
+	defer setupTestEnv(t, "https://example.invalid")()
+	setupProjectDefaultConfig(t, "https://example.invalid")
+	flagAPIKey = "never-print-this-key"
+	name := "reviewer's $(touch /tmp/unsafe); #judge"
+	got := readNextStep("evaluator", "get", "--session-id", defaultTestProject, "--", name)
+	if !strings.HasPrefix(got, "env "+shellQuote("LANGSMITH_CONFIG_FILE="+os.Getenv("LANGSMITH_CONFIG_FILE"))+" langsmith ") {
+		t.Fatalf("custom config not preserved: %s", got)
+	}
+	for _, want := range []string{"--profile demo", "--workspace workspace", "--api-url https://example.invalid", "--format json evaluator get", "--session-id " + defaultTestProject, "-- " + shellQuote(name)} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, flagAPIKey) || strings.Contains(got, "--api-key") {
+		t.Fatal("credential leaked into next step")
 	}
 }

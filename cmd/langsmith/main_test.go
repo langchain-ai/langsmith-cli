@@ -37,6 +37,7 @@ func TestCLIErrorStreams(t *testing.T) {
 		code string
 	}{
 		{"legacy error", []string{"legacy-error"}, "command_failed"},
+		{"missing project name", []string{"project", "create", "--format=json"}, "missing_required_flag"},
 		{"missing dataset name", []string{"dataset", "create", "--format=json"}, "missing_required_flag"},
 		{"invalid flag value", []string{"--format=json", "trace", "list", "--limit=secret-value"}, "invalid_flag"},
 		{"conflicting project flags", []string{"--format=json", "trace", "list", "--project=a", "--project-id=b"}, "invalid_flag_combination"},
