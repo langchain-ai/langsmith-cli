@@ -163,7 +163,7 @@ lsdemo dataset add --dataset "$LS_DATASET_ID" --project-id "$LS_SOURCE_PROJECT_I
 Expect a new example with `outputs.assertions`, not copied agent output. This stores
 criteria; it does not run an evaluator. Offline experiments remain SDK workflows.
 
-## 6. Add run feedback — writes
+## 6. Add feedback and a review queue — writes
 
 ```bash
 lsdemo run feedback create --project-id "$LS_SOURCE_PROJECT_ID" --run-id "$LS_TRACE_ID" \
@@ -171,6 +171,40 @@ lsdemo run feedback create --project-id "$LS_SOURCE_PROJECT_ID" --run-id "$LS_TR
 LS_FEEDBACK_ID="$(jq -er '.feedback_id' "$LS_TEST_DIR/feedback.json")"
 lsdemo run feedback get "$LS_FEEDBACK_ID"
 lsdemo run feedback list --run-id "$LS_TRACE_ID" --key "$LS_TEST_TAG" --has-score --limit 20
+lsdemo queue create --name "$LS_TEST_TAG" --dataset "$LS_DATASET_ID" | tee "$LS_TEST_DIR/queue.json"
+LS_QUEUE_ID="$(jq -er '.id' "$LS_TEST_DIR/queue.json")"
+lsdemo queue list --limit 20
+lsdemo queue add "$LS_QUEUE_ID" --project-id "$LS_SOURCE_PROJECT_ID" \
+  --trace-id "$LS_TRACE_ID" --dry-run --output "$LS_TEST_DIR/queue-plan.json"
+jq . "$LS_TEST_DIR/queue-plan.json"
+lsdemo queue add "$LS_QUEUE_ID" --project-id "$LS_SOURCE_PROJECT_ID" --plan "$LS_TEST_DIR/queue-plan.json"
+lsdemo queue items "$LS_QUEUE_ID" --limit 20
 ```
 
-Expect score `0` (not missing). Feedback belongs to the selected source run.
+Expect score `0` (not missing) and the selected run in the new queue. Queue replay
+is not a no-op test: re-adding can reopen review. Feedback belongs to the source run.
+
+Prepare `rubric.json` using an **existing workspace feedback key** and the
+[rubric format](README.md#reviewer-instructions-and-rubric):
+
+```bash
+lsdemo queue configure "$LS_QUEUE_ID" --rubric rubric.json --instructions 'Explain incorrect answers.' --dry-run
+lsdemo queue configure "$LS_QUEUE_ID" --rubric @rubric.json --instructions 'Explain incorrect answers.' --apply
+lsdemo queue get "$LS_QUEUE_ID"
+```
+
+Expect stored `queue.rubric_items` and `queue.rubric_instructions`. Missing feedback
+configurations must fail before writing. On this test queue, `--rubric '[]'` clears
+the rubric; preview before applying. Rubrics do not create automated judges.
+
+## 10. Retain results; cleanup is optional
+
+Keep resources for review. If you explicitly want to delete the **test queue only**:
+
+```bash
+lsdemo queue get "${LS_QUEUE_ID:?Set the test queue ID}"
+lsdemo queue delete "$LS_QUEUE_ID" --yes
+```
+
+Never delete the source project. The test dataset, project, and feedback remain. Local artifacts remain in
+`LS_TEST_DIR`; handle them as private trace data.
