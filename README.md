@@ -496,6 +496,7 @@ Most `trace` and `run` commands share these filter options:
 | Area | Commands | Purpose |
 | --- | --- | --- |
 | Projects | `project create/configure/set-default/clear-default` | Create projects, edit settings, and save a CLI default. |
+| Models | `model list/get` | Discover saved workspace model configurations. |
 | Datasets | `dataset add/configure` | Import reviewed traces, runs, or thread turns; configure schemas. |
 | Versions and splits | `dataset version list/get/diff/tag`, `dataset split list` | Inspect snapshots, tag versions, and list subsets. |
 | Examples | `example update` and `example update-bulk` | Edit inputs, reference outputs, metadata, and split memberships. |
@@ -504,11 +505,20 @@ Most `trace` and `run` commands share these filter options:
 | Insights | Extended `insights create/list/get`; `insights runs` | Configure reports and inspect their evidence. |
 
 Use `COMMAND --help` for flags and [MANUAL-TESTING.md](MANUAL-TESTING.md) for
-copy/paste commands and expected results. Review dry-runs before writes.
+copy/paste commands and expected results. Workflow JSON inputs accept inline JSON,
+`file.json`, or `@file.json`. Review dry-runs before writes or paid inference.
 
 Saved project defaults apply only when explicit flags and `LANGSMITH_PROJECT` are
 absent. They are scoped to profile, workspace, and endpoint; they do not configure
 application tracing. Create and select together with `project create --set-default`.
+
+### Online judge settings
+
+`evaluator create-llm` now accepts `--model-id` as an alternative to
+`--model-config`, plus filters, sampling, thread grouping, and weekly spend limits.
+Use `--dry-run --preview-run RUN_ID` to inspect single-run input/output bindings.
+Mappings use singular roots: `input.message` and `output.response`.
+Missing/null bindings fail validation; creating a judge does not verify its scores.
 
 ### Bulk edits
 
@@ -528,7 +538,6 @@ Edits replace supplied fields and are non-atomic. Read unverified items before
 retrying. Use `example update --clear-splits` to remove an example's memberships.
 Assertion imports use `dataset add --assertions` with key/comment criteria;
 they store reference criteria, not automatic scores.
-
 
 ### Reviewer instructions and rubric
 
@@ -562,7 +571,6 @@ Use `dataset configure --dataset DATASET_ID --file config.json` with
 
 `[]` clears transformations. Local attachment upload is not supported by these
 commands; a JSON file path does not upload a PDF or image.
-
 
 ### Reuse configurations and investigate results
 
