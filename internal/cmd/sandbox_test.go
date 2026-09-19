@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -697,5 +698,57 @@ func TestSandboxUpdateCmd_ProxyConfigFlag(t *testing.T) {
 	f := cmd.Flags().Lookup("proxy-config")
 	if f == nil {
 		t.Fatal("flag --proxy-config not found on update command")
+	}
+}
+
+func TestSandboxServiceURLCmd_AccessFlag(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		error string
+	}{
+		{name: "token mode by default", args: []string{"sb", "--port", "8000"}},
+		{name: "restricted", args: []string{"sb", "--port", "8000", "--access", "restricted"}},
+		{name: "workspace", args: []string{"sb", "--port", "8000", "--access", "workspace"}},
+		{
+			// off revokes a share as a side effect of minting; not exposed.
+			name:  "off is not accepted",
+			args:  []string{"sb", "--port", "8000", "--access", "off"},
+			error: "--access must be restricted or workspace",
+		},
+		{
+			name:  "unknown value",
+			args:  []string{"sb", "--port", "8000", "--access", "maybe"},
+			error: "--access must be restricted or workspace",
+		},
+		{
+			// A login URL has no token, so there is nothing for a TTL to expire.
+			name: "ttl with a login mode",
+			args: []string{
+				"sb", "--port", "8000", "--access", "workspace",
+				"--expires-in-seconds", "600",
+			},
+			error: "does not apply to --access workspace",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := sandboxServiceURLCommand.Cobra()
+			cmd.SetArgs(tc.args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+			if tc.error != "" {
+				require.ErrorContains(t, err, tc.error)
+				return
+			}
+			// Without credentials the command still reaches the client, so the
+			// flags themselves are accepted; only validation errors are asserted.
+			if err != nil {
+				require.NotContains(t, err.Error(), "--access")
+				require.NotContains(t, err.Error(), "expires-in-seconds")
+			}
+		})
 	}
 }
