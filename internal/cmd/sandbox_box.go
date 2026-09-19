@@ -285,10 +285,9 @@ does not expire:
 
   restricted  anyone with sandboxes:read on this sandbox
   workspace   any member of the owning workspace
-  off         remove an existing login grant and go back to minting a token
 
 A login grant is durable, so token mode is refused while one is in place, and
---expires-in-seconds does not apply to restricted or workspace.
+--expires-in-seconds does not apply.
 
 Examples:
   langsmith sandbox service-url my-vm --port 8000
@@ -299,7 +298,7 @@ Examples:
 		in := &sandboxServiceURLInput{}
 		cmd.Flags().IntVar(&in.Port, "port", in.Port, "Port inside the sandbox")
 		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "URL TTL in seconds (token mode only)")
-		cmd.Flags().StringVar(&in.Access, "access", in.Access, "Gate the URL behind LangSmith login instead of a token: restricted, workspace, or off")
+		cmd.Flags().StringVar(&in.Access, "access", in.Access, "Gate the URL behind LangSmith login instead of a token: restricted or workspace")
 		_ = cmd.MarkFlagRequired("port")
 		return in
 	},
@@ -311,15 +310,15 @@ Examples:
 			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
 		}
 		access := langsmith.SandboxBoxGenerateServiceURLParamsAccess(in.Access)
-		if cmd.Flags().Changed("access") && !access.IsKnown() {
+		if cmd.Flags().Changed("access") &&
+			access != langsmith.SandboxBoxGenerateServiceURLParamsAccessRestricted &&
+			access != langsmith.SandboxBoxGenerateServiceURLParamsAccessWorkspace {
 			return nil, fmt.Errorf(
-				"--access must be one of: restricted, workspace, off (got %q)", in.Access,
+				"--access must be restricted or workspace (got %q)", in.Access,
 			)
 		}
 		// A login grant carries no token, so there is nothing for a TTL to expire.
-		if cmd.Flags().Changed("expires-in-seconds") &&
-			(access == langsmith.SandboxBoxGenerateServiceURLParamsAccessRestricted ||
-				access == langsmith.SandboxBoxGenerateServiceURLParamsAccessWorkspace) {
+		if cmd.Flags().Changed("expires-in-seconds") && cmd.Flags().Changed("access") {
 			return nil, fmt.Errorf(
 				"--expires-in-seconds does not apply to --access %s: "+
 					"a LangSmith login URL carries no token and does not expire", in.Access,

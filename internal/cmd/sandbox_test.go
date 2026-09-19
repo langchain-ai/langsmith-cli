@@ -710,11 +710,16 @@ func TestSandboxServiceURLCmd_AccessFlag(t *testing.T) {
 		{name: "token mode by default", args: []string{"sb", "--port", "8000"}},
 		{name: "restricted", args: []string{"sb", "--port", "8000", "--access", "restricted"}},
 		{name: "workspace", args: []string{"sb", "--port", "8000", "--access", "workspace"}},
-		{name: "off", args: []string{"sb", "--port", "8000", "--access", "off"}},
+		{
+			// off revokes a share as a side effect of minting; not exposed.
+			name:  "off is not accepted",
+			args:  []string{"sb", "--port", "8000", "--access", "off"},
+			error: "--access must be restricted or workspace",
+		},
 		{
 			name:  "unknown value",
 			args:  []string{"sb", "--port", "8000", "--access", "maybe"},
-			error: "--access must be one of",
+			error: "--access must be restricted or workspace",
 		},
 		{
 			// A login URL has no token, so there is nothing for a TTL to expire.
@@ -724,13 +729,6 @@ func TestSandboxServiceURLCmd_AccessFlag(t *testing.T) {
 				"--expires-in-seconds", "600",
 			},
 			error: "does not apply to --access workspace",
-		},
-		{
-			name: "ttl with off is fine",
-			args: []string{
-				"sb", "--port", "8000", "--access", "off",
-				"--expires-in-seconds", "600",
-			},
 		},
 	}
 
