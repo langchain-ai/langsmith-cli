@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -628,18 +630,18 @@ func fakeNpm(t *testing.T, onRunBuild string) {
 	binDir := t.TempDir()
 	npmName := "npm"
 	script := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"install\" ]; then exit 0; fi\n" +
+		"if [ \"$1\" = \"install\" ] || [ \"$1\" = \"ci\" ]; then exit 0; fi\n" +
 		"if [ \"$1\" = \"run\" ] && [ \"$2\" = \"build\" ]; then\n" + onRunBuild + "\nexit 0\nfi\n" +
 		"exit 1\n"
 	if runtime.GOOS == "windows" {
 		npmName = "npm.cmd"
 		if onRunBuild == "exit 1" {
-			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" exit /b 1\r\n@exit /b 1\r\n"
+			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1\"==\"ci\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" exit /b 1\r\n@exit /b 1\r\n"
 		} else {
-			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" (mkdir dist 2>nul & echo module.exports={} > dist\\bundle.js & exit /b 0)\r\n@exit /b 1\r\n"
+			script = "@if \"%1\"==\"install\" exit /b 0\r\n@if \"%1\"==\"ci\" exit /b 0\r\n@if \"%1 %2\"==\"run build\" (mkdir dist 2>nul & echo module.exports={} > dist\\bundle.js & exit /b 0)\r\n@exit /b 1\r\n"
 		}
 		posixScript := "#!/bin/sh\n" +
-			"if [ \"$1\" = \"install\" ]; then exit 0; fi\n" +
+			"if [ \"$1\" = \"install\" ] || [ \"$1\" = \"ci\" ]; then exit 0; fi\n" +
 			"if [ \"$1\" = \"run\" ] && [ \"$2\" = \"build\" ]; then\n" + onRunBuild + "\nexit 0\nfi\n" +
 			"exit 1\n"
 		if err := os.WriteFile(filepath.Join(binDir, "npm"), []byte(posixScript), 0o755); err != nil {
@@ -773,4 +775,64 @@ func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 		check(name, at.templateFS)
 	}
 	check("_shared", sharedFS)
+}
+
+func TestScaffoldStarterLockfilesMatchManifest(t *testing.T) {
+	for name, at := range appTypes {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, err := scaffoldCustomAppStarter(dir, "renamed-app", "", at, false); err != nil {
+				t.Fatal(err)
+			}
+			manifestBytes, err := os.ReadFile(filepath.Join(dir, "package.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lockBytes, err := os.ReadFile(filepath.Join(dir, "package-lock.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var manifest map[string]any
+			if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			var lock struct {
+				Name            string                    `json:"name"`
+				LockfileVersion int                       `json:"lockfileVersion"`
+				Packages        map[string]map[string]any `json:"packages"`
+			}
+			if err := json.Unmarshal(lockBytes, &lock); err != nil {
+				t.Fatal(err)
+			}
+			if lock.Name != "renamed-app" || lock.Packages[""]["name"] != "renamed-app" {
+				t.Fatal("lockfile must use the scaffolded app name")
+			}
+			if lock.LockfileVersion != 3 || len(lock.Packages) < 2 {
+				t.Fatal("missing locked dependency graph")
+			}
+			for _, field := range []string{"dependencies", "devDependencies"} {
+				if !reflect.DeepEqual(manifest[field], lock.Packages[""][field]) {
+					t.Errorf("lockfile %s differ from manifest; regenerate template locks", field)
+				}
+			}
+		})
+	}
+}
+
+func TestAppsInitCmd_NoInstallWritesLockedStarter(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// No executable package manager is available; scaffolding must still succeed.
+	t.Setenv("PATH", t.TempDir())
+	cmd := newAppsCmd()
+	cmd.SetArgs([]string{"init", "--name", "offline-app", "--no-install"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "offline-app", "package-lock.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "offline-app", "node_modules")); !os.IsNotExist(err) {
+		t.Fatal("scaffolding installed dependencies")
+	}
 }

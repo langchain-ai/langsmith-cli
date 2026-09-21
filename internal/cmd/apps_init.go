@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -48,6 +49,9 @@ const sharedRoot = "templates/_shared"
 //
 //go:embed templates/package.json.tmpl
 var sharedPackageJSONTmpl string
+
+//go:embed templates/locks/*.json
+var starterLockfiles embed.FS
 
 const iconsImportSpecifier = "@langchain/untitled-ui-icons"
 
@@ -114,6 +118,7 @@ func newAppsInitCmd() *cobra.Command {
 		description  string
 		templateFlag string
 		force        bool
+		noInstall    bool
 	)
 
 	cmd := &cobra.Command{
@@ -160,8 +165,10 @@ Installs dependencies as the last step, so you can cd in and run
 			sort.Strings(written)
 
 			fmt.Fprintf(os.Stderr, "Scaffolded %q in %s.\n", templateName, dir)
-			if err := installAppDeps(dir); err != nil {
-				return err
+			if !noInstall {
+				if err := installAppDeps(dir); err != nil {
+					return err
+				}
 			}
 			fmt.Fprintf(os.Stderr, "Next: cd %s && langsmith apps dev.\n", slug)
 			return output.OutputJSON(map[string]any{
@@ -178,6 +185,7 @@ Installs dependencies as the last step, so you can cd in and run
 	cmd.Flags().StringVar(&description, "description", "", "One-line description written into README.md")
 	cmd.Flags().StringVar(&templateFlag, "template", "", "Starter template. Omittable for a blank starter.")
 	cmd.Flags().BoolVar(&force, "force", false, "Write even if the target directory already exists and is non-empty")
+	cmd.Flags().BoolVar(&noInstall, "no-install", false, "Write the starter and lockfile without installing dependencies")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
@@ -202,19 +210,19 @@ func slugifyAppName(name string) string {
 	return strings.TrimRight(b.String(), "-")
 }
 
-// installAppDeps runs npm install
+// installAppDeps installs the scaffold's locked dependency versions.
 func installAppDeps(dir string) error {
 	if _, err := exec.LookPath("npm"); err != nil {
-		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm install" before "langsmith apps dev"`)
+		fmt.Fprintln(os.Stderr, `note: npm not found on PATH — run "npm ci" before "langsmith apps dev"`)
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, "Installing dependencies: npm install")
-	c := exec.Command("npm", "install")
+	fmt.Fprintln(os.Stderr, "Installing dependencies: npm ci")
+	c := exec.Command("npm", "ci")
 	c.Dir = dir
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("\"npm install\" failed: %w", err)
+		return fmt.Errorf("\"npm ci\" failed: %w", err)
 	}
 	return nil
 }
@@ -313,6 +321,14 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		return nil, fmt.Errorf("writing package.json: %w", err)
 	}
 	written = append(written, "package.json")
+	lockfile, err := renderStarterLockfile(vars)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package-lock.json"), lockfile, 0o644); err != nil {
+		return nil, fmt.Errorf("writing package-lock.json: %w", err)
+	}
+	written = append(written, "package-lock.json")
 
 	sharedWritten, err := writeUsedSharedFiles(dir, at)
 	if err != nil {
@@ -478,4 +494,41 @@ func assembleAgentsMD(agentsMD string) ([]byte, error) {
 		out = strings.ReplaceAll(out, "\n\n\n", "\n\n")
 	}
 	return []byte(strings.TrimSpace(out) + "\n"), nil
+}
+
+// Lockfile root names follow the app name without changing dependency resolutions.
+func renderStarterLockfile(vars customAppStarterVars) ([]byte, error) {
+	variant := "blank"
+	if vars.NeedsIcons {
+		variant = "icons-cn"
+	} else if vars.NeedsCn {
+		variant = "cn"
+	}
+	contents, err := starterLockfiles.ReadFile("templates/locks/" + variant + ".json")
+	if err != nil {
+		return nil, fmt.Errorf("reading starter lockfile: %w", err)
+	}
+	var lock map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &lock); err != nil {
+		return nil, fmt.Errorf("parsing starter lockfile: %w", err)
+	}
+	name, err := json.Marshal(vars.Name)
+	if err != nil {
+		return nil, err
+	}
+	lock["name"] = name
+	var packages map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(lock["packages"], &packages); err != nil {
+		return nil, fmt.Errorf("parsing starter lockfile packages: %w", err)
+	}
+	if packages[""] == nil {
+		return nil, fmt.Errorf("starter lockfile is missing the root package")
+	}
+	packages[""]["name"] = name
+	lock["packages"], err = json.Marshal(packages)
+	if err != nil {
+		return nil, err
+	}
+	result, err := json.MarshalIndent(lock, "", "  ")
+	return append(result, '\n'), err
 }

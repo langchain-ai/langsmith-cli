@@ -535,3 +535,17 @@ is all that's needed to ship to users.
 ## License
 
 MIT
+
+### Locked app starters
+
+`langsmith apps init` writes `package.json` and `package-lock.json`, then runs
+`npm ci` so a CLI release scaffolds repeatable dependency versions. Use
+`--no-install` to generate source and the lockfile without installing packages.
+
+The canonical lockfiles live under `internal/cmd/templates/locks/`, one for each
+starter dependency variant. After changing `templates/package.json.tmpl`, run
+`bash scripts/update-app-template-locks.sh` to resolve the updated dependencies,
+then run the app-init tests and build the affected starters before committing.
+The generator needs Go and npm and accesses the npm registry. Consumers that
+package these starters should pin a CLI revision and include its generated
+lockfile, installing with `npm ci`.
