@@ -822,8 +822,19 @@ func TestScaffoldStarterLockfilesMatchManifest(t *testing.T) {
 func TestAppsInitCmd_NoInstallWritesLockedStarter(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// No executable package manager is available; scaffolding must still succeed.
-	t.Setenv("PATH", t.TempDir())
+	binDir := t.TempDir()
+	marker := filepath.Join(dir, "npm-invoked")
+	t.Setenv("APP_INIT_INSTALL_MARKER", marker)
+	npmName := "npm"
+	script := "#!/bin/sh\necho invoked > \"$APP_INIT_INSTALL_MARKER\"\nexit 1\n"
+	if runtime.GOOS == "windows" {
+		npmName = "npm.cmd"
+		script = "@echo invoked > \"%APP_INIT_INSTALL_MARKER%\"\r\n@exit /b 1\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(binDir, npmName), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
 	cmd := newAppsCmd()
 	cmd.SetArgs([]string{"init", "--name", "offline-app", "--no-install"})
 	if err := cmd.Execute(); err != nil {
@@ -832,7 +843,7 @@ func TestAppsInitCmd_NoInstallWritesLockedStarter(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "offline-app", "package-lock.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "offline-app", "node_modules")); !os.IsNotExist(err) {
-		t.Fatal("scaffolding installed dependencies")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("--no-install invoked npm")
 	}
 }

@@ -543,7 +543,7 @@ MIT
 `--no-install` to generate source and the lockfile without installing packages.
 
 The canonical lockfiles live under `internal/cmd/templates/locks/`, one for each
-starter dependency variant. After changing `templates/package.json.tmpl`, run
+starter dependency variant. After changing `internal/cmd/templates/package.json.tmpl`, run
 `bash scripts/update-app-template-locks.sh` to resolve the updated dependencies,
 then run the app-init tests and build the affected starters before committing.
 The generator needs Go and npm and accesses the npm registry. Consumers that
