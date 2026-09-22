@@ -92,7 +92,7 @@ func decodePreview(t *testing.T, raw string) *langsmith.ChartPreviewResponse {
 func TestPreviewResponseDecodesZonelessTimesAndBothValueShapes(t *testing.T) {
 	res := decodePreview(t, `{"data":[
 		{"series_id":"s","timestamp":"2026-09-21T10:31:55","value":0.25,"group":""},
-		{"series_id":"s","timestamp":"2026-09-21T11:31:55.123456","value":{"avg":0.75,"n":4},"group":""},
+		{"series_id":"s","timestamp":"2026-09-21T11:31:55.123456","value":{"correctness":{"avg":0.75,"n":4,"feedback_score_p50":0.99}},"group":""},
 		{"series_id":"s","timestamp":"2026-09-21T12:31:55Z","value":null,"group":""}
 	]}`)
 	want := time.Date(2026, 9, 21, 10, 31, 55, 0, time.UTC)
@@ -120,6 +120,9 @@ func TestFormatChartValue(t *testing.T) {
 		{float64(42), "42"},
 		{0.00222, ".00222"},
 		{5.4213, "5.421"},
+		// Feedback metrics key the stats by feedback key.
+		{map[string]any{"correctness": map[string]any{"avg": 0.75, "n": float64(4)}}, ".75"},
+		{map[string]any{"correctness": map[string]any{"avg": nil, "n": float64(0)}}, "."},
 		{map[string]any{"avg": 0.75, "n": float64(4)}, ".75"},
 		{map[string]any{"n": float64(4)}, "?"},
 	}
