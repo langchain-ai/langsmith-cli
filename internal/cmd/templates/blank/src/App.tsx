@@ -7,7 +7,7 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     <main className="flex min-h-screen items-center justify-center p-space-6">
       <Card
         intent="plain"
-        className="flex w-full max-w-md flex-col items-center gap-space-4 text-center"
+        className="flex w-full max-w-md flex-col items-center gap-space-4 border-2 border-default text-center shadow-lg"
       >
         <SparkleFillIcon className="size-8 text-icon-brand" aria-hidden />
         <Text variant="h2">Your custom app starts here</Text>
