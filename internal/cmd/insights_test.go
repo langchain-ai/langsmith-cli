@@ -16,7 +16,7 @@ import (
 
 func TestInsightsCmd_Subcommands(t *testing.T) {
 	cmd := newInsightsCmd()
-	expected := map[string]bool{"create": false, "list": false, "get": false}
+	expected := map[string]bool{"create": false, "run": false, "list": false, "get": false, "config": false}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
 			expected[sub.Name()] = true
@@ -251,8 +251,10 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "insights.json")
 	if err := os.WriteFile(configPath, []byte(`{
 		"name":"Reliability review",
+		"description":"Scheduled reliability analysis",
 		"summary_prompt":"Diagnose {{run.error}}",
-		"last_n_hours":24
+		"last_n_hours":24,
+		"schedule_cron":"0 9 * * 1"
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +280,7 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 					"sample": nil, "summary_prompt": "Diagnose {{run.error}}",
 					"filter": nil, "attribute_schemas": nil, "model": "openai",
 				},
-				"schedule_cron": nil,
+				"schedule_cron": "0 9 * * 1",
 			})
 		case "/api/v1/sessions/" + projectID + "/insights":
 			if err := json.NewDecoder(r.Body).Decode(&jobRequestBody); err != nil {
@@ -312,6 +314,9 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	if configRequestBody["name"] != "Reliability review" {
 		t.Errorf("unexpected config request name: %#v", configRequestBody)
 	}
+	if configRequestBody["description"] != "Scheduled reliability analysis" || configRequestBody["schedule_cron"] != "0 9 * * 1" {
+		t.Errorf("unexpected config metadata: %#v", configRequestBody)
+	}
 	config, ok := configRequestBody["config"].(map[string]any)
 	if !ok || config["summary_prompt"] != "Diagnose {{run.error}}" || config["last_n_hours"] != float64(24) {
 		t.Errorf("unexpected config request: %#v", configRequestBody)
@@ -324,7 +329,7 @@ func TestInsightsCreateCmd_PostsRequestAndPrintsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("parse output %q: %v", out, err)
 	}
-	if result["id"] != insightID || result["config_id"] != configID || result["project_id"] != projectID || result["status"] != "pending" {
+	if result["id"] != insightID || result["config_id"] != configID || result["project_id"] != projectID || result["status"] != "pending" || result["schedule_cron"] != "0 9 * * 1" {
 		t.Errorf("unexpected output: %#v", result)
 	}
 }

@@ -250,15 +250,26 @@ model costs. Define the report with a manual-mode JSON configuration:
   "summary_prompt": "Identify the request and outcome: {{run.inputs}} {{run.outputs}}",
   "last_n_hours": 168,
   "filter": "eq(is_root, true)",
-  "model": "openai"
+  "model": "openai",
+  "schedule_cron": "0 9 * * 1"
 }
 ```
 
-Create the report asynchronously, or wait for it to finish:
+Create the report asynchronously, or wait for it to finish. If
+`schedule_cron` is present, the configuration also starts future jobs on that
+schedule; the initial job still starts immediately:
 
 ```bash
 langsmith insights create --project my-app --config insights.json
 langsmith insights create --project my-app --config insights.json --wait
+
+# List, update, or delete saved job configurations
+langsmith insights config list --project my-app
+langsmith insights config update <config-id> --project my-app --config insights.json
+langsmith insights config delete <config-id> --project my-app --yes
+
+# Run an existing configuration now, without changing its schedule
+langsmith insights run <config-id> --project my-app
 
 # List reports and fetch a completed result
 langsmith insights list --project my-app
@@ -271,7 +282,13 @@ The summary prompt is a Mustache template and must reference at least one of
 express the report's intent directly in `summary_prompt`. Use `--config -` to
 read the JSON from stdin. The configuration also supports `start_time`,
 `end_time`, `sample`, `hierarchy`, `partitions`, `attribute_schemas`,
-`cluster_model`, and `summary_model`.
+`cluster_model`, `summary_model`, `description`, and `schedule_cron`. Set
+`cluster_model` and `summary_model` together to `openai`, `anthropic`, or
+workspace model-configuration UUIDs; model display names are not accepted.
+When updating, the file replaces the saved name and analysis configuration.
+Omit `description` or `schedule_cron` to preserve its current value; use an empty
+description to clear its contents or set `schedule_cron` to `null` to disable
+the schedule.
 
 ### `dataset` — Manage evaluation datasets
 
