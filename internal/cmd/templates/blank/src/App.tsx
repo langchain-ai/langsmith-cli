@@ -5,7 +5,10 @@ import { SparkleFillIcon } from '@langchain/macaw-components/icons';
 export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   return (
     <main className="flex min-h-screen items-center justify-center p-space-6">
-      <Card className="flex w-full max-w-md flex-col items-center gap-space-4 text-center">
+      <Card
+        intent="plain"
+        className="flex w-full max-w-md flex-col items-center gap-space-4 text-center"
+      >
         <SparkleFillIcon className="size-8 text-icon-brand" aria-hidden />
         <Text variant="h2">Your custom app starts here</Text>
         <Text variant="sm" color="tertiary">
