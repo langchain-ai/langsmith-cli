@@ -139,7 +139,9 @@ func runConsole(name, shell string, forwardSSHAgent bool, extraEnv []string) err
 		return err
 	}
 	if len(env) > 0 {
-		params.Env = langsmith.F(env)
+		// Env over RunConfig.EnvVars: servers that predate run_config accept
+		// only env, and would drop the variables silently.
+		params.Env = langsmith.F(env) //nolint:staticcheck
 	}
 	if shell != "" {
 		params.Shell = langsmith.String(shell)
