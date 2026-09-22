@@ -95,7 +95,7 @@ func TestExampleListCmd_Flags(t *testing.T) {
 		{"dataset", "", ""},
 		{"limit", "20", "n"},
 		{"offset", "0", ""},
-		{"split", "", ""},
+		{"split", "[]", ""},
 		{"output", "", "o"},
 	}
 	for _, tc := range tests {

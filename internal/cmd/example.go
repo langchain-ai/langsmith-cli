@@ -33,6 +33,8 @@ Examples:
 
 	cmd.AddCommand(newExampleListCmd())
 	cmd.AddCommand(newExampleCreateCmd())
+	cmd.AddCommand(newExampleUpdateCmd())
+	cmd.AddCommand(newExampleUpdateBulkCmd())
 	cmd.AddCommand(newExampleDeleteCmd())
 	return cmd
 }
@@ -42,27 +44,37 @@ func newExampleListCmd() *cobra.Command {
 		datasetName string
 		limit       int
 		offset      int
-		split       string
 		outputFile  string
 	)
+	var filters exampleReadFilters
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List examples in a dataset (default: 20)",
+		Args:  cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if limit < 1 || offset < 0 {
+				return datasetInputError("--limit must be positive and --offset nonnegative")
+			}
+			return filters.apply(&langsmith.ExampleListParams{})
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
 
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			pageSize := int64(20)
 			if limit > 0 && int64(limit) < pageSize {
 				pageSize = int64(limit)
 			}
-			params := exampleListParams(ds.ID, pageSize, offset, split)
+			params := exampleListParams(ds.ID, pageSize, offset, "")
+			if err := filters.apply(&params); err != nil {
+				ExitCommandError(err)
+			}
 			var examples []langsmith.Example
 			pager := c.SDK.Examples.ListAutoPaging(ctx, params)
 			for pager.Next() {
@@ -101,16 +113,18 @@ func newExampleListCmd() *cobra.Command {
 				var data []map[string]any
 				for _, ex := range examples {
 					entry := map[string]any{
-						"id":         ex.ID,
-						"inputs":     ex.Inputs,
-						"outputs":    ex.Outputs,
-						"metadata":   ex.Metadata,
-						"created_at": formatTimeISO(ex.CreatedAt),
+						"id":          ex.ID,
+						"inputs":      ex.Inputs,
+						"outputs":     ex.Outputs,
+						"metadata":    ex.Metadata,
+						"created_at":  formatTimeISO(ex.CreatedAt),
+						"modified_at": ex.ModifiedAt,
+						"dataset_id":  ex.DatasetID,
 					}
 					data = append(data, entry)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -119,7 +133,7 @@ func newExampleListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&datasetName, "dataset", "", "Dataset name or UUID (required)")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum number of examples to return")
 	cmd.Flags().IntVar(&offset, "offset", 0, "Number of examples to skip (pagination)")
-	cmd.Flags().StringVar(&split, "split", "", "Filter by split (train, test, validation)")
+	filters.flags(cmd)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	_ = cmd.MarkFlagRequired("dataset")
 
@@ -191,7 +205,7 @@ func newExampleCreateCmd() *cobra.Command {
 
 			ds, err := resolveDataset(ctx, c, datasetName)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := exampleCreateParams(ds.ID, parsedInputs, parsedOutputs, parsedMetadata, split)
@@ -276,7 +290,7 @@ func newExampleDeleteCmd() *cobra.Command {
 				"status": "deleted",
 				"id":     exampleID,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

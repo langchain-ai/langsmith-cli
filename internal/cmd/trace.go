@@ -70,7 +70,7 @@ func newTraceListCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace list")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -79,7 +79,7 @@ func newTraceListCmd() *cobra.Command {
 			}
 			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			var flaggedByTrace map[string]string
@@ -107,7 +107,7 @@ func newTraceListCmd() *cobra.Command {
 						}
 						allRuns, err := queryRunsAuto(ctx, c, childParams, buildRunSelectV2(includeIO, includeFeedback), sessionID, 1000, 0)
 						if err != nil {
-							ExitErrorf("%v", err)
+							ExitCommandError(err)
 						}
 						output.OutputTree(runsToTreeData(allRuns), "")
 					}
@@ -133,7 +133,7 @@ func newTraceListCmd() *cobra.Command {
 						}
 						allRuns, err := queryRunsAuto(ctx, c, childParams, v2Select, sessionID, 1000, 0)
 						if err != nil {
-							ExitErrorf("%v", err)
+							ExitCommandError(err)
 						}
 						result = append(result, map[string]any{
 							"trace_id":  run.TraceID,
@@ -142,7 +142,7 @@ func newTraceListCmd() *cobra.Command {
 						})
 					}
 					if err := output.OutputJSON(result, outputFile); err != nil {
-						ExitErrorf("%v", err)
+						ExitCommandError(err)
 					}
 				} else {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
@@ -150,7 +150,7 @@ func newTraceListCmd() *cobra.Command {
 						annotateFlagged(data, flaggedByTrace)
 					}
 					if err := output.OutputJSON(data, outputFile); err != nil {
-						ExitErrorf("%v", err)
+						ExitCommandError(err)
 					}
 				}
 			}
@@ -199,7 +199,7 @@ func newTraceGetCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, project, projectID, "trace get")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := langsmith.RunQueryParams{
@@ -213,7 +213,7 @@ func newTraceGetCmd() *cobra.Command {
 
 			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, 1000, 0)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			fmt_ := GetFormat()
@@ -227,7 +227,7 @@ func newTraceGetCmd() *cobra.Command {
 					"runs":      extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback),
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -280,7 +280,7 @@ func newTraceExportCmd() *cobra.Command {
 			ctx := context.Background()
 			sessionID, err := resolveSessionID(ctx, c, ff.Project, ff.ProjectID, "trace export")
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			params := BuildRunQueryParams(&ff, true, ff.Limit)
@@ -291,7 +291,7 @@ func newTraceExportCmd() *cobra.Command {
 			v2Select := buildRunSelectV2(includeIO, includeFeedback)
 			rootRuns, err := queryRunsAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens)
 			if err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 
 			exported := 0
@@ -310,7 +310,7 @@ func newTraceExportCmd() *cobra.Command {
 				}
 				allRuns, err := queryRunsAuto(ctx, c, childParams, v2Select, sessionID, 1000, 0)
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 
 				name := root.Name
@@ -343,7 +343,7 @@ func newTraceExportCmd() *cobra.Command {
 				"count":      exported,
 				"output_dir": outputDir,
 			}, ""); err != nil {
-				ExitErrorf("%v", err)
+				ExitCommandError(err)
 			}
 		},
 	}

@@ -60,7 +60,7 @@ func newExperimentListCmd() *cobra.Command {
 			if datasetName != "" {
 				ds, err := resolveDataset(ctx, c, datasetName)
 				if err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 				params.ReferenceDataset = langsmith.F([]string{ds.ID})
 			}
@@ -111,7 +111,7 @@ func newExperimentListCmd() *cobra.Command {
 					data = append(data, entry)
 				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
@@ -188,11 +188,11 @@ func newExperimentGetCmd() *cobra.Command {
 			fmt_ := GetFormat()
 			if fmt_ == "pretty" {
 				if err := output.PrintOutput(data, "pretty", outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			} else {
 				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
+					ExitCommandError(err)
 				}
 			}
 		},
