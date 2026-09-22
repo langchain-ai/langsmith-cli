@@ -1,8 +1,9 @@
+import { Checkbox } from '@langchain/macaw-components/Checkbox';
 import { useCallback, type ReactNode } from 'react';
 import { fetchDatasets, fetchExperiments } from '../api';
 import type { Dataset, Experiment } from '../types';
 import { SearchableSelect } from './SearchableSelect';
-import { cn } from '../lib/utils';
+import { cn } from '@langchain/macaw-components/utils/cn';
 
 interface Props {
   datasetId: string;
@@ -42,7 +43,11 @@ export function Pickers({
   );
 
   const step2Status: StepStatus = !datasetId ? 'disabled' : baselineId ? 'done' : 'active';
-  const step3Status: StepStatus = !baselineId ? 'disabled' : comparisonIds.length > 0 ? 'done' : 'active';
+  const step3Status: StepStatus = !baselineId
+    ? 'disabled'
+    : comparisonIds.length > 0
+      ? 'done'
+      : 'active';
 
   return (
     <div className="flex flex-col bg-surface-level-1 px-4 py-4">
@@ -98,15 +103,12 @@ export function Pickers({
         ) : (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             {others.map((x) => (
-              <label key={x.id} className="flex items-center gap-1.5 text-sm text-primary">
-                <input
-                  type="checkbox"
-                  checked={comparisonIds.includes(x.id)}
-                  onChange={() => onToggleComparison(x.id)}
-                  className="accent-[var(--bg-brand)]"
-                />
-                <span className="truncate">{x.name}</span>
-              </label>
+              <Checkbox
+                key={x.id}
+                label={x.name}
+                checked={comparisonIds.includes(x.id)}
+                onCheckedChange={() => onToggleComparison(x.id)}
+              />
             ))}
           </div>
         )}

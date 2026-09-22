@@ -12,4 +12,4 @@ Hydrate RUN with `GET /v2/runs/{id}` and THREAD with
 
 This is just a starting point, not a spec. Change the layout, the review
 flow, or the whole concept — rip out anything here and build whatever app
-you actually want.
+you actually want, using Macaw components and semantic tokens.

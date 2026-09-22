@@ -1,5 +1,8 @@
+import { Card } from '@langchain/macaw-components/Card';
+import { Text } from '@langchain/macaw-components/Text';
+import { EmptyState } from '@langchain/macaw-components/EmptyState';
 import type { StandardMessage } from '../types';
-import { Spinner } from './Spinner';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 
 interface Props {
   messages: StandardMessage[] | undefined;
@@ -50,21 +53,6 @@ function roleLabel(role: string): string {
   }
 }
 
-function bubbleClass(role: string): string {
-  switch (role) {
-    case 'human':
-      return 'ml-8 border-brand bg-brand-muted';
-    case 'ai':
-      return 'mr-8 border-secondary bg-surface-level-2';
-    case 'system':
-      return 'border-dashed border-secondary bg-transparent';
-    case 'tool':
-      return 'mr-4 border-secondary bg-surface-level-1';
-    default:
-      return 'border-secondary bg-surface-level-1';
-  }
-}
-
 /** Chronological chat view for THREAD queue items (from POST /v1/trajectory). */
 export function ThreadViewer({ messages, threadId, loading }: Props) {
   if (loading && (!messages || messages.length === 0)) {
@@ -76,14 +64,7 @@ export function ThreadViewer({ messages, threadId, loading }: Props) {
   }
 
   if (!messages || messages.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6">
-        <span className="text-sm text-tertiary">No messages in this thread</span>
-        {threadId && (
-          <span className="font-mono text-xs text-quaternary">{threadId}</span>
-        )}
-      </div>
-    );
+    return <EmptyState title="No messages in this thread" description={threadId} size="sm" />;
   }
 
   return (
@@ -95,18 +76,19 @@ export function ThreadViewer({ messages, threadId, loading }: Props) {
         const text = contentToText(msg.content);
         if (!text.trim()) return null;
         return (
-          <div
+          <Card
             key={msg.id ?? `${msg.role}-${index}`}
-            className={`flex flex-col gap-1 rounded-lg border p-3 ${bubbleClass(msg.role)}`}
+            intent={msg.role === 'human' || msg.role === 'user' ? 'info' : 'neutral'}
+            className="flex flex-col gap-space-2"
           >
-            <span className="text-xs font-medium uppercase tracking-wide text-tertiary">
+            <Text variant="xs" color="tertiary" weight="medium">
               {roleLabel(msg.role)}
               {msg.name ? ` · ${msg.name}` : ''}
-            </span>
-            <pre className="whitespace-pre-wrap break-words font-sans text-sm text-primary">
+            </Text>
+            <Text variant="sm" className="whitespace-pre-wrap break-words">
               {text}
-            </pre>
-          </div>
+            </Text>
+          </Card>
         );
       })}
     </div>

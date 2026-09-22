@@ -6,6 +6,37 @@ exports `render(data, root, metadata)`; keep that shape, the sandbox depends
 on it. `data` is normally `{}`; call `window.langsmith.setData(patch)` if you
 need to push a mutation out for the host to persist.
 
+## Macaw is required for every UI change
+
+Polly, LangSmith chat, and any other coding agent must use the installed
+LangChain Macaw Design System for **all new and edited UI**, including chat
+interfaces. This applies to every template and every later edit; keep this
+requirement when changing the app's layout or purpose.
+
+- Keep React and React DOM at 19.2 or newer within Macaw's supported major range;
+  the published chart legend uses `useEffectEvent`.
+- Use `@langchain/macaw-components` for controls, typography, cards, feedback,
+  loading states, icons, and charts. Compose existing components rather than
+  recreating them with styled native controls or another component library.
+- Read `node_modules/@langchain/macaw-components/docs/DESIGN.md` and the relevant
+  sections of `STYLES.md` before editing. Discover the installed API with
+  `npm run macaw -- search "<capability>"` and
+  `npm run macaw -- inspect <Component> --json`. Do not guess component props.
+- Use the semantic tokens from `@langchain/macaw-tokens` through Macaw's Tailwind
+  preset. Do not copy token definitions, invent a palette, use raw color values,
+  or override component-owned styles to recreate another design.
+- When no component covers a feature (for example a data table or scatter plot),
+  compose semantic HTML with Macaw components and tokens. Keep custom code scoped
+  to the missing behavior and use Macaw's `utils/chartColors` for chart colors.
+- For chat, use `Textarea`, `Button`/`IconButton`, `ThinkingState` for generation,
+  `Spinner` for fetching or saving, and `Banner`/`ErrorState` for failures.
+- Preserve `src/index.css`'s Macaw stylesheet import, the Tailwind preset, and
+  `HostTheme` in `src/entry.tsx`. The stylesheet already includes the token CSS;
+  do not import it twice. CSS and fonts must remain inlined in `dist/bundle.js`
+  because the sandbox cannot load separate assets or use a CDN.
+- Run `npm run typecheck` and `npm run build`, then inspect the affected UI in
+  light and dark mode, including loading, empty, error, disabled, and narrow states.
+
 ## Don't run `langsmith apps push`
 
 Publishing is the developer's call, not yours. `langsmith apps push` uploads
@@ -87,10 +118,10 @@ https://docs.langchain.com/langsmith/export-traces#rate-limits
 
 ## Theme
 
-`metadata.mode` is `"dark"` | `"light"`. The sandbox sets `html.dark` from it
-before every render, so Tailwind/token-based UIs theme for free with no
-branching. Only branch on it yourself if you're using inline styles — and
-re-check it every render, since it can change without a remount.
+`metadata.mode` is `"dark"` | `"light"`. `HostTheme` synchronizes Macaw's
+`AppThemeProvider` on every host update without remounting the app. Keep
+`storageKey={null}`: the sandbox has no localStorage, and LangSmith owns the
+preference. Use semantic tokens so both themes work without branching.
 
 ## Filter DSL for metadata equality
 

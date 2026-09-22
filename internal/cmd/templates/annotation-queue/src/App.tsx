@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FeedbackPanel } from './components/FeedbackPanel';
-import { LinearProgress } from './components/LinearProgress';
+import { LinearProgress } from '@langchain/macaw-components/LinearProgress';
+import { EmptyState } from '@langchain/macaw-components/EmptyState';
 import { QueueBar } from './components/QueueBar';
 import { RunList } from './components/RunList';
 import { RunViewer } from './components/RunViewer';
@@ -49,6 +50,7 @@ export function App({ queueId: initialQueueId }: Props) {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented) return;
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
       const inInput =
         tag === 'INPUT' ||
@@ -138,9 +140,7 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">
-            Select an annotation queue to start reviewing.
-          </span>
+          <EmptyState title="Select an annotation queue to start reviewing" />
         </div>
       </div>
     );
@@ -161,7 +161,7 @@ export function App({ queueId: initialQueueId }: Props) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-level-1">
       <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
-      <div className="m-4 mt-3 flex min-h-0 flex-1 overflow-hidden rounded-lg border border-secondary">
+      <div className="m-4 mt-3 flex min-h-0 flex-1 overflow-auto rounded-lg border border-secondary">
         <div className="flex h-full w-[280px] min-w-[280px] max-w-[280px] flex-col overflow-hidden">
           <RunList
             needsReview={needsReview}
@@ -173,7 +173,7 @@ export function App({ queueId: initialQueueId }: Props) {
           />
         </div>
 
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-auto">
+        <div className="relative flex min-w-[320px] flex-1 lg:min-w-0 flex-col overflow-auto">
           {selectedItem || contentLoading ? (
             selectedItem?.item_type === 'THREAD' ? (
               <ThreadViewer
@@ -191,7 +191,7 @@ export function App({ queueId: initialQueueId }: Props) {
             )
           ) : (
             <div className="flex flex-1 items-center justify-center">
-              <span className="text-sm text-tertiary">Select an item to review</span>
+              <EmptyState size="sm" title="Select an item to review" />
             </div>
           )}
         </div>

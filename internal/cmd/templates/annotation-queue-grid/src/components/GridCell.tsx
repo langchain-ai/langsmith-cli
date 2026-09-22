@@ -1,8 +1,14 @@
+import { Input } from '@langchain/macaw-components/Input';
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDownIcon } from '@langchain/untitled-ui-icons';
+import {
+  SelectRoot,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@langchain/macaw-components/Select';
 import { patchFeedback, submitFeedback, deleteFeedback } from '../api';
 import type { FeedbackConfig, FeedbackItem, QueueItemType, RubricItem } from '../types';
-import { cn } from '../lib/utils';
 
 interface Props {
   item: RubricItem;
@@ -121,61 +127,59 @@ export function GridCell({
     }
   }
 
-  // Deliberately spreadsheet-like: a persistent visible box (not a
-  // hover-only/transparent border) so every fillable cell reads as
-  // "editable" at rest, with a bold same-color glow on focus mimicking a
-  // selected spreadsheet cell.
-  const cellInput = cn(
-    'w-full rounded-none border border-secondary bg-surface-level-1 px-2 py-1 text-sm text-primary transition-colors',
-    'hover:border-strong hover:bg-surface-level-1-hover',
-    'focus:border-brand focus:bg-primary focus:outline-none focus:shadow-[0_0_0_1px_var(--border-brand)]',
-    error && 'border-error-strong'
-  );
-
   if (isCategorical) {
     return (
-      <div className="relative">
-        <select
-          value={score ?? ''}
+      <div title={error ?? undefined}>
+        <SelectRoot
+          value={score == null ? '' : String(score)}
           disabled={saving}
-          onChange={(e) => {
-            if (e.target.value === '') {
-              setScore(null);
+          onValueChange={(value) => {
+            if (value === 'clear') {
               handleDelete();
               return;
             }
-            const val = Number(e.target.value);
-            const cat = config!.categories!.find((c) => c.value === val);
-            setScore(val);
-            save(val, cat?.label ?? String(val));
+            const next = Number(value);
+            setScore(next);
+            const category = config!.categories!.find((category) => category.value === next);
+            save(next, category?.label ?? String(next));
           }}
-          title={error ?? undefined}
-          data-row-index={rowIndex}
-          data-col-index={colIndex}
-          className={cn(cellInput, 'appearance-none pr-6', 'cursor-pointer', saving && 'opacity-50')}
         >
-          <option value="">—</option>
-          {config!.categories!.map((cat) => (
-            <option key={cat.value} value={cat.value}>
-              {cat.label ?? String(cat.value)}
-            </option>
-          ))}
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tertiary" />
+          <SelectTrigger
+            aria-label={item.feedback_key}
+            aria-invalid={!!error}
+            data-row-index={rowIndex}
+            data-col-index={colIndex}
+            className="w-full"
+          >
+            <SelectValue placeholder="—" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="clear">Clear score</SelectItem>
+            {config!.categories!.map((category) => (
+              <SelectItem key={category.value} value={String(category.value)}>
+                {category.label ?? String(category.value)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </SelectRoot>
       </div>
     );
   }
 
   if (isContinuous) {
     return (
-      <input
+      <Input
+        size="sm"
+        debounceMs={0}
+        aria-label={item.feedback_key}
+        isError={!!error}
         type="number"
         step="any"
         min={config?.min ?? undefined}
         max={config?.max ?? undefined}
-        value={score ?? ''}
+        value={score == null ? '' : String(score)}
         disabled={saving}
-        onChange={(e) => setScore(e.target.value === '' ? null : Number(e.target.value))}
+        onChange={(value) => setScore(value === '' ? null : Number(value))}
         onBlur={() => {
           if (score == null && existingFeedback) handleDelete();
           else if (score != null) save(score, null);
@@ -187,18 +191,22 @@ export function GridCell({
         title={error ?? undefined}
         data-row-index={rowIndex}
         data-col-index={colIndex}
-        className={cn(cellInput, saving && 'opacity-50')}
+        className="min-w-0 flex-1"
       />
     );
   }
 
   // Freeform
   return (
-    <input
+    <Input
+      size="sm"
+      debounceMs={0}
+      aria-label={item.feedback_key}
+      isError={!!error}
       type="text"
       value={comment}
       disabled={saving}
-      onChange={(e) => setComment(e.target.value)}
+      onChange={(value) => setComment(value)}
       onBlur={() => {
         if (comment.trim()) save(null, null, comment);
         else if (existingFeedback) handleDelete();
@@ -210,7 +218,7 @@ export function GridCell({
       title={error ?? undefined}
       data-row-index={rowIndex}
       data-col-index={colIndex}
-      className={cn(cellInput, saving && 'opacity-50')}
+      className="min-w-0 flex-1"
     />
   );
 }

@@ -1,5 +1,9 @@
+import { Card } from '@langchain/macaw-components/Card';
+import { Badge } from '@langchain/macaw-components/Badge';
+import { IconButton } from '@langchain/macaw-components/IconButton';
+import { Button } from '@langchain/macaw-components/Button';
 import { useState } from 'react';
-import { CornerDownRightIcon, Maximize01Icon, Minimize01Icon } from '@langchain/untitled-ui-icons';
+import { ArrowRightIcon, CaretDownIcon, CaretUpIcon } from '@langchain/macaw-components/icons';
 import type { IOMode } from '../types';
 import {
   maybeGetMessages,
@@ -12,9 +16,8 @@ import {
   toYamlish,
   type NormalizedToolCall,
 } from '../lib/messages';
-import { cn } from '../lib/utils';
 import { ErrorBanner } from './ErrorBanner';
-import { Spinner } from './Spinner';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 
 interface Props {
   inputs: Record<string, unknown> | null;
@@ -26,11 +29,7 @@ interface Props {
 // ── Shared card chrome ───────────────────────────────────────────────────────
 
 function RoleBadge({ role }: { role: string }) {
-  return (
-    <span className="shrink-0 rounded-sm bg-secondary px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-secondary">
-      {role}
-    </span>
-  );
+  return <Badge color="secondary">{role}</Badge>;
 }
 
 // ── Tool call cards, nested beneath an AI message ───────────────────────────
@@ -38,8 +37,8 @@ function RoleBadge({ role }: { role: string }) {
 function ToolCallItem({ toolCall }: { toolCall: NormalizedToolCall }) {
   return (
     <div className="ml-4 mt-2 flex items-start gap-2">
-      <CornerDownRightIcon className="mt-3 size-4 shrink-0 text-tertiary" />
-      <div className="flex-1 rounded-lg border border-secondary bg-primary">
+      <ArrowRightIcon className="mt-3 size-4 shrink-0 text-tertiary" />
+      <Card intent="plain" className="flex-1 p-0">
         <div className="flex items-center gap-2 px-4 py-2">
           <RoleBadge role="Tool call" />
           {toolCall.name && (
@@ -52,7 +51,7 @@ function ToolCallItem({ toolCall }: { toolCall: NormalizedToolCall }) {
             {toYamlish(toolCall.args)}
           </pre>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -72,7 +71,8 @@ function ToolCallsSection({ toolCalls }: { toolCalls: NormalizedToolCall[] }) {
 
 function ToolMessageCard({ message }: { message: unknown }) {
   const fields = getMessageFields(message);
-  const toolCallId = (fields.tool_call_id ?? (fields.additional_kwargs as Record<string, unknown> | undefined)?.tool_call_id) as
+  const toolCallId = (fields.tool_call_id ??
+    (fields.additional_kwargs as Record<string, unknown> | undefined)?.tool_call_id) as
     | string
     | undefined;
   const toolName = typeof fields.name === 'string' ? fields.name : '';
@@ -86,7 +86,7 @@ function ToolMessageCard({ message }: { message: unknown }) {
   })();
 
   return (
-    <div className="rounded-lg border border-secondary bg-primary">
+    <Card intent="plain" className="p-0">
       <div className="flex items-center gap-2 px-4 py-2">
         <RoleBadge role="Tool" />
         {toolName && <span className="font-mono text-xs font-medium text-primary">{toolName}</span>}
@@ -97,7 +97,7 @@ function ToolMessageCard({ message }: { message: unknown }) {
           {typeof parsedContent === 'string' ? parsedContent : toYamlish(parsedContent)}
         </pre>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -116,18 +116,20 @@ function MessageCard({ message }: { message: unknown }) {
 
   return (
     <div className="flex flex-col">
-      <div className="rounded-lg border border-secondary bg-primary">
+      <Card intent="plain" className="p-0">
         <div className="flex items-center gap-2 px-4 py-2">
           <RoleBadge role={getDisplayRole(message)} />
         </div>
         <div className="px-4 pb-4">
           {text ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">{text}</p>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">
+              {text}
+            </p>
           ) : (
             <p className="text-xs italic text-quaternary">Empty</p>
           )}
         </div>
-      </div>
+      </Card>
       <ToolCallsSection toolCalls={toolCalls} />
     </div>
   );
@@ -207,9 +209,7 @@ function CollapsibleSection({
           ) : (
             mode === 'collapsed' &&
             preview && (
-              <span className="line-clamp-1 min-w-0 flex-1 text-sm text-quaternary">
-                {preview}
-              </span>
+              <span className="line-clamp-1 min-w-0 flex-1 text-sm text-quaternary">{preview}</span>
             )
           )}
         </div>
@@ -219,28 +219,25 @@ function CollapsibleSection({
             onClick={(e) => e.stopPropagation()}
           >
             {showRawButton && mode !== 'collapsed' && (
-              <button
+              <Button
+                color="secondary"
+                variant="plain"
+                size="sm"
                 type="button"
-                className={cn(
-                  'rounded px-2 py-1 text-xs text-quaternary',
-                  mode === 'raw' ? 'bg-tertiary' : 'bg-transparent hover:bg-secondary'
-                )}
+                aria-pressed={mode === 'raw'}
+                className={mode === 'raw' ? 'bg-selected' : undefined}
                 onClick={() => onModeChange(mode === 'raw' ? 'expanded' : 'raw')}
               >
                 RAW
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              className="rounded p-1 text-quaternary hover:bg-tertiary"
+            <IconButton
+              color="secondary"
+              variant="plain"
+              label={mode === 'collapsed' ? 'Expand section' : 'Collapse section'}
+              icon={mode === 'collapsed' ? CaretDownIcon : CaretUpIcon}
               onClick={() => onModeChange(mode === 'collapsed' ? 'expanded' : 'collapsed')}
-            >
-              {mode === 'collapsed' ? (
-                <Maximize01Icon className="h-3.5 w-3.5" />
-              ) : (
-                <Minimize01Icon className="h-3.5 w-3.5" />
-              )}
-            </button>
+            />
           </div>
         )}
       </div>

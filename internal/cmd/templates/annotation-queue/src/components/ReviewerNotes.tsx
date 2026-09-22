@@ -1,9 +1,12 @@
-import { Trash02Icon } from '@langchain/untitled-ui-icons';
+import { IconButton } from '@langchain/macaw-components/IconButton';
+import { Textarea } from '@langchain/macaw-components/Textarea';
+import { Button } from '@langchain/macaw-components/Button';
+import { XIcon } from '@langchain/macaw-components/icons';
 import { useEffect, useState } from 'react';
 import { deleteFeedback, fetchFeedbacksForRun, submitFeedback } from '../api';
 import type { FeedbackItem } from '../types';
 import { ErrorBanner } from './ErrorBanner';
-import { Spinner } from './Spinner';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -91,22 +94,28 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
       </div>
       {error && <ErrorBanner error={error} />}
       <div className="flex flex-col gap-2">
-        <textarea
-          className="resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none disabled:opacity-50"
+        <Textarea
+          size="sm"
+          debounceMs={0}
+          className="min-w-0 flex-1"
+          aria-label="Reviewer note"
           rows={3}
           placeholder="Leave a note for other reviewers…"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(value) => setDraft(value)}
           disabled={submitting}
         />
-        <button
+        <Button
+          color="secondary"
+          variant="outlined"
+          size="sm"
           type="button"
-          className="self-end rounded-md border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-secondary disabled:opacity-50"
+          className="self-end"
           onClick={handleAddNote}
           disabled={submitting || !draft.trim()}
         >
           {submitting ? 'Adding…' : 'Add note'}
-        </button>
+        </Button>
       </div>
       {loading ? (
         <div className="flex justify-center py-2">
@@ -124,14 +133,12 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
                   <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-primary">
                     {note.comment}
                   </p>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1 text-quaternary hover:bg-secondary"
+                  <IconButton
+                    icon={XIcon}
+                    label="Delete note"
+                    color="error"
                     onClick={() => handleDeleteNote(note)}
-                    aria-label="Delete note"
-                  >
-                    <Trash02Icon className="h-3.5 w-3.5" />
-                  </button>
+                  />
                 </div>
                 <span className="text-xs text-quaternary">
                   {new Date(note.created_at).toLocaleString()}

@@ -19,8 +19,8 @@ const (
 )
 
 const (
-	appsMaxFileEntries   = 500
-	appsMaxFileSizeBytes = 1 << 20 // 1MB per file, matches hub push's limit.
+	appsMaxFileEntries    = 500
+	appsMaxTotalFileBytes = 5 << 20 // Matches the custom-app API's total file limit.
 )
 
 // appLink is the contents of <dir>/.langsmith/app.json.
@@ -188,6 +188,7 @@ func readDirectoryAsAppFiles(root string) (map[string]string, error) {
 	}
 
 	files := make(map[string]string)
+	totalBytes := 0
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -219,8 +220,9 @@ func readDirectoryAsAppFiles(root string) (map[string]string, error) {
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", rel, err)
 		}
-		if len(data) > appsMaxFileSizeBytes {
-			return fmt.Errorf("file %s is %d bytes; exceeds %d-byte limit", rel, len(data), appsMaxFileSizeBytes)
+		totalBytes += len(rel) + len(data)
+		if totalBytes > appsMaxTotalFileBytes {
+			return fmt.Errorf("custom app files total %d bytes; exceeds %d-byte limit", totalBytes, appsMaxTotalFileBytes)
 		}
 		if isAppFileBinary(data) {
 			return fmt.Errorf("file %s appears to be binary; custom apps do not support binary assets yet", rel)

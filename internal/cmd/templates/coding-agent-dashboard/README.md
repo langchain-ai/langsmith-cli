@@ -20,9 +20,23 @@ your local `LANGSMITH_API_KEY` when running `langsmith apps dev`).
 Since the sandbox has no bundler or npm access at runtime, this app is built
 with Vite in **library mode**: `npm run build` bundles everything (React
 included) into a single dependency-free file (`dist/bundle.js`) before it's
-pushed. Use npm dependencies freely — they all get inlined at build time.
+pushed. Dependencies are inlined at build time; use Macaw for all UI.
+
+## Design system
+
+Macaw is installed and configured by default. Use `@langchain/macaw-components`
+for UI and `@langchain/macaw-tokens` for semantic styles. The stylesheet includes
+fonts and tokens and is bundled inline for the sandbox. `HostTheme` follows
+LangSmith's light/dark mode without resetting app state.
+
+Read `AGENTS.md` before editing. Find the installed components with
+`npm run macaw -- search "<capability>"` or
+`npm run macaw -- inspect Button --json`. Every UI edit should use Macaw.
 
 ## Develop
+
+Use Node.js 22.12 or newer. Run `npm run typecheck` and `npm run build`
+before handing off changes.
 
 Install dependencies, then start the dev server (it builds on the first run):
 
@@ -44,7 +58,7 @@ host calls once on load and again whenever `data` or `metadata` changes —
 `data` is always `{}` (apps fetch whatever they need themselves).
 `metadata.mode` is `"dark"` or
 `"light"`; the sandbox sets `html.dark` from it, so this token-based UI themes
-automatically (branch on `metadata.mode` only if you use inline styles).
+automatically through `HostTheme` and Macaw semantic tokens.
 `src/App.tsx` is the actual UI; edit it freely, it's just a React component.
 
 `window.langsmith`, injected by the host page, gives you:

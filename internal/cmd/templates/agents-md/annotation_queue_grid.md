@@ -11,4 +11,4 @@ List via `GET .../items` + `.../items/count`. Expand a RUN to hydrate IO
 
 This is just a starting point, not a spec. Change the grid, the review flow,
 or the whole concept — rip out anything here and build whatever app you
-actually want.
+actually want, using Macaw components and semantic tokens.

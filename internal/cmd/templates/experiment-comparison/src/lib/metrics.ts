@@ -1,3 +1,7 @@
+import {
+  CHART_CATEGORICAL_FILL_COLORS,
+  CHART_OTHER_COLOR,
+} from '@langchain/macaw-components/utils/chartColors';
 import type { Aggregate, ExperimentRun } from '../types';
 import { costOf, latencyMs, scoreFor } from './delta';
 
@@ -90,16 +94,7 @@ export function histogram(values: number[], binCount = 9): HistogramBin[] {
 // max series with a distinct color slot (1–4 CVD-safe).
 export const SERIES_CAP = 8;
 
-const SERIES_VARS = [
-  'var(--series-1)',
-  'var(--series-2)',
-  'var(--series-3)',
-  'var(--series-4)',
-  'var(--series-5)',
-  'var(--series-6)',
-  'var(--series-7)',
-  'var(--series-8)',
-];
+const SERIES_VARS = CHART_CATEGORICAL_FILL_COLORS;
 
 // A, B, C… for the ordered experiments.
 export function letterFor(index: number): string {
@@ -108,5 +103,5 @@ export function letterFor(index: number): string {
 
 // Comparison index (0-based); past the palette, fold to a neutral tone.
 export function comparisonColor(index: number): string {
-  return SERIES_VARS[index] ?? 'var(--text-tertiary)';
+  return SERIES_VARS[index] ?? CHART_OTHER_COLOR;
 }

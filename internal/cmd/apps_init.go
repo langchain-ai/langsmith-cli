@@ -35,7 +35,7 @@ var experimentComparisonStarterFS embed.FS
 //go:embed all:templates/agents-md
 var agentsMDFS embed.FS
 
-// Small files shared across templates (SearchableSelect, Spinner, cn(), ...);
+// Small adapters shared across templates (SearchableSelect, HostTheme);
 // scaffoldCustomAppStarter copies in only the ones a template actually imports.
 //
 //go:embed all:templates/_shared
@@ -43,15 +43,10 @@ var sharedFS embed.FS
 
 const sharedRoot = "templates/_shared"
 
-// One package.json rendered for every template; deps that vary per template
-// (currently just the icon set) are toggled by customAppStarterVars.
+// One package.json rendered for every template.
 //
 //go:embed templates/package.json.tmpl
 var sharedPackageJSONTmpl string
-
-const iconsImportSpecifier = "@langchain/untitled-ui-icons"
-
-const cnUtilsImportSpecifier = "lib/utils"
 
 // appType is one --template choice. Map key = the --template value.
 type appType struct {
@@ -104,8 +99,6 @@ func appTypeNames() []string {
 type customAppStarterVars struct {
 	Name        string
 	Description string
-	NeedsIcons  bool
-	NeedsCn     bool
 }
 
 func newAppsInitCmd() *cobra.Command {
@@ -247,15 +240,8 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 		vars.Description = "TODO: one-sentence description of what this app does."
 	}
 
-	src, err := concatenatedTemplateSource(at)
-	if err != nil {
-		return nil, err
-	}
-	vars.NeedsIcons = strings.Contains(src, iconsImportSpecifier)
-	vars.NeedsCn = strings.Contains(src, cnUtilsImportSpecifier)
-
 	var written []string
-	err = fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(at.templateFS, at.templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}

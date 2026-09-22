@@ -25,6 +25,16 @@ Keep commands scriptable and preserve established output formats. Add focused te
 
 A command that selects a project takes both `--project` and `--project-id`; register the pair with `addProjectFlags` (or `addCommonFilterFlags`, which calls it) and resolve it with `resolveSessionID`. Callers building a command line programmatically should pass the UUID, since project names are user-authored and may contain shell metacharacters. `TestEveryProjectCommandAcceptsProjectID` fails if a new command offers only one of the two.
 
+## Custom app templates
+
+Every starter in `internal/cmd/templates/` uses the published Macaw components,
+tokens, and CLI. Use Macaw components and semantic styles for all new and edited
+UI, including chat. Keep the shared dependency versions, stylesheet import,
+Tailwind preset, host theme provider, and generated agent guidance intact.
+Validate changes by scaffolding into a temporary directory, type-checking and
+building each affected starter, and previewing it in the sandbox in both themes.
+Never install dependencies inside the embedded template directories.
+
 ## LangSmith API access
 
 Use the generated Go SDK through the shared client's `SDK` field. Do not add raw API calls when the endpoint is available in `langsmith-go`, and do not copy existing raw-call patterns for new code.

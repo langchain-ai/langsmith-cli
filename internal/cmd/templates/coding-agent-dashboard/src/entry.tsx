@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import css from './index.css?inline';
 import { App } from './App';
+import { HostTheme } from './lib/HostTheme';
 
 let root: Root | null = null;
 let styleInjected = false;
@@ -19,9 +20,9 @@ export function render(data: unknown, container: HTMLElement, metadata: RenderMe
   if (!root) {
     root = createRoot(container);
   }
-  // metadata.mode is "dark"|"light". The sandbox sets html.dark from it, so
-  // this token UI themes without branching; passed to App.
-  root.render(createElement(App, { data, metadata }));
+  root.render(
+    createElement(HostTheme, { mode: metadata.mode }, createElement(App, { data, metadata }))
+  );
 }
 
 // Some sandbox hosts call a bare default export; support both shapes.
