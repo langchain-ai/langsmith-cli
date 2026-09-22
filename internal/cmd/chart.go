@@ -247,11 +247,21 @@ func formatChartValue(v any) string {
 		}
 		return fmt.Sprintf("%.4g", n)
 	case map[string]any:
-		// Feedback metrics report an object per bucket rather than a scalar.
-		if avg, ok := n["avg"].(float64); ok {
-			return formatChartValue(avg)
+		// Feedback metrics report the stats keyed by feedback key, as
+		// {"<key>": {"avg": …, "n": …}}, so unwrap the single key first.
+		if len(n) == 1 {
+			for _, inner := range n {
+				if stats, ok := inner.(map[string]any); ok {
+					return formatChartValue(stats)
+				}
+			}
 		}
-		return "?"
+		avg, ok := n["avg"]
+		if !ok {
+			return "?"
+		}
+		// A key with no scores in the bucket has a null average.
+		return formatChartValue(avg)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
