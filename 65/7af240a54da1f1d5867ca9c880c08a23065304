@@ -1,0 +1,28 @@
+internal/cmd/trace_series_test.go
+  s_9f00b9aec1a92a::t_8f5a0f94920b0c 9-10
+  s_9f00b9aec1a92a::t_89c374eaf1ebe0 56-104,106-109,112-121
+  s_9f00b9aec1a92a::t_bdec3343719511 148-150,175
+internal/cmd/trace_series.go
+  s_9f00b9aec1a92a::t_c908b553b13c33 271
+  s_9f00b9aec1a92a::t_4054c9d8851d13 6,15,18-19,42-44,47-51,53-54,56-59,62-63,65-68,132-144,179-233,264,266,268-270,272,275-282,284-298,327,335
+go.mod
+  s_9f00b9aec1a92a::t_89dda9876a43de 8
+go.sum
+  s_9f00b9aec1a92a::t_9d8374621d8a72 34-35,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "657af240a54da1f1d5867ca9c880c08a23065304",
+  "prompts": {},
+  "sessions": {
+    "s_9f00b9aec1a92a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ebf2507-2e66-4448-b3ab-0c9e328ac0cb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
