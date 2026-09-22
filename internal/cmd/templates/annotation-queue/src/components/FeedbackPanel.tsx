@@ -187,7 +187,7 @@ function RubricCard({
         aria-label={item.feedback_key}
         aria-expanded={expanded}
         type="button"
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-center gap-2 border-0 px-0 text-left"
         onClick={onToggleExpand}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
