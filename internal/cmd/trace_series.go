@@ -1,31 +1,28 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
+	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/shared"
 	"github.com/spf13/cobra"
 )
 
 // `trace stats` returns one aggregate per window, so the only way to see a
 // shape over time was two windows via --compare-since. This bucketed form
 // comes from the charts API, which is the only place a stride exists.
-//
-// The langsmith-go SDK has no charts service yet, so this speaks to the
-// endpoint through the raw client, as `thread` does for its own uncovered
-// route.
-const chartPreviewPath = "/api/v1/charts/preview"
 
 // chartMetrics is for the help text and a friendly error; the server remains
 // the authority, so an unknown value is still passed through rather than
@@ -42,79 +39,33 @@ var chartMetrics = []string{
 }
 
 type chartTimedelta struct {
-	Days    int `json:"days,omitempty"`
-	Hours   int `json:"hours,omitempty"`
-	Minutes int `json:"minutes,omitempty"`
+	Days    int
+	Hours   int
+	Minutes int
 }
 
-type chartBucketInfo struct {
-	StartTime string         `json:"start_time"`
-	EndTime   string         `json:"end_time"`
-	Stride    chartTimedelta `json:"stride"`
-	Timezone  string         `json:"timezone"`
-}
-
-type chartSeriesFilters struct {
-	Filter      string   `json:"filter,omitempty"`
-	TraceFilter string   `json:"trace_filter,omitempty"`
-	TreeFilter  string   `json:"tree_filter,omitempty"`
-	Session     []string `json:"session"`
-}
-
-type chartGroupBy struct {
-	Attribute string `json:"attribute"`
-	Path      string `json:"path,omitempty"`
-	MaxGroups int    `json:"max_groups,omitempty"`
-}
-
-type chartSeries struct {
-	// The API requires an id on a preview series even though nothing is
-	// created; any stable string satisfies it.
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Metric      string             `json:"metric"`
-	FeedbackKey string             `json:"feedback_key,omitempty"`
-	Filters     chartSeriesFilters `json:"filters"`
-	GroupBy     *chartGroupBy      `json:"group_by,omitempty"`
-}
-
-type chartPreviewRequest struct {
-	BucketInfo chartBucketInfo `json:"bucket_info"`
-	Chart      struct {
-		Series []chartSeries `json:"series"`
-	} `json:"chart"`
-}
-
-// bucketTime tolerates a timestamp without a zone: the charts API returns
-// bucket boundaries as naive local-to-UTC strings, so RFC3339 alone fails to
-// decode the response.
-type bucketTime struct{ time.Time }
-
-func (b *bucketTime) UnmarshalJSON(raw []byte) error {
-	s := strings.Trim(string(raw), `"`)
-	if s == "" || s == "null" {
-		return nil
+// param converts the parsed stride to the SDK's request shape.
+func (d chartTimedelta) param() langsmith.TimedeltaInputParam {
+	var p langsmith.TimedeltaInputParam
+	if d.Days > 0 {
+		p.Days = langsmith.F(int64(d.Days))
 	}
-	for _, layout := range []string{
-		time.RFC3339Nano, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05",
-	} {
-		if t, err := time.Parse(layout, s); err == nil {
-			b.Time = t.UTC()
-			return nil
-		}
+	if d.Hours > 0 {
+		p.Hours = langsmith.F(int64(d.Hours))
 	}
-	return fmt.Errorf("unrecognised bucket timestamp %q", s)
+	if d.Minutes > 0 {
+		p.Minutes = langsmith.F(int64(d.Minutes))
+	}
+	return p
 }
 
+// chartDataPoint is one bucket of one series, with the SDK's number-or-object
+// value flattened so the renderer and the JSON output work on plain values.
 type chartDataPoint struct {
-	SeriesID  string     `json:"series_id"`
-	Timestamp bucketTime `json:"timestamp"`
-	Value     any        `json:"value"`
-	Group     string     `json:"group"`
-}
-
-type chartPreviewResponse struct {
-	Data []chartDataPoint `json:"data"`
+	SeriesID  string    `json:"series_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     any       `json:"value"`
+	Group     string    `json:"group"`
 }
 
 func newTraceSeriesCmd() *cobra.Command {
@@ -178,31 +129,19 @@ Examples:
 				return fmt.Errorf("--before must be after --since")
 			}
 
-			req := chartPreviewRequest{BucketInfo: chartBucketInfo{
-				StartTime: start.UTC().Format(time.RFC3339),
-				EndTime:   end.UTC().Format(time.RFC3339),
-				Stride:    delta,
-				Timezone:  "UTC",
-			}}
-			series := chartSeries{
-				ID:          "series-1",
-				Name:        metric,
-				Metric:      metric,
-				FeedbackKey: feedbackKey,
-				Filters: chartSeriesFilters{
-					Filter:     filter,
-					TreeFilter: treeFilter,
-					Session:    []string{sessionID},
-				},
-			}
-			if groupBy != "" {
-				series.GroupBy = &chartGroupBy{
-					Attribute: groupBy, Path: groupPath, MaxGroups: maxGroups,
-				}
-			}
-			req.Chart.Series = []chartSeries{series}
-
-			points, err := fetchChartPreview(ctx, c, req)
+			points, err := fetchChartPreview(ctx, c, previewParams(seriesQuery{
+				sessionID:   sessionID,
+				start:       start,
+				end:         end,
+				stride:      delta,
+				metric:      metric,
+				feedbackKey: feedbackKey,
+				filter:      filter,
+				treeFilter:  treeFilter,
+				groupBy:     groupBy,
+				groupPath:   groupPath,
+				maxGroups:   maxGroups,
+			}))
 			if err != nil {
 				return err
 			}
@@ -237,6 +176,61 @@ Examples:
 	return cmd
 }
 
+type seriesQuery struct {
+	sessionID                               string
+	start, end                              time.Time
+	stride                                  chartTimedelta
+	metric, feedbackKey, filter, treeFilter string
+	groupBy, groupPath                      string
+	maxGroups                               int
+}
+
+// previewParams builds a one-series preview. Optional fields are left unset
+// rather than sent empty, since the server reads an empty filter string as a
+// filter to parse.
+func previewParams(q seriesQuery) langsmith.ChartPreviewParams {
+	filters := langsmith.ChartPreviewParamsChartSeriesFilters{
+		Session: langsmith.F([]string{q.sessionID}),
+	}
+	if q.filter != "" {
+		filters.Filter = langsmith.F(q.filter)
+	}
+	if q.treeFilter != "" {
+		filters.TreeFilter = langsmith.F(q.treeFilter)
+	}
+	series := langsmith.ChartPreviewParamsChartSeries{
+		// A preview series must carry an id even though nothing is created.
+		ID:      langsmith.F(uuid.NewString()),
+		Name:    langsmith.F(q.metric),
+		Metric:  langsmith.F(langsmith.ChartPreviewParamsChartSeriesMetric(q.metric)),
+		Filters: langsmith.F(filters),
+	}
+	if q.feedbackKey != "" {
+		series.FeedbackKey = langsmith.F(q.feedbackKey)
+	}
+	if q.groupBy != "" {
+		gb := langsmith.ChartPreviewParamsChartSeriesGroupBy{
+			Attribute: langsmith.F(langsmith.ChartPreviewParamsChartSeriesGroupByAttribute(q.groupBy)),
+			MaxGroups: langsmith.F(int64(q.maxGroups)),
+		}
+		if q.groupPath != "" {
+			gb.Path = langsmith.F(q.groupPath)
+		}
+		series.GroupBy = langsmith.F(gb)
+	}
+	return langsmith.ChartPreviewParams{
+		BucketInfo: langsmith.F(langsmith.ChartPreviewParamsBucketInfo{
+			StartTime: langsmith.F(q.start.UTC()),
+			EndTime:   langsmith.F(q.end.UTC()),
+			Stride:    langsmith.F(q.stride.param()),
+			Timezone:  langsmith.F("UTC"),
+		}),
+		Chart: langsmith.F(langsmith.ChartPreviewParamsChart{
+			Series: langsmith.F([]langsmith.ChartPreviewParamsChartSeries{series}),
+		}),
+	}
+}
+
 // parseStride accepts the compact forms the flag help advertises. The API
 // takes days/hours/minutes rather than a duration string, and rejects a
 // stride under one minute.
@@ -267,26 +261,42 @@ func parseStride(s string) (chartTimedelta, error) {
 }
 
 func fetchChartPreview(
-	ctx context.Context, c *client.Client, req chartPreviewRequest,
+	ctx context.Context, c *client.Client, req langsmith.ChartPreviewParams,
 ) ([]chartDataPoint, error) {
-	raw, err := json.Marshal(req)
+	res, err := c.SDK.Charts.Preview(ctx, req)
 	if err != nil {
-		return nil, err
-	}
-	status, _, _, body, err := c.RawDo(
-		ctx, http.MethodPost, chartPreviewPath, bytes.NewReader(raw), nil,
-	)
-	if err != nil {
+		var apiErr *langsmith.Error
+		if errors.As(err, &apiErr) {
+			return nil, fmt.Errorf("fetching series: HTTP %d: %s",
+				apiErr.StatusCode, previewError([]byte(apiErr.JSON.RawJSON())))
+		}
 		return nil, fmt.Errorf("fetching series: %w", err)
 	}
-	if status >= 400 {
-		return nil, fmt.Errorf("fetching series: HTTP %d: %s", status, previewError(body))
+	points := make([]chartDataPoint, 0, len(res.Data))
+	for _, d := range res.Data {
+		points = append(points, chartDataPoint{
+			SeriesID:  d.SeriesID,
+			Timestamp: d.Timestamp.UTC(),
+			Value:     seriesValue(d.Value),
+			Group:     d.Group,
+		})
 	}
-	var out chartPreviewResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("decoding series: %w", err)
+	return points, nil
+}
+
+// seriesValue flattens the SDK's number-or-object union: most metrics report
+// a number per bucket, feedback metrics an object.
+func seriesValue(v langsmith.ChartPreviewResponseDataValueUnion) any {
+	switch n := v.(type) {
+	case nil:
+		return nil
+	case shared.UnionFloat:
+		return float64(n)
+	case langsmith.ChartPreviewResponseDataValueMap:
+		return map[string]any(n)
+	default:
+		return v
 	}
-	return out.Data, nil
 }
 
 func previewError(body []byte) string {
@@ -314,7 +324,7 @@ func printSeriesPretty(w io.Writer, points []chartDataPoint, metric, stride stri
 	stamps := map[time.Time]bool{}
 	byGroup := map[string]map[time.Time]any{}
 	for _, p := range points {
-		stamps[p.Timestamp.Time] = true
+		stamps[p.Timestamp] = true
 		name := p.Group
 		if name == "" {
 			name = metric
@@ -322,7 +332,7 @@ func printSeriesPretty(w io.Writer, points []chartDataPoint, metric, stride stri
 		if byGroup[name] == nil {
 			byGroup[name] = map[time.Time]any{}
 		}
-		byGroup[name][p.Timestamp.Time] = p.Value
+		byGroup[name][p.Timestamp] = p.Value
 	}
 	grid := make([]time.Time, 0, len(stamps))
 	for t := range stamps {

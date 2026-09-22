@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
 func TestTraceSeries_RegisteredUnderTrace(t *testing.T) {
@@ -51,21 +53,71 @@ func TestParseStrideRejectsJunk(t *testing.T) {
 	}
 }
 
-// The charts API returns bucket boundaries without a zone, so decoding only
-// RFC3339 failed every response.
-func TestBucketTimeAcceptsAZonelessTimestamp(t *testing.T) {
-	for _, raw := range []string{
-		`"2026-09-21T10:31:55"`,
-		`"2026-09-21T10:31:55Z"`,
-		`"2026-09-21T10:31:55.123456"`,
-	} {
-		var b bucketTime
-		if err := json.Unmarshal([]byte(raw), &b); err != nil {
-			t.Fatalf("unmarshal %s: %v", raw, err)
+// The charts API returns bucket boundaries without a zone, and feedback
+// metrics report an object where others report a number. Both have to
+// survive the SDK's decoder and the flattening after it.
+func TestPreviewResponseDecodesZonelessTimesAndBothValueShapes(t *testing.T) {
+	raw := `{"data":[
+		{"series_id":"s","timestamp":"2026-09-21T10:31:55","value":0.25,"group":"tool-a"},
+		{"series_id":"s","timestamp":"2026-09-21T11:31:55.123456","value":{"avg":0.75,"n":4},"group":""},
+		{"series_id":"s","timestamp":"2026-09-21T12:31:55Z","value":null,"group":""}
+	]}`
+	var res langsmith.ChartPreviewResponse
+	if err := json.Unmarshal([]byte(raw), &res); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(res.Data) != 3 {
+		t.Fatalf("got %d points, want 3", len(res.Data))
+	}
+	want := time.Date(2026, 9, 21, 10, 31, 55, 0, time.UTC)
+	if got := res.Data[0].Timestamp.UTC(); !got.Equal(want) {
+		t.Errorf("zoneless timestamp decoded as %v, want %v", got, want)
+	}
+	if got := seriesValue(res.Data[0].Value); got != 0.25 {
+		t.Errorf("numeric value flattened to %#v", got)
+	}
+	if got := formatSeriesValue(seriesValue(res.Data[1].Value)); got != ".75" {
+		t.Errorf("feedback object rendered as %q, want .75", got)
+	}
+	if got := seriesValue(res.Data[2].Value); got != nil {
+		t.Errorf("null value flattened to %#v, want nil", got)
+	}
+}
+
+// Unset flags must be left out of the request: the server parses an empty
+// filter string as a filter.
+func TestPreviewParamsOmitsUnsetOptionalFields(t *testing.T) {
+	q := seriesQuery{
+		sessionID: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+		start:     time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC),
+		end:       time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC),
+		stride:    chartTimedelta{Minutes: 30},
+		metric:    "error_rate",
+	}
+	body, err := json.Marshal(previewParams(q))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(body)
+	for _, absent := range []string{`"filter"`, `"tree_filter"`, `"group_by"`, `"feedback_key"`, `"hours"`} {
+		if strings.Contains(s, absent) {
+			t.Errorf("unset field %s was sent: %s", absent, s)
 		}
-		if b.Year() != 2026 || b.Location() != time.UTC {
-			t.Errorf("unmarshal %s gave %v", raw, b.Time)
+	}
+	for _, present := range []string{`"minutes":30`, `"metric":"error_rate"`, q.sessionID} {
+		if !strings.Contains(s, present) {
+			t.Errorf("missing %s in %s", present, s)
 		}
+	}
+
+	q.filter, q.groupBy, q.maxGroups = `eq(run_type, "tool")`, "name", 5
+	body, _ = json.Marshal(previewParams(q))
+	s = string(body)
+	if !strings.Contains(s, `"group_by":{"attribute":"name","max_groups":5}`) {
+		t.Errorf("group_by not rendered as expected: %s", s)
+	}
+	if !strings.Contains(s, `"filter":"eq(run_type, \"tool\")"`) {
+		t.Errorf("filter not rendered: %s", s)
 	}
 }
 
@@ -93,9 +145,9 @@ func TestFormatSeriesValue(t *testing.T) {
 func TestPrintSeriesPrettyStatesTheGridOnce(t *testing.T) {
 	t0 := time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC)
 	points := []chartDataPoint{
-		{Group: "tool-a", Timestamp: bucketTime{t0}, Value: 1.0},
-		{Group: "tool-a", Timestamp: bucketTime{t0.Add(time.Hour)}, Value: 2.0},
-		{Group: "tool-b", Timestamp: bucketTime{t0}, Value: 3.0},
+		{Group: "tool-a", Timestamp: t0, Value: 1.0},
+		{Group: "tool-a", Timestamp: t0.Add(time.Hour), Value: 2.0},
+		{Group: "tool-b", Timestamp: t0, Value: 3.0},
 		// tool-b has no second bucket, which must render as a gap not a shift.
 	}
 	var buf bytes.Buffer
@@ -120,7 +172,7 @@ func TestPrintSeriesPrettyUsesTheMetricNameWhenUngrouped(t *testing.T) {
 	t0 := time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	printSeriesPretty(
-		&buf, []chartDataPoint{{Timestamp: bucketTime{t0}, Value: 7.0}},
+		&buf, []chartDataPoint{{Timestamp: t0, Value: 7.0}},
 		"error_rate", "1h",
 	)
 	out := buf.String()
