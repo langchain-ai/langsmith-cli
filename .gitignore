@@ -1,0 +1,56 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/langsmith
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Build artifacts
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+/.env.*
+.env.*
+*.pem
+*.key
+*.crt
+credentials.json
+token.json
+
+.envrc
+
+# Local dependency and virtualenv directories
+node_modules/
+__pycache__/
+.venv/
+
+# Claude Code
+.claude/
