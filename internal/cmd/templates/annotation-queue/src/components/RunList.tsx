@@ -1,20 +1,24 @@
+import { Skeleton } from '@langchain/macaw-components/Skeleton';
+import { Button } from '@langchain/macaw-components/Button';
+import { Badge } from '@langchain/macaw-components/Badge';
+import { EmptyState } from '@langchain/macaw-components/EmptyState';
 import { useEffect, useRef, useState } from 'react';
 import {
-  CheckCircleIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ClockIcon,
-  LayersTwo01Icon,
-  Lock01Icon,
-  MessageChatCircleIcon,
-  ZapIcon,
-} from '@langchain/untitled-ui-icons';
+  CheckCircleFillIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  ClockCounterClockwiseRegularIcon,
+  StackRegularIcon,
+  LockFillIcon,
+  ChatCenteredDotsRegularIcon,
+  SparkleFillIcon,
+} from '@langchain/macaw-components/icons';
 import type { QueueItem } from '../types';
 import { itemLabel } from '../types';
 import type { ItemSection as ItemSectionData } from '../hooks/useItemSection';
 import { getCollapsedPreview } from '../lib/messages';
-import { cn } from '../lib/utils';
-import { Spinner } from './Spinner';
+import { cn } from '@langchain/macaw-components/utils/cn';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 
 const SKELETON_WIDTH_PAIRS: [string, string][] = [
   ['w-[35%]', 'w-[45%]'],
@@ -31,12 +35,9 @@ function RunListSkeletons() {
   return (
     <div className="flex flex-col">
       {SKELETON_WIDTH_PAIRS.map(([nameW, previewW], i) => (
-        <div
-          key={i}
-          className="flex items-center gap-2 border-b border-secondary px-3 py-2.5"
-        >
-          <div className={cn('my-0 h-3.5 shrink-0 animate-pulse rounded bg-secondary', nameW)} />
-          <div className={cn('my-0 h-3 min-w-0 animate-pulse rounded bg-secondary opacity-60', previewW)} />
+        <div key={i} className="flex items-center gap-2 border-b border-secondary px-3 py-2.5">
+          <Skeleton className={cn('my-0 h-3.5 shrink-0', nameW)} />
+          <Skeleton className={cn('my-0 h-3 min-w-0 opacity-60', previewW)} />
         </div>
       ))}
     </div>
@@ -53,36 +54,35 @@ interface ItemListRowProps {
 function ItemListRow({ item, isSelected, onClick, numReviewersPerItem }: ItemListRowProps) {
   const preview =
     item.item_type === 'THREAD'
-      ? item.thread_id ?? 'thread'
+      ? (item.thread_id ?? 'thread')
       : getCollapsedPreview(item.inputs ?? null);
   const completedCount = item.completed_by?.length ?? 0;
   const reservedCount = item.reserved_by?.length ?? 0;
-  const isFullyReserved =
-    !!numReviewersPerItem && reservedCount >= numReviewersPerItem;
+  const isFullyReserved = !!numReviewersPerItem && reservedCount >= numReviewersPerItem;
   const showProgress = !!numReviewersPerItem && numReviewersPerItem > 1 && completedCount > 0;
-  const TypeIcon = item.item_type === 'THREAD' ? MessageChatCircleIcon : ZapIcon;
+  const TypeIcon = item.item_type === 'THREAD' ? ChatCenteredDotsRegularIcon : SparkleFillIcon;
 
   return (
-    <button
+    <Button
+      color="secondary"
+      variant="plain"
+      size="sm"
+      aria-label={itemLabel(item)}
+      aria-pressed={isSelected}
       type="button"
       className={cn(
-        'flex w-full items-center gap-2 border-b border-secondary px-3 py-2.5 text-left transition-colors',
-        isSelected ? 'bg-tertiary' : 'hover:bg-secondary'
+        'flex h-auto w-full items-center justify-start gap-2 py-space-3 text-left',
+        isSelected ? 'bg-selected' : ''
       )}
       onClick={onClick}
     >
-      <span
-        className={cn(
-          'inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold uppercase',
-          item.item_type === 'THREAD'
-            ? 'bg-brand-muted text-brand-primary'
-            : 'bg-secondary text-tertiary'
-        )}
+      <Badge
+        color={item.item_type === 'THREAD' ? 'primary' : 'secondary'}
+        leftDecorator={TypeIcon}
         title={item.item_type}
       >
-        <TypeIcon className="h-3 w-3" />
         {item.item_type === 'THREAD' ? 'Thread' : 'Run'}
-      </span>
+      </Badge>
       <span
         className={cn(
           'shrink-0 truncate text-sm',
@@ -103,20 +103,17 @@ function ItemListRow({ item, isSelected, onClick, numReviewersPerItem }: ItemLis
       )}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {showProgress && (
-          <span className="flex items-center gap-0.5 rounded bg-secondary px-1 py-0.5">
-            <CheckCircleIcon className="h-3 w-3 text-tertiary" />
-            <span className="text-xs leading-3 text-tertiary">
-              {completedCount}/{numReviewersPerItem}
-            </span>
-          </span>
+          <Badge color="secondary" leftDecorator={CheckCircleFillIcon}>
+            {`${completedCount}/${numReviewersPerItem}`}
+          </Badge>
         )}
         {isFullyReserved && (
-          <span className="flex items-center rounded bg-secondary px-1 py-0.5">
-            <Lock01Icon className="h-3 w-3 text-tertiary" />
-          </span>
+          <Badge color="secondary" aria-label="Reserved">
+            <LockFillIcon />
+          </Badge>
         )}
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -126,7 +123,6 @@ interface SectionProps {
   section: ItemSectionData;
   selectedItemId: string | undefined;
   defaultOpen: boolean;
-  isLast?: boolean;
   numReviewersPerItem?: number | null;
   onSelectItem: (itemId: string) => void;
 }
@@ -137,7 +133,6 @@ function ItemSection({
   section,
   selectedItemId,
   defaultOpen,
-  isLast,
   numReviewersPerItem,
   onSelectItem,
 }: SectionProps) {
@@ -163,19 +158,20 @@ function ItemSection({
 
   return (
     <div className={cn('flex flex-col', open && 'min-h-0 flex-1')}>
-      <button
+      <Button
+        color="secondary"
+        variant="plain"
+        size="sm"
+        aria-label={label}
+        aria-expanded={open}
         type="button"
-        className={cn(
-          'flex shrink-0 items-center gap-2 bg-secondary px-3 py-2 hover:bg-tertiary',
-          open && 'border-b border-secondary',
-          !open && isLast && 'border-b border-secondary'
-        )}
+        className="flex h-auto shrink-0 items-center justify-start gap-2 py-space-2"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
-          <ChevronDownIcon className="h-3.5 w-3.5 text-tertiary" />
+          <CaretDownIcon className="h-3.5 w-3.5 text-tertiary" />
         ) : (
-          <ChevronRightIcon className="h-3.5 w-3.5 text-tertiary" />
+          <CaretRightIcon className="h-3.5 w-3.5 text-tertiary" />
         )}
         <Icon className="h-3.5 w-3.5 text-tertiary" />
         <span className="text-sm font-medium text-secondary">{label}</span>
@@ -183,16 +179,14 @@ function ItemSection({
           {loading && <Spinner size="sm" />}
           <span className="text-xs text-tertiary">{Math.max(total, items.length)}</span>
         </div>
-      </button>
+      </Button>
 
       {open && (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
             <RunListSkeletons />
           ) : items.length === 0 ? (
-            <div className="flex items-center justify-center px-3 py-6">
-              <span className="text-xs text-tertiary">No items</span>
-            </div>
+            <EmptyState size="sm" title="No items" />
           ) : (
             <>
               {items.map((item) => (
@@ -240,7 +234,7 @@ export function RunList({
     <div className="flex h-full flex-col divide-y divide-secondary overflow-hidden border-r border-secondary">
       <ItemSection
         label="Needs Review"
-        icon={LayersTwo01Icon}
+        icon={StackRegularIcon}
         section={needsReview}
         selectedItemId={selectedItemId}
         defaultOpen={true}
@@ -250,7 +244,7 @@ export function RunList({
       {showNeedsOthersReview && (
         <ItemSection
           label="Needs Others' Review"
-          icon={ClockIcon}
+          icon={ClockCounterClockwiseRegularIcon}
           section={needsOthersReview}
           selectedItemId={selectedItemId}
           defaultOpen={false}
@@ -260,11 +254,10 @@ export function RunList({
       )}
       <ItemSection
         label="Completed"
-        icon={CheckCircleIcon}
+        icon={CheckCircleFillIcon}
         section={completed}
         selectedItemId={selectedItemId}
         defaultOpen={false}
-        isLast={true}
         onSelectItem={onSelectItem}
       />
     </div>

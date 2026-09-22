@@ -6,17 +6,21 @@
   "scripts": {
     "dev": "langsmith apps dev",
     "build": "vite build",
-    "watch": "vite build --watch"
+    "watch": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "macaw": "macaw"
   },
+  "engines": { "node": ">=22.12.0" },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"{{if .NeedsIcons}},
-    "@langchain/untitled-ui-icons": "^1.1.2"{{end}}{{if .NeedsCn}},
-    "cnfast": "^0.0.8"{{end}}
+    "@langchain/macaw-components": "1.0.0-beta.0",
+    "@langchain/macaw-tokens": "1.0.0-beta.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.1",
-    "@types/react-dom": "^18.3.1",
+    "@langchain/macaw-cli": "1.0.0-beta.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",

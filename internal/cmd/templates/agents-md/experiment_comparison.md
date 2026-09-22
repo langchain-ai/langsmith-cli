@@ -6,4 +6,4 @@ the calls it makes and `src/lib/delta.ts` for how deltas are computed.
 
 This is just a starting point, not a spec. Change the metrics, the charts,
 or the whole concept — rip out anything here and build whatever app you
-actually want.
+actually want, using Macaw components and semantic tokens.

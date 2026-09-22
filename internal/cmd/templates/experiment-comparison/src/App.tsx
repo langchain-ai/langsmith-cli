@@ -1,3 +1,6 @@
+import { GuideState } from './components/GuideState';
+import { CHART_OTHER_COLOR } from '@langchain/macaw-components/utils/chartColors';
+import { Select } from '@langchain/macaw-components/Select';
 import { useEffect, useMemo, useState } from 'react';
 import { Pickers } from './components/Pickers';
 import { SummaryPanel } from './components/SummaryPanel';
@@ -7,11 +10,10 @@ import { Scorecard } from './components/Scorecard';
 import { DeltaHistogram } from './components/DeltaHistogram';
 import { ScatterPlot } from './components/ScatterPlot';
 import { Section } from './components/primitives';
-import { Spinner } from './components/Spinner';
 import { fetchComparison, fetchExperiments, fetchFeedbackConfigs } from './api';
 import { costOf, latencyMs, scoreFor } from './lib/delta';
 import { buildMetrics, comparisonColor, letterFor } from './lib/metrics';
-import { cn } from './lib/utils';
+import { cn } from '@langchain/macaw-components/utils/cn';
 import type { Aggregate, ExampleWithRuns, ExperimentView, Experiment } from './types';
 
 const EXAMPLE_LIMIT = 25;
@@ -103,7 +105,8 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   }, [feedbackKeys.join(',')]);
 
   const orderedExperiments = useMemo(
-    () => selectedIds.map((id) => experiments.find((x) => x.id === id)).filter(Boolean) as Experiment[],
+    () =>
+      selectedIds.map((id) => experiments.find((x) => x.id === id)).filter(Boolean) as Experiment[],
     [selectedIds, experiments]
   );
 
@@ -115,12 +118,15 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
         name: x.name,
         letter: letterFor(i),
         isBaseline: i === 0,
-        color: i === 0 ? 'var(--text-tertiary)' : comparisonColor(i - 1),
+        color: i === 0 ? CHART_OTHER_COLOR : comparisonColor(i - 1),
       })),
     [orderedExperiments]
   );
 
-  const metrics = useMemo(() => buildMetrics(feedbackKeys, lowerIsBetter), [feedbackKeys, lowerIsBetter]);
+  const metrics = useMemo(
+    () => buildMetrics(feedbackKeys, lowerIsBetter),
+    [feedbackKeys, lowerIsBetter]
+  );
 
   // Keep the shared metric selection valid as feedback keys load.
   useEffect(() => {
@@ -183,7 +189,11 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   function renderBody() {
     if (!datasetId) {
       return (
-        <GuideState step={1} heading="Pick a dataset to get started" subtext="Every experiment you compare has to run against this dataset." />
+        <GuideState
+          step={1}
+          heading="Pick a dataset to get started"
+          subtext="Every experiment you compare has to run against this dataset."
+        />
       );
     }
     if (experimentsLoading && experiments.length === 0) {
@@ -200,7 +210,11 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     }
     if (!baselineId) {
       return (
-        <GuideState step={2} heading="Choose a baseline experiment" subtext="Every other experiment gets compared against this one." />
+        <GuideState
+          step={2}
+          heading="Choose a baseline experiment"
+          subtext="Every other experiment gets compared against this one."
+        />
       );
     }
     if (comparisonIds.length === 0) {
@@ -216,10 +230,20 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
       return <GuideState spinner heading="Loading comparison…" />;
     }
     if (failed) {
-      return <GuideState tone="error" heading="Couldn't load this comparison" subtext="Check the console and your access to this dataset." />;
+      return (
+        <GuideState
+          tone="error"
+          heading="Couldn't load this comparison"
+          subtext="Check the console and your access to this dataset."
+        />
+      );
     }
     if (examples.length === 0) {
-      const comparedNames = expViews.slice(1).map((x) => x.name).join(', ') || 'the selected comparison';
+      const comparedNames =
+        expViews
+          .slice(1)
+          .map((x) => x.name)
+          .join(', ') || 'the selected comparison';
       return (
         <GuideState
           heading="No shared examples for this selection"
@@ -251,25 +275,40 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
               {metricSelect()}
             </div>
 
-            <Section title="Scoreboard" note={`${selectedMetric.label} for each experiment, vs the baseline.`}>
+            <Section
+              title="Scoreboard"
+              note={`${selectedMetric.label} for each experiment, vs the baseline.`}
+            >
               <Scoreboard experiments={expViews} aggregates={aggregates} metric={selectedMetric} />
             </Section>
 
-            <Section title="Regression scorecard" note="Per comparison, the share of examples that beat, tied, or lost to the baseline — across every metric.">
+            <Section
+              title="Regression scorecard"
+              note="Per comparison, the share of examples that beat, tied, or lost to the baseline — across every metric."
+            >
               <Scorecard examples={examples} experiments={expViews} metrics={metrics} />
             </Section>
 
-            <Section title="Delta distribution" note={`How ${selectedMetric.label} shifted per example — green bars are wins, red bars are regressions.`}>
+            <Section
+              title="Delta distribution"
+              note={`How ${selectedMetric.label} shifted per example — green bars are wins, red bars are regressions.`}
+            >
               <DeltaHistogram examples={examples} experiments={expViews} metric={selectedMetric} />
             </Section>
 
-            <Section title="Baseline vs comparison" note="Each point is one example; the dashed line is parity.">
+            <Section
+              title="Baseline vs comparison"
+              note="Each point is one example; the dashed line is parity."
+            >
               <ScatterPlot examples={examples} experiments={expViews} metric={selectedMetric} />
             </Section>
           </>
         )}
 
-        <Section title="Per-example" note={capped ? `Showing first ${EXAMPLE_LIMIT} examples.` : undefined}>
+        <Section
+          title="Per-example"
+          note={capped ? `Showing first ${EXAMPLE_LIMIT} examples.` : undefined}
+        >
           <ExampleTable examples={examples} experiments={expViews} metric={selectedMetric} />
         </Section>
       </div>
@@ -280,56 +319,16 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     return (
       <label className="flex items-center gap-2 text-xs text-tertiary">
         Metric
-        <select
+        <Select
+          triggerClassName="w-auto min-w-32"
+          aria-label="Metric"
           value={metricId}
-          onChange={(e) => setMetricId(e.target.value)}
-          className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
-        >
-          {metrics.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => {
+            if (value) setMetricId(value);
+          }}
+          options={metrics.map((metric) => ({ value: metric.id, label: metric.label }))}
+        />
       </label>
     );
   }
-}
-
-// The empty/blocked state for every step of the guide above — echoes the
-// same numbered-badge language as the Pickers stepper, so "you're on step 2"
-// reads the same whether the reason is up top or down here.
-function GuideState({
-  step,
-  heading,
-  subtext,
-  spinner,
-  tone,
-}: {
-  step?: number;
-  heading: string;
-  subtext?: string;
-  spinner?: boolean;
-  tone?: 'error';
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-center">
-      {spinner ? (
-        <Spinner size="md" />
-      ) : step != null ? (
-        <span
-          className={cn(
-            'flex size-10 items-center justify-center rounded-full border-2 text-base font-semibold',
-            tone === 'error' ? 'border-error text-error-primary' : 'border-brand text-brand-primary'
-          )}
-        >
-          {step}
-        </span>
-      ) : null}
-      <div className="flex flex-col gap-1">
-        <span className={cn('text-base font-semibold', tone === 'error' ? 'text-error-primary' : 'text-primary')}>{heading}</span>
-        {subtext && <span className="max-w-md text-sm text-tertiary">{subtext}</span>}
-      </div>
-    </div>
-  );
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -322,8 +323,12 @@ func TestAppsInit_CopiesNonTemplatedFilesVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read FeedbackChip.tsx: %v", err)
 	}
-	if !strings.Contains(string(got), "style={{ backgroundColor: color") {
-		t.Errorf("expected literal style={{...}} to survive scaffolding unmodified, got:\n%s", got)
+	want, err := annotationQueueStarterFS.ReadFile("templates/annotation-queue/src/components/FeedbackChip.tsx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Error("non-templated source was modified during scaffolding")
 	}
 }
 
@@ -703,8 +708,7 @@ func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
 	}
 	for _, sharedRelPath := range []string{
 		"src/components/SearchableSelect.tsx",
-		"src/components/Spinner.tsx",
-		"src/lib/utils.ts",
+		"src/lib/HostTheme.tsx",
 	} {
 		if !writtenSet[sharedRelPath] {
 			t.Errorf("expected %q to be pulled in from _shared/, got %v", sharedRelPath, written)
@@ -737,7 +741,7 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	for _, w := range written {
 		writtenSet[w] = true
 	}
-	for _, wanted := range []string{"src/components/SearchableSelect.tsx", "src/components/Spinner.tsx", "src/lib/utils.ts"} {
+	for _, wanted := range []string{"src/components/SearchableSelect.tsx", "src/lib/HostTheme.tsx"} {
 		if !writtenSet[wanted] {
 			t.Errorf("expected %q to be pulled in, got %v", wanted, written)
 		}
@@ -773,4 +777,57 @@ func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 		check(name, at.templateFS)
 	}
 	check("_shared", sharedFS)
+}
+
+func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {
+	for name, app := range appTypes {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, err := scaffoldCustomAppStarter(dir, "test-app", "", app, false); err != nil {
+				t.Fatal(err)
+			}
+			read := func(path string) string {
+				t.Helper()
+				content, err := os.ReadFile(filepath.Join(dir, path))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return string(content)
+			}
+			var pkg struct {
+				Dependencies    map[string]string `json:"dependencies"`
+				DevDependencies map[string]string `json:"devDependencies"`
+			}
+			if err := json.Unmarshal([]byte(read("package.json")), &pkg); err != nil {
+				t.Fatal(err)
+			}
+			components := pkg.Dependencies["@langchain/macaw-components"]
+			if components == "" || components != pkg.Dependencies["@langchain/macaw-tokens"] || components != pkg.DevDependencies["@langchain/macaw-cli"] {
+				t.Fatal("all starters must install matching Macaw components, tokens, and CLI versions")
+			}
+			for path, expected := range map[string]string{
+				"src/index.css":         "@langchain/macaw-components/styles.css",
+				"tailwind.config.js":    "@langchain/macaw-components/tailwind-preset",
+				"src/entry.tsx":         "mode: metadata.mode",
+				"src/lib/HostTheme.tsx": "storageKey={null}",
+				"AGENTS.md":             "Macaw is required for every UI change",
+			} {
+				content := read(path)
+				if path == "src/entry.tsx" && strings.Contains(content, "mode={metadata.mode}") {
+					continue
+				}
+				if !strings.Contains(content, expected) {
+					t.Errorf("%s is missing the Macaw integration %q", path, expected)
+				}
+			}
+			if strings.Contains(read("src/index.css"), ":root") {
+				t.Error("starter must import tokens instead of copying their definitions")
+			}
+			for _, obsolete := range []string{"src/components/Spinner.tsx", "src/lib/utils.ts"} {
+				if _, err := os.Stat(filepath.Join(dir, obsolete)); !os.IsNotExist(err) {
+					t.Errorf("starter still ships %s instead of Macaw", obsolete)
+				}
+			}
+		})
+	}
 }

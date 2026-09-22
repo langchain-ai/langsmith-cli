@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EmptyState } from '@langchain/macaw-components/EmptyState';
 import { DataGrid } from './components/DataGrid';
 import { QueueBar } from './components/QueueBar';
 import {
@@ -37,8 +38,7 @@ export function App({ queueId: initialQueueId }: Props) {
   const section = useItemSection(queueId || undefined, 'needs_my_review');
   const rows = section.items;
 
-  const expandedListItem =
-    rows.find((r) => r.id === expandedItemId) ?? null;
+  const expandedListItem = rows.find((r) => r.id === expandedItemId) ?? null;
   const { item: hydratedExpanded, loading: expanding } = useHydratedItem(expandedListItem);
 
   const displayRows: QueueItem[] = useMemo(() => {
@@ -178,9 +178,7 @@ export function App({ queueId: initialQueueId }: Props) {
     setSelectedItemIds(new Set());
     for (const { item } of targets) section.removeItem(item.id);
 
-    const results = await Promise.allSettled(
-      targets.map(({ item }) => markItemComplete(item.id))
-    );
+    const results = await Promise.allSettled(targets.map(({ item }) => markItemComplete(item.id)));
     const failures = targets.filter((_, i) => results[i].status === 'rejected');
     if (failures.length > 0) {
       failures.forEach(({ item, index }) => section.restoreItem(item, index));
@@ -204,6 +202,7 @@ export function App({ queueId: initialQueueId }: Props) {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented) return;
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName;
       const inInput =
@@ -231,9 +230,7 @@ export function App({ queueId: initialQueueId }: Props) {
       <div className="flex h-screen flex-col bg-surface-level-1">
         <QueueBar selectedQueueId={queueId} onSelect={setQueueId} />
         <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-tertiary">
-            Select an annotation queue to start reviewing.
-          </span>
+          <EmptyState title="Select an annotation queue to start reviewing" />
         </div>
       </div>
     );

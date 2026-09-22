@@ -91,18 +91,33 @@ func TestReadDirectoryAsAppFiles_RejectsBinary(t *testing.T) {
 	}
 }
 
-func TestReadDirectoryAsAppFiles_RejectsOversizedFile(t *testing.T) {
-	dir := t.TempDir()
-	big := make([]byte, appsMaxFileSizeBytes+1)
-	for i := range big {
-		big[i] = 'a'
-	}
-	if err := os.WriteFile(filepath.Join(dir, "big.txt"), big, 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	_, err := readDirectoryAsAppFiles(dir)
-	if err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Errorf("expected size-limit error, got %v", err)
+func TestReadDirectoryAsAppFiles_TotalSizeLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		sizes   map[string]int
+		wantErr bool
+	}{
+		{"Macaw bundle with inlined fonts", map[string]int{"bundle.js": 3 << 20}, false},
+		{"exact limit", map[string]int{"bundle.js": appsMaxTotalFileBytes - len("bundle.js")}, false},
+		{"path counts toward limit", map[string]int{"bundle.js": appsMaxTotalFileBytes}, true},
+		{"combined limit", map[string]int{"a.js": 3 << 20, "b.js": 3 << 20}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, size := range tc.sizes {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("a", size)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := readDirectoryAsAppFiles(dir)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "exceeds") {
+					t.Fatalf("expected size-limit error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

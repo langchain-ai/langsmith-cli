@@ -1,17 +1,24 @@
+import { IconButton } from '@langchain/macaw-components/IconButton';
+import { Card } from '@langchain/macaw-components/Card';
+import { Badge } from '@langchain/macaw-components/Badge';
+import { Button } from '@langchain/macaw-components/Button';
+import { Input } from '@langchain/macaw-components/Input';
+import { Textarea } from '@langchain/macaw-components/Textarea';
+import { EmptyState } from '@langchain/macaw-components/EmptyState';
 import {
-  CheckCircleBrokenIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  Edit03Icon,
-  InfoCircleIcon,
+  CheckCircleFillIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  PencilSimpleLineFillIcon,
+  InfoRegularIcon,
   PlusIcon,
   XIcon,
-} from '@langchain/untitled-ui-icons';
+} from '@langchain/macaw-components/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorBanner } from './ErrorBanner';
 import { FeedbackChip } from './FeedbackChip';
 import { ReviewerNotes } from './ReviewerNotes';
-import { Spinner } from './Spinner';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 import type {
   AnnotationQueue,
   FeedbackConfig,
@@ -27,7 +34,7 @@ import {
   patchFeedback,
   submitFeedback,
 } from '../api';
-import { cn } from '../lib/utils';
+import { cn } from '@langchain/macaw-components/utils/cn';
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -171,11 +178,16 @@ function RubricCard({
   const feedbackValue = existingFeedback?.value;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-secondary p-3">
+    <Card className="flex flex-col gap-space-2">
       {/* Header row */}
-      <button
+      <Button
+        color="secondary"
+        variant="plain"
+        size="sm"
+        aria-label={item.feedback_key}
+        aria-expanded={expanded}
         type="button"
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-center gap-2 border-0 px-0 text-left"
         onClick={onToggleExpand}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -186,26 +198,20 @@ function RubricCard({
             isLoading={saving}
           />
           {isFilled && !saving && (
-            <CheckCircleBrokenIcon className="h-4 w-4 shrink-0 text-success-primary" />
+            <CheckCircleFillIcon className="h-4 w-4 shrink-0 text-success-primary" />
           )}
-          {item.is_required && (
-            <span className="inline-flex items-center rounded-sm border border-warning bg-warning px-1.5 py-0.5 text-xs font-medium text-warning-primary">
-              Required
-            </span>
-          )}
+          {item.is_required && <Badge color="warning">Required</Badge>}
         </div>
         {expanded ? (
-          <ChevronDownIcon className="h-4 w-4 shrink-0 text-tertiary" />
+          <CaretDownIcon className="h-4 w-4 shrink-0 text-tertiary" />
         ) : (
-          <ChevronRightIcon className="h-4 w-4 shrink-0 text-tertiary" />
+          <CaretRightIcon className="h-4 w-4 shrink-0 text-tertiary" />
         )}
-      </button>
+      </Button>
 
       {expanded && (
         <div className="flex flex-col gap-2">
-          {item.description && (
-            <p className="text-sm text-quaternary">{item.description}</p>
-          )}
+          {item.description && <p className="text-sm text-quaternary">{item.description}</p>}
 
           {error && <ErrorBanner error={error} />}
 
@@ -222,14 +228,17 @@ function RubricCard({
                   ? (item.value_descriptions?.[cat.label] ?? undefined)
                   : (item.score_descriptions?.[String(cat.value)] ?? undefined);
                 return (
-                  <button
+                  <Button
+                    color="secondary"
+                    variant="outlined"
+                    size="sm"
                     key={cat.value}
+                    aria-label={label}
+                    aria-pressed={isSelected}
                     type="button"
                     className={cn(
-                      'flex w-full cursor-pointer flex-col gap-1 rounded-md border p-3 text-left',
-                      isSelected
-                        ? 'border-brand bg-brand-muted'
-                        : 'border-secondary hover:bg-secondary/50'
+                      'h-auto w-full flex-col items-start gap-space-1 whitespace-normal py-space-3 text-left',
+                      isSelected && 'bg-selected'
                     )}
                     onClick={() => {
                       if (isSelected) {
@@ -250,7 +259,7 @@ function RubricCard({
                         {description}
                       </span>
                     )}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -269,14 +278,17 @@ function RubricCard({
                 </div>
               )}
               <div className="flex gap-2">
-                <input
+                <Input
+                  size="sm"
+                  debounceMs={0}
+                  aria-label={item.feedback_key}
                   type="number"
                   step="any"
                   min={config?.min ?? undefined}
                   max={config?.max ?? undefined}
-                  value={score ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value === '' ? null : Number(e.target.value);
+                  value={score == null ? '' : String(score)}
+                  onChange={(value) => {
+                    const val = value === '' ? null : Number(value);
                     setScore(val);
                   }}
                   onBlur={() => save(score, null)}
@@ -284,17 +296,18 @@ function RubricCard({
                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                   }}
                   placeholder="Enter score"
-                  className="min-w-0 flex-1 rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
+                  className="min-w-0 flex-1"
                 />
                 {existingFeedback && (
-                  <button
-                    type="button"
-                    className="shrink-0 self-start rounded p-1 text-quaternary hover:bg-secondary"
-                    onMouseDown={(e) => e.preventDefault()}
+                  <IconButton
+                    color="secondary"
+                    variant="plain"
+                    icon={XIcon}
+                    label="Clear feedback"
+                    className="self-start"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={handleDelete}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </button>
+                  />
                 )}
               </div>
             </div>
@@ -303,9 +316,12 @@ function RubricCard({
           {/* Freeform text */}
           {isFreeform && (
             <div className="flex gap-2">
-              <textarea
+              <Textarea
+                size="sm"
+                debounceMs={0}
+                aria-label={item.feedback_key}
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={(value) => setComment(value)}
                 onBlur={() => {
                   if (comment.trim()) save(null, null, comment);
                   else if (existingFeedback) handleDelete();
@@ -317,23 +333,24 @@ function RubricCard({
                 }}
                 placeholder="Enter text"
                 rows={3}
-                className="flex-1 resize-none rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
+                className="min-w-0 flex-1"
               />
               {existingFeedback && (
-                <button
-                  type="button"
-                  className="self-start rounded p-1 text-quaternary hover:bg-secondary"
-                  onMouseDown={(e) => e.preventDefault()}
+                <IconButton
+                  color="secondary"
+                  variant="plain"
+                  icon={XIcon}
+                  label="Clear feedback"
+                  className="self-start"
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={handleDelete}
-                >
-                  <XIcon className="h-4 w-4" />
-                </button>
+                />
               )}
             </div>
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -486,17 +503,12 @@ export function FeedbackPanel({
             {queue?.rubric_instructions ? (
               <div className="text-sm text-secondary">{queue.rubric_instructions}</div>
             ) : (
-              <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary px-6 py-12">
-                <div className="rounded-full bg-brand-subtle p-2">
-                  <InfoCircleIcon className="h-4 w-4 text-brand-primary" />
-                </div>
-                <div className="flex flex-col gap-1 text-center">
-                  <div className="text-sm font-semibold text-secondary">No instructions yet</div>
-                  <div className="text-sm text-tertiary">
-                    Contact your administrator to create a clear annotation rubric.
-                  </div>
-                </div>
-              </div>
+              <EmptyState
+                size="sm"
+                icon={InfoRegularIcon}
+                title="No instructions yet"
+                description="Contact your administrator to create a clear annotation rubric."
+              />
             )}
           </div>
 
@@ -508,22 +520,29 @@ export function FeedbackPanel({
                 {feedbackLoading && <Spinner size="md" className="opacity-50" />}
               </div>
               {queue && (
-                <button
+                <Button
+                  color="secondary"
+                  variant="outlined"
+                  size="sm"
+                  aria-label="Add feedback key"
                   type="button"
                   onClick={() => setAddingKey(true)}
-                  className="inline-flex items-center gap-1 rounded-md border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-secondary"
+                  className="items-center gap-1"
                 >
                   <PlusIcon className="h-3.5 w-3.5" />
                   Add
-                </button>
+                </Button>
               )}
             </div>
 
             {addingKey && (
-              <input
+              <Input
+                size="sm"
+                debounceMs={0}
+                aria-label="Feedback key"
                 autoFocus
                 value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
+                onChange={(value) => setNewKeyName(value)}
                 onBlur={handleAddKey}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -533,26 +552,25 @@ export function FeedbackPanel({
                   }
                 }}
                 placeholder="Feedback key"
-                className="w-full rounded-md border border-secondary bg-primary px-3 py-1.5 text-sm text-primary focus:border-brand focus:outline-none"
+                className="min-w-0 flex-1"
               />
             )}
 
             {!queue ? (
-              <div className="flex items-center justify-center py-8">
+              <div
+                role="status"
+                className="flex items-center justify-center gap-space-2 py-space-8"
+              >
+                <Spinner size="sm" />
                 <span className="text-sm text-tertiary">Loading rubric…</span>
               </div>
             ) : !hasRubricItems ? (
-              <div className="flex flex-col items-center gap-3 rounded-xl bg-secondary px-6 py-12">
-                <div className="rounded-full bg-brand-subtle p-2">
-                  <Edit03Icon className="h-4 w-4 text-brand-primary" />
-                </div>
-                <div className="flex flex-col gap-1 text-center">
-                  <div className="text-sm font-semibold text-secondary">No feedback rubrics yet</div>
-                  <div className="text-sm text-tertiary">
-                    Add an existing rubric or set up one for future use.
-                  </div>
-                </div>
-              </div>
+              <EmptyState
+                size="sm"
+                icon={PencilSimpleLineFillIcon}
+                title="No feedback rubrics yet"
+                description="Add an existing rubric or set up one for future use."
+              />
             ) : (
               <div className="flex flex-col gap-3">
                 {visibleRubricItems.map((item, idx) => (
@@ -599,9 +617,13 @@ export function FeedbackPanel({
       {itemId && (itemType === 'THREAD' ? feedbackThreadId : runId) && (
         <div className="sticky bottom-0 border-t border-secondary bg-primary px-4 pb-20 pt-4">
           {completeError && <ErrorBanner error={completeError} />}
-          <button
+          <Button
+            color="primary"
+            variant="normal"
+            size="md"
+            aria-label={completing ? 'Saving review' : totalNeedsReview > 1 ? 'Next' : 'Done'}
             type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-on-fill transition-colors hover:bg-brand-hover disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2"
             onClick={onComplete}
             disabled={completing || !allRequiredFilled}
             title={!allRequiredFilled ? 'Fill in all required rubric items' : undefined}
@@ -612,11 +634,12 @@ export function FeedbackPanel({
               <>
                 {totalNeedsReview > 1 ? 'Next' : 'Done'}
                 <span className="flex items-center gap-0.5 text-xs opacity-70">
-                  <span>⌘</span><span>↵</span>
+                  <span>⌘</span>
+                  <span>↵</span>
                 </span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       )}
     </div>

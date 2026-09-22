@@ -1,11 +1,14 @@
+import { GuideState } from './components/GuideState';
+import { Select } from '@langchain/macaw-components/Select';
+import { Banner } from '@langchain/macaw-components/Banner';
 import { useEffect, useState } from 'react';
 import { ProjectBar } from './components/ProjectBar';
 import { OverviewPanel } from './components/OverviewPanel';
 import { RunsTable } from './components/RunsTable';
 import { Section } from './components/primitives';
-import { Spinner } from './components/Spinner';
+import { Spinner } from '@langchain/macaw-components/Spinner';
 import { fetchCodingShare, fetchProjectStats, fetchRecentRuns } from './api';
-import { cn } from './lib/utils';
+import { cn } from '@langchain/macaw-components/utils/cn';
 import type { CodingShare, ProjectStats, Run, StatsScope } from './types';
 
 const EMPTY_STATS: ProjectStats = { turns: null, threads: null, failedScopes: [] };
@@ -82,14 +85,24 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
   function renderBody() {
     if (!projectId) {
       return (
-        <GuideState step={1} heading="Pick a tracing project to get started" subtext="Every stat and the recent-runs table below are scoped to it." />
+        <GuideState
+          step={1}
+          heading="Pick a tracing project to get started"
+          subtext="Every stat and the recent-runs table below are scoped to it."
+        />
       );
     }
     if (statsLoading && !hasAnyStats) {
       return <GuideState spinner heading="Loading stats…" />;
     }
     if (crashed) {
-      return <GuideState tone="error" heading="Couldn't load this project's stats" subtext="Check the console and your access to this project." />;
+      return (
+        <GuideState
+          tone="error"
+          heading="Couldn't load this project's stats"
+          subtext="Check the console and your access to this project."
+        />
+      );
     }
     if (!hasAnyStats && hasFailures) {
       return (
@@ -101,21 +114,32 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
       );
     }
     if (!hasAnyStats) {
-      return <GuideState heading="No data in this window" subtext="Try a wider time window above, or a different project." />;
+      return (
+        <GuideState
+          heading="No data in this window"
+          subtext="Try a wider time window above, or a different project."
+        />
+      );
     }
 
     return (
-      <div className={cn('mx-auto flex max-w-6xl flex-col gap-6', statsLoading && 'motion-safe:transition-opacity motion-safe:duration-normal opacity-50')}>
+      <div
+        className={cn(
+          'mx-auto flex max-w-6xl flex-col gap-6',
+          statsLoading && 'motion-safe:transition-opacity motion-safe:duration-normal opacity-50'
+        )}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-primary">Overview</h2>
           {windowSelect()}
         </div>
 
         {hasFailures && (
-          <p className="rounded-md border border-secondary bg-surface-level-2 px-3 py-2 text-xs text-secondary">
-            Couldn't load {stats.failedScopes.map((k) => SCOPE_LABEL[k]).join(' or ')} after retries — those numbers are
-            showing as "—" below. Reselect the project or change the window to retry.
-          </p>
+          <Banner intent="warning" title="Some stats are unavailable">
+            Couldn't load {stats.failedScopes.map((k) => SCOPE_LABEL[k]).join(' or ')} after retries
+            — those numbers are showing as "—" below. Reselect the project or change the window to
+            retry.
+          </Banner>
         )}
 
         <OverviewPanel stats={stats} codingShare={codingShare} />
@@ -145,53 +169,19 @@ export function App(_props: { data: unknown; metadata?: RenderMetadata }) {
     return (
       <label className="flex items-center gap-2 text-xs text-tertiary">
         Window
-        <select
-          value={windowDays}
-          onChange={(e) => setWindowDays(Number(e.target.value))}
-          className="rounded-md border border-secondary bg-primary px-2 py-1 text-xs text-primary focus:border-brand focus:outline-none"
-        >
-          {WINDOW_OPTIONS.map((o) => (
-            <option key={o.days} value={o.days}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Select
+          triggerClassName="w-auto min-w-32"
+          aria-label="Window"
+          value={String(windowDays)}
+          onChange={(value) => {
+            if (value) setWindowDays(Number(value));
+          }}
+          options={WINDOW_OPTIONS.map((option) => ({
+            value: String(option.days),
+            label: option.label,
+          }))}
+        />
       </label>
     );
   }
-}
-
-function GuideState({
-  step,
-  heading,
-  subtext,
-  spinner,
-  tone,
-}: {
-  step?: number;
-  heading: string;
-  subtext?: string;
-  spinner?: boolean;
-  tone?: 'error';
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 py-24 text-center">
-      {spinner ? (
-        <Spinner size="md" />
-      ) : step != null ? (
-        <span
-          className={cn(
-            'flex size-10 items-center justify-center rounded-full border-2 text-base font-semibold',
-            tone === 'error' ? 'border-error text-error-primary' : 'border-brand text-brand-primary'
-          )}
-        >
-          {step}
-        </span>
-      ) : null}
-      <div className="flex flex-col gap-1">
-        <span className={cn('text-base font-semibold', tone === 'error' ? 'text-error-primary' : 'text-primary')}>{heading}</span>
-        {subtext && <span className="max-w-md text-sm text-tertiary">{subtext}</span>}
-      </div>
-    </div>
-  );
 }

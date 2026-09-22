@@ -1,3 +1,9 @@
+import { Card } from '@langchain/macaw-components/Card';
+import { ChartLegend } from '@langchain/macaw-components/ChartLegend';
+import {
+  CHART_STATUS_FILL_COLORS,
+  CHART_OTHER_COLOR,
+} from '@langchain/macaw-components/utils/chartColors';
 import type { ExampleWithRuns, ExperimentView } from '../types';
 import type { RunMetric } from '../lib/metrics';
 import { verdict } from '../lib/delta';
@@ -30,37 +36,40 @@ export function Scorecard({ examples, experiments, metrics }: Props) {
           return {
             label: m.label,
             segments: [
-              { key: 'better', value: t.better, color: 'var(--bg-success-strong)' },
-              { key: 'neutral', value: t.neutral, color: 'var(--border-strong)' },
-              { key: 'worse', value: t.worse, color: 'var(--bg-error-strong)' },
+              { key: 'better', value: t.better, color: CHART_STATUS_FILL_COLORS.positive },
+              { key: 'neutral', value: t.neutral, color: CHART_OTHER_COLOR },
+              { key: 'worse', value: t.worse, color: CHART_STATUS_FILL_COLORS.negative },
             ],
           };
         });
         return (
-          <div key={exp.id} className="rounded-lg border border-subtle p-4">
+          <Card key={exp.id} className="min-w-0">
             <div className="mb-3 flex items-center gap-1.5 text-sm font-medium text-primary">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: exp.color }} />
-              <span className="truncate" title={exp.name}>{exp.name}</span>
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                style={{ backgroundColor: exp.color }}
+              />
+              <span className="truncate" title={exp.name}>
+                {exp.name}
+              </span>
             </div>
             <StackedBar rows={rows} />
-          </div>
+          </Card>
         );
       })}
-      <div className="flex items-center gap-4 text-xs text-tertiary sm:col-span-2 lg:col-span-3">
-        <Swatch color="var(--bg-success-strong)" label="beat baseline" />
-        <Swatch color="var(--border-strong)" label="tied" />
-        <Swatch color="var(--bg-error-strong)" label="lost to baseline" />
-      </div>
+      <ChartLegend
+        className="sm:col-span-2 lg:col-span-3"
+        items={[
+          { id: 'better', label: 'Beat baseline', markerColor: CHART_STATUS_FILL_COLORS.positive },
+          { id: 'neutral', label: 'Tied', markerColor: CHART_OTHER_COLOR },
+          {
+            id: 'worse',
+            label: 'Lost to baseline',
+            markerColor: CHART_STATUS_FILL_COLORS.negative,
+          },
+        ]}
+      />
     </div>
-  );
-}
-
-function Swatch({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
-      {label}
-    </span>
   );
 }
 

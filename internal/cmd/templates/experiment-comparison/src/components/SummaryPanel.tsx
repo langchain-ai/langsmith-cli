@@ -1,3 +1,5 @@
+import { Card } from '@langchain/macaw-components/Card';
+import { Text } from '@langchain/macaw-components/Text';
 import type { Aggregate, ExperimentView } from '../types';
 import { aggregateValue, type RunMetric } from '../lib/metrics';
 import { BarList, StatTile, type BarItem } from './primitives';
@@ -18,7 +20,11 @@ export function SummaryPanel({ experiments, aggregates, metrics }: Props) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {metrics.map((m) => (
-          <StatTile key={m.id} label={m.label} value={m.format(aggregateValue(aggregates[exp?.id ?? ''], m))} />
+          <StatTile
+            key={m.id}
+            label={m.label}
+            value={m.format(aggregateValue(aggregates[exp?.id ?? ''], m))}
+          />
         ))}
       </div>
     );
@@ -38,13 +44,15 @@ export function SummaryPanel({ experiments, aggregates, metrics }: Props) {
           };
         });
         return (
-          <div key={m.id} className="flex flex-col gap-2 rounded-lg border border-subtle p-4">
-            <span className="text-xs font-medium uppercase tracking-wide text-tertiary">
+          <Card intent="plain" key={m.id} className="flex min-w-0 flex-col gap-space-2">
+            <Text variant="xs" color="tertiary" weight="medium">
               {m.label}
-              {m.lowerIsBetter && <span className="normal-case text-quaternary"> · lower is better</span>}
-            </span>
-            <BarList items={items} />
-          </div>
+              {m.lowerIsBetter && (
+                <span className="normal-case text-quaternary"> · lower is better</span>
+              )}
+            </Text>
+            <BarList items={items} label={m.label} format={m.format} />
+          </Card>
         );
       })}
     </div>

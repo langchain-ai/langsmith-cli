@@ -21,7 +21,7 @@ your local `LANGSMITH_API_KEY` when running `langsmith apps dev`).
 Since the sandbox has no bundler or npm access at runtime, this app is built
 with Vite in **library mode** into a single dependency-free CJS file
 (`dist/bundle.js`) — see `vite.config.ts` and `src/entry.tsx`. Use real
-React/TS and npm dependencies freely; they all get inlined at build time.
+React/TS for app behavior and Macaw for UI; both get inlined at build time.
 Tailwind's compiled CSS is inlined too (`src/index.css` imported with
 `?inline` in `entry.tsx`) and injected via a `<style>` tag at first render —
 there's no way to `<link>` a second file into this sandbox.
@@ -33,7 +33,21 @@ selected, everything else (queue items via `/items`, RUN/THREAD hydrate on
 expand, existing feedback, marking an item complete) is fetched via
 `window.langsmith.call`. See `src/api.ts` and `src/components/QueueBar.tsx`.
 
+## Design system
+
+Macaw is installed and configured by default. Use `@langchain/macaw-components`
+for UI and `@langchain/macaw-tokens` for semantic styles. The stylesheet includes
+fonts and tokens and is bundled inline for the sandbox. `HostTheme` follows
+LangSmith's light/dark mode without resetting app state.
+
+Read `AGENTS.md` before editing. Find the installed components with
+`npm run macaw -- search "<capability>"` or
+`npm run macaw -- inspect Button --json`. Every UI edit should use Macaw.
+
 ## Develop
+
+Use Node.js 22.12 or newer. Run `npm run typecheck` and `npm run build`
+before handing off changes.
 
 Install dependencies, then start the dev server (it builds on the first run):
 
