@@ -78,6 +78,7 @@ Quick start:
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
+	rootCmd.AddCommand(newChartCmd())
 	rootCmd.AddCommand(newThreadCmd())
 	rootCmd.AddCommand(newDatasetCmd())
 	rootCmd.AddCommand(newExampleCmd())
