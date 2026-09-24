@@ -59,6 +59,7 @@ type sandboxCreateInput struct {
 type sandboxServiceURLInput struct {
 	Port             int
 	ExpiresInSeconds int64
+	Access           string
 }
 
 type sandboxDownloadURLInput struct {
@@ -263,11 +264,12 @@ var sandboxServiceURLRender = structured.PropertyList{
 	Properties: []structured.Property{
 		{Label: "Browser URL", Template: "{{.BrowserURL}}"},
 		{Label: "Service URL", Template: "{{.ServiceURL}}"},
-		{Label: "Expires", Template: "{{formatTime .ExpiresAt}}"},
-		{Label: "Service Token", Template: "{{.Token}}"},
+		{Label: "LangSmith login", Template: "{{.Access}}", OmitEmpty: true},
+		{Label: "Expires", Template: "{{formatTime .ExpiresAt}}", OmitEmpty: true},
+		{Label: "Service Token", Template: "{{.Token}}", OmitEmpty: true},
 	},
-	Caption: `Example:
-  curl -H "X-Langsmith-Sandbox-Service-Token: {{.Token}}" "{{.ServiceURL}}"`,
+	Caption: `{{if .Token}}Example:
+  curl -H "X-Langsmith-Sandbox-Service-Token: {{.Token}}" "{{.ServiceURL}}"{{else}}Open the URL in a browser; access is gated by your LangSmith login.{{end}}`,
 }
 
 var sandboxServiceURLCommand = structured.Command[*sandboxServiceURLInput]{
@@ -275,17 +277,28 @@ var sandboxServiceURLCommand = structured.Command[*sandboxServiceURLInput]{
 	Short: "Generate an authenticated URL for a sandbox HTTP service",
 	Long: `Generate an authenticated URL for an HTTP service running inside a sandbox.
 
-Use the service URL with the X-Langsmith-Sandbox-Service-Token header, or open
-the browser URL directly.
+By default this mints a short-lived service token: use the service URL with the
+X-Langsmith-Sandbox-Service-Token header, or open the browser URL directly.
+
+--access switches to LangSmith login instead, so the URL carries no token and
+does not expire:
+
+  restricted  anyone with sandboxes:read on this sandbox
+  workspace   any member of the owning workspace
+
+A login grant is durable, so token mode is refused while one is in place, and
+--expires-in-seconds does not apply.
 
 Examples:
   langsmith sandbox service-url my-vm --port 8000
-  langsmith sandbox service-url my-vm --port 8000 --expires-in-seconds 3600`,
+  langsmith sandbox service-url my-vm --port 8000 --expires-in-seconds 3600
+  langsmith sandbox service-url my-vm --port 8000 --access workspace`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxServiceURLInput {
 		in := &sandboxServiceURLInput{}
 		cmd.Flags().IntVar(&in.Port, "port", in.Port, "Port inside the sandbox")
-		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "URL TTL in seconds")
+		cmd.Flags().Int64Var(&in.ExpiresInSeconds, "expires-in-seconds", in.ExpiresInSeconds, "URL TTL in seconds (token mode only)")
+		cmd.Flags().StringVar(&in.Access, "access", in.Access, "Gate the URL behind LangSmith login instead of a token: restricted or workspace")
 		_ = cmd.MarkFlagRequired("port")
 		return in
 	},
@@ -295,6 +308,21 @@ Examples:
 		}
 		if cmd.Flags().Changed("expires-in-seconds") && in.ExpiresInSeconds < 1 {
 			return nil, fmt.Errorf("--expires-in-seconds must be greater than 0")
+		}
+		access := langsmith.SandboxBoxGenerateServiceURLParamsAccess(in.Access)
+		if cmd.Flags().Changed("access") &&
+			access != langsmith.SandboxBoxGenerateServiceURLParamsAccessRestricted &&
+			access != langsmith.SandboxBoxGenerateServiceURLParamsAccessWorkspace {
+			return nil, fmt.Errorf(
+				"--access must be restricted or workspace (got %q)", in.Access,
+			)
+		}
+		// A login grant carries no token, so there is nothing for a TTL to expire.
+		if cmd.Flags().Changed("expires-in-seconds") && cmd.Flags().Changed("access") {
+			return nil, fmt.Errorf(
+				"--expires-in-seconds does not apply to --access %s: "+
+					"a LangSmith login URL carries no token and does not expire", in.Access,
+			)
 		}
 
 		c, err := cmdutil.GetClient(cmd)
@@ -307,6 +335,9 @@ Examples:
 		}
 		if cmd.Flags().Changed("expires-in-seconds") {
 			params.ExpiresInSeconds = langsmith.F(in.ExpiresInSeconds)
+		}
+		if cmd.Flags().Changed("access") {
+			params.Access = langsmith.F(access)
 		}
 
 		resp, err := c.SDK.Sandboxes.Boxes.GenerateServiceURL(ctx, args[0], params)
