@@ -32,7 +32,7 @@ func walkCommands(cmd *cobra.Command, path []string, fn func(path string, c *cob
 // callers to interpolate an arbitrary user-chosen project name into a command
 // line. Fail here rather than let a new command reintroduce the gap.
 func TestEveryProjectCommandAcceptsProjectID(t *testing.T) {
-	t.Parallel()
+	// Root construction initializes package-level flag bindings; it is not parallel-safe.
 
 	root := NewRootCmd("1.0.0", "1.0.0")
 	seen := 0
@@ -53,7 +53,7 @@ func TestEveryProjectCommandAcceptsProjectID(t *testing.T) {
 // --project and --project-id name the same thing two ways, so passing both is a
 // caller error worth catching locally instead of resolving by precedence.
 func TestProjectAndProjectIDAreMutuallyExclusive(t *testing.T) {
-	t.Parallel()
+	// Root construction initializes package-level flag bindings; it is not parallel-safe.
 
 	root := NewRootCmd("1.0.0", "1.0.0")
 	walkCommands(root, []string{}, func(path string, c *cobra.Command) {

@@ -119,7 +119,7 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
-		ExitErrorf("%v", err)
+		ExitCommandError(err)
 	}
 	if !useV2 {
 		ExitErrorf("%s is only available on LangSmith Cloud or self-hosted >= 0.16 (SmithDB); this deployment does not support it", feature)

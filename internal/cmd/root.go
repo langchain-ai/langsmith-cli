@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -68,10 +70,6 @@ Quick start:
 	rootCmd.PersistentFlags().StringVar(&flagWorkspaceID, "workspace-id", "", "LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID]")
 	_ = rootCmd.PersistentFlags().MarkHidden("workspace-id")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFormat, "format", "pretty", "Output format: pretty or json")
-	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		showFeedbackHint(cmd)
-		return err
-	})
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
@@ -94,6 +92,14 @@ Quick start:
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
+	attachArgumentDiagnostics(rootCmd)
+	rootCmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		if GetFormat() != "json" {
+			showFeedbackHint(c)
+			return err
+		}
+		return commandDiagnostic{"invalid_flag", "An option is unknown, missing a value, or has an invalid value.", "See " + c.CommandPath() + " --help for supported flags and value types."}
+	})
 
 	return rootCmd
 }
@@ -147,7 +153,7 @@ func showFeedbackHint(cmd *cobra.Command) {
 func MustGetClient() *client.Client {
 	c, err := getClient()
 	if err != nil {
-		ExitError(err.Error())
+		ExitCommandError(err)
 	}
 	return c
 }
@@ -160,7 +166,7 @@ func getClient() (*client.Client, error) {
 		return nil, err
 	}
 	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
-		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
+		return nil, commandDiagnostic{"unauthenticated", "Authentication is required.", "Run langsmith auth login, set LANGSMITH_API_KEY, or select an authenticated profile."}
 	}
 	return client.NewWithOptions(opts), nil
 }
@@ -183,7 +189,7 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 		}
 		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
 		if (flagProfile != "" || envProfile != "") && !hasProfile {
-			return opts, fmt.Errorf("profile not found: %s", profileName)
+			return opts, commandDiagnostic{"profile_not_found", "profile not found", "Run langsmith profile list, then select an existing profile with --profile; or create one with langsmith auth login --profile NAME."}
 		}
 	}
 
@@ -253,7 +259,12 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 
 // ExitError prints an error to stderr and exits.
 func ExitError(msg string) {
-	fmt.Fprintln(os.Stderr, msg)
+	ExitCommandError(errors.New(msg))
+}
+
+// ExitCommandError retains structured diagnostics for legacy command handlers.
+func ExitCommandError(err error) {
+	_ = output.WriteCommandError(os.Stderr, err, GetFormat())
 	os.Exit(1)
 }
 
