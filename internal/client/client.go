@@ -230,6 +230,7 @@ type CustomAppRequest struct {
 	Description   *string           `json:"description,omitempty"`
 	Files         map[string]string `json:"files,omitempty"`
 	Entrypoint    *string           `json:"entrypoint,omitempty"`
+	ContextType   *string           `json:"context_type,omitempty"`
 	SourceArchive *string           `json:"source_archive,omitempty"`
 }
 
