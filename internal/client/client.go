@@ -285,6 +285,9 @@ type httpError struct {
 	body       []byte
 }
 
+// StatusCode exposes the HTTP status without exposing the response body.
+func (e *httpError) StatusCode() int { return e.statusCode }
+
 func (e *httpError) Error() string {
 	return fmt.Sprintf("HTTP %d: %s", e.statusCode, formatHTTPErrorBody(e.body))
 }

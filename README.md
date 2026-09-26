@@ -238,6 +238,44 @@ langsmith thread list --project my-chatbot --last-n-minutes 120
 langsmith thread get <thread-id> --project my-chatbot --full
 ```
 
+### `dashboard` — Manage workspace dashboards
+
+```bash
+langsmith dashboard create --title "Agent monitoring"
+langsmith dashboard list --limit 20
+langsmith dashboard get DASHBOARD_ID
+
+langsmith dashboard chart preview --config @chart.json \
+  --query '{"start_time":"2026-09-11T18:00:00Z","end_time":"2026-09-18T18:00:00Z","stride":{"hours":6}}'
+langsmith dashboard chart create --dashboard-id DASHBOARD_ID --config @chart.json --dry-run
+langsmith dashboard chart create --dashboard-id DASHBOARD_ID --config @chart.json
+```
+
+Use `--workspace` and `--profile` to select context. JSON accepts inline objects,
+file paths, or `@file.json`. Replace IDs and dates with your intended resources
+and time range. Creation returns `status`, `workspace_id`, and `resource.id`.
+
+Modern charts need `metric_definition` and `filter_definition`; grouped charts
+also use `group_by_definitions`. Donut/ranked-bar charts require one grouped
+metric; KPI charts require one ungrouped metric. Tables support counts, not
+latency/cost rankings. Legacy line/bar definitions remain supported.
+
+`dashboard update ID --config JSON` edits settings/layout; `dashboard chart
+update ID --config JSON` edits chart settings. Omitted fields remain unchanged;
+arrays replace existing values. Supply chart_type and series together to check
+their compatibility. Both support `--dry-run`. Clone with `dashboard clone
+--dashboard-id ID`. Delete with `dashboard delete ID --yes` or `dashboard chart
+delete ID --yes`; dashboard deletion removes its charts too.
+
+Dry-run checks supplied fields only. Preview queries data but does not certify
+UI rendering; read saved charts and verify the modern analytics path too.
+Writes are not automatically retried: reconcile uncertain results before
+repeating them. JSON mode emits compact nested results; pretty mode indents them.
+Dashboard validation/service diagnostics contain safe messages and next steps.
+
+See the [dashboard skill](skills/langsmith-dashboard/SKILL.md) for modern JSON
+recipes, trace-informed chart selection, and saved-data/rendering verification.
+
 ### `insights` — Create and query insight reports
 
 Insight reports analyze traces in a project to identify usage patterns, common

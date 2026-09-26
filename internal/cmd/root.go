@@ -76,6 +76,7 @@ Quick start:
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
+	rootCmd.AddCommand(newDashboardCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newChartCmd())
