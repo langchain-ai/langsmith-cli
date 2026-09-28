@@ -519,3 +519,10 @@ func TestCreateSourceArchiveFailsWhenConfigIsIgnored(t *testing.T) {
 	_, err = createSourceArchive(cfg, &deployProgress{w: io.Discard})
 	require.ErrorContains(t, err, "langgraph.json not found in archive")
 }
+
+func TestDeployLogsExplainsDirectoryNameDefault(t *testing.T) {
+	cp := newFakeControlPlane(t)
+	t.Chdir(filepath.Join(t.TempDir()))
+	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "logs")
+	require.ErrorContains(t, err, "(the current directory's name); pass --name or --deployment-id")
+}

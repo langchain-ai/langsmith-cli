@@ -1,4 +1,4 @@
-package hostbackend
+package langgraphapi
 
 import (
 	"net/url"

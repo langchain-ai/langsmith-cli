@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/langchain-ai/langsmith-cli/internal/hostbackend"
+	"github.com/langchain-ai/langsmith-cli/internal/langgraphapi"
 )
 
 const (
@@ -139,8 +139,8 @@ func readDotenv(path string) (map[string]string, error) {
 	return vars, nil
 }
 
-func deploySecrets(envVars map[string]string, p *deployProgress) []hostbackend.Secret {
-	secrets := []hostbackend.Secret{}
+func deploySecrets(envVars map[string]string, p *deployProgress) []langgraphapi.Secret {
+	secrets := []langgraphapi.Secret{}
 	for _, name := range slices.Sorted(maps.Keys(envVars)) {
 		if name == deploymentNameEnv {
 			continue
@@ -152,7 +152,7 @@ func deploySecrets(envVars map[string]string, p *deployProgress) []hostbackend.S
 		if envVars[name] == "" {
 			continue
 		}
-		secrets = append(secrets, hostbackend.Secret{Name: name, Value: envVars[name]})
+		secrets = append(secrets, langgraphapi.Secret{Name: name, Value: envVars[name]})
 	}
 	return secrets
 }

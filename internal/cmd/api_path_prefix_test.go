@@ -28,7 +28,7 @@ func TestHandWrittenPathsCarryAPIPrefix(t *testing.T) {
 			return err
 		}
 		// Control-plane paths resolve against the /api-host base, not the LangSmith API.
-		if d.IsDir() && d.Name() == "hostbackend" {
+		if d.IsDir() && d.Name() == "langgraphapi" {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/langchain-ai/langsmith-cli/internal/hostbackend"
+	"github.com/langchain-ai/langsmith-cli/internal/langgraphapi"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
@@ -42,7 +42,7 @@ Examples:
   langsmith deploy list --format json`,
 	Args: cobra.NoArgs,
 	Input: func(cmd *cobra.Command) *deployListInput {
-		in := &deployListInput{Limit: hostbackend.MaxPageSize}
+		in := &deployListInput{Limit: langgraphapi.MaxPageSize}
 		cmd.Flags().StringVar(&in.NameContains, "name-contains", "", "Only show deployments whose names contain this value")
 		cmd.Flags().StringVar(&in.AgentID, "agent-id", "", "Only show deployments of this logical agent, private beta [env: LANGSMITH_AGENT_ID]")
 		cmd.Flags().StringVar(&in.AgentEnvironment, "agent-environment", "", "Only show deployments in this agent environment, private beta [env: LANGSMITH_AGENT_ENVIRONMENT]")
@@ -53,7 +53,7 @@ Examples:
 		if in.Limit < 1 {
 			return nil, errors.New("--limit must be at least 1")
 		}
-		filter := hostbackend.DeploymentFilter{
+		filter := langgraphapi.DeploymentFilter{
 			NameContains:     in.NameContains,
 			AgentID:          envOrFlag(cmd, "agent-id", in.AgentID, "LANGSMITH_AGENT_ID"),
 			AgentEnvironment: envOrFlag(cmd, "agent-environment", in.AgentEnvironment, "LANGSMITH_AGENT_ENVIRONMENT"),
@@ -64,13 +64,13 @@ Examples:
 		if filter.AgentEnvironment != "" && !slices.Contains(deployAgentEnvs, filter.AgentEnvironment) {
 			return nil, fmt.Errorf("--agent-environment must be one of %s (got %q)", strings.Join(deployAgentEnvs, ", "), filter.AgentEnvironment)
 		}
-		hc, err := newHostBackendClient(cmd)
+		hc, err := newLangGraphAPIClient(cmd)
 		if err != nil {
 			return nil, err
 		}
-		deployments := []hostbackend.Deployment{}
+		deployments := []langgraphapi.Deployment{}
 		for len(deployments) < in.Limit {
-			filter.Limit = min(in.Limit-len(deployments), hostbackend.MaxPageSize)
+			filter.Limit = min(in.Limit-len(deployments), langgraphapi.MaxPageSize)
 			filter.Offset = len(deployments)
 			page, err := hc.ListDeployments(ctx, filter)
 			if err != nil {
@@ -124,10 +124,10 @@ Examples:
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *deployRevisionsListInput, args []string) (any, error) {
-		if in.Limit < 1 || in.Limit > hostbackend.MaxPageSize {
-			return nil, fmt.Errorf("--limit must be between 1 and %d", hostbackend.MaxPageSize)
+		if in.Limit < 1 || in.Limit > langgraphapi.MaxPageSize {
+			return nil, fmt.Errorf("--limit must be between 1 and %d", langgraphapi.MaxPageSize)
 		}
-		hc, err := newHostBackendClient(cmd)
+		hc, err := newLangGraphAPIClient(cmd)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +150,7 @@ type revisionRow struct {
 type revisionsTable struct{}
 
 func (revisionsTable) RenderText(w io.Writer, model any) error {
-	revisions, ok := model.([]hostbackend.Revision)
+	revisions, ok := model.([]langgraphapi.Revision)
 	if !ok {
 		return fmt.Errorf("unexpected revisions model %T", model)
 	}
@@ -201,7 +201,7 @@ Examples:
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *deployDeleteInput, args []string) (any, error) {
-		hc, err := newHostBackendClient(cmd)
+		hc, err := newLangGraphAPIClient(cmd)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +294,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	hc, err := newHostBackendClient(cmd)
+	hc, err := newLangGraphAPIClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -304,13 +304,17 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 		if err != nil {
 			return err
 		}
-		name := normalizeDeploymentName(cmp.Or(envOrFlag(cmd, "name", in.Name, deploymentNameEnv), envVars[deploymentNameEnv], cwdDeploymentName()))
+		explicit := cmp.Or(envOrFlag(cmd, "name", in.Name, deploymentNameEnv), envVars[deploymentNameEnv])
+		name := normalizeDeploymentName(cmp.Or(explicit, cwdDeploymentName()))
 		found, err := findDeploymentByName(ctx, hc, name)
 		if err != nil {
 			return err
 		}
+		if found == nil && explicit == "" {
+			return fmt.Errorf("no deployment named '%s' (the current directory's name); pass --name or --deployment-id, or run 'langsmith deploy list' to see deployments", name)
+		}
 		if found == nil {
-			return fmt.Errorf("deployment '%s' not found", name)
+			return fmt.Errorf("deployment '%s' not found; run 'langsmith deploy list' to see deployments", name)
 		}
 		deploymentID = found.ID
 	}
@@ -328,7 +332,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 		fmt.Fprintf(cmd.ErrOrStderr(), "Using latest revision: %s\n", revisionID)
 	}
 
-	req := hostbackend.LogsRequest{
+	req := langgraphapi.LogsRequest{
 		Limit:     in.Limit,
 		Order:     "desc",
 		Level:     level,
@@ -336,8 +340,8 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 		StartTime: in.StartTime,
 		EndTime:   in.EndTime,
 	}
-	fetch := func(req hostbackend.LogsRequest) ([]hostbackend.LogEntry, error) {
-		var resp *hostbackend.LogsResponse
+	fetch := func(req langgraphapi.LogsRequest) ([]langgraphapi.LogEntry, error) {
+		var resp *langgraphapi.LogsResponse
 		var err error
 		if in.Type == "build" {
 			resp, err = hc.BuildLogs(ctx, deploymentID, revisionID, req)
@@ -372,7 +376,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 	}
 
 	seen := map[string]bool{}
-	emit := func(batch []hostbackend.LogEntry) error {
+	emit := func(batch []langgraphapi.LogEntry) error {
 		for _, entry := range batch {
 			if entry.ID != "" {
 				if seen[entry.ID] {
@@ -444,7 +448,7 @@ func formatLogTimestamp(ts any) string {
 	}
 }
 
-func formatLogEntry(entry hostbackend.LogEntry) string {
+func formatLogEntry(entry langgraphapi.LogEntry) string {
 	ts := formatLogTimestamp(entry.Timestamp)
 	switch {
 	case ts != "" && entry.Level != "":

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
-	"github.com/langchain-ai/langsmith-cli/internal/hostbackend"
+	"github.com/langchain-ai/langsmith-cli/internal/langgraphapi"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
@@ -91,7 +91,7 @@ type deployInput struct {
 type deploymentSelector struct {
 	id    string
 	name  string
-	agent *hostbackend.Agent
+	agent *langgraphapi.Agent
 }
 
 type deploySourceKind int
@@ -112,7 +112,7 @@ type deployPlan struct {
 
 type deployOutcome struct {
 	deploymentID string
-	updated      *hostbackend.Deployment
+	updated      *langgraphapi.Deployment
 	wait         deployWait
 	message      string
 }
@@ -200,7 +200,7 @@ func newDeployCmd() *cobra.Command {
 	return cmd
 }
 
-func newHostBackendClient(cmd *cobra.Command) (*hostbackend.Client, error) {
+func newLangGraphAPIClient(cmd *cobra.Command) (*langgraphapi.Client, error) {
 	opts, err := cmdutil.ResolveClientOptions(cmd, true)
 	if err != nil {
 		return nil, err
@@ -212,7 +212,7 @@ func newHostBackendClient(cmd *cobra.Command) (*hostbackend.Client, error) {
 	if f := cmd.Flags().Lookup("host-url"); f != nil && f.Value.String() != "" {
 		hostURL = f.Value.String()
 	}
-	return hostbackend.New(hostbackend.ResolveEndpoints(hostURL, opts.APIURL), hostbackend.Auth{
+	return langgraphapi.New(langgraphapi.ResolveEndpoints(hostURL, opts.APIURL), langgraphapi.Auth{
 		APIKey:      opts.APIKey,
 		BearerToken: opts.OAuthAccessToken,
 		TenantID:    opts.WorkspaceID,
@@ -226,13 +226,13 @@ func envOrFlag(cmd *cobra.Command, flag, value, env string) string {
 	return os.Getenv(env)
 }
 
-func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *hostbackend.Agent, error) {
+func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *langgraphapi.Agent, error) {
 	var plan deployPlan
 	if in.DeploymentType != "dev" && in.DeploymentType != "prod" {
 		return plan, nil, fmt.Errorf("--deployment-type must be dev or prod (got %q)", in.DeploymentType)
 	}
 
-	var agent *hostbackend.Agent
+	var agent *langgraphapi.Agent
 	agentID := envOrFlag(cmd, "agent-id", in.AgentID, "LANGSMITH_AGENT_ID")
 	agentEnv := envOrFlag(cmd, "agent-environment", in.AgentEnvironment, "LANGSMITH_AGENT_ENVIRONMENT")
 	if agentID != "" || agentEnv != "" {
@@ -245,7 +245,7 @@ func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *hostbackend.Agent,
 		if cmd.Flags().Changed("name") || in.DeploymentID != "" {
 			return plan, nil, errors.New("--agent-id and --agent-environment cannot be combined with --name or --deployment-id")
 		}
-		agent = &hostbackend.Agent{AgentID: agentID, Environment: agentEnv}
+		agent = &langgraphapi.Agent{AgentID: agentID, Environment: agentEnv}
 	}
 
 	plan.placement = requestedPlacement{listenerID: in.ListenerID, namespace: in.K8sNamespace}
@@ -322,7 +322,7 @@ func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
 		))
 	}
 
-	hc, err := newHostBackendClient(cmd)
+	hc, err := newLangGraphAPIClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -399,23 +399,23 @@ func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
 }
 
 type deployRun struct {
-	hc             *hostbackend.Client
+	hc             *langgraphapi.Client
 	p              *deployProgress
 	cfg            *langgraphConfig
 	sel            deploymentSelector
 	deploymentType string
-	secrets        []hostbackend.Secret
+	secrets        []langgraphapi.Secret
 	docker         docker
 	verbose        bool
 }
 
-func (r *deployRun) lookup(ctx context.Context, notFound string) (*hostbackend.Deployment, error) {
+func (r *deployRun) lookup(ctx context.Context, notFound string) (*langgraphapi.Deployment, error) {
 	if r.sel.id != "" {
 		r.p.Step("Using deployment %s", r.sel.id)
 		return r.hc.GetDeployment(ctx, r.sel.id)
 	}
 	var (
-		found *hostbackend.Deployment
+		found *langgraphapi.Deployment
 		err   error
 	)
 	if r.sel.agent != nil {
@@ -436,11 +436,11 @@ func (r *deployRun) lookup(ctx context.Context, notFound string) (*hostbackend.D
 	return found, nil
 }
 
-func (r *deployRun) findAgentDeployment(ctx context.Context) (*hostbackend.Deployment, error) {
-	deployments, err := r.hc.ListDeployments(ctx, hostbackend.DeploymentFilter{
+func (r *deployRun) findAgentDeployment(ctx context.Context) (*langgraphapi.Deployment, error) {
+	deployments, err := r.hc.ListDeployments(ctx, langgraphapi.DeploymentFilter{
 		AgentID:          r.sel.agent.AgentID,
 		AgentEnvironment: r.sel.agent.Environment,
-		Limit:            hostbackend.MaxPageSize,
+		Limit:            langgraphapi.MaxPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -456,8 +456,8 @@ func (r *deployRun) findAgentDeployment(ctx context.Context) (*hostbackend.Deplo
 	return nil, nil
 }
 
-func findDeploymentByName(ctx context.Context, hc *hostbackend.Client, name string) (*hostbackend.Deployment, error) {
-	deployments, err := hc.ListDeployments(ctx, hostbackend.DeploymentFilter{Name: name, NameContains: name, Limit: hostbackend.MaxPageSize})
+func findDeploymentByName(ctx context.Context, hc *langgraphapi.Client, name string) (*langgraphapi.Deployment, error) {
+	deployments, err := hc.ListDeployments(ctx, langgraphapi.DeploymentFilter{Name: name, NameContains: name, Limit: langgraphapi.MaxPageSize})
 	if err != nil {
 		return nil, err
 	}
@@ -466,13 +466,13 @@ func findDeploymentByName(ctx context.Context, hc *hostbackend.Client, name stri
 			return &deployments[i], nil
 		}
 	}
-	if len(deployments) >= hostbackend.MaxPageSize {
+	if len(deployments) >= langgraphapi.MaxPageSize {
 		return nil, fmt.Errorf("this workspace has more deployments than the CLI can search, so it cannot tell whether '%s' already exists; pass --deployment-id to update an existing deployment", name)
 	}
 	return nil, nil
 }
 
-func (r *deployRun) create(ctx context.Context, body hostbackend.DeploymentCreate) (*hostbackend.Deployment, error) {
+func (r *deployRun) create(ctx context.Context, body langgraphapi.DeploymentCreate) (*langgraphapi.Deployment, error) {
 	body.Secrets = r.secrets
 	if r.sel.agent != nil {
 		body.Agent = r.sel.agent
@@ -483,7 +483,7 @@ func (r *deployRun) create(ctx context.Context, body hostbackend.DeploymentCreat
 	}
 	created, err := r.hc.CreateDeployment(ctx, body)
 	if err != nil {
-		if r.sel.agent != nil && hostbackend.StatusCode(err) == http.StatusConflict {
+		if r.sel.agent != nil && langgraphapi.StatusCode(err) == http.StatusConflict {
 			return nil, fmt.Errorf("this agent already has a deployment in this environment: %w", err)
 		}
 		return nil, err
@@ -503,7 +503,7 @@ func (r *deployRun) resolveOrCreate(ctx context.Context, source, notFound string
 	if found != nil {
 		return found.ID, nil
 	}
-	created, err := r.create(ctx, hostbackend.DeploymentCreate{
+	created, err := r.create(ctx, langgraphapi.DeploymentCreate{
 		Source:               source,
 		SourceConfig:         map[string]any{"deployment_type": r.deploymentType},
 		SourceRevisionConfig: map[string]any{},
@@ -518,7 +518,7 @@ func (r *deployRun) resolveOrCreate(ctx context.Context, source, notFound string
 }
 
 func needsListener(err error) bool {
-	e, ok := errors.AsType[*hostbackend.Error](err)
+	e, ok := errors.AsType[*langgraphapi.Error](err)
 	return ok && e.StatusCode == http.StatusBadRequest && strings.Contains(cmp.Or(e.Detail, e.Body), listenerRequiredMarker)
 }
 
@@ -555,7 +555,7 @@ func (r *deployRun) remoteBuild(ctx context.Context) (deployOutcome, error) {
 	}
 
 	r.p.Step("Triggering remote build")
-	updated, err := r.hc.UpdateDeployment(ctx, deploymentID, hostbackend.DeploymentUpdate{
+	updated, err := r.hc.UpdateDeployment(ctx, deploymentID, langgraphapi.DeploymentUpdate{
 		RevisionSource: sourceInternalSource,
 		SourceRevisionConfig: map[string]any{
 			"source_tarball_path":   upload.ObjectPath,
@@ -612,7 +612,7 @@ func (r *deployRun) managedImage(ctx context.Context, image, tag string) (deploy
 	r.p.Step("Requesting push token")
 	token, err := r.hc.RequestPushToken(ctx, deploymentID)
 	if err != nil {
-		if hostbackend.StatusCode(err) == http.StatusBadRequest && strings.Contains(err.Error(), "only available for 'internal_docker' source deployments") {
+		if langgraphapi.StatusCode(err) == http.StatusBadRequest && strings.Contains(err.Error(), "only available for 'internal_docker' source deployments") {
 			return deployOutcome{}, fmt.Errorf("deployment %s was not created from a pushed image and cannot be updated with --image; deploy without --image to keep its build mode, or use a different --name", deploymentID)
 		}
 		return deployOutcome{}, err
@@ -648,7 +648,7 @@ func (r *deployRun) managedImage(ctx context.Context, image, tag string) (deploy
 	imageURI := r.docker.pushedDigest(ctx, remote, r.p)
 
 	r.p.Step("Updating deployment %s", deploymentID)
-	updated, err := r.hc.UpdateDeployment(ctx, deploymentID, hostbackend.DeploymentUpdate{
+	updated, err := r.hc.UpdateDeployment(ctx, deploymentID, langgraphapi.DeploymentUpdate{
 		RevisionSource:       sourceInternalDocker,
 		SourceRevisionConfig: map[string]any{"image_uri": imageURI},
 		Secrets:              r.secrets,
@@ -676,7 +676,7 @@ func (r *deployRun) customerRegistry(ctx context.Context, plan deployPlan) (depl
 			return deployOutcome{}, err
 		}
 		r.p.Step("Updating deployment %s", existing.ID)
-		updated, err := r.hc.UpdateDeployment(ctx, existing.ID, hostbackend.DeploymentUpdate{
+		updated, err := r.hc.UpdateDeployment(ctx, existing.ID, langgraphapi.DeploymentUpdate{
 			SourceRevisionConfig: map[string]any{"image_uri": imageURI},
 			Secrets:              r.secrets,
 		})
@@ -700,7 +700,7 @@ func (r *deployRun) customerRegistry(ctx context.Context, plan deployPlan) (depl
 	if err != nil {
 		return deployOutcome{}, err
 	}
-	created, err := r.create(ctx, hostbackend.DeploymentCreate{
+	created, err := r.create(ctx, langgraphapi.DeploymentCreate{
 		Source:               sourceExternalDocker,
 		SourceConfig:         sourceConfig,
 		SourceRevisionConfig: map[string]any{"image_uri": imageURI},
@@ -747,7 +747,7 @@ func (r *deployRun) resolvePlacement(ctx context.Context, rp requestedPlacement)
 	if rp.listenerID != "" {
 		listener, err := r.hc.GetListener(ctx, rp.listenerID)
 		if err != nil {
-			if code := hostbackend.StatusCode(err); code != http.StatusNotFound && code != http.StatusUnprocessableEntity {
+			if code := langgraphapi.StatusCode(err); code != http.StatusNotFound && code != http.StatusUnprocessableEntity {
 				return nil, err
 			}
 			available, listErr := r.hc.ListListeners(ctx)
@@ -783,7 +783,7 @@ func (r *deployRun) resolvePlacement(ctx context.Context, rp requestedPlacement)
 
 var errNoListeners = errors.New("this workspace has no listeners, so --listener-id and --k8s-namespace do not apply")
 
-func (rp requestedPlacement) on(l hostbackend.Listener) (*placement, error) {
+func (rp requestedPlacement) on(l langgraphapi.Listener) (*placement, error) {
 	namespaces := l.ComputeConfig.K8sNamespaces
 	switch {
 	case len(namespaces) == 0:
@@ -799,7 +799,7 @@ func (rp requestedPlacement) on(l hostbackend.Listener) (*placement, error) {
 	}
 }
 
-func describeListeners(listeners []hostbackend.Listener) string {
+func describeListeners(listeners []langgraphapi.Listener) string {
 	var lines []string
 	for _, l := range listeners[:min(len(listeners), listenersShown)] {
 		lines = append(lines, fmt.Sprintf("  %s  cluster %s  namespaces: %s", l.ID, l.ComputeID, strings.Join(l.ComputeConfig.K8sNamespaces, ", ")))
@@ -807,8 +807,8 @@ func describeListeners(listeners []hostbackend.Listener) string {
 	if extra := len(listeners) - listenersShown; extra > 0 {
 		lines = append(lines, fmt.Sprintf("  ... and %d more", extra))
 	}
-	if len(listeners) == hostbackend.MaxPageSize {
-		lines = append(lines, fmt.Sprintf("  (only the first %d listeners were read)", hostbackend.MaxPageSize))
+	if len(listeners) == langgraphapi.MaxPageSize {
+		lines = append(lines, fmt.Sprintf("  (only the first %d listeners were read)", langgraphapi.MaxPageSize))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -849,7 +849,7 @@ func (r *deployRun) wait(ctx context.Context, deploymentID string, w deployWait)
 }
 
 func (r *deployRun) streamBuildLogs(ctx context.Context, deploymentID, revisionID, offset string) string {
-	resp, err := r.hc.BuildLogs(ctx, deploymentID, revisionID, hostbackend.LogsRequest{Order: "asc", Limit: 50, Offset: offset})
+	resp, err := r.hc.BuildLogs(ctx, deploymentID, revisionID, langgraphapi.LogsRequest{Order: "asc", Limit: 50, Offset: offset})
 	if err != nil {
 		return offset
 	}
@@ -863,7 +863,7 @@ func (r *deployRun) streamBuildLogs(ctx context.Context, deploymentID, revisionI
 
 func (r *deployRun) printBuildLogTail(ctx context.Context, deploymentID, revisionID string) {
 	r.p.Info("Last build log lines:")
-	resp, err := r.hc.BuildLogs(ctx, deploymentID, revisionID, hostbackend.LogsRequest{Order: "desc", Limit: 30})
+	resp, err := r.hc.BuildLogs(ctx, deploymentID, revisionID, langgraphapi.LogsRequest{Order: "desc", Limit: 30})
 	if err != nil {
 		r.p.Info("(failed to fetch build logs: %v)", err)
 		return

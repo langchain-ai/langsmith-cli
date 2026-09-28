@@ -1,6 +1,6 @@
-// Package hostbackend is a typed client for the LangSmith Deployment control plane,
+// Package langgraphapi is a typed client for the LangSmith Deployment control plane,
 // whose API is not part of the generated langsmith-go SDK.
-package hostbackend
+package langgraphapi
 
 import (
 	"bytes"
