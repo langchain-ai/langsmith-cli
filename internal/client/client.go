@@ -363,7 +363,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: 30 * time.Second, CheckRedirect: sameOriginRedirectsOnly}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
@@ -382,6 +382,21 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		body:       respBody,
 	}, nil
 }
+
+// Go forwards x-api-key across hosts on redirect.
+func sameOriginRedirectsOnly(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	origin := via[0].URL
+	if req.URL.Scheme != origin.Scheme || req.URL.Host != origin.Host {
+		return fmt.Errorf("refusing redirect from %s://%s to %s://%s: credentials are only sent to the configured host",
+			origin.Scheme, origin.Host, req.URL.Scheme, req.URL.Host)
+	}
+	return nil
+}
+
+const maxRedirects = 10
 
 // RawDo performs an arbitrary HTTP request and returns the raw response.
 // Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
