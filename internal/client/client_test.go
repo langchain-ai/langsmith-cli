@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ---------- NormalizeURL ----------
@@ -810,4 +813,41 @@ func TestUseV2API(t *testing.T) {
 			t.Errorf("useV2API(%q) = %v, want %v", tc.version, got, tc.want)
 		}
 	}
+}
+
+func TestRawRequestsDoNotFollowRedirectsToAnotherHost(t *testing.T) {
+	reached := false
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+	}))
+	t.Cleanup(elsewhere.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	c := NewWithOptions(Options{APIKey: "secret-key", APIURL: redirector.URL, WorkspaceID: "tenant-1"})
+	err := c.RawGet(t.Context(), "/api/v1/runs", nil)
+	require.ErrorContains(t, err, "refusing redirect")
+	assert.False(t, reached, "the redirect target must not receive the request or its credentials")
+}
+
+func TestRawRequestsFollowSameHostRedirects(t *testing.T) {
+	var gotKey string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs" {
+			http.Redirect(w, r, "/api/v1/runs/", http.StatusTemporaryRedirect)
+			return
+		}
+		gotKey = r.Header.Get("x-api-key")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+	t.Cleanup(ts.Close)
+
+	c := NewWithOptions(Options{APIKey: "secret-key", APIURL: ts.URL})
+	var out map[string]bool
+	require.NoError(t, c.RawGet(t.Context(), "/api/v1/runs", &out))
+	assert.True(t, out["ok"])
+	assert.Equal(t, "secret-key", gotKey)
 }
