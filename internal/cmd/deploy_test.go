@@ -38,6 +38,7 @@ type fakeControlPlane struct {
 	uploadHeaders    http.Header
 	listStatus       int
 	listBody         string
+	latestRevisionID string
 }
 
 func newFakeControlPlane(t *testing.T) *fakeControlPlane {
@@ -164,7 +165,14 @@ func (f *fakeControlPlane) patchDeployment(w http.ResponseWriter, r *http.Reques
 	defer f.mu.Unlock()
 	body["id"] = r.PathValue("id")
 	f.patches = append(f.patches, body)
-	writeJSON(w, f.find(r.PathValue("id")))
+	resp := map[string]any{}
+	for k, v := range f.find(r.PathValue("id")) {
+		resp[k] = v
+	}
+	if f.latestRevisionID != "" {
+		resp["latest_revision_id"] = f.latestRevisionID
+	}
+	writeJSON(w, resp)
 }
 
 func runDeployCLI(t *testing.T, stdin string, args ...string) (stdout, stderr string, err error) {
@@ -549,4 +557,73 @@ func TestReadDotenvSkipsBareKeys(t *testing.T) {
 	vars, err := readDotenv(filepath.Join(dir, ".env"))
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"A": "1", "B": "two words", "C": "1x"}, vars)
+}
+
+func TestDeployWaitsOnTheRevisionTheUpdateCreated(t *testing.T) {
+	fastDeployWaits(t)
+	cp := newFakeControlPlane(t)
+	cp.deployments = []map[string]any{{"id": "dep-1", "name": "agent"}}
+	cp.revisions = []map[string]any{{"id": "rev-old", "status": "DEPLOYED"}}
+	cp.latestRevisionID = "rev-new"
+	cp.revisionStatuses = []string{"BUILDING", "DEPLOYED"}
+	dir := filepath.Join(t.TempDir(), "agent")
+	writeFiles(t, dir, map[string]string{"langgraph.json": `{}`})
+	t.Chdir(dir)
+
+	stdout, stderr, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "--format", "json", "deploy")
+	require.NoError(t, err, stderr)
+	var result deployResult
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	assert.Equal(t, "rev-new", result.RevisionID)
+	assert.Contains(t, stderr, "BUILDING")
+}
+
+func TestDeployAgentLookupIgnoresPreviews(t *testing.T) {
+	cp := newFakeControlPlane(t)
+	cp.deployments = []map[string]any{
+		{"id": "preview-1", "name": "agent-preview", "is_preview": true},
+		{"id": "dep-1", "name": "agent"},
+	}
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"langgraph.json": `{}`})
+	t.Chdir(dir)
+
+	_, stderr, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "--agent-id", "a-1", "--agent-environment", "production", "--no-wait")
+	require.NoError(t, err, stderr)
+	require.Len(t, cp.patches, 1)
+	assert.Equal(t, "dep-1", cp.patches[0]["id"])
+}
+
+func TestCreateSourceArchiveWithParentDependencyHasNoDuplicates(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"agent/langgraph.json": `{"dependencies": [".", ".."]}`,
+		"agent/graph.py":       "",
+		"lib/util.py":          "",
+	})
+	cfg, err := loadLanggraphConfig(filepath.Join(root, "agent", "langgraph.json"))
+	require.NoError(t, err)
+	archive, err := createSourceArchive(cfg, &deployProgress{w: io.Discard})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, archive.Close()) })
+	data, err := os.ReadFile(archive.path)
+	require.NoError(t, err)
+	assert.Equal(t, "agent/langgraph.json", archive.configRel)
+	assert.ElementsMatch(t, []string{"agent/langgraph.json", "agent/graph.py", "lib/util.py"}, tarEntries(t, data))
+}
+
+func TestDeployDoesNotFollowControlPlaneRedirects(t *testing.T) {
+	var leaked bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("X-Api-Key") != ""
+	}))
+	t.Cleanup(elsewhere.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", redirector.URL, "deploy", "list")
+	require.ErrorContains(t, err, "status 302")
+	assert.False(t, leaked)
 }

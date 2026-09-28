@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -56,7 +57,8 @@ func createSourceArchive(cfg *langgraphConfig, p *deployProgress) (*sourceArchiv
 			dirs = append(dirs, resolved)
 		}
 	}
-	common := contextDir
+	dirs = outermostDirs(dirs)
+	common := dirs[0]
 	for _, d := range dirs[1:] {
 		common = commonDir(common, d)
 	}
@@ -188,6 +190,16 @@ func addArchiveDir(tw *tar.Writer, root, prefix string, written map[string]bool)
 		written[name] = true
 		return nil
 	})
+}
+
+func outermostDirs(dirs []string) []string {
+	var out []string
+	for _, d := range dirs {
+		if !slices.ContainsFunc(dirs, func(o string) bool { return o != d && isWithinDir(o, d) }) && !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func isWithinDir(dir, target string) bool {

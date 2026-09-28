@@ -36,7 +36,11 @@ func New(endpoints Endpoints, auth Auth) *Client {
 	return &Client{
 		endpoints: endpoints,
 		auth:      auth,
-		http:      &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+			// Redirects would carry X-Api-Key to whatever host they name.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 	}
 }
 
@@ -83,12 +87,13 @@ func (r raw) MarshalJSON() ([]byte, error) {
 }
 
 type Deployment struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Source       string `json:"source"`
-	TenantID     string `json:"tenant_id"`
-	IsPreview    bool   `json:"is_preview"`
-	SourceConfig struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Source           string `json:"source"`
+	LatestRevisionID string `json:"latest_revision_id"`
+	TenantID         string `json:"tenant_id"`
+	IsPreview        bool   `json:"is_preview"`
+	SourceConfig     struct {
 		CustomURL string `json:"custom_url"`
 	} `json:"source_config"`
 	raw

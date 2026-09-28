@@ -395,7 +395,7 @@ func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
 		return structured.Render(cmd, result, deployResultRender)
 	}
 
-	status, revisionID, err := r.wait(ctx, out.deploymentID, out.wait)
+	status, revisionID, err := r.wait(ctx, out)
 	if err != nil {
 		if out.wait.remote && errors.Is(err, context.Canceled) {
 			p.Info("Interrupted. Deployment ID: %s, Revision ID: %s", out.deploymentID, revisionID)
@@ -494,15 +494,15 @@ func (r *deployRun) findAgentDeployment(ctx context.Context) (*langgraphapi.Depl
 	if err != nil {
 		return nil, err
 	}
-	if len(deployments) > 1 {
+	deployments = slices.DeleteFunc(deployments, func(d langgraphapi.Deployment) bool { return d.ID == "" || d.IsPreview })
+	switch len(deployments) {
+	case 0:
+		return nil, nil
+	case 1:
+		return &deployments[0], nil
+	default:
 		return nil, fmt.Errorf("this control plane does not filter deployments by agent, so the CLI cannot tell which one belongs to '%s' in %s; deploy by --name instead", r.sel.agent.AgentID, r.sel.agent.Environment)
 	}
-	for i := range deployments {
-		if deployments[i].ID != "" && !deployments[i].IsPreview {
-			return &deployments[i], nil
-		}
-	}
-	return nil, nil
 }
 
 func findDeploymentByName(ctx context.Context, hc *langgraphapi.Client, name string) (*langgraphapi.Deployment, error) {
@@ -863,12 +863,18 @@ func describeListeners(listeners []langgraphapi.Listener) string {
 	return strings.Join(lines, "\n")
 }
 
-func (r *deployRun) wait(ctx context.Context, deploymentID string, w deployWait) (status, revisionID string, err error) {
-	revisions, err := r.hc.ListRevisions(ctx, deploymentID, 1)
-	if err != nil || len(revisions) == 0 {
-		return "", "", err
+func (r *deployRun) wait(ctx context.Context, out deployOutcome) (status, revisionID string, err error) {
+	deploymentID, w := out.deploymentID, out.wait
+	if out.updated != nil {
+		revisionID = out.updated.LatestRevisionID
 	}
-	revisionID = revisions[0].ID
+	if revisionID == "" {
+		revisions, err := r.hc.ListRevisions(ctx, deploymentID, 1)
+		if err != nil || len(revisions) == 0 {
+			return "", "", err
+		}
+		revisionID = revisions[0].ID
+	}
 	start := time.Now()
 	deadline := start.Add(w.timeout)
 	var logOffset string

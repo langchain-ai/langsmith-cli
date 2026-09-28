@@ -388,6 +388,12 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 				}
 				seen[entry.ID] = true
 			}
+			if cmdutil.ResolveJQ(cmd) != "" {
+				if err := structured.Render(cmd, entry, nil); err != nil {
+					return err
+				}
+				continue
+			}
 			if jsonOutput {
 				if err := json.NewEncoder(w).Encode(entry); err != nil {
 					return err
