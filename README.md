@@ -418,6 +418,31 @@ Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's
 
 Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
 
+### `deploy` — Deploy LangGraph projects to LangSmith Deployment (beta)
+
+Run from the directory containing `langgraph.json`. The project source is uploaded and built remotely, so Docker is not needed; the deployment is found or created by `--name` (default: `LANGSMITH_DEPLOYMENT_NAME`, then the directory name). Variables from `langgraph.json`'s `env` (or `./.env`) become deployment secrets, except platform-reserved ones.
+
+```bash
+# Build remotely and deploy, creating the deployment if needed
+langsmith deploy
+langsmith deploy --name my-agent --deployment-type prod
+
+# Deploy an image you already built for linux/amd64
+langsmith deploy --image my-agent:latest
+
+# Self-hosted/hybrid: push the image to your registry and deploy it from there
+langsmith deploy --image my-agent:latest --push-to registry.example.com/team/my-agent
+
+# Manage deployments
+langsmith deploy list
+langsmith deploy revisions list <deployment-id>
+langsmith deploy logs --name my-agent --level ERROR --follow
+langsmith deploy logs --type build
+langsmith deploy delete <deployment-id>
+```
+
+`deploy` prints progress on stderr and the result on stdout (`--format json` for scripts).
+
 ### `self-update` — Update langsmith to the latest version
 
 ```bash
