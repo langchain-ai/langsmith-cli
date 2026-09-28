@@ -128,11 +128,18 @@ func (c *langgraphConfig) envVars(p *deployProgress) (map[string]string, error) 
 	return readDotenv(".env")
 }
 
+// Bare KEY lines are unset in python-dotenv but fatal to godotenv.
+var dotenvBareKey = regexp.MustCompile(`(?m)^[ \t]*(export[ \t]+)?[A-Za-z_][A-Za-z0-9_.]*[ \t]*\r?$`)
+
 func readDotenv(path string) (map[string]string, error) {
-	vars, err := godotenv.Read(path)
+	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]string{}, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	vars, err := godotenv.Unmarshal(dotenvBareKey.ReplaceAllString(string(data), ""))
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}

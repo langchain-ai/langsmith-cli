@@ -84,8 +84,14 @@ type deployInput struct {
 	K8sNamespace     string
 	AgentID          string
 	AgentEnvironment string
+	ImageName        string
+	InstallCommand   string
+	BuildCommand     string
 	NoWait           bool
 	Verbose          bool
+	Remote           bool
+	NoRemote         bool
+	JSON             bool
 }
 
 type deploymentSelector struct {
@@ -180,6 +186,19 @@ Examples:
 		f.BoolVar(&in.NoWait, "no-wait", false, "Return once the revision is submitted instead of waiting for it to deploy")
 		f.BoolVar(&in.Verbose, "verbose", false, "Stream remote build logs and docker output")
 		f.String("jq", "", "Filter JSON output using a jq expression")
+		f.BoolVar(&in.Remote, "remote", false, "Build remotely (the default)")
+		f.BoolVar(&in.NoRemote, "no-remote", false, "Refuse to build remotely; requires --image")
+		f.BoolVar(&in.JSON, "json", false, "Same as --format json")
+		f.StringVar(&in.ImageName, "image-name", "", "Repository name for the image pushed with --image")
+		f.StringVar(&in.InstallCommand, "install-command", "", "Install command for the remote build")
+		f.StringVar(&in.BuildCommand, "build-command", "", "Build command for the remote build")
+		f.Bool("no-input", false, "Never prompt (the CLI never prompts)")
+		f.Bool("pull", true, "Only affects local builds, which this CLI does not run")
+		f.String("base-image", "", "Only affects local builds, which this CLI does not run")
+		f.String("api-version", "", "Only affects local builds, which this CLI does not run")
+		for _, name := range []string{"image-name", "install-command", "build-command", "no-input", "pull", "base-image", "api-version"} {
+			_ = f.MarkHidden(name)
+		}
 		return in
 	},
 	CustomOutput: true,
@@ -258,6 +277,16 @@ func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *langgraphapi.Agent
 		}
 	}
 
+	if in.Remote && in.NoRemote {
+		return plan, nil, errors.New("use either --remote or --no-remote, not both")
+	}
+	if in.Remote && in.PushTo != "" {
+		return plan, nil, errors.New("--push-to cannot be combined with --remote")
+	}
+	if in.Remote && in.Image != "" {
+		return plan, nil, errors.New("--image cannot be combined with --remote builds")
+	}
+
 	switch {
 	case in.PushTo != "":
 		ref, err := parseImageReference(in.PushTo)
@@ -282,8 +311,8 @@ func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *langgraphapi.Agent
 			return plan, nil, err
 		}
 		plan.kind, plan.image, plan.tag = deployManagedImage, in.Image, tag
-	case in.Tag != "":
-		return plan, nil, errors.New("--tag only applies with --image or --push-to")
+	case in.NoRemote:
+		return plan, nil, errors.New("this CLI does not build images locally; build one for linux/amd64 (for example 'langgraph build -t my-agent') and pass it with --image")
 	default:
 		plan.kind = deployRemoteBuild
 	}
@@ -294,6 +323,11 @@ func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 	p := &deployProgress{w: cmd.ErrOrStderr()}
+	if in.JSON {
+		if err := cmd.Flags().Set("format", "json"); err != nil {
+			return err
+		}
+	}
 
 	plan, agent, err := in.plan(cmd)
 	if err != nil {
@@ -333,6 +367,8 @@ func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
 		sel:            sel,
 		deploymentType: in.DeploymentType,
 		secrets:        deploySecrets(envVars, p),
+		imageName:      in.ImageName,
+		sourceConfig:   remoteBuildSourceConfig(cmd, in),
 		docker:         docker{verbose: in.Verbose, stderr: cmd.ErrOrStderr()},
 		verbose:        in.Verbose,
 	}
@@ -405,8 +441,21 @@ type deployRun struct {
 	sel            deploymentSelector
 	deploymentType string
 	secrets        []langgraphapi.Secret
+	imageName      string
+	sourceConfig   map[string]any
 	docker         docker
 	verbose        bool
+}
+
+func remoteBuildSourceConfig(cmd *cobra.Command, in *deployInput) map[string]any {
+	config := map[string]any{}
+	if cmd.Flags().Changed("install-command") {
+		config["install_command"] = in.InstallCommand
+	}
+	if cmd.Flags().Changed("build-command") {
+		config["build_command"] = in.BuildCommand
+	}
+	return config
 }
 
 func (r *deployRun) lookup(ctx context.Context, notFound string) (*langgraphapi.Deployment, error) {
@@ -557,6 +606,7 @@ func (r *deployRun) remoteBuild(ctx context.Context) (deployOutcome, error) {
 	r.p.Step("Triggering remote build")
 	updated, err := r.hc.UpdateDeployment(ctx, deploymentID, langgraphapi.DeploymentUpdate{
 		RevisionSource: sourceInternalSource,
+		SourceConfig:   r.sourceConfig,
 		SourceRevisionConfig: map[string]any{
 			"source_tarball_path":   upload.ObjectPath,
 			"langgraph_config_path": archive.configRel,
@@ -627,7 +677,7 @@ func (r *deployRun) managedImage(ctx context.Context, image, tag string) (deploy
 	}
 	registryHost, _, _ := strings.Cut(registry, "/")
 	remote := imageReference{
-		repository: registry + "/" + normalizeDeploymentName(cmp.Or(r.sel.name, filepath.Base(r.cfg.dir()))),
+		repository: registry + "/" + normalizeDeploymentName(cmp.Or(r.imageName, r.sel.name, filepath.Base(r.cfg.dir()))),
 		tag:        tag,
 	}.String()
 

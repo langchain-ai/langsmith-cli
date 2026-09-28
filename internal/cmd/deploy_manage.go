@@ -17,6 +17,7 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/langgraphapi"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -198,6 +199,8 @@ Examples:
 	Input: func(cmd *cobra.Command) *deployDeleteInput {
 		in := &deployDeleteInput{}
 		cmd.Flags().BoolVar(&in.Yes, "yes", false, "Skip confirmation prompt")
+		cmd.Flags().BoolVar(&in.Yes, "force", false, "Alias for --yes")
+		_ = cmd.Flags().MarkHidden("force")
 		return in
 	},
 	Action: func(ctx context.Context, cmd *cobra.Command, in *deployDeleteInput, args []string) (any, error) {
@@ -266,7 +269,7 @@ Examples:
 		f.StringVar(&in.DeploymentID, "deployment-id", "", "Deployment ID (instead of --name)")
 		f.StringVar(&in.Type, "type", in.Type, "Log stream: deploy (runtime) or build (remote build)")
 		f.StringVar(&in.RevisionID, "revision-id", "", "Revision ID; build logs default to the latest revision")
-		f.StringVar(&in.Level, "level", "", "Only show this level: DEBUG, INFO, WARNING, ERROR, or CRITICAL")
+		f.StringVar(&in.Level, "level", "", "Minimum level to show: DEBUG, INFO, WARNING, ERROR, or CRITICAL")
 		f.IntVar(&in.Limit, "limit", in.Limit, "Maximum number of log entries to fetch")
 		f.StringVarP(&in.Query, "query", "q", "", "Only show entries matching this search string")
 		f.StringVar(&in.StartTime, "start-time", "", "ISO 8601 start time (e.g. 2026-03-08T00:00:00Z)")
@@ -360,6 +363,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 	}
 	slices.Reverse(entries)
 	w := cmd.OutOrStdout()
+	color := wantsColor(w)
 	jsonOutput := cmdutil.ResolveFormat(cmd) != "pretty" || cmdutil.ResolveJQ(cmd) != ""
 
 	if !in.Follow {
@@ -370,7 +374,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 			fmt.Fprintln(cmd.ErrOrStderr(), "No log entries found.")
 		}
 		for _, entry := range entries {
-			fmt.Fprintln(w, formatLogEntry(entry))
+			fmt.Fprintln(w, formatLogEntry(entry, color))
 		}
 		return nil
 	}
@@ -390,7 +394,7 @@ func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput)
 				}
 				continue
 			}
-			fmt.Fprintln(w, formatLogEntry(entry))
+			fmt.Fprintln(w, formatLogEntry(entry, color))
 		}
 		return nil
 	}
@@ -448,14 +452,41 @@ func formatLogTimestamp(ts any) string {
 	}
 }
 
-func formatLogEntry(entry langgraphapi.LogEntry) string {
+func formatLogEntry(entry langgraphapi.LogEntry, color bool) string {
 	ts := formatLogTimestamp(entry.Timestamp)
+	var line string
 	switch {
 	case ts != "" && entry.Level != "":
-		return fmt.Sprintf("[%s] [%s] %s", ts, entry.Level, entry.Message)
+		line = fmt.Sprintf("[%s] [%s] %s", ts, entry.Level, entry.Message)
 	case ts != "":
-		return fmt.Sprintf("[%s] %s", ts, entry.Message)
+		line = fmt.Sprintf("[%s] %s", ts, entry.Message)
 	default:
-		return entry.Message
+		line = entry.Message
 	}
+	if code := logLevelColor(entry.Level); color && code != "" {
+		return code + line + ansiReset
+	}
+	return line
+}
+
+const (
+	ansiRed    = "\x1b[31m"
+	ansiYellow = "\x1b[33m"
+	ansiReset  = "\x1b[0m"
+)
+
+func logLevelColor(level string) string {
+	switch strings.ToUpper(level) {
+	case "ERROR", "CRITICAL":
+		return ansiRed
+	case "WARNING":
+		return ansiYellow
+	default:
+		return ""
+	}
+}
+
+func wantsColor(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && os.Getenv("NO_COLOR") == "" && term.IsTerminal(int(f.Fd()))
 }

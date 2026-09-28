@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/langgraphapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -296,12 +297,13 @@ func TestDeployUpdatesExistingDeploymentByNameWithoutWaiting(t *testing.T) {
 	writeFiles(t, dir, map[string]string{"langgraph.json": `{"env": {"FEATURE_FLAG": "on", "RETRIES": 3}}`})
 	t.Chdir(dir)
 
-	stdout, stderr, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "--format", "json", "deploy", "--name", "My_Agent", "--no-wait")
+	stdout, stderr, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "--json", "--name", "My_Agent", "--no-wait", "--tag", "ignored", "--install-command", "pnpm install")
 	require.NoError(t, err, stderr)
 
 	assert.Empty(t, cp.created)
 	require.Len(t, cp.patches, 1)
 	assert.Equal(t, "dep-1", cp.patches[0]["id"])
+	assert.Equal(t, map[string]any{"install_command": "pnpm install"}, cp.patches[0]["source_config"])
 	assert.Equal(t, []any{
 		map[string]any{"name": "FEATURE_FLAG", "value": "on"},
 		map[string]any{"name": "RETRIES", "value": "3"},
@@ -351,7 +353,9 @@ func TestDeployRejectsInvalidFlags(t *testing.T) {
 		{[]string{"--push-to", "registry.example.com/team/agent:v1", "--tag", "v2", "--image", "a:1"}, "already includes a tag"},
 		{[]string{"--push-to", "registry.example.com/team/agent@sha256:abc", "--image", "a:1"}, "not a digest"},
 		{[]string{"--image", "a:1", "--tag", "bad/tag"}, "image tag may only contain"},
-		{[]string{"--tag", "v1"}, "--tag only applies with --image or --push-to"},
+		{[]string{"--no-remote"}, "does not build images locally"},
+		{[]string{"--remote", "--image", "a:1"}, "--image cannot be combined with --remote"},
+		{[]string{"--remote", "--push-to", "registry.example.com/team/agent", "--image", "a:1"}, "--push-to cannot be combined with --remote"},
 		{[]string{"--agent-id", "agent-1"}, "required together"},
 		{[]string{"--agent-id", "agent-1", "--agent-environment", "qa"}, "must be one of"},
 		{[]string{"--agent-id", "agent-1", "--agent-environment", "production", "--name", "x"}, "cannot be combined with --name"},
@@ -433,7 +437,7 @@ func TestDeployDeleteConfirms(t *testing.T) {
 	assert.Contains(t, stderr, "Name: agent")
 	assert.Empty(t, cp.deleted)
 
-	stdout, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "delete", "dep-1", "--yes")
+	stdout, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "delete", "dep-1", "--force")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"dep-1"}, cp.deleted)
 	assert.Contains(t, stdout, "Deleted deployment dep-1.")
@@ -525,4 +529,24 @@ func TestDeployLogsExplainsDirectoryNameDefault(t *testing.T) {
 	t.Chdir(filepath.Join(t.TempDir()))
 	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", cp.srv.URL, "deploy", "logs")
 	require.ErrorContains(t, err, "(the current directory's name); pass --name or --deployment-id")
+}
+
+func TestFormatLogEntryColorsByLevel(t *testing.T) {
+	entry := func(level string) langgraphapi.LogEntry {
+		return langgraphapi.LogEntry{Timestamp: "t", Level: level, Message: "m"}
+	}
+	assert.Equal(t, "\x1b[31m[t] [ERROR] m\x1b[0m", formatLogEntry(entry("ERROR"), true))
+	assert.Equal(t, "\x1b[31m[t] [CRITICAL] m\x1b[0m", formatLogEntry(entry("CRITICAL"), true))
+	assert.Equal(t, "\x1b[33m[t] [warning] m\x1b[0m", formatLogEntry(entry("warning"), true))
+	assert.Equal(t, "[t] [INFO] m", formatLogEntry(entry("INFO"), true))
+	assert.Equal(t, "[t] [ERROR] m", formatLogEntry(entry("ERROR"), false))
+	assert.False(t, wantsColor(&bytes.Buffer{}))
+}
+
+func TestReadDotenvSkipsBareKeys(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{".env": "A=1\nNOVALUE\nexport ALSO_BARE\nexport B=\"two words\"\nC=${A}x\n# comment\n"})
+	vars, err := readDotenv(filepath.Join(dir, ".env"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"A": "1", "B": "two words", "C": "1x"}, vars)
 }
