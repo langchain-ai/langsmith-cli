@@ -199,7 +199,7 @@ func resolveSetupOptions(args []string, project *string) (client.Options, error)
 	// A config-load error (e.g. a corrupt ~/.langsmith/config.json) is deferred:
 	// a positional API key applied below is a valid first-class input and must
 	// not be blocked by an unusable saved config.
-	opts, cfgErr := resolveClientOptions(false)
+	opts, cfgErr := resolveClientOptions()
 	if err := applyPositionalArgs(args, &opts, project); err != nil {
 		return opts, err
 	}

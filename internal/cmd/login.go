@@ -328,31 +328,6 @@ func requestDeviceCode(ctx context.Context, meta *client.OAuthMetadata) (*device
 	return &resp, nil
 }
 
-func refreshProfileToken(ctx context.Context, apiURL, issuer, refreshToken string) (*oauthTokenResponse, error) {
-	oauthURL := apiURL
-	if issuer != "" {
-		oauthURL = issuer
-	}
-	meta, err := client.ResolveOAuth(ctx, oauthURL)
-	if err != nil {
-		return nil, err
-	}
-	values := url.Values{
-		"grant_type":    {"refresh_token"},
-		"client_id":     {oauthClientID},
-		"resource":      {meta.Resource},
-		"refresh_token": {refreshToken},
-	}
-	var resp oauthTokenResponse
-	if err := postOAuthForm(ctx, meta.TokenEndpoint, values, &resp); err != nil {
-		return nil, err
-	}
-	if resp.AccessToken == "" {
-		return nil, fmt.Errorf("token response did not include an access token")
-	}
-	return &resp, nil
-}
-
 func pollDeviceToken(ctx context.Context, meta *client.OAuthMetadata, deviceCode string, interval time.Duration) (*oauthTokenResponse, error) {
 	interval = normalizeDeviceCodePollInterval(interval)
 

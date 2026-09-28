@@ -211,15 +211,6 @@ func (p Profile) TokenExpiresAtTime() (time.Time, bool) {
 	return t, true
 }
 
-// TokenExpiresSoon reports whether the access token should be refreshed.
-func (p Profile) TokenExpiresSoon(now time.Time, leeway time.Duration) bool {
-	expiresAt, ok := p.TokenExpiresAtTime()
-	if !ok {
-		return false
-	}
-	return !expiresAt.After(now.Add(leeway))
-}
-
 // MaskSecret returns a redacted value suitable for CLI output.
 func MaskSecret(value string) string {
 	if len(value) < 12 {

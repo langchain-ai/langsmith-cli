@@ -135,8 +135,8 @@ func TestNewWithOptions_CreatesOAuthClient(t *testing.T) {
 	if c == nil || c.SDK == nil {
 		t.Fatal("expected non-nil client and SDK")
 	}
-	if c.OAuthAccessToken() != "test-access-token" {
-		t.Fatalf("unexpected OAuth access token: %q", c.OAuthAccessToken())
+	if c.oauthAccessToken != "test-access-token" {
+		t.Fatalf("unexpected OAuth access token: %q", c.oauthAccessToken)
 	}
 	if c.APIKey() != "" {
 		t.Fatalf("expected empty API key, got %q", c.APIKey())

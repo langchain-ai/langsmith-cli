@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -264,7 +263,7 @@ func TestGetAPIURL_DefaultValue(t *testing.T) {
 	}
 }
 
-func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
+func TestResolveClientOptionsSelectsRefreshOnlyProfileWithoutRefreshing(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -278,21 +277,7 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 	flagProfile = ""
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/oauth/token" {
-			http.NotFound(w, r)
-			return
-		}
-		if err := r.ParseForm(); err != nil {
-			t.Fatal(err)
-		}
-		if got := r.FormValue("refresh_token"); got != "old-refresh-token" {
-			t.Fatalf("unexpected refresh token %q", got)
-		}
-		_ = json.NewEncoder(w).Encode(oauthTokenResponse{
-			AccessToken:  "new-access-token",
-			ExpiresIn:    300,
-			RefreshToken: "new-refresh-token",
-		})
+		t.Errorf("resolving options unexpectedly contacted %s", r.URL.Path)
 	}))
 	defer ts.Close()
 
@@ -315,12 +300,12 @@ func TestResolveClientOptionsRefreshesProfileWithoutAccessToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts, err := resolveClientOptions(true)
+	opts, err := resolveClientOptions()
 	if err != nil {
 		t.Fatalf("resolveClientOptions returned error: %v", err)
 	}
-	if opts.OAuthAccessToken != "new-access-token" {
-		t.Fatalf("expected refreshed OAuth token, got %q", opts.OAuthAccessToken)
+	if opts.ProfileName != "dev" || !opts.HasAuth() {
+		t.Fatalf("expected the OAuth profile to be selected, got %+v", opts)
 	}
 }
 
@@ -363,7 +348,7 @@ func TestResolveClientOptions_SetsProfileNameForAPIKeyProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts, err := resolveClientOptions(false)
+	opts, err := resolveClientOptions()
 	if err != nil {
 		t.Fatalf("resolveClientOptions returned error: %v", err)
 	}
@@ -379,7 +364,7 @@ func TestResolveClientOptions_SetsProfileNameForAPIKeyProfile(t *testing.T) {
 	}
 }
 
-func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
+func TestResolveClientOptions_OAuthProfileFallback(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -412,8 +397,8 @@ func TestGetOAuthAccessToken_ProfileFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := GetOAuthAccessToken(); got != "test-access-token" {
-		t.Fatalf("expected profile OAuth access token, got %q", got)
+	if opts, err := resolveClientOptions(); err != nil || opts.ProfileName != "prod" {
+		t.Fatalf("expected OAuth profile prod, got %+v (err %v)", opts, err)
 	}
 	if got := GetAPIURL(); got != "https://profile.example.com" {
 		t.Fatalf("expected profile API URL, got %q", got)
@@ -522,8 +507,8 @@ func TestGetAPIKey_EnvOverridesProfileBearer(t *testing.T) {
 	if got := GetAPIKey(); got != "from-env" {
 		t.Fatalf("expected env API key, got %q", got)
 	}
-	if got := GetOAuthAccessToken(); got != "" {
-		t.Fatalf("expected profile OAuth access token to be ignored, got %q", got)
+	if opts, _ := resolveClientOptions(); opts.ProfileName != "" {
+		t.Fatalf("expected OAuth profile to be ignored, got %q", opts.ProfileName)
 	}
 }
 
@@ -593,7 +578,7 @@ func setupEndpointProfiles(t *testing.T, profile string) {
 func TestResolveClientOptions_ProfileFlagIgnoresEnvEndpoint(t *testing.T) {
 	setupEndpointProfiles(t, "dev")
 
-	opts, err := resolveClientOptions(false)
+	opts, err := resolveClientOptions()
 	require.NoError(t, err)
 	require.Equal(t, "https://dev.api.smith.langchain.com", opts.APIURL)
 }
@@ -601,7 +586,7 @@ func TestResolveClientOptions_ProfileFlagIgnoresEnvEndpoint(t *testing.T) {
 func TestResolveClientOptions_ProfileFlagWithoutAPIURLHonorsEnvEndpoint(t *testing.T) {
 	setupEndpointProfiles(t, "bare")
 
-	opts, err := resolveClientOptions(false)
+	opts, err := resolveClientOptions()
 	require.NoError(t, err)
 	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
 }
@@ -609,7 +594,7 @@ func TestResolveClientOptions_ProfileFlagWithoutAPIURLHonorsEnvEndpoint(t *testi
 func TestResolveClientOptions_ImplicitProfileHonorsEnvEndpoint(t *testing.T) {
 	setupEndpointProfiles(t, "")
 
-	opts, err := resolveClientOptions(false)
+	opts, err := resolveClientOptions()
 	require.NoError(t, err)
 	require.Equal(t, "https://api.smith.langchain.com", opts.APIURL)
 }
@@ -618,7 +603,7 @@ func TestResolveClientOptions_APIURLFlagBeatsProfileEndpoint(t *testing.T) {
 	setupEndpointProfiles(t, "dev")
 	flagAPIURL = "https://flag.example.com"
 
-	opts, err := resolveClientOptions(false)
+	opts, err := resolveClientOptions()
 	require.NoError(t, err)
 	require.Equal(t, "https://flag.example.com", opts.APIURL)
 }

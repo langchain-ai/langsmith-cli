@@ -23,6 +23,7 @@ type Client struct {
 	SDK              *langsmith.Client
 	apiKey           string
 	oauthAccessToken string
+	profileName      string
 	apiURL           string
 	workspaceID      string
 	platformPrefix   string
@@ -42,6 +43,12 @@ type Options struct {
 	APIURL           string
 	WorkspaceID      string
 	ProfileName      string
+}
+
+// HasAuth reports whether the options carry credentials: an explicit API key or
+// bearer token, or a profile the SDK resolves auth from.
+func (o Options) HasAuth() bool {
+	return o.APIKey != "" || o.OAuthAccessToken != "" || o.ProfileName != ""
 }
 
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
@@ -91,6 +98,7 @@ func NewWithOptions(options Options) *Client {
 		SDK:              langsmith.NewClient(opts...),
 		apiKey:           options.APIKey,
 		oauthAccessToken: options.OAuthAccessToken,
+		profileName:      options.ProfileName,
 		apiURL:           normalized,
 		workspaceID:      options.WorkspaceID,
 		platformPrefix:   derivePlatformPrefix(options.APIURL),
@@ -338,6 +346,9 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if err != nil {
 		return nil, err
 	}
+	if c.hasCredentials() {
+		return c.doViaSDK(ctx, method, path, requestURL, body, extraHeaders)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
 	if err == nil {
@@ -349,12 +360,6 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	if c.apiKey != "" {
-		req.Header.Set("x-api-key", c.apiKey)
-	}
-	if c.oauthAccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.oauthAccessToken)
-	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.workspaceID != "" {
 		req.Header.Set("x-tenant-id", c.workspaceID)
@@ -363,7 +368,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: rawRequestTimeout}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
@@ -383,6 +388,68 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	}, nil
 }
 
+const rawRequestTimeout = 30 * time.Second
+
+// hasCredentials reports whether requests must carry auth. A client built
+// without any (the cross-host `api` client) stays off the SDK, which would
+// otherwise attach auth from the environment or the default profile.
+func (c *Client) hasCredentials() bool {
+	return c.apiKey != "" || c.oauthAccessToken != "" || c.profileName != ""
+}
+
+// doViaSDK sends a raw request through the SDK so it carries the SDK's auth.
+// For an OAuth profile that means the SDK refreshes the access token, which it
+// serializes across processes; refreshing here instead races other CLI
+// processes on the single-use refresh token, and the server answers a replayed
+// token by revoking every session for the user.
+//
+// requestURL is absolute, so the SDK sends it as-is instead of joining it onto
+// its base URL. Retries stay off to keep the single attempt callers of the raw
+// helpers expect, and a non-2xx is returned as a response rather than an error.
+func (c *Client) doViaSDK(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
+	var resp *httpResponse
+	opts := []option.RequestOption{
+		option.WithMaxRetries(0),
+		option.WithRequestTimeout(rawRequestTimeout),
+		option.WithHeader("Content-Type", "application/json"),
+		option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+			res, err := next(req)
+			if err != nil || res == nil {
+				return res, err
+			}
+			respBody, err := io.ReadAll(res.Body)
+			_ = res.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("reading response: %w", err)
+			}
+			res.Body = io.NopCloser(bytes.NewReader(respBody))
+			resp = &httpResponse{
+				statusCode: res.StatusCode,
+				proto:      res.Proto,
+				headers:    res.Header,
+				body:       respBody,
+			}
+			return res, nil
+		}),
+	}
+	for k, vals := range extraHeaders {
+		opts = append(opts, option.WithHeaderDel(k))
+		for _, v := range vals {
+			opts = append(opts, option.WithHeaderAdd(k, v))
+		}
+	}
+
+	var payload any
+	if body != nil {
+		payload = body
+	}
+	err := c.SDK.Execute(ctx, method, requestURL.String(), payload, nil, opts...)
+	if resp == nil {
+		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	}
+	return resp, nil
+}
+
 // RawDo performs an arbitrary HTTP request and returns the raw response.
 // Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
 // does not treat 4xx/5xx as errors — callers decide how to handle status codes.
@@ -397,9 +464,6 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 
 // APIKey returns the client's API key.
 func (c *Client) APIKey() string { return c.apiKey }
-
-// OAuthAccessToken returns the client's OAuth access token.
-func (c *Client) OAuthAccessToken() string { return c.oauthAccessToken }
 
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }

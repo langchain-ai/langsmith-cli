@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	langsmith "github.com/langchain-ai/langsmith-go"
+
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
@@ -83,36 +85,10 @@ var authTokenCommand = structured.Command[struct{}]{
 		if !hasProfile || (profile.AccessToken() == "" && profile.OAuth.RefreshToken == "") {
 			return "", fmt.Errorf("no OAuth token found; run 'langsmith auth login'")
 		}
-
-		apiURL := lsconfig.DefaultAPIURL
-		if profile.APIURL != "" {
-			apiURL = profile.APIURL
+		if ctx == nil {
+			ctx = context.Background()
 		}
-		if envURL := strings.TrimSpace(os.Getenv("LANGSMITH_ENDPOINT")); envURL != "" {
-			apiURL = envURL
-		}
-		if flagAPIURL != "" {
-			apiURL = flagAPIURL
-		}
-		apiURL = client.NormalizeURL(apiURL)
-
-		if profile.OAuth.RefreshToken != "" &&
-			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			token, err := refreshProfileToken(ctx, apiURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
-			if err != nil {
-				return "", fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
-			}
-			applyTokenResponse(&profile, token, time.Now())
-			cfg.Profiles[profileName] = profile
-			if err := cfg.Save(); err != nil {
-				return "", fmt.Errorf("saving refreshed OAuth token: %w", err)
-			}
-		}
-
-		return profile.AccessToken(), nil
+		return langsmith.ProfileAccessToken(ctx, profileName)
 	},
 	Render: structured.Template(`{{.}}
 `),
