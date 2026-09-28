@@ -613,9 +613,9 @@ func TestCreateSourceArchiveWithParentDependencyHasNoDuplicates(t *testing.T) {
 }
 
 func TestDeployDoesNotFollowControlPlaneRedirects(t *testing.T) {
-	var leaked bool
+	var reached bool
 	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		leaked = r.Header.Get("X-Api-Key") != ""
+		reached = true
 	}))
 	t.Cleanup(elsewhere.Close)
 	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -623,7 +623,7 @@ func TestDeployDoesNotFollowControlPlaneRedirects(t *testing.T) {
 	}))
 	t.Cleanup(redirector.Close)
 
-	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--api-url", redirector.URL, "deploy", "list")
+	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--workspace", "tenant-1", "--api-url", redirector.URL, "deploy", "list")
 	require.ErrorContains(t, err, "status 302")
-	assert.False(t, leaked)
+	assert.False(t, reached, "no request, and so no auth or tenant header, may reach the redirect target")
 }
