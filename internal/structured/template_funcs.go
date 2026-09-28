@@ -10,6 +10,7 @@ import (
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"dash":              dash,
+		"field":             field,
 		"formatBytes":       formatBytes,
 		"formatBytesOrDash": formatBytesOrDash,
 		"formatCount":       formatCount,
@@ -17,6 +18,18 @@ func templateFuncs() template.FuncMap {
 		"joinOrDash":        joinOrDash,
 		"shortID":           shortID,
 	}
+}
+
+// field reads a key from a decoded JSON object, "-" when absent or empty.
+func field(m map[string]any, key string) string {
+	v, ok := m[key]
+	if !ok || v == nil || v == "" {
+		return "-"
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
 }
 
 func joinOrDash(items []string) string {

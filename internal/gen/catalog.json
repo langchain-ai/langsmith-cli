@@ -1,0 +1,3270 @@
+{
+  "schema_version": 1,
+  "operations": [
+    {
+      "id": "annotation_queues.items.create",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "create",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items"
+      },
+      "summary": "Add annotation queue items",
+      "description": "Add RUN or THREAD items to a single annotation queue. RUN items require run_id unless they are created from a suggested example. THREAD items require thread_id and project_id.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "New",
+          "path_args": [
+            "queue_id"
+          ],
+          "params_type": "AnnotationQueueItemNewParams",
+          "fields": {
+            "extend_trace_retention": {
+              "name": "ExtendTraceRetention"
+            },
+            "items": {
+              "name": "Items"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue ID"
+          }
+        ],
+        "query": [
+          {
+            "name": "extend_trace_retention",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Extend trace retention for added run items"
+          }
+        ]
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.AddAnnotationQueueItemsRequest"
+        }
+      },
+      "response": {
+        "status": 201,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.AddAnnotationQueueItemsResponse"
+        }
+      },
+      "pagination": null,
+      "risk": "REVERSIBLE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "annotation_queues.items.create_status",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "create_status",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/platform/annotation-queues/items/{queue_item_id}/status"
+      },
+      "summary": "Create annotation queue item status",
+      "description": "Log the caller's reviewer status for a RUN or THREAD annotation queue item. A null status re-shows the item for this reviewer.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "NewStatus",
+          "path_args": [
+            "queue_item_id"
+          ],
+          "params_type": "AnnotationQueueItemNewStatusParams",
+          "fields": {
+            "override_added_at": {
+              "name": "OverrideAddedAt"
+            },
+            "status": {
+              "name": "Status",
+              "enum_type": "AnnotationQueueItemNewStatusParamsStatus"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_item_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue item ID"
+          }
+        ],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.CreateAnnotationQueueItemStatusRequest"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.CreateAnnotationQueueItemStatusResponse"
+        }
+      },
+      "pagination": null,
+      "risk": "REVERSIBLE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "annotation_queues.items.delete_all",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "delete_all",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items/delete"
+      },
+      "summary": "Delete annotation queue items",
+      "description": "Remove RUN or THREAD items from a single annotation queue by item ID. Both active and completed items can be removed.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "DeleteAll",
+          "path_args": [
+            "queue_id"
+          ],
+          "params_type": "AnnotationQueueItemDeleteAllParams",
+          "fields": {
+            "item_ids": {
+              "name": "ItemIDs"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue ID"
+          }
+        ],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.DeleteAnnotationQueueItemsRequest"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "type": "object"
+        }
+      },
+      "pagination": null,
+      "risk": "DESTRUCTIVE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "annotation_queues.items.list",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "list",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items"
+      },
+      "summary": "List annotation queue items",
+      "description": "List RUN and THREAD items in a single annotation queue for one review status section, with opaque cursor pagination. Optional item_type=RUN|THREAD filters the page. Optional min_start_time/max_start_time bound the item's trace start time; items with no start time are excluded when either bound is set. direction=backward returns items before the supplied cursor. The response contains item metadata only, not expanded run or thread payloads. status=archived returns items whose queue review requirements have been satisfied, not merely items the caller personally marked completed.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "List",
+          "path_args": [
+            "queue_id"
+          ],
+          "params_type": "AnnotationQueueItemListParams",
+          "fields": {
+            "cursor": {
+              "name": "Cursor"
+            },
+            "direction": {
+              "name": "Direction",
+              "enum_type": "AnnotationQueueItemListParamsDirection"
+            },
+            "item_type": {
+              "name": "ItemType",
+              "enum_type": "AnnotationQueueItemListParamsItemType"
+            },
+            "max_start_time": {
+              "name": "MaxStartTime"
+            },
+            "min_start_time": {
+              "name": "MinStartTime"
+            },
+            "page_size": {
+              "name": "PageSize"
+            },
+            "status": {
+              "name": "Status",
+              "enum_type": "AnnotationQueueItemListParamsStatus"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue ID"
+          }
+        ],
+        "query": [
+          {
+            "name": "status",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "needs_my_review",
+                "needs_others_review",
+                "archived"
+              ]
+            },
+            "description": "Review section: needs_my_review, needs_others_review, or archived"
+          },
+          {
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size (max 100)"
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque pagination cursor"
+          },
+          {
+            "name": "item_type",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "RUN",
+                "THREAD"
+              ]
+            },
+            "description": "Filter to RUN or THREAD"
+          },
+          {
+            "name": "min_start_time",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only items whose trace start time is at or after this timestamp. Omit or send the zero time for no bound"
+          },
+          {
+            "name": "max_start_time",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only items whose trace start time is at or before this timestamp. Omit or send the zero time for no bound"
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "forward",
+                "backward"
+              ]
+            },
+            "description": "Pagination direction. backward requires cursor"
+          }
+        ]
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.ListAnnotationQueueItemsResponse"
+        }
+      },
+      "pagination": {
+        "scheme": "items_cursor_get_pagination",
+        "type": "cursor",
+        "param_location": "query",
+        "request": {
+          "cursor_param": "cursor",
+          "offset_param": "",
+          "limit_param": "page_size",
+          "limit_default": null,
+          "limit_max": null
+        },
+        "response": {
+          "items_field": "items",
+          "next_cursor_field": "next_cursor",
+          "total_field": ""
+        }
+      },
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": "queue-name-resolution"
+    },
+    {
+      "id": "annotation_queues.items.retrieve_count",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "retrieve_count",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items/count"
+      },
+      "summary": "Get the annotation queue item count",
+      "description": "Returns the number of annotation queue items in one status bucket. The two time windows are independent: start_time/end_time bound when an item was archived, min_start_time/max_start_time bound when its trace ran. Items with no trace start time are excluded when either of the latter is set.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "GetCount",
+          "path_args": [
+            "queue_id"
+          ],
+          "params_type": "AnnotationQueueItemGetCountParams",
+          "fields": {
+            "end_time": {
+              "name": "EndTime"
+            },
+            "max_start_time": {
+              "name": "MaxStartTime"
+            },
+            "min_start_time": {
+              "name": "MinStartTime"
+            },
+            "start_time": {
+              "name": "StartTime"
+            },
+            "status": {
+              "name": "Status"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Queue ID"
+          }
+        ],
+        "query": [
+          {
+            "name": "status",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Count bucket: all, needs_my_review, needs_others_review, or archived."
+          },
+          {
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Archived strictly after this time. Only used when status=archived"
+          },
+          {
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Archived strictly before this time. Only used when status=archived"
+          },
+          {
+            "name": "min_start_time",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Trace started at or after this time"
+          },
+          {
+            "name": "max_start_time",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Trace started at or before this time"
+          }
+        ]
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemCountResponse"
+        }
+      },
+      "pagination": null,
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "annotation_queues.items.retrieve_placement",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "retrieve_placement",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items/{item_id}/placement"
+      },
+      "summary": "Get annotation queue item placement",
+      "description": "Resolve a RUN or THREAD item to its current review section and zero-based position for deep linking. The returned cursor counts RUN and THREAD items together, so it is only valid for a list request with no item_type or start-time filter.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "GetPlacement",
+          "path_args": [
+            "queue_id",
+            "item_id"
+          ],
+          "params_type": null,
+          "fields": {}
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue ID"
+          },
+          {
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue item ID"
+          }
+        ],
+        "query": []
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemPlacementResponse"
+        }
+      },
+      "pagination": null,
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "annotation_queues.items.update",
+      "resource": [
+        "annotation_queues",
+        "items"
+      ],
+      "action": "update",
+      "http": {
+        "method": "patch",
+        "path": "/api/v1/platform/annotation-queues/{queue_id}/items/{item_id}"
+      },
+      "summary": "Update an annotation queue item",
+      "description": "Partially update mutable timestamps (added_at, last_reviewed_time) for a RUN or THREAD annotation queue item. Omit a field, or pass JSON null, to leave it unchanged.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AnnotationQueues.Items",
+          "method": "Update",
+          "path_args": [
+            "queue_id",
+            "item_id"
+          ],
+          "params_type": "AnnotationQueueItemUpdateParams",
+          "fields": {
+            "added_at": {
+              "name": "AddedAt"
+            },
+            "last_reviewed_time": {
+              "name": "LastReviewedTime"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue ID"
+          },
+          {
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Annotation queue item ID"
+          }
+        ],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.PatchAnnotationQueueItemRequest"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItem"
+        }
+      },
+      "pagination": null,
+      "risk": "REVERSIBLE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.create",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "create",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/runs/rules"
+      },
+      "summary": "Create an automation rule",
+      "description": "Create an automation rule.\n\nSet exactly one of `session_id` (a tracing project) or `dataset_id`.\n`sampling_rate` (0-1) and `filter` choose which runs it acts on; for\nexample `filter` eq(status, \"error\") matches runs that errored. The rule\napplies to new runs while `is_enabled` is true, which is the default, so\nset it to false to create a paused rule. Set `backfill_from` to also apply\nit to runs since that time.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "New",
+          "path_args": [],
+          "params_type": "AutomationRuleNewParams",
+          "fields": {
+            "add_to_annotation_queue_id": {
+              "name": "AddToAnnotationQueueID"
+            },
+            "add_to_dataset_id": {
+              "name": "AddToDatasetID"
+            },
+            "add_to_dataset_prefer_correction": {
+              "name": "AddToDatasetPreferCorrection"
+            },
+            "alerts": {
+              "name": "Alerts"
+            },
+            "backfill_from": {
+              "name": "BackfillFrom"
+            },
+            "code_evaluators": {
+              "name": "CodeEvaluators"
+            },
+            "create_alignment_queue": {
+              "name": "CreateAlignmentQueue"
+            },
+            "dataset_id": {
+              "name": "DatasetID"
+            },
+            "display_name": {
+              "name": "DisplayName"
+            },
+            "evaluator_id": {
+              "name": "EvaluatorID"
+            },
+            "evaluator_version": {
+              "name": "EvaluatorVersion"
+            },
+            "evaluators": {
+              "name": "Evaluators"
+            },
+            "extend_annotation_queue_trace_retention": {
+              "name": "ExtendAnnotationQueueTraceRetention"
+            },
+            "extend_dataset_trace_retention": {
+              "name": "ExtendDatasetTraceRetention"
+            },
+            "extend_evaluator_trace_retention": {
+              "name": "ExtendEvaluatorTraceRetention"
+            },
+            "extend_only": {
+              "name": "ExtendOnly"
+            },
+            "extend_webhook_trace_retention": {
+              "name": "ExtendWebhookTraceRetention"
+            },
+            "filter": {
+              "name": "Filter"
+            },
+            "group_by": {
+              "name": "GroupBy",
+              "enum_type": "AutomationRuleNewParamsGroupBy"
+            },
+            "include_extended_stats": {
+              "name": "IncludeExtendedStats"
+            },
+            "is_enabled": {
+              "name": "IsEnabled"
+            },
+            "is_tracing_disabled": {
+              "name": "IsTracingDisabled"
+            },
+            "num_few_shot_examples": {
+              "name": "NumFewShotExamples"
+            },
+            "sampling_rate": {
+              "name": "SamplingRate"
+            },
+            "session_id": {
+              "name": "SessionID"
+            },
+            "spend_limit": {
+              "name": "SpendLimit"
+            },
+            "trace_filter": {
+              "name": "TraceFilter"
+            },
+            "tracer_session_issue_id": {
+              "name": "TracerSessionIssueID"
+            },
+            "transient": {
+              "name": "Transient"
+            },
+            "tree_filter": {
+              "name": "TreeFilter"
+            },
+            "use_corrections_dataset": {
+              "name": "UseCorrectionsDataset"
+            },
+            "webhooks": {
+              "name": "Webhooks"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/RunRulesCreateSchema"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/RunRulesSchema"
+        }
+      },
+      "pagination": null,
+      "risk": "REVERSIBLE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.delete",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "delete",
+      "http": {
+        "method": "delete",
+        "path": "/api/v1/runs/rules/{rule_id}"
+      },
+      "summary": "Delete an automation rule",
+      "description": "Delete an automation rule.\n\nThe rule stops applying immediately. Actions it already took (feedback,\ndataset examples, queue items) are kept. Evaluators created for the rule\nare deleted; a shared evaluator is kept. To stop a rule reversibly, set\n`is_enabled` to false instead.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "Delete",
+          "path_args": [
+            "rule_id"
+          ],
+          "params_type": null,
+          "fields": {}
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": ""
+          }
+        ],
+        "query": []
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": null
+      },
+      "pagination": null,
+      "risk": "DESTRUCTIVE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.list",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "list",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/runs/rules"
+      },
+      "summary": "List automation rules",
+      "description": "List the automation rules in the workspace.\n\nAn automation rule samples runs from a tracing project (or a dataset's\nexperiments), filters them, and applies actions: evaluators, adding to a\ndataset or annotation queue, webhooks, and alerts. Returns every matching\nrule in one response (not paginated); narrow it with the filters.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "List",
+          "path_args": [],
+          "params_type": "AutomationRuleListParams",
+          "fields": {
+            "dataset_id": {
+              "name": "DatasetID"
+            },
+            "evaluator_id": {
+              "name": "EvaluatorID"
+            },
+            "id": {
+              "name": "ID"
+            },
+            "include_backfill_progress": {
+              "name": "IncludeBackfillProgress"
+            },
+            "name_contains": {
+              "name": "NameContains"
+            },
+            "session_id": {
+              "name": "SessionID"
+            },
+            "tag_value_id": {
+              "name": "TagValueID"
+            },
+            "type": {
+              "name": "Type",
+              "enum_type": "AutomationRuleListParamsType"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [],
+        "query": [
+          {
+            "name": "dataset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rules that run on this dataset's experiments."
+            },
+            "description": "Only rules that run on this dataset's experiments."
+          },
+          {
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rules that run on this tracing project."
+            },
+            "description": "Only rules that run on this tracing project."
+          },
+          {
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "session",
+                    "dataset"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only project rules (`session`) or dataset rules (`dataset`)."
+            },
+            "description": "Only project rules (`session`) or dataset rules (`dataset`)."
+          },
+          {
+            "name": "name_contains",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring of the rule's display name."
+            },
+            "description": "Case-insensitive substring of the rule's display name."
+          },
+          {
+            "name": "id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rules with these IDs."
+            },
+            "description": "Only rules with these IDs."
+          },
+          {
+            "name": "evaluator_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rules that use this evaluator."
+            },
+            "description": "Only rules that use this evaluator."
+          },
+          {
+            "name": "tag_value_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rules on projects or datasets with these tag values."
+            },
+            "description": "Only rules on projects or datasets with these tag values."
+          },
+          {
+            "name": "include_backfill_progress",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include progress for rules that are backfilling."
+            },
+            "description": "Include progress for rules that are backfilling."
+          }
+        ]
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/RunRulesSchema"
+          }
+        }
+      },
+      "pagination": null,
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.list_logs",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "list_logs",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/runs/rules/{rule_id}/logs/v2"
+      },
+      "summary": "List an automation rule's logs",
+      "description": "List what an automation rule did, newest first, one page at a time.\n\nEach log is one run the rule matched, with the outcome of each action\n(evaluators, dataset, annotation queue, webhooks, alerts). Pass the\nreturned `cursor` back to get the next page; a null cursor means there are\nno more logs.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "ListLogs",
+          "path_args": [
+            "rule_id"
+          ],
+          "params_type": "AutomationRuleListLogsParams",
+          "fields": {
+            "backfill": {
+              "name": "Backfill"
+            },
+            "cursor": {
+              "name": "Cursor"
+            },
+            "end_time": {
+              "name": "EndTime"
+            },
+            "limit": {
+              "name": "Limit"
+            },
+            "session_id": {
+              "name": "SessionID"
+            },
+            "start_time": {
+              "name": "StartTime"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": ""
+          }
+        ],
+        "query": [
+          {
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Maximum logs to return."
+            },
+            "description": "Maximum logs to return."
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`cursor` from a previous page, to continue from it."
+            },
+            "description": "`cursor` from a previous page, to continue from it."
+          },
+          {
+            "name": "backfill",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Return backfill logs instead."
+            },
+            "description": "Return backfill logs instead."
+          },
+          {
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only logs for runs applied at or after this time."
+            },
+            "description": "Only logs for runs applied at or after this time."
+          },
+          {
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only logs for runs applied before this time."
+            },
+            "description": "Only logs for runs applied before this time."
+          },
+          {
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only logs for runs in this tracing project."
+            },
+            "description": "Only logs for runs in this tracing project."
+          }
+        ]
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/RuleLogsPaginatedResponse"
+        }
+      },
+      "pagination": {
+        "scheme": "rule_logs_cursor_pagination",
+        "type": "cursor",
+        "param_location": "query",
+        "request": {
+          "cursor_param": "cursor",
+          "offset_param": "",
+          "limit_param": "limit",
+          "limit_default": null,
+          "limit_max": null
+        },
+        "response": {
+          "items_field": "logs",
+          "next_cursor_field": "cursor",
+          "total_field": ""
+        }
+      },
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.retrieve_last_applied",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "retrieve_last_applied",
+      "http": {
+        "method": "get",
+        "path": "/api/v1/runs/rules/{rule_id}/last_applied"
+      },
+      "summary": "Get an automation rule's last application",
+      "description": "Get the most recent application of an automation rule.\n\nUse it to check whether a rule is running and which runs it last acted on.\n`backfill` returns the last backfill application instead of the live one.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "GetLastApplied",
+          "path_args": [
+            "rule_id"
+          ],
+          "params_type": "AutomationRuleGetLastAppliedParams",
+          "fields": {
+            "backfill": {
+              "name": "Backfill"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": ""
+          }
+        ],
+        "query": [
+          {
+            "name": "backfill",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": ""
+          }
+        ]
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/RuleLogSchema"
+        }
+      },
+      "pagination": null,
+      "risk": "READ",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.trigger",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "trigger",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/runs/rules/{rule_id}/trigger"
+      },
+      "summary": "Apply an automation rule now",
+      "description": "Apply an automation rule now instead of waiting for its schedule.\n\nQueues one application over runs since the rule last ran and returns\nbefore it finishes. Check progress with the last-applied endpoint.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "Trigger",
+          "path_args": [
+            "rule_id"
+          ],
+          "params_type": null,
+          "fields": {}
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": ""
+          }
+        ],
+        "query": []
+      },
+      "request_body": null,
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": null
+      },
+      "pagination": null,
+      "risk": "DESTRUCTIVE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.trigger_many",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "trigger_many",
+      "http": {
+        "method": "post",
+        "path": "/api/v1/runs/rules/trigger"
+      },
+      "summary": "Apply several automation rules now",
+      "description": "Apply several automation rules now.\n\nPass either `rule_ids`, or `dataset_id` to trigger every rule on that\ndataset. Each application is queued and the call returns before they\nfinish.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "TriggerMany",
+          "path_args": [],
+          "params_type": "AutomationRuleTriggerManyParams",
+          "fields": {
+            "dataset_id": {
+              "name": "DatasetID"
+            },
+            "rule_ids": {
+              "name": "RuleIDs"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/TriggerRulesRequest"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": null
+      },
+      "pagination": null,
+      "risk": "DESTRUCTIVE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    },
+    {
+      "id": "automation_rules.update",
+      "resource": [
+        "automation_rules"
+      ],
+      "action": "update",
+      "http": {
+        "method": "patch",
+        "path": "/api/v1/runs/rules/{rule_id}"
+      },
+      "summary": "Update an automation rule",
+      "description": "Update an automation rule.\n\nReplaces the rule's whole configuration: every field you omit is reset\nto its default. An omitted `is_enabled` turns the rule back on and an\nomitted `filter` clears it, so send every field you want to keep,\nincluding `session_id` or `dataset_id`. Changes apply to runs processed\nafter the update. Set `is_enabled` to false to pause a rule without\ndeleting it.",
+      "deprecated": null,
+      "sdk": {
+        "go": {
+          "service": "AutomationRules",
+          "method": "Update",
+          "path_args": [
+            "rule_id"
+          ],
+          "params_type": "AutomationRuleUpdateParams",
+          "fields": {
+            "add_to_annotation_queue_id": {
+              "name": "AddToAnnotationQueueID"
+            },
+            "add_to_dataset_id": {
+              "name": "AddToDatasetID"
+            },
+            "add_to_dataset_prefer_correction": {
+              "name": "AddToDatasetPreferCorrection"
+            },
+            "alerts": {
+              "name": "Alerts"
+            },
+            "backfill_from": {
+              "name": "BackfillFrom"
+            },
+            "code_evaluators": {
+              "name": "CodeEvaluators"
+            },
+            "create_alignment_queue": {
+              "name": "CreateAlignmentQueue"
+            },
+            "dataset_id": {
+              "name": "DatasetID"
+            },
+            "display_name": {
+              "name": "DisplayName"
+            },
+            "evaluator_id": {
+              "name": "EvaluatorID"
+            },
+            "evaluator_version": {
+              "name": "EvaluatorVersion"
+            },
+            "evaluators": {
+              "name": "Evaluators"
+            },
+            "extend_annotation_queue_trace_retention": {
+              "name": "ExtendAnnotationQueueTraceRetention"
+            },
+            "extend_dataset_trace_retention": {
+              "name": "ExtendDatasetTraceRetention"
+            },
+            "extend_evaluator_trace_retention": {
+              "name": "ExtendEvaluatorTraceRetention"
+            },
+            "extend_only": {
+              "name": "ExtendOnly"
+            },
+            "extend_webhook_trace_retention": {
+              "name": "ExtendWebhookTraceRetention"
+            },
+            "filter": {
+              "name": "Filter"
+            },
+            "group_by": {
+              "name": "GroupBy",
+              "enum_type": "AutomationRuleUpdateParamsGroupBy"
+            },
+            "include_extended_stats": {
+              "name": "IncludeExtendedStats"
+            },
+            "is_enabled": {
+              "name": "IsEnabled"
+            },
+            "is_tracing_disabled": {
+              "name": "IsTracingDisabled"
+            },
+            "num_few_shot_examples": {
+              "name": "NumFewShotExamples"
+            },
+            "sampling_rate": {
+              "name": "SamplingRate"
+            },
+            "session_id": {
+              "name": "SessionID"
+            },
+            "spend_limit": {
+              "name": "SpendLimit"
+            },
+            "trace_filter": {
+              "name": "TraceFilter"
+            },
+            "transient": {
+              "name": "Transient"
+            },
+            "tree_filter": {
+              "name": "TreeFilter"
+            },
+            "use_corrections_dataset": {
+              "name": "UseCorrectionsDataset"
+            },
+            "webhooks": {
+              "name": "Webhooks"
+            }
+          }
+        }
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": ""
+          }
+        ],
+        "query": []
+      },
+      "request_body": {
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/RunRulesUpdateSchema"
+        }
+      },
+      "response": {
+        "status": 200,
+        "content_type": "application/json",
+        "schema": {
+          "$ref": "#/components/schemas/RunRulesSchema"
+        }
+      },
+      "pagination": null,
+      "risk": "REVERSIBLE_WRITE",
+      "exposure": {
+        "cli": true,
+        "mcp": "candidate"
+      },
+      "override": null
+    }
+  ],
+  "schemas": {
+    "CodeEvaluatorLanguage": {
+      "type": "string",
+      "enum": [
+        "python",
+        "javascript"
+      ]
+    },
+    "CodeEvaluatorTopLevel": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/CodeEvaluatorLanguage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "require_attachments": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code"
+      ]
+    },
+    "EvaluatorStructuredOutput": {
+      "type": "object",
+      "properties": {
+        "hub_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "playground_settings_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "array"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "template_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variable_mapping": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "Evaluator structured output schema."
+    },
+    "EvaluatorTopLevel": {
+      "type": "object",
+      "properties": {
+        "structured": {
+          "$ref": "#/components/schemas/EvaluatorStructuredOutput"
+        }
+      },
+      "required": [
+        "structured"
+      ]
+    },
+    "PagerdutySeverity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "warning",
+        "error",
+        "info"
+      ],
+      "description": "Enum for severity."
+    },
+    "RuleLogActionOutcome": {
+      "type": "string",
+      "enum": [
+        "success",
+        "skipped",
+        "error"
+      ]
+    },
+    "RuleLogActionResponse": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "$ref": "#/components/schemas/RuleLogActionOutcome"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "outcome"
+      ]
+    },
+    "RuleLogSchema": {
+      "type": "object",
+      "properties": {
+        "add_to_annotation_queue": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alerts": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "application_time": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evaluators": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_only": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rule_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_trace_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webhooks": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RuleLogActionResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "rule_id",
+        "run_id",
+        "start_time",
+        "end_time"
+      ],
+      "description": "Run rules log schema."
+    },
+    "RuleLogsPaginatedResponse": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/RuleLogSchema"
+          }
+        }
+      },
+      "required": [
+        "logs"
+      ],
+      "description": "Paginated response for rule logs with cursor-based pagination."
+    },
+    "RunRuleSpendLimitSchema-Input": {
+      "type": "object",
+      "properties": {
+        "limit_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "window": {
+          "$ref": "#/components/schemas/RunRuleSpendLimitWindow"
+        }
+      },
+      "required": [
+        "limit_usd",
+        "window"
+      ]
+    },
+    "RunRuleSpendLimitSchema-Output": {
+      "type": "object",
+      "properties": {
+        "limit_usd": {
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/components/schemas/RunRuleSpendLimitWindow"
+        }
+      },
+      "required": [
+        "limit_usd",
+        "window"
+      ]
+    },
+    "RunRuleSpendLimitWindow": {
+      "type": "string",
+      "enum": [
+        "weekly"
+      ]
+    },
+    "RunRulesAlertType": {
+      "type": "string",
+      "enum": [
+        "pagerduty"
+      ],
+      "description": "Enum for alert types."
+    },
+    "RunRulesCreateSchema": {
+      "type": "object",
+      "properties": {
+        "add_to_annotation_queue_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_prefer_correction": {
+          "type": "boolean"
+        },
+        "alerts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesPagerdutyAlertSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_from": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Also apply the rule to runs since this time."
+        },
+        "code_evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/CodeEvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_alignment_queue": {
+          "type": "boolean"
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dataset whose experiments the rule runs on. Set this or session_id."
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Name shown for the rule."
+        },
+        "evaluator_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluator_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_annotation_queue_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_dataset_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_evaluator_trace_retention": {
+          "type": "boolean"
+        },
+        "extend_only": {
+          "type": "boolean"
+        },
+        "extend_webhook_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "LangSmith filter expression each run must match, for example eq(status, \"error\") for runs that errored, or and(eq(run_type, \"llm\"), gt(latency, 5)). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "group_by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "thread_id",
+                "trajectory_id"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "include_extended_stats": {
+          "type": "boolean"
+        },
+        "is_enabled": {
+          "type": "boolean",
+          "description": "Whether the rule applies to new runs. Defaults to true."
+        },
+        "is_tracing_disabled": {
+          "type": "boolean"
+        },
+        "num_few_shot_examples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sampling_rate": {
+          "type": "number",
+          "description": "Fraction of matching runs to act on, from 0 to 1 (0.05 is 5%)."
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tracing project the rule runs on. Set this or dataset_id."
+        },
+        "spend_limit": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RunRuleSpendLimitSchema-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trace_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Filter expression the trace's root run must match, for example eq(status, \"success\"). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "tracer_session_issue_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transient": {
+          "type": "boolean"
+        },
+        "tree_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Filter expression at least one run in the trace must match, for example has(tags, \"production\"). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "use_corrections_dataset": {
+          "type": "boolean"
+        },
+        "webhooks": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesWebhookSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "display_name",
+        "sampling_rate"
+      ]
+    },
+    "RunRulesPagerdutyAlertSchema": {
+      "type": "object",
+      "properties": {
+        "routing_key": {
+          "type": "string"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PagerdutySeverity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RunRulesAlertType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "routing_key"
+      ]
+    },
+    "RunRulesSchema": {
+      "type": "object",
+      "properties": {
+        "add_to_annotation_queue_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_annotation_queue_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_prefer_correction": {
+          "type": "boolean"
+        },
+        "alerts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesPagerdutyAlertSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alignment_annotation_queue_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_completed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_from": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_progress": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code_evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/CodeEvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "corrections_dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dataset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "evaluator_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluator_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluator_version": {
+          "type": "integer"
+        },
+        "evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_annotation_queue_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_dataset_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_evaluator_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_only": {
+          "type": "boolean"
+        },
+        "extend_webhook_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "group_by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "thread_id",
+                "trajectory_id"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "include_extended_stats": {
+          "type": "boolean"
+        },
+        "is_enabled": {
+          "type": "boolean"
+        },
+        "is_managed_evaluator": {
+          "type": "boolean"
+        },
+        "is_tracing_disabled": {
+          "type": "boolean"
+        },
+        "num_few_shot_examples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sampling_rate": {
+          "type": "number"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spend_limit": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RunRuleSpendLimitSchema-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spend_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "trace_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trace_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transient": {
+          "type": "boolean"
+        },
+        "tree_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "use_corrections_dataset": {
+          "type": "boolean"
+        },
+        "webhooks": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesWebhookSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "tenant_id",
+        "display_name",
+        "sampling_rate",
+        "webhooks",
+        "created_at",
+        "updated_at",
+        "evaluator_version"
+      ],
+      "description": "Run rules schema."
+    },
+    "RunRulesUpdateSchema": {
+      "type": "object",
+      "properties": {
+        "add_to_annotation_queue_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "add_to_dataset_prefer_correction": {
+          "type": "boolean"
+        },
+        "alerts": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesPagerdutyAlertSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backfill_from": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Also apply the rule to runs since this time."
+        },
+        "code_evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/CodeEvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "create_alignment_queue": {
+          "type": "boolean"
+        },
+        "dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dataset whose experiments the rule runs on. Set this or session_id."
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Name shown for the rule."
+        },
+        "evaluator_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluator_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluators": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EvaluatorTopLevel"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_annotation_queue_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_dataset_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_evaluator_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extend_only": {
+          "type": "boolean"
+        },
+        "extend_webhook_trace_retention": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "LangSmith filter expression each run must match, for example eq(status, \"error\") for runs that errored, or and(eq(run_type, \"llm\"), gt(latency, 5)). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "group_by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "thread_id",
+                "trajectory_id"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "include_extended_stats": {
+          "type": "boolean"
+        },
+        "is_enabled": {
+          "type": "boolean",
+          "description": "Whether the rule applies to new runs. Defaults to true."
+        },
+        "is_tracing_disabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "num_few_shot_examples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sampling_rate": {
+          "type": "number",
+          "description": "Fraction of matching runs to act on, from 0 to 1 (0.05 is 5%)."
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tracing project the rule runs on. Set this or dataset_id."
+        },
+        "spend_limit": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RunRuleSpendLimitSchema-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trace_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Filter expression the trace's root run must match, for example eq(status, \"success\"). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "transient": {
+          "type": "boolean"
+        },
+        "tree_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Filter expression at least one run in the trace must match, for example has(tags, \"production\"). See https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax."
+        },
+        "use_corrections_dataset": {
+          "type": "boolean"
+        },
+        "webhooks": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/RunRulesWebhookSchema"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "display_name",
+        "sampling_rate"
+      ]
+    },
+    "RunRulesWebhookSchema": {
+      "type": "object",
+      "properties": {
+        "headers": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "TriggerRulesRequest": {
+      "type": "object",
+      "properties": {
+        "dataset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rule_ids": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "annotationqueues.AddAnnotationQueueItemsRequest": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemInput"
+          }
+        }
+      }
+    },
+    "annotationqueues.AddAnnotationQueueItemsResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItem"
+          }
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueItem": {
+      "type": "object",
+      "properties": {
+        "added_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "item_type": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemType"
+        },
+        "last_reviewed_time": {
+          "type": "string",
+          "description": "LastReviewedTime is always present on the wire (null until reviewed)."
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "source_proposed_example_id": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueItemCountResponse": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer"
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueItemInput": {
+      "type": "object",
+      "properties": {
+        "item_type": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemType"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string",
+          "description": "RUN fields"
+        },
+        "session_id": {
+          "type": "string",
+          "description": "SessionID is an alias for project_id."
+        },
+        "source_proposed_example_id": {
+          "type": "string",
+          "description": "SourceProposedExampleID links the queue item to the suggested example\nit was created from, when applicable."
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueItemListStatus": {
+      "type": "string",
+      "enum": [
+        "needs_my_review",
+        "needs_others_review",
+        "archived"
+      ]
+    },
+    "annotationqueues.AnnotationQueueItemPlacementResponse": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string"
+        },
+        "item_type": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemType"
+        },
+        "position": {
+          "type": "integer"
+        },
+        "section": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemListStatus"
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueItemType": {
+      "type": "string",
+      "enum": [
+        "RUN",
+        "THREAD"
+      ]
+    },
+    "annotationqueues.AnnotationQueueListItem": {
+      "type": "object",
+      "properties": {
+        "added_at": {
+          "type": "string"
+        },
+        "completed_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "effective_added_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "item_type": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueItemType"
+        },
+        "last_reviewed_time": {
+          "type": "string",
+          "description": "LastReviewedTime is always present on the wire (null until reviewed)."
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "reserved_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "source_proposed_example_id": {
+          "type": "string"
+        },
+        "start_time": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      }
+    },
+    "annotationqueues.AnnotationQueueReviewStatus": {
+      "type": "string",
+      "enum": [
+        "viewed",
+        "completed"
+      ]
+    },
+    "annotationqueues.CreateAnnotationQueueItemStatusRequest": {
+      "type": "object",
+      "properties": {
+        "override_added_at": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueReviewStatus"
+        }
+      }
+    },
+    "annotationqueues.CreateAnnotationQueueItemStatusResponse": {
+      "type": "object",
+      "properties": {
+        "is_archived": {
+          "type": "boolean"
+        },
+        "override_added_at": {
+          "type": "string"
+        },
+        "queue_item_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/components/schemas/annotationqueues.AnnotationQueueReviewStatus"
+        }
+      }
+    },
+    "annotationqueues.DeleteAnnotationQueueItemsRequest": {
+      "type": "object",
+      "properties": {
+        "item_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "annotationqueues.ListAnnotationQueueItemsResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/annotationqueues.AnnotationQueueListItem"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        },
+        "previous_cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "annotationqueues.PatchAnnotationQueueItemRequest": {
+      "type": "object",
+      "properties": {
+        "added_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_reviewed_time": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

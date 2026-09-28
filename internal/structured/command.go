@@ -23,11 +23,11 @@ func (c Command[I]) Cobra() *cobra.Command {
 		Use:   c.Use,
 		Short: c.Short,
 		Long:  c.Long,
-		Args:  c.Args,
+		Args:  invalidInputArgs(c.Args),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := c.Action(cmd.Context(), cmd, input, args)
 			if err != nil {
-				return err
+				return Classify(err)
 			}
 			if c.CustomOutput {
 				return nil
@@ -35,6 +35,12 @@ func (c Command[I]) Cobra() *cobra.Command {
 			return Render(cmd, result, c.Render)
 		},
 	}
+	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if root := cmd.Root(); root != cmd && root.FlagErrorFunc() != nil {
+			err = root.FlagErrorFunc()(cmd, err)
+		}
+		return NewError(CategoryInvalidInput, err.Error())
+	})
 	if c.Input != nil {
 		input = c.Input(cmd)
 	}
@@ -42,6 +48,19 @@ func (c Command[I]) Cobra() *cobra.Command {
 		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
 	}
 	return cmd
+}
+
+// invalidInputArgs reports positional-argument failures as invalid input.
+func invalidInputArgs(args cobra.PositionalArgs) cobra.PositionalArgs {
+	if args == nil {
+		return nil
+	}
+	return func(cmd *cobra.Command, a []string) error {
+		if err := args(cmd, a); err != nil {
+			return NewError(CategoryInvalidInput, err.Error())
+		}
+		return nil
+	}
 }
 
 type Parent struct {
