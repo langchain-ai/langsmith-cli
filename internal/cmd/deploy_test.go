@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -613,17 +614,21 @@ func TestCreateSourceArchiveWithParentDependencyHasNoDuplicates(t *testing.T) {
 }
 
 func TestDeployDoesNotFollowControlPlaneRedirects(t *testing.T) {
-	var reached bool
-	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reached = true
-	}))
-	t.Cleanup(elsewhere.Close)
-	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
-	}))
-	t.Cleanup(redirector.Close)
+	for _, code := range []int{http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			var reached bool
+			elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached = true
+			}))
+			t.Cleanup(elsewhere.Close)
+			redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, elsewhere.URL+r.URL.Path, code)
+			}))
+			t.Cleanup(redirector.Close)
 
-	_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--workspace", "tenant-1", "--api-url", redirector.URL, "deploy", "list")
-	require.ErrorContains(t, err, "status 302")
-	assert.False(t, reached, "no request, and so no auth or tenant header, may reach the redirect target")
+			_, _, err := runDeployCLI(t, "", "--api-key", "test-key", "--workspace", "tenant-1", "--api-url", redirector.URL, "deploy", "list")
+			require.ErrorContains(t, err, "status "+strconv.Itoa(code))
+			assert.False(t, reached, "no request, and so no auth or tenant header, may reach the redirect target")
+		})
+	}
 }
