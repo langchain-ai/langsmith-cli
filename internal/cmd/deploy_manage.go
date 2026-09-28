@@ -276,11 +276,11 @@ Examples:
 	},
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in *deployLogsInput, args []string) (any, error) {
-		return nil, runDeployLogs(cmd, in)
+		return nil, runDeployLogs(ctx, cmd, in)
 	},
 }
 
-func runDeployLogs(cmd *cobra.Command, in *deployLogsInput) error {
+func runDeployLogs(ctx context.Context, cmd *cobra.Command, in *deployLogsInput) error {
 	if in.Type != "deploy" && in.Type != "build" {
 		return fmt.Errorf("--type must be deploy or build (got %q)", in.Type)
 	}
@@ -291,7 +291,7 @@ func runDeployLogs(cmd *cobra.Command, in *deployLogsInput) error {
 	if in.Limit < 1 {
 		return errors.New("--limit must be at least 1")
 	}
-	ctx, stop := signal.NotifyContext(commandContext(cmd), os.Interrupt)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
 	hc, err := newHostBackendClient(cmd)

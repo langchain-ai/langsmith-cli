@@ -138,12 +138,10 @@ var deployResultRender = structured.PropertyList{
 	},
 }
 
-func newDeployCmd() *cobra.Command {
-	in := &deployInput{}
-	cmd := &cobra.Command{
-		Use:   "deploy",
-		Short: "Deploy a LangGraph project to LangSmith Deployment (beta)",
-		Long: `Deploy a LangGraph project to LangSmith Deployment (beta).
+var deployCommand = structured.Command[*deployInput]{
+	Use:   "deploy",
+	Short: "Deploy a LangGraph project to LangSmith Deployment (beta)",
+	Long: `Deploy a LangGraph project to LangSmith Deployment (beta).
 
 Run from the root of a LangGraph project (where langgraph.json is). By default the
 project source is uploaded and built remotely, so Docker is not required. Pass
@@ -164,24 +162,34 @@ Examples:
   langsmith deploy --image my-agent:latest --push-to registry.example.com/team/my-agent
   langsmith deploy list
   langsmith deploy logs --name my-agent --follow`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return runDeploy(cmd, in) },
-	}
-	f := cmd.Flags()
-	f.StringVarP(&in.Config, "config", "c", deployDefaultConfig, "Path to langgraph.json")
-	f.StringVar(&in.Name, "name", "", "Deployment name [env: LANGSMITH_DEPLOYMENT_NAME] (default: current directory name)")
-	f.StringVar(&in.DeploymentID, "deployment-id", "", "ID of an existing deployment to update (instead of --name)")
-	f.StringVar(&in.DeploymentType, "deployment-type", "dev", "Deployment type when creating a deployment: dev or prod (ignored with --push-to)")
-	f.StringVarP(&in.Tag, "tag", "t", "", "Tag for the pushed image with --image or --push-to (default: latest)")
-	f.StringVar(&in.Image, "image", "", "Deploy this existing local image (repo:tag) instead of building remotely; it must target linux/amd64")
-	f.StringVar(&in.PushTo, "push-to", "", "Push --image to this repository in a registry you manage and deploy it from there (self-hosted and hybrid)")
-	f.StringVar(&in.ListenerID, "listener-id", "", "Listener that runs the deployment; only when creating one with --push-to")
-	f.StringVar(&in.K8sNamespace, "k8s-namespace", "", "Kubernetes namespace the listener deploys into; only when creating one with --push-to")
-	f.StringVar(&in.AgentID, "agent-id", "", "Logical agent ID, private beta [env: LANGSMITH_AGENT_ID]")
-	f.StringVar(&in.AgentEnvironment, "agent-environment", "", "Agent environment: development, staging, or production; private beta [env: LANGSMITH_AGENT_ENVIRONMENT]")
-	f.BoolVar(&in.NoWait, "no-wait", false, "Return once the revision is submitted instead of waiting for it to deploy")
-	f.BoolVar(&in.Verbose, "verbose", false, "Stream remote build logs and docker output")
-	f.String("jq", "", "Filter JSON output using a jq expression")
+	Args: cobra.NoArgs,
+	Input: func(cmd *cobra.Command) *deployInput {
+		in := &deployInput{}
+		f := cmd.Flags()
+		f.StringVarP(&in.Config, "config", "c", deployDefaultConfig, "Path to langgraph.json")
+		f.StringVar(&in.Name, "name", "", "Deployment name [env: LANGSMITH_DEPLOYMENT_NAME] (default: current directory name)")
+		f.StringVar(&in.DeploymentID, "deployment-id", "", "ID of an existing deployment to update (instead of --name)")
+		f.StringVar(&in.DeploymentType, "deployment-type", "dev", "Deployment type when creating a deployment: dev or prod (ignored with --push-to)")
+		f.StringVarP(&in.Tag, "tag", "t", "", "Tag for the pushed image with --image or --push-to (default: latest)")
+		f.StringVar(&in.Image, "image", "", "Deploy this existing local image (repo:tag) instead of building remotely; it must target linux/amd64")
+		f.StringVar(&in.PushTo, "push-to", "", "Push --image to this repository in a registry you manage and deploy it from there (self-hosted and hybrid)")
+		f.StringVar(&in.ListenerID, "listener-id", "", "Listener that runs the deployment; only when creating one with --push-to")
+		f.StringVar(&in.K8sNamespace, "k8s-namespace", "", "Kubernetes namespace the listener deploys into; only when creating one with --push-to")
+		f.StringVar(&in.AgentID, "agent-id", "", "Logical agent ID, private beta [env: LANGSMITH_AGENT_ID]")
+		f.StringVar(&in.AgentEnvironment, "agent-environment", "", "Agent environment: development, staging, or production; private beta [env: LANGSMITH_AGENT_ENVIRONMENT]")
+		f.BoolVar(&in.NoWait, "no-wait", false, "Return once the revision is submitted instead of waiting for it to deploy")
+		f.BoolVar(&in.Verbose, "verbose", false, "Stream remote build logs and docker output")
+		f.String("jq", "", "Filter JSON output using a jq expression")
+		return in
+	},
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *deployInput, args []string) (any, error) {
+		return nil, runDeploy(ctx, cmd, in)
+	},
+}
+
+func newDeployCmd() *cobra.Command {
+	cmd := deployCommand.Cobra()
 	cmd.PersistentFlags().String("host-url", "", "Deployment control plane URL [env: LANGGRAPH_HOST_URL]")
 	_ = cmd.PersistentFlags().MarkHidden("host-url")
 
@@ -209,13 +217,6 @@ func newHostBackendClient(cmd *cobra.Command) (*hostbackend.Client, error) {
 		BearerToken: opts.OAuthAccessToken,
 		TenantID:    opts.WorkspaceID,
 	}), nil
-}
-
-func commandContext(cmd *cobra.Command) context.Context {
-	if ctx := cmd.Context(); ctx != nil {
-		return ctx
-	}
-	return context.Background()
 }
 
 func envOrFlag(cmd *cobra.Command, flag, value, env string) string {
@@ -289,8 +290,8 @@ func (in *deployInput) plan(cmd *cobra.Command) (deployPlan, *hostbackend.Agent,
 	return plan, agent, nil
 }
 
-func runDeploy(cmd *cobra.Command, in *deployInput) error {
-	ctx, stop := signal.NotifyContext(commandContext(cmd), os.Interrupt)
+func runDeploy(ctx context.Context, cmd *cobra.Command, in *deployInput) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 	p := &deployProgress{w: cmd.ErrOrStderr()}
 
