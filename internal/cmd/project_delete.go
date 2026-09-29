@@ -40,7 +40,7 @@ func newProjectDeleteCmd() *cobra.Command {
 				return err
 			}
 
-			if _, err := c.SDK.Sessions.Delete(ctx, id); err != nil {
+			if err := c.SDK.Sessions.Delete(ctx, id); err != nil {
 				return fmt.Errorf("deleting tracing project %s: %w", id, err)
 			}
 			return output.OutputJSON(map[string]any{
