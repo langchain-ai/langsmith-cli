@@ -272,7 +272,46 @@ func TestAuthTokenRequiresOAuthToken(t *testing.T) {
 	t.Setenv("LANGSMITH_API_KEY", "from-env")
 
 	_, err := executeCommand(t, "auth", "token")
-	if err == nil || !strings.Contains(err.Error(), "no OAuth token") {
-		t.Fatalf("expected missing OAuth token error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "API key, not an OAuth token") {
+		t.Fatalf("expected API key error, got %v", err)
+	}
+}
+
+// auth token prints the credential commands would actually use, so an API key
+// that takes precedence over the OAuth profile is reported rather than skipped.
+func TestAuthTokenFollowsAPIKeyPrecedence(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "from-env")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "dev",
+  "profiles": {
+    "dev": {
+      "oauth": {
+        "access_token": "saved-access-token"
+      }
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := executeCommand(t, "auth", "token")
+	if err == nil || !strings.Contains(err.Error(), "API key, not an OAuth token") {
+		t.Fatalf("expected API key precedence error, got %v (stdout %q)", err, stdout)
 	}
 }

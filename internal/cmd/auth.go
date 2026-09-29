@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	langsmith "github.com/langchain-ai/langsmith-go"
-
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/langchain-ai/langsmith-cli/internal/structured"
@@ -72,23 +70,27 @@ var authTokenCommand = structured.Command[struct{}]{
 	Use:   "token",
 	Short: "Print the OAuth access token",
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
-		cfg, err := lsconfig.Load()
+		c, err := getClient()
 		if err != nil {
 			return "", err
-		}
-
-		envProfile := strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
-		profileName, profile, hasProfile := cfg.ResolveProfile(flagProfile, envProfile)
-		if (flagProfile != "" || envProfile != "") && !hasProfile {
-			return "", fmt.Errorf("profile not found: %s", profileName)
-		}
-		if !hasProfile || (profile.AccessToken() == "" && profile.OAuth.RefreshToken == "") {
-			return "", fmt.Errorf("no OAuth token found; run 'langsmith auth login'")
 		}
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		return langsmith.ProfileAccessToken(ctx, profileName)
+		// Ask the client for the auth it would send, so this follows the same
+		// flag, environment, and profile precedence as every other command.
+		headers, err := c.SDK.AuthHeaders(ctx)
+		if err != nil {
+			return "", err
+		}
+		token, ok := strings.CutPrefix(headers.Get("Authorization"), "Bearer ")
+		if !ok || token == "" {
+			if headers.Get("X-API-Key") != "" {
+				return "", fmt.Errorf("the active credentials are an API key, not an OAuth token; run 'langsmith auth login' or select an OAuth profile")
+			}
+			return "", fmt.Errorf("no OAuth token found; run 'langsmith auth login'")
+		}
+		return token, nil
 	},
 	Render: structured.Template(`{{.}}
 `),

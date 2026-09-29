@@ -346,9 +346,6 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if err != nil {
 		return nil, err
 	}
-	if c.hasCredentials() {
-		return c.doViaSDK(ctx, method, path, requestURL, body, extraHeaders)
-	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
 	if err == nil {
@@ -368,8 +365,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{Timeout: rawRequestTimeout}
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
 	}
@@ -388,67 +384,23 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	}, nil
 }
 
+// httpClient returns the client raw requests are sent with. Authenticated
+// clients use the SDK's, which attaches auth and refreshes OAuth profile
+// tokens under a lock shared with other processes. Refreshing here instead
+// raced other CLI processes on the single-use refresh token, and the server
+// answers a replayed token by revoking every session for the user. A client
+// without credentials (the cross-host `api` client) stays off the SDK, which
+// would otherwise pick up auth from the environment or the default profile.
+func (c *Client) httpClient() *http.Client {
+	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
+		return &http.Client{Timeout: rawRequestTimeout}
+	}
+	hc := c.SDK.HTTPClient()
+	hc.Timeout = rawRequestTimeout
+	return hc
+}
+
 const rawRequestTimeout = 30 * time.Second
-
-// hasCredentials reports whether requests must carry auth. A client built
-// without any (the cross-host `api` client) stays off the SDK, which would
-// otherwise attach auth from the environment or the default profile.
-func (c *Client) hasCredentials() bool {
-	return c.apiKey != "" || c.oauthAccessToken != "" || c.profileName != ""
-}
-
-// doViaSDK sends a raw request through the SDK so it carries the SDK's auth.
-// For an OAuth profile that means the SDK refreshes the access token, which it
-// serializes across processes; refreshing here instead races other CLI
-// processes on the single-use refresh token, and the server answers a replayed
-// token by revoking every session for the user.
-//
-// requestURL is absolute, so the SDK sends it as-is instead of joining it onto
-// its base URL. Retries stay off to keep the single attempt callers of the raw
-// helpers expect, and a non-2xx is returned as a response rather than an error.
-func (c *Client) doViaSDK(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
-	var resp *httpResponse
-	opts := []option.RequestOption{
-		option.WithMaxRetries(0),
-		option.WithRequestTimeout(rawRequestTimeout),
-		option.WithHeader("Content-Type", "application/json"),
-		option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
-			res, err := next(req)
-			if err != nil || res == nil {
-				return res, err
-			}
-			respBody, err := io.ReadAll(res.Body)
-			_ = res.Body.Close()
-			if err != nil {
-				return nil, fmt.Errorf("reading response: %w", err)
-			}
-			res.Body = io.NopCloser(bytes.NewReader(respBody))
-			resp = &httpResponse{
-				statusCode: res.StatusCode,
-				proto:      res.Proto,
-				headers:    res.Header,
-				body:       respBody,
-			}
-			return res, nil
-		}),
-	}
-	for k, vals := range extraHeaders {
-		opts = append(opts, option.WithHeaderDel(k))
-		for _, v := range vals {
-			opts = append(opts, option.WithHeaderAdd(k, v))
-		}
-	}
-
-	var payload any
-	if body != nil {
-		payload = body
-	}
-	err := c.SDK.Execute(ctx, method, requestURL.String(), payload, nil, opts...)
-	if resp == nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
-	}
-	return resp, nil
-}
 
 // RawDo performs an arbitrary HTTP request and returns the raw response.
 // Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
