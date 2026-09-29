@@ -346,7 +346,46 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if err != nil {
 		return nil, err
 	}
+	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
+		return c.doUnauthenticated(ctx, method, path, requestURL, body, extraHeaders)
+	}
 
+	// Send through the SDK client so it attaches auth, refreshing OAuth
+	// profile tokens under a lock shared with other processes. Refreshing
+	// here instead raced other CLI processes on the single-use refresh token,
+	// and the server answers a replayed token by revoking every session for
+	// the user. requestURL is absolute, so the SDK sends it as-is rather than
+	// joining it onto its base URL; retries stay off to keep one attempt.
+	opts := []option.RequestOption{
+		option.WithMaxRetries(0),
+		option.WithRequestTimeout(rawRequestTimeout),
+		option.WithHeader("Content-Type", "application/json"),
+	}
+	for k, vals := range extraHeaders {
+		opts = append(opts, option.WithHeaderDel(k))
+		for _, v := range vals {
+			opts = append(opts, option.WithHeaderAdd(k, v))
+		}
+	}
+	var res *http.Response
+	opts = append(opts, option.WithResponseInto(&res))
+	var payload any
+	if body != nil {
+		payload = body
+	}
+	// A non-2xx comes back as an error, but res still holds the response and
+	// its body, which callers of the raw helpers inspect themselves.
+	err = c.SDK.Execute(ctx, method, requestURL.String(), payload, nil, opts...)
+	if res == nil {
+		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	}
+	return readHTTPResponse(res)
+}
+
+// doUnauthenticated sends a request with no credentials. It serves the
+// cross-host `api` client, which must stay off the SDK: the SDK would pick up
+// auth from the environment or the default profile.
+func (c *Client) doUnauthenticated(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
 	if err == nil {
 		req.URL.Path = requestURL.Path
@@ -365,39 +404,25 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	resp, err := c.httpClient().Do(req)
+	res, err := (&http.Client{Timeout: rawRequestTimeout}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	return readHTTPResponse(res)
+}
 
-	respBody, err := io.ReadAll(resp.Body)
+func readHTTPResponse(res *http.Response) (*httpResponse, error) {
+	defer res.Body.Close()
+	respBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-
 	return &httpResponse{
-		statusCode: resp.StatusCode,
-		proto:      resp.Proto,
-		headers:    resp.Header,
+		statusCode: res.StatusCode,
+		proto:      res.Proto,
+		headers:    res.Header,
 		body:       respBody,
 	}, nil
-}
-
-// httpClient returns the client raw requests are sent with. Authenticated
-// clients use the SDK's, which attaches auth and refreshes OAuth profile
-// tokens under a lock shared with other processes. Refreshing here instead
-// raced other CLI processes on the single-use refresh token, and the server
-// answers a replayed token by revoking every session for the user. A client
-// without credentials (the cross-host `api` client) stays off the SDK, which
-// would otherwise pick up auth from the environment or the default profile.
-func (c *Client) httpClient() *http.Client {
-	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
-		return &http.Client{Timeout: rawRequestTimeout}
-	}
-	hc := c.SDK.HTTPClient()
-	hc.Timeout = rawRequestTimeout
-	return hc
 }
 
 const rawRequestTimeout = 30 * time.Second
