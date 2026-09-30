@@ -11,6 +11,8 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/gen"
+	"github.com/langchain-ai/langsmith-cli/internal/overrides"
 	"github.com/spf13/cobra"
 )
 
@@ -93,6 +95,11 @@ Quick start:
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
+
+	// Generated commands go last so handwritten commands at the same path win.
+	if _, err := gen.Attach(rootCmd, overrides.All()); err != nil {
+		panic(err)
+	}
 
 	return rootCmd
 }

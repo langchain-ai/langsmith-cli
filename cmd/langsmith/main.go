@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/langchain-ai/langsmith-cli/internal/cmd"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 )
 
 var (
@@ -15,8 +16,7 @@ var (
 
 func main() {
 	rootCmd := cmd.NewRootCmd(version, fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date))
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+	if cmd, err := rootCmd.ExecuteC(); err != nil {
+		os.Exit(structured.WriteError(os.Stdout, os.Stderr, cmd, err))
 	}
 }

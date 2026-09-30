@@ -4,7 +4,7 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build clean test test-integration lint vet fmt install
+.PHONY: build clean test test-integration lint vet fmt install generate check-generate
 
 build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/langsmith
@@ -31,3 +31,12 @@ fmt:
 	gofmt -w .
 
 all: fmt vet test build
+
+# Regenerate internal/gen from the Operation Catalog. Without CATALOG it
+# rebuilds from the committed snapshot (internal/gen/catalog.json).
+# CATALOG=path/to/operations.json
+generate:
+	go run ./cmd/gen $(if $(CATALOG),-catalog $(CATALOG))
+
+check-generate:
+	go run ./cmd/gen -check

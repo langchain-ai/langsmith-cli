@@ -1,0 +1,152 @@
+annotation-queue item create  [REVERSIBLE_WRITE]  annotation_queues.items.create
+    --extend-trace-retention bool
+    --items-json string
+    --jq string
+    --queue-id string required
+annotation-queue item create-status  [REVERSIBLE_WRITE]  annotation_queues.items.create_status
+    --jq string
+    --override-added-at string
+    --queue-item-id string required
+    --status string
+annotation-queue item delete-all  [DESTRUCTIVE_WRITE]  annotation_queues.items.delete_all
+    --item-ids stringSlice
+    --jq string
+    --queue-id string required
+    --yes bool
+annotation-queue item list  [READ]  annotation_queues.items.list
+    --cursor string
+    --direction string
+    --item-type string
+    --jq string
+    --limit int64
+    --max-start-time string
+    --min-start-time string
+    --queue string
+    --queue-id string required
+    --status string required
+annotation-queue item get-count  [READ]  annotation_queues.items.retrieve_count
+    --end-time string
+    --jq string
+    --max-start-time string
+    --min-start-time string
+    --queue-id string required
+    --start-time string
+    --status string required
+annotation-queue item get-placement  [READ]  annotation_queues.items.retrieve_placement
+    --item-id string required
+    --jq string
+    --queue-id string required
+annotation-queue item update  [REVERSIBLE_WRITE]  annotation_queues.items.update
+    --added-at string
+    --item-id string required
+    --jq string
+    --last-reviewed-time string
+    --queue-id string required
+automation-rule create  [REVERSIBLE_WRITE]  automation_rules.create
+    --add-to-annotation-queue-id string
+    --add-to-dataset-id string
+    --add-to-dataset-prefer-correction bool
+    --alerts-json string
+    --backfill-from string
+    --code-evaluators-json string
+    --create-alignment-queue bool
+    --dataset-id string
+    --display-name string required
+    --evaluator-id string
+    --evaluator-version int64
+    --evaluators-json string
+    --extend-annotation-queue-trace-retention bool
+    --extend-dataset-trace-retention bool
+    --extend-evaluator-trace-retention bool
+    --extend-only bool
+    --extend-webhook-trace-retention bool
+    --filter string
+    --group-by string
+    --include-extended-stats bool
+    --is-enabled bool
+    --is-tracing-disabled bool
+    --jq string
+    --num-few-shot-examples int64
+    --project string
+    --project-id string
+    --sampling-rate float64 required
+    --spend-limit-json string
+    --trace-filter string
+    --tracer-session-issue-id string
+    --transient bool
+    --tree-filter string
+    --use-corrections-dataset bool
+    --webhooks-json string
+automation-rule delete  [DESTRUCTIVE_WRITE]  automation_rules.delete
+    --jq string
+    --rule-id string required
+    --yes bool
+automation-rule list  [READ]  automation_rules.list
+    --dataset-id string
+    --evaluator-id string
+    --id stringSlice
+    --include-backfill-progress bool
+    --jq string
+    --name-contains string
+    --project string
+    --project-id string
+    --tag-value-id stringSlice
+    --type string
+automation-rule list-logs  [READ]  automation_rules.list_logs
+    --backfill bool
+    --cursor string
+    --end-time string
+    --jq string
+    --limit int64
+    --project string
+    --project-id string
+    --rule-id string required
+    --start-time string
+automation-rule get-last-applied  [READ]  automation_rules.retrieve_last_applied
+    --backfill bool
+    --jq string
+    --rule-id string required
+automation-rule trigger  [DESTRUCTIVE_WRITE]  automation_rules.trigger
+    --jq string
+    --rule-id string required
+    --yes bool
+automation-rule trigger-many  [DESTRUCTIVE_WRITE]  automation_rules.trigger_many
+    --dataset-id string
+    --jq string
+    --rule-ids stringSlice
+    --yes bool
+automation-rule update  [REVERSIBLE_WRITE]  automation_rules.update
+    --add-to-annotation-queue-id string
+    --add-to-dataset-id string
+    --add-to-dataset-prefer-correction bool
+    --alerts-json string
+    --backfill-from string
+    --code-evaluators-json string
+    --create-alignment-queue bool
+    --dataset-id string
+    --display-name string required
+    --evaluator-id string
+    --evaluator-version int64
+    --evaluators-json string
+    --extend-annotation-queue-trace-retention bool
+    --extend-dataset-trace-retention bool
+    --extend-evaluator-trace-retention bool
+    --extend-only bool
+    --extend-webhook-trace-retention bool
+    --filter string
+    --group-by string
+    --include-extended-stats bool
+    --is-enabled bool
+    --is-tracing-disabled bool
+    --jq string
+    --num-few-shot-examples int64
+    --project string
+    --project-id string
+    --rule-id string required
+    --sampling-rate float64 required
+    --spend-limit-json string
+    --trace-filter string
+    --transient bool
+    --tree-filter string
+    --use-corrections-dataset bool
+    --webhooks-json string
