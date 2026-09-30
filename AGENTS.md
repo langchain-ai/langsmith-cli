@@ -41,6 +41,10 @@ Use the generated Go SDK through the shared client's `SDK` field. Do not add raw
 
 If an endpoint is missing from the Go SDK, expose and configure it through the public OpenAPI and Stainless definitions in `langchain-ai/langchainplus`, release the generated `langsmith-go` client, and update this repository's SDK dependency. Prefer that workflow over adding `RawGet`, `RawPost`, `RawPatch`, or other direct HTTP calls.
 
+## Generated commands
+
+`internal/generated/` is generated from the same OpenAPI and Stainless definitions as `langsmith-go` and is replaced by automated sync PRs; never edit it. `internal/cmd/generated.go` mounts a generated resource as a `langsmith` command once its name is in `generatedCommands`. Every listed resource needs contract cases in `internal/cmd/generated_<resource>_test.go` (`TestEveryGeneratedOperationHasAContractCase` enforces this) and a live lifecycle test in `generated_<resource>_integration_test.go`, following `generated_prompt_webhooks_test.go` and `generated_prompt_webhooks_integration_test.go`.
+
 ## Releasing
 
 Releases are tag-driven: pushing a `v*` tag builds and publishes the GitHub Release, so there is no version file or changelog to edit. See [Releasing](README.md#releasing) for the full procedure.

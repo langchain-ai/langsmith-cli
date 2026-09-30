@@ -93,6 +93,7 @@ Quick start:
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
+	addGeneratedCommands(rootCmd)
 
 	return rootCmd
 }
