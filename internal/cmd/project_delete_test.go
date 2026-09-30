@@ -52,7 +52,7 @@ func TestProjectDeleteCmd_UsesSDKAfterConfirmation(t *testing.T) {
 	if !getCalled || !deleteCalled {
 		t.Fatalf("expected project GET and DELETE; get=%v delete=%v", getCalled, deleteCalled)
 	}
-	if !strings.Contains(stdout, `"status": "deleted"`) {
+	if !strings.Contains(stdout, `"status": "deleting"`) {
 		t.Fatalf("expected deletion output, got %s", stdout)
 	}
 
