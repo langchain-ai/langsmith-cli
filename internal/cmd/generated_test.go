@@ -10,7 +10,8 @@ import (
 
 func TestGeneratedCommandsAreRegistered(t *testing.T) {
 	root := NewRootCmd("dev", "dev")
-	for _, name := range generatedCommands {
+	for _, resource := range generatedResources() {
+		name := resource.Name
 		matches := 0
 		for _, c := range root.Commands() {
 			if c.Name() == name {

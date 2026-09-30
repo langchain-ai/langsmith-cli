@@ -16,13 +16,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// generatedCommands lists the resources from the generated command tree in
-// internal/generated that `langsmith` exposes. Each one is added explicitly so a resource ships only after its API
-// descriptions have been reviewed for CLI and agent use.
-var generatedCommands = []string{
-	"prompt-webhooks",
-}
-
 // exitGenerated ends the process with the generated command's exit code after
 // its error has been printed. Tests replace it.
 var exitGenerated = os.Exit
@@ -34,11 +27,31 @@ var globalFlagRenames = map[string]string{
 	"--workspace-id": "--tenant-id",
 }
 
+// generatedResources returns the resource commands in the generated tree.
+// generated-resources.txt at the repository root selects which resources are
+// generated into internal/generated.
+func generatedResources() []*cli.Command {
+	var resources []*cli.Command
+	for _, c := range generated.Command.Commands {
+		if c.Category == "API RESOURCE" {
+			resources = append(resources, c)
+		}
+	}
+	return resources
+}
+
+// addGeneratedCommands mounts every generated resource as a `langsmith`
+// command. A name that clashes with a hand-written command is a programming
+// error.
 func addGeneratedCommands(root *cobra.Command) {
-	for _, name := range generatedCommands {
-		resource := findGeneratedCommand(name)
-		if resource == nil {
-			panic(fmt.Sprintf("generated command %q not found in the generated command tree", name))
+	existing := map[string]bool{}
+	for _, c := range root.Commands() {
+		existing[c.Name()] = true
+	}
+	for _, resource := range generatedResources() {
+		name := resource.Name
+		if existing[name] {
+			panic(fmt.Sprintf("generated command %q clashes with a hand-written command", name))
 		}
 		root.AddCommand(&cobra.Command{
 			Use:                name,
@@ -99,15 +112,6 @@ func extractFlag(args []string, flag string) ([]string, bool) {
 		rest = append(rest, arg)
 	}
 	return rest, found
-}
-
-func findGeneratedCommand(name string) *cli.Command {
-	for _, c := range generated.Command.Commands {
-		if c.Name == name {
-			return c
-		}
-	}
-	return nil
 }
 
 // runGenerated hands the arguments to the generated command tree. Auth comes

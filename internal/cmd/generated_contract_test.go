@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
-
-	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
 )
 
 // generatedContractCase is one `langsmith <resource> <op>` invocation of a
@@ -49,15 +49,15 @@ type generatedContractCase struct {
 	wantStderr string
 }
 
-// generatedContractCases holds the cases for each resource in
-// generatedCommands, registered from generated_<resource>_test.go.
+// generatedContractCases holds the cases for each generated resource command,
+// registered from generated_<resource>_test.go.
 var generatedContractCases = map[string][]generatedContractCase{}
 
 func TestGeneratedCommandContracts(t *testing.T) {
-	for _, resource := range generatedCommands {
-		for _, c := range generatedContractCases[resource] {
-			t.Run(resource+"/"+c.name, func(t *testing.T) {
-				runGeneratedContractCase(t, resource, c)
+	for _, resource := range generatedResources() {
+		for _, c := range generatedContractCases[resource.Name] {
+			t.Run(resource.Name+"/"+c.name, func(t *testing.T) {
+				runGeneratedContractCase(t, resource.Name, c)
 			})
 		}
 	}
@@ -66,35 +66,45 @@ func TestGeneratedCommandContracts(t *testing.T) {
 // TestEveryGeneratedOperationHasAContractCase keeps a resource from shipping
 // with an operation that no test has run.
 func TestEveryGeneratedOperationHasAContractCase(t *testing.T) {
-	for _, resource := range generatedCommands {
+	for _, resource := range generatedResources() {
 		covered := map[string]bool{}
-		for _, c := range generatedContractCases[resource] {
+		for _, c := range generatedContractCases[resource.Name] {
 			covered[c.op] = true
 		}
-		for _, op := range findGeneratedCommand(resource).Commands {
+		for _, op := range resource.Commands {
 			// urfave/cli adds a help subcommand to every resource.
 			if op.Name != "help" && !covered[op.Name] {
 				t.Errorf("'langsmith %s %s' has no contract case; add one to generated_%s_test.go",
-					resource, op.Name, strings.ReplaceAll(resource, "-", "_"))
+					resource.Name, op.Name, strings.NewReplacer("-", "_", ":", "_").Replace(resource.Name))
 			}
 		}
 	}
 }
 
-// TestGeneratedSubresourcesAreExposedWithTheirResource keeps a resource's
-// subresources (generated as separate `<resource>:<sub>` commands) from being
-// left out when the resource is exposed.
-func TestGeneratedSubresourcesAreExposedWithTheirResource(t *testing.T) {
-	exposed := map[string]bool{}
-	for _, name := range generatedCommands {
-		exposed[name] = true
+// TestGeneratedResourcesMatchList fails when internal/generated was not
+// regenerated after generated-resources.txt changed.
+func TestGeneratedResourcesMatchList(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "generated-resources.txt"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, name := range generatedCommands {
-		for _, c := range generated.Command.Commands {
-			if strings.HasPrefix(c.Name, name+":") && !exposed[c.Name] {
-				t.Errorf("%q is exposed but its subresource %q is not; add it to generatedCommands", name, c.Name)
-			}
+	var listed []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if name, _, _ := strings.Cut(line, "#"); strings.TrimSpace(name) != "" {
+			listed = append(listed, strings.ReplaceAll(strings.TrimSpace(name), "_", "-"))
 		}
+	}
+	var generatedNames []string
+	for _, resource := range generatedResources() {
+		// Subresources (`<resource>:<sub>`) come with their listed resource.
+		if !strings.Contains(resource.Name, ":") {
+			generatedNames = append(generatedNames, resource.Name)
+		}
+	}
+	slices.Sort(listed)
+	slices.Sort(generatedNames)
+	if !slices.Equal(listed, generatedNames) {
+		t.Errorf("generated-resources.txt lists %q but internal/generated contains %q; regenerate internal/generated", listed, generatedNames)
 	}
 }
 

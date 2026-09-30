@@ -1,0 +1,9 @@
+# API resources exposed as generated `langsmith` commands, one per line.
+#
+# Names are top-level resources in the Stainless configuration that generates
+# langsmith-go (snake_case, e.g. prompt_webhooks → `langsmith prompt-webhooks`).
+# Only listed resources are generated into internal/generated; the next sync
+# picks up changes to this list. Every listed resource needs contract cases in
+# internal/cmd/generated_<resource>_test.go and a live test in
+# internal/cmd/generated_<resource>_integration_test.go.
+prompt_webhooks
