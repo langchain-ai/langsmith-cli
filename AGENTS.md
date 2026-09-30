@@ -43,7 +43,7 @@ If an endpoint is missing from the Go SDK, expose and configure it through the p
 
 ## Generated commands
 
-`internal/generated/` is generated from the same OpenAPI and Stainless definitions as `langsmith-go` and is replaced by automated sync PRs; never edit it. It contains only the resources listed in `generated-resources.txt`, and `internal/cmd/generated.go` mounts each of them as a `langsmith` command. `TestGeneratedResourcesMatchList` fails when the two disagree. Every listed resource needs contract cases in `internal/cmd/generated_<resource>_test.go` (`TestEveryGeneratedOperationHasAContractCase` enforces this) and a live lifecycle test in `generated_<resource>_integration_test.go`, following `generated_prompt_webhooks_test.go` and `generated_prompt_webhooks_integration_test.go`.
+`internal/generated/` is generated from the same OpenAPI and Stainless definitions as `langsmith-go` and is replaced by automated sync PRs; never edit it. It contains only the resources listed in `generated-resources.txt`, and `internal/cmd/generated.go` mounts each of them as a `langsmith` command. `TestGeneratedResourcesMatchList` fails when the two disagree. Every listed resource needs contract cases in `internal/cmd/generated_<resource>_test.go` (`TestEveryGeneratedOperationHasAContractCase` enforces this) and a live lifecycle test in `generated_<resource>_integration_test.go`, following `generated_prompt_webhooks_test.go` and `generated_prompt_webhooks_integration_test.go`. A PR that exposes a resource whose `langsmith-go` methods are not released yet gets the `sdk-pending` label; automation regenerates it, bumps `langsmith-go` once the release is out, and removes the label. Don't bump `go.mod` by hand for it.
 
 ## Releasing
 
