@@ -23,6 +23,7 @@ type Client struct {
 	SDK              *langsmith.Client
 	apiKey           string
 	oauthAccessToken string
+	profileName      string
 	apiURL           string
 	workspaceID      string
 	platformPrefix   string
@@ -42,6 +43,12 @@ type Options struct {
 	APIURL           string
 	WorkspaceID      string
 	ProfileName      string
+}
+
+// HasAuth reports whether the options carry credentials: an explicit API key or
+// bearer token, or a profile the SDK resolves auth from.
+func (o Options) HasAuth() bool {
+	return o.APIKey != "" || o.OAuthAccessToken != "" || o.ProfileName != ""
 }
 
 // NormalizeURL strips a trailing "/api/v1" suffix (with or without a trailing
@@ -91,6 +98,7 @@ func NewWithOptions(options Options) *Client {
 		SDK:              langsmith.NewClient(opts...),
 		apiKey:           options.APIKey,
 		oauthAccessToken: options.OAuthAccessToken,
+		profileName:      options.ProfileName,
 		apiURL:           normalized,
 		workspaceID:      options.WorkspaceID,
 		platformPrefix:   derivePlatformPrefix(options.APIURL),
@@ -338,7 +346,46 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if err != nil {
 		return nil, err
 	}
+	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
+		return c.doUnauthenticated(ctx, method, path, requestURL, body, extraHeaders)
+	}
 
+	// Send through the SDK client so it attaches auth, refreshing OAuth
+	// profile tokens under a lock shared with other processes. Refreshing
+	// here instead raced other CLI processes on the single-use refresh token,
+	// and the server answers a replayed token by revoking every session for
+	// the user. requestURL is absolute, so the SDK sends it as-is rather than
+	// joining it onto its base URL; retries stay off to keep one attempt.
+	opts := []option.RequestOption{
+		option.WithMaxRetries(0),
+		option.WithRequestTimeout(rawRequestTimeout),
+		option.WithHeader("Content-Type", "application/json"),
+	}
+	for k, vals := range extraHeaders {
+		opts = append(opts, option.WithHeaderDel(k))
+		for _, v := range vals {
+			opts = append(opts, option.WithHeaderAdd(k, v))
+		}
+	}
+	var res *http.Response
+	opts = append(opts, option.WithResponseInto(&res))
+	var payload any
+	if body != nil {
+		payload = body
+	}
+	// A non-2xx comes back as an error, but res still holds the response and
+	// its body, which callers of the raw helpers inspect themselves.
+	err = c.SDK.Execute(ctx, method, requestURL.String(), payload, nil, opts...)
+	if res == nil {
+		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	}
+	return readHTTPResponse(res)
+}
+
+// doUnauthenticated sends a request with no credentials. It serves the
+// cross-host `api` client, which must stay off the SDK: the SDK would pick up
+// auth from the environment or the default profile.
+func (c *Client) doUnauthenticated(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
 	if err == nil {
 		req.URL.Path = requestURL.Path
@@ -349,12 +396,6 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	if c.apiKey != "" {
-		req.Header.Set("x-api-key", c.apiKey)
-	}
-	if c.oauthAccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.oauthAccessToken)
-	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.workspaceID != "" {
 		req.Header.Set("x-tenant-id", c.workspaceID)
@@ -363,25 +404,28 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 		req.Header[k] = vals
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Do(req)
+	res, err := (&http.Client{Timeout: rawRequestTimeout}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	return readHTTPResponse(res)
+}
 
-	respBody, err := io.ReadAll(resp.Body)
+func readHTTPResponse(res *http.Response) (*httpResponse, error) {
+	defer res.Body.Close()
+	respBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-
 	return &httpResponse{
-		statusCode: resp.StatusCode,
-		proto:      resp.Proto,
-		headers:    resp.Header,
+		statusCode: res.StatusCode,
+		proto:      res.Proto,
+		headers:    res.Header,
 		body:       respBody,
 	}, nil
 }
+
+const rawRequestTimeout = 30 * time.Second
 
 // RawDo performs an arbitrary HTTP request and returns the raw response.
 // Unlike RawGet/RawPost/RawDelete, it does not unmarshal the response and
@@ -397,9 +441,6 @@ func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader,
 
 // APIKey returns the client's API key.
 func (c *Client) APIKey() string { return c.apiKey }
-
-// OAuthAccessToken returns the client's OAuth access token.
-func (c *Client) OAuthAccessToken() string { return c.oauthAccessToken }
 
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }

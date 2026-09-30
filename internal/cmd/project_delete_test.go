@@ -28,7 +28,9 @@ func TestProjectDeleteCmd_UsesSDKAfterConfirmation(t *testing.T) {
 			})
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/sessions/"+deleteTestProjectID:
 			deleteCalled = true
-			_, _ = w.Write([]byte(`{}`))
+			// The API accepts deletes and cleans up asynchronously.
+			w.Header().Set("Location", "/api/v1/sessions/"+deleteTestProjectID)
+			w.WriteHeader(http.StatusAccepted)
 		default:
 			http.Error(w, "unexpected request", http.StatusNotFound)
 		}
@@ -50,7 +52,7 @@ func TestProjectDeleteCmd_UsesSDKAfterConfirmation(t *testing.T) {
 	if !getCalled || !deleteCalled {
 		t.Fatalf("expected project GET and DELETE; get=%v delete=%v", getCalled, deleteCalled)
 	}
-	if !strings.Contains(stdout, `"status": "deleted"`) {
+	if !strings.Contains(stdout, `"status": "deleting"`) {
 		t.Fatalf("expected deletion output, got %s", stdout)
 	}
 

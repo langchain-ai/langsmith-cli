@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,25 +99,19 @@ Quick start:
 
 // GetAPIKey resolves the API key from flag → env → profile.
 func GetAPIKey() string {
-	opts, _ := resolveClientOptions(false)
+	opts, _ := resolveClientOptions()
 	return opts.APIKey
-}
-
-// GetOAuthAccessToken resolves the access token from the active OAuth profile.
-func GetOAuthAccessToken() string {
-	opts, _ := resolveClientOptions(false)
-	return opts.OAuthAccessToken
 }
 
 // GetAPIURL resolves the API URL from flag → env → profile → default.
 func GetAPIURL() string {
-	opts, _ := resolveClientOptions(false)
+	opts, _ := resolveClientOptions()
 	return opts.APIURL
 }
 
 // GetWorkspaceID resolves the workspace ID from flag → env → profile.
 func GetWorkspaceID() string {
-	opts, _ := resolveClientOptions(false)
+	opts, _ := resolveClientOptions()
 	return opts.WorkspaceID
 }
 
@@ -155,17 +148,17 @@ func MustGetClient() *client.Client {
 // getClient is the non-exiting sibling of MustGetClient: it returns an error
 // instead of calling os.Exit, so request handlers can't crash.
 func getClient() (*client.Client, error) {
-	opts, err := resolveClientOptions(true)
+	opts, err := resolveClientOptions()
 	if err != nil {
 		return nil, err
 	}
-	if opts.APIKey == "" && opts.OAuthAccessToken == "" {
+	if !opts.HasAuth() {
 		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts), nil
 }
 
-func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
+func resolveClientOptions() (client.Options, error) {
 	opts := client.Options{APIURL: lsconfig.DefaultAPIURL}
 
 	cfg, err := lsconfig.Load()
@@ -222,21 +215,10 @@ func resolveClientOptions(refreshOAuth bool) (client.Options, error) {
 			fmt.Fprintln(os.Stderr, "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
 		}
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
-	case hasProfile && (profile.AccessToken() != "" || (refreshOAuth && profile.OAuth.RefreshToken != "")):
-		if refreshOAuth && profile.OAuth.RefreshToken != "" &&
-			(profile.AccessToken() == "" || profile.TokenExpiresSoon(time.Now(), time.Minute)) {
-			token, err := refreshProfileToken(context.Background(), opts.APIURL, profile.OAuth.Issuer, profile.OAuth.RefreshToken)
-			if err != nil {
-				return opts, fmt.Errorf("refreshing OAuth token for profile %q: %w; run 'langsmith auth login --profile %s' to reauthenticate", profileName, err, profileName)
-			}
-			applyTokenResponse(&profile, token, time.Now())
-			cfg.Profiles[profileName] = profile
-			if err := cfg.Save(); err != nil {
-				return opts, fmt.Errorf("saving refreshed OAuth token: %w", err)
-			}
-		}
+	case hasProfile && (profile.AccessToken() != "" || profile.OAuth.RefreshToken != ""):
+		// The SDK refreshes the profile's OAuth token on each request, under a
+		// lock shared by every process using this config.
 		opts.ProfileName = profileName
-		opts.OAuthAccessToken = profile.AccessToken()
 	case hasProfile && profile.APIKey != "":
 		opts.APIKey = profile.APIKey
 		// Route the resolved profile through the SDK (WithProfile) so an explicit

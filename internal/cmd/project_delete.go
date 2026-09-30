@@ -40,11 +40,13 @@ func newProjectDeleteCmd() *cobra.Command {
 				return err
 			}
 
-			if _, err := c.SDK.Sessions.Delete(ctx, id); err != nil {
+			if err := c.SDK.Sessions.Delete(ctx, id); err != nil {
 				return fmt.Errorf("deleting tracing project %s: %w", id, err)
 			}
+			// The API accepts the delete (202) and removes the project and
+			// its traces in the background, so it is not gone yet.
 			return output.OutputJSON(map[string]any{
-				"status": "deleted",
+				"status": "deleting",
 				"id":     project.ID,
 				"name":   project.Name,
 			}, "")

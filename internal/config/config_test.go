@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 )
 
 func TestLoadFromMissingFile(t *testing.T) {
@@ -145,19 +144,6 @@ func TestResolveProfile(t *testing.T) {
 	name, profile, ok = cfg.ResolveProfile("", "")
 	if !ok || name != "current" || profile.APIKey != "current-key" {
 		t.Fatalf("expected current profile, got name=%q profile=%+v ok=%v", name, profile, ok)
-	}
-}
-
-func TestTokenExpiresSoon(t *testing.T) {
-	now := time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC)
-	profile := Profile{OAuth: OAuth{ExpiresAt: now.Add(30 * time.Second).Format(time.RFC3339)}}
-	if !profile.TokenExpiresSoon(now, time.Minute) {
-		t.Fatalf("expected token to expire soon")
-	}
-
-	profile.OAuth.ExpiresAt = now.Add(10 * time.Minute).Format(time.RFC3339)
-	if profile.TokenExpiresSoon(now, time.Minute) {
-		t.Fatalf("expected token not to expire soon")
 	}
 }
 

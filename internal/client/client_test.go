@@ -135,8 +135,8 @@ func TestNewWithOptions_CreatesOAuthClient(t *testing.T) {
 	if c == nil || c.SDK == nil {
 		t.Fatal("expected non-nil client and SDK")
 	}
-	if c.OAuthAccessToken() != "test-access-token" {
-		t.Fatalf("unexpected OAuth access token: %q", c.OAuthAccessToken())
+	if c.oauthAccessToken != "test-access-token" {
+		t.Fatalf("unexpected OAuth access token: %q", c.oauthAccessToken)
 	}
 	if c.APIKey() != "" {
 		t.Fatalf("expected empty API key, got %q", c.APIKey())
@@ -350,6 +350,34 @@ func TestRawGet_HTTPErrorStatus(t *testing.T) {
 				t.Errorf("IsConflict(%v) = %t", err, got)
 			}
 		})
+	}
+}
+
+// Authenticated raw requests go through the SDK; they must still return the
+// raw response for any status and make a single attempt.
+func TestRawDo_ReturnsNonJSONErrorResponseWithoutRetrying(t *testing.T) {
+	var attempts int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.Header.Get("X-API-Key") != "key" || r.Header.Get("X-Extra") != "yes" {
+			t.Errorf("expected API key and extra header, got %v", r.Header)
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("<html>slow down</html>"))
+	}))
+	defer ts.Close()
+
+	status, _, headers, body, err := New("key", ts.URL).RawDo(context.Background(), http.MethodGet, "/api/v1/limited", nil, http.Header{"X-Extra": {"yes"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusTooManyRequests || string(body) != "<html>slow down</html>" || headers.Get("Content-Type") != "text/html" {
+		t.Fatalf("unexpected response: status=%d body=%q headers=%v", status, body, headers)
+	}
+	if attempts != 1 {
+		t.Fatalf("expected one attempt, got %d", attempts)
 	}
 }
 
