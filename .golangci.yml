@@ -1,3 +1,9 @@
 linters:
   enable:
     - gofmt
+
+issues:
+  # Generated from the API definition and replaced by sync PRs; lint the
+  # generator's input instead of its output.
+  exclude-dirs:
+    - internal/generated
