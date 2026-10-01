@@ -1,5 +1,5 @@
-# Tests for `langsmith prompt-webhooks`, run by langsmith-cli against its
-# generated commands. See smith-sdks/cli/README.md for the format.
+# Tests for `langsmith prompt-webhooks`. Contract cases run against a fake API;
+# the lifecycle runs against a live API with -tags=integration.
 resource: prompt-webhooks
 
 contract:
