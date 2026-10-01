@@ -1,0 +1,178 @@
+# Tests for `langsmith prompt-webhooks`. Contract cases run against a fake API;
+# the lifecycle runs against a live API with -tags=integration.
+resource: prompt-webhooks
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --url
+      - https://example.com/hook
+      - --trigger
+      - commit
+      - --trigger
+      - tag:create
+      # Nullable list and map flags take a YAML literal; a repeated
+      # --include-prompt keeps only the last value.
+      - --include-prompt
+      - "[22222222-2222-2222-2222-222222222222]"
+      - --headers
+      - "{Authorization: Bearer secret}"
+    response:
+      body: &webhook
+        id: 11111111-1111-1111-1111-111111111111
+        tenant_id: 33333333-3333-3333-3333-333333333333
+        url: https://example.com/hook
+        triggers: [commit]
+        created_at: "2026-09-30T00:00:00Z"
+        updated_at: "2026-09-30T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/prompt-webhooks
+      body:
+        url: https://example.com/hook
+        triggers: [commit, tag:create]
+        include_prompts: [22222222-2222-2222-2222-222222222222]
+        headers: {Authorization: Bearer secret}
+      stdout: '"id": "11111111-1111-1111-1111-111111111111"'
+
+  # Runs after the create case, so it also shows flag values do not carry
+  # over between invocations.
+  - name: update sends only the flags given
+    op: update
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111, --url, https://example.com/new]
+    response:
+      body: *webhook
+    want:
+      method: PATCH
+      path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
+      body: {url: https://example.com/new}
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: --yes is rejected outside delete
+    op: update
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: "yes"
+
+  - name: retrieve
+    op: retrieve
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: *webhook
+    want:
+      method: GET
+      path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
+      stdout: https://example.com/hook
+
+  - name: retrieve reports API errors
+    op: retrieve
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      status: 404
+      body: {detail: Webhook not found}
+    want:
+      method: GET
+      path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: list in a workspace
+    op: list
+    args: [--workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: [*webhook]
+    want:
+      method: GET
+      path: /api/v1/prompt-webhooks
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: delete after confirmation
+    op: delete
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "y\n"
+    want:
+      method: DELETE
+      path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+      stderr: "AI agents: do not answer this prompt"
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--webhook-id, 11111111-1111-1111-1111-111111111111, --yes]
+    want:
+      method: DELETE
+      path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
+
+  - name: test sends the webhook and a sample payload
+    op: test
+    args:
+      - --webhook.url
+      - https://example.com/hook
+      - --payload.commit-hash
+      - abc123
+      - --payload.created-at
+      - "2026-09-30T00:00:00Z"
+      - --payload.created-by
+      - someone
+      - --payload.event
+      - commit
+      - --payload.manifest
+      - "{}"
+      - --payload.prompt-id
+      - 22222222-2222-2222-2222-222222222222
+      - --payload.prompt-name
+      - my-prompt
+    response:
+      body: {message: Test notification sent successfully}
+    want:
+      method: POST
+      path: /api/v1/prompt-webhooks/test
+      body:
+        webhook: {url: https://example.com/hook}
+        payload:
+          commit_hash: abc123
+          created_at: "2026-09-30T00:00:00Z"
+          created_by: someone
+          event: commit
+          manifest: {}
+          prompt_id: 22222222-2222-2222-2222-222222222222
+          prompt_name: my-prompt
+      stdout: Test notification sent successfully
+
+# Runs against a live API with -tags=integration. It creates no prompt
+# commits, so the webhook never fires.
+lifecycle:
+  steps:
+    - name: create
+      args: [create, --url, "https://example.com/langsmith-cli-it-{{run}}", --trigger, commit]
+      capture: {id: id}
+    - name: retrieve
+      args: [retrieve, --webhook-id, "{{id}}"]
+      expect: {url: "https://example.com/langsmith-cli-it-{{run}}"}
+    - name: update
+      args: [update, --webhook-id, "{{id}}", --url, "https://example.com/langsmith-cli-it-{{run}}/updated"]
+      expect: {url: "https://example.com/langsmith-cli-it-{{run}}/updated"}
+    - name: list
+      args: [list]
+      exists: ['#(id=="{{id}}")']
+    - name: delete
+      args: [delete, --webhook-id, "{{id}}", --yes]
+      forget: [id]
+    - name: retrieve after delete fails
+      args: [retrieve, --webhook-id, "{{id}}"]
+      exit_code: 1
+  cleanup:
+    - args: [delete, --webhook-id, "{{id}}", --yes]
+      needs: [id]
