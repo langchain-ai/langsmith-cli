@@ -27,9 +27,8 @@ var globalFlagRenames = map[string]string{
 	"--workspace-id": "--tenant-id",
 }
 
-// generatedResources returns the resource commands in the generated tree.
-// generated-resources.txt at the repository root selects which resources are
-// generated into internal/generated.
+// generatedResources returns the resource commands in the generated tree,
+// which contains only the resources exposed by the generator's configuration.
 func generatedResources() []*cli.Command {
 	var resources []*cli.Command
 	for _, c := range generated.Command.Commands {

@@ -4,7 +4,8 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/tidwall/gjson"
 )
 
 var (
@@ -67,11 +70,77 @@ func runGeneratedLive(t *testing.T, args ...string) (string, int) {
 	return stdout.String(), code
 }
 
-func decodeLive[T any](t *testing.T, stdout string) T {
-	t.Helper()
-	var v T
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+// TestGeneratedLifecycleIntegration runs each generated resource's lifecycle
+// steps against the live API.
+func TestGeneratedLifecycleIntegration(t *testing.T) {
+	requireIntegrationEnv(t)
+	for name, file := range loadGeneratedTests(t) {
+		if len(file.Lifecycle.Steps) == 0 {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			runGeneratedLifecycle(t, name, file.Lifecycle)
+		})
 	}
-	return v
+}
+
+func runGeneratedLifecycle(t *testing.T, resource string, lifecycle generatedLifecycle) {
+	run := make([]byte, 4)
+	_, _ = rand.Read(run)
+	vars := map[string]string{"run": hex.EncodeToString(run)}
+	live := map[string]bool{}
+	expand := func(s string) string {
+		for name, value := range vars {
+			s = strings.ReplaceAll(s, "{{"+name+"}}", value)
+		}
+		return s
+	}
+	command := func(step generatedLifecycleStep) []string {
+		args := []string{resource}
+		for _, arg := range step.Args {
+			args = append(args, expand(arg))
+		}
+		return args
+	}
+
+	t.Cleanup(func() {
+		for _, step := range lifecycle.Cleanup {
+			ready := true
+			for _, name := range step.Needs {
+				ready = ready && live[name]
+			}
+			if ready {
+				runGeneratedLive(t, command(step)...)
+			}
+		}
+	})
+
+	for _, step := range lifecycle.Steps {
+		args := command(step)
+		stdout, code := runGeneratedLive(t, args...)
+		if code != step.ExitCode {
+			t.Fatalf("%s: langsmith %s exited %d, want %d", step.Name, strings.Join(args, " "), code, step.ExitCode)
+		}
+		for name, path := range step.Capture {
+			value := gjson.Get(stdout, path)
+			if !value.Exists() {
+				t.Fatalf("%s: output has no %q to capture\n%s", step.Name, path, stdout)
+			}
+			vars[name] = value.String()
+			live[name] = true
+		}
+		for path, want := range step.Expect {
+			if got := gjson.Get(stdout, expand(path)).String(); got != expand(want) {
+				t.Fatalf("%s: %s = %q, want %q", step.Name, path, got, expand(want))
+			}
+		}
+		for _, path := range step.Exists {
+			if !gjson.Get(stdout, expand(path)).Exists() {
+				t.Fatalf("%s: output has nothing at %q\n%s", step.Name, expand(path), stdout)
+			}
+		}
+		for _, name := range step.Forget {
+			live[name] = false
+		}
+	}
 }
