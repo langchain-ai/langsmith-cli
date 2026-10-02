@@ -20,6 +20,18 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # A release must use a released langsmith-go. Generated commands can be
+      # merged while go.mod points at an unreleased commit (a pseudo-version);
+      # releasing then would ship SDK code that has no SDK release.
+      - name: Require a released langsmith-go
+        run: |
+          version=$(go list -m -f '{{.Version}}' github.com/langchain-ai/langsmith-go)
+          if [[ "$version" =~ [0-9]{14}-[0-9a-f]{12}$ ]]; then
+            echo "::error::go.mod uses langsmith-go $version, an unreleased commit. Release langsmith-go, update go.mod to that tag, then tag the CLI again."
+            exit 1
+          fi
+          echo "langsmith-go $version"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
