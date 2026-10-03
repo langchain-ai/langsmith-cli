@@ -19,73 +19,86 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 	"github.com/spf13/cobra"
 )
 
+type gatewayExecInput struct {
+	Endpoint string
+}
+
 func newGatewayCmd() *cobra.Command {
-	group := &cobra.Command{Use: "gateway", Short: "Run clients through LangSmith Gateway"}
-	var endpoint string
-	run := &cobra.Command{
-		Use:   "exec [--gateway-url URL] -- command [args...]",
-		Short: "Run a command with a local, automatically authenticated gateway proxy",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := getClient()
-			if err != nil {
-				return err
+	return structured.Parent{Use: "gateway", Short: "Run clients through LangSmith Gateway", Children: []func() *cobra.Command{gatewayExecCommand.Cobra}}.Cobra()
+}
+
+var gatewayExecCommand = structured.Command[*gatewayExecInput]{
+	Use:   "exec [--gateway-url URL] -- command [args...]",
+	Short: "Run a command with a local, automatically authenticated gateway proxy",
+	Args:  cobra.MinimumNArgs(1),
+	Input: func(cmd *cobra.Command) *gatewayExecInput {
+		in := &gatewayExecInput{}
+		cmd.Flags().StringVar(&in.Endpoint, "gateway-url", "", "Gateway API base URL, including /v1; inferred from the LangSmith endpoint when omitted")
+		return in
+	},
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *gatewayExecInput, args []string) (any, error) {
+		c, err := cmdutil.GetClient(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if in.Endpoint == "" {
+			opts, resolveErr := cmdutil.ResolveClientOptions(cmd)
+			if resolveErr != nil {
+				return nil, resolveErr
 			}
-			if endpoint == "" {
-				endpoint, err = gatewayURL(GetAPIURL())
+			in.Endpoint, err = gatewayURL(opts.APIURL)
+		}
+		if err != nil {
+			return nil, err
+		}
+		target, err := url.Parse(in.Endpoint)
+		if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" || (target.Scheme != "https" && !(target.Scheme == "http" && (target.Hostname() == "localhost" || net.ParseIP(target.Hostname()).IsLoopback()))) {
+			return nil, fmt.Errorf("gateway URL must be HTTPS (or HTTP on loopback), without credentials, query, or fragment")
+		}
+		if _, err := c.SDK.AuthHeaders(ctx); err != nil {
+			return nil, err
+		}
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return nil, err
+		}
+		token := hex.EncodeToString(secret)
+		proxy := gatewayProxy(target, token, func(ctx context.Context) (http.Header, error) { return c.SDK.AuthHeaders(ctx) })
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		server := &http.Server{Handler: proxy, ReadHeaderTimeout: 10 * time.Second}
+		defer server.Close()
+		go func() { _ = server.Serve(listener) }()
+		base := "http://" + listener.Addr().String() + "/v1"
+		childArgs := gatewayChildArgs(args, base)
+		child := exec.CommandContext(ctx, childArgs[0], childArgs[1:]...)
+		child.Env = gatewayChildEnv(os.Environ(), base, token)
+		child.Stdin, child.Stdout, child.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(signals)
+		if err := child.Start(); err != nil {
+			return nil, err
+		}
+		done := make(chan error, 1)
+		go func() { done <- child.Wait() }()
+		for {
+			select {
+			case err := <-done:
+				return nil, err
+			case sig := <-signals:
+				_ = child.Process.Signal(sig)
 			}
-			if err != nil {
-				return err
-			}
-			target, err := url.Parse(endpoint)
-			if err != nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" || (target.Scheme != "https" && !(target.Scheme == "http" && (target.Hostname() == "localhost" || net.ParseIP(target.Hostname()).IsLoopback()))) {
-				return fmt.Errorf("gateway URL must be HTTPS (or HTTP on loopback), without credentials, query, or fragment")
-			}
-			if _, err := c.SDK.AuthHeaders(cmd.Context()); err != nil {
-				return err
-			}
-			secret := make([]byte, 32)
-			if _, err := rand.Read(secret); err != nil {
-				return err
-			}
-			token := hex.EncodeToString(secret)
-			proxy := gatewayProxy(target, token, func(ctx context.Context) (http.Header, error) { return c.SDK.AuthHeaders(ctx) })
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				return err
-			}
-			server := &http.Server{Handler: proxy, ReadHeaderTimeout: 10 * time.Second}
-			defer server.Close()
-			go func() { _ = server.Serve(listener) }()
-			base := "http://" + listener.Addr().String() + "/v1"
-			childArgs := gatewayChildArgs(args, base)
-			child := exec.CommandContext(cmd.Context(), childArgs[0], childArgs[1:]...)
-			child.Env = gatewayChildEnv(os.Environ(), base, token)
-			child.Stdin, child.Stdout, child.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
-			signals := make(chan os.Signal, 1)
-			signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-			defer signal.Stop(signals)
-			if err := child.Start(); err != nil {
-				return err
-			}
-			done := make(chan error, 1)
-			go func() { done <- child.Wait() }()
-			for {
-				select {
-				case err := <-done:
-					return err
-				case sig := <-signals:
-					_ = child.Process.Signal(sig)
-				}
-			}
-		},
-	}
-	run.Flags().StringVar(&endpoint, "gateway-url", "", "Gateway API base URL, including /v1; inferred from the LangSmith endpoint when omitted")
-	group.AddCommand(run)
-	return group
+		}
+	},
 }
 
 func gatewayURL(apiURL string) (string, error) {
