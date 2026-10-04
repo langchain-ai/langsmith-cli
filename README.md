@@ -84,6 +84,31 @@ langsmith dataset list
 langsmith experiment list --dataset my-eval-set
 ```
 
+## Gateway clients
+
+Run Codex through a local proxy authenticated with your active LangSmith profile:
+
+```bash
+langsmith auth login
+langsmith gateway exec -- codex
+langsmith --profile prod gateway exec -- codex exec "Explain this repository"
+langsmith gateway exec --gateway-url https://gateway.example.com/v1 -- codex
+```
+
+The proxy binds to a random loopback port and resolves authentication through the
+SDK on every request, refreshing expired OAuth tokens. Streaming responses pass
+through without buffering. The child receives a random local credential rather
+than your LangSmith credential; the proxy closes when the child exits. Codex gets
+a temporary Responses API provider via command-line overrides; saved configuration
+is unchanged. Select a gateway-supported model with Codex's `--model` flag.
+
+Other commands receive `OPENAI_BASE_URL` and `OPENAI_API_KEY` in their environment
+and must honor those variables. Known cloud endpoints infer the corresponding
+gateway URL; other deployments require `--gateway-url`, including the API base
+path (normally `/v1`). API-key profiles also work, but cannot refresh. The child
+still runs as your user and can access your saved profile files; this is not a
+sandbox. Responses-over-WebSocket is disabled for the Codex provider.
+
 ## Product feedback
 
 Submit feedback about the CLI directly from the terminal:
