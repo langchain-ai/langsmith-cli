@@ -441,28 +441,18 @@ func newEvaluatorUploadCmd() *cobra.Command {
 
 			// Prepare the new evaluator before touching any existing one. If this is
 			// a replacement, the old evaluator stays in place until the new version is ready.
-			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			existing, err := findRuleForReplace(ctx, c, name, evaluatorTarget{datasetID: datasetID, projectID: projectID}, replace, yes)
 			if err != nil {
-				ExitErrorf("checking existing evaluators: %v", err)
-			}
-
-			existing := findEvaluator(*rules, name, datasetID, projectID)
-			if existing != nil {
-				if !replace {
-					return fmt.Errorf("Evaluator '%s' already exists (use --replace to overwrite)", name)
+				if err.Error() == "aborted" {
+					ExitError("aborted")
 				}
-				if !yes {
-					fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
-					var confirm string
-					_, _ = fmt.Scanln(&confirm)
-					if strings.ToLower(confirm) != "y" {
-						ExitError("aborted")
-					}
-				}
+				return err
 			}
 
 			var result map[string]any
 			if existing != nil {
+				// --name may be the evaluator name; keep the rule's own name.
+				payload["display_name"] = existing.DisplayName
 				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing evaluator: %v", err)
 				}
@@ -484,7 +474,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Rule name (required); --replace matches an existing rule by this name, not by evaluator name")
+	cmd.Flags().StringVar(&name, "name", "", "Name for a new rule and evaluator (required); --replace matches an existing rule on the target by rule name or evaluator name")
 	cmd.Flags().StringVar(&funcName, "function", "", "Name of the function to upload (required)")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
@@ -492,7 +482,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
 	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
-	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the rule with the same --name on this target")
+	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the evaluator matching --name on this target; other projects and datasets using it change too")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt when replacing")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("function")
@@ -550,19 +540,18 @@ Examples:
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
-			existing, err := findLLMEvaluatorForCreate(ctx, c, name, target, replace, yes)
+			existing, err := findRuleForReplace(ctx, c, name, target, replace, yes)
 			if err != nil {
 				if err.Error() == "aborted" {
 					ExitError("aborted")
 				}
-				if existing != nil {
-					return err
-				}
-				ExitErrorf("%v", err)
+				return err
 			}
 
 			var result map[string]any
 			if existing != nil {
+				// --name may be the evaluator name; keep the rule's own name.
+				payload["display_name"] = existing.DisplayName
 				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing LLM evaluator: %v", err)
 				}
@@ -581,7 +570,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Rule name (required); --replace matches an existing rule by this name, not by evaluator name")
+	cmd.Flags().StringVar(&name, "name", "", "Name for a new rule and evaluator (required); --replace matches an existing rule on the target by rule name or evaluator name")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name")
 	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
@@ -593,7 +582,7 @@ Examples:
 	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")
 	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON (required; copy from UI or GET /runs/rules)")
 	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths (JSON or @file.json)`)
-	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the rule with the same --name on this target")
+	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the evaluator matching --name on this target; other projects and datasets using it change too")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation when replacing")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("model-config")
@@ -734,14 +723,6 @@ func renameJSFunction(source string, funcName string) string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-func findEvaluator(rules []langsmith.Evaluator, name, datasetID, projectID string) *langsmith.Evaluator {
-	matches := findEvaluators(rules, name, datasetID, projectID)
-	if len(matches) == 0 {
-		return nil
-	}
-	return &matches[0]
 }
 
 // findEvaluators returns every rule with this name on the given dataset or project.

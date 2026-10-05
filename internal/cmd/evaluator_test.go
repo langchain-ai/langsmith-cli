@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -310,60 +312,50 @@ func TestRenameJSFunction_AsyncArrowFunction(t *testing.T) {
 	}
 }
 
-// ---------- findEvaluator ----------
+// ---------- findReplaceCandidates ----------
 
-func TestFindEvaluator_MatchByDataset(t *testing.T) {
+func TestFindReplaceCandidates_MatchesTargetOnly(t *testing.T) {
 	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-		{ID: "2", DisplayName: "accuracy", DatasetID: "ds-2"},
+		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1", EvaluatorID: "ev-1"},
+		{ID: "2", DisplayName: "accuracy", DatasetID: "ds-2", EvaluatorID: "ev-1"},
+		{ID: "3", DisplayName: "accuracy", SessionID: "proj-1", EvaluatorID: "ev-1"},
 	}
-	result := findEvaluator(rules, "accuracy", "ds-1", "")
-	if result == nil {
-		t.Fatal("expected match")
+	got := findReplaceCandidates(rules, "accuracy", "ds-1", "")
+	if len(got) != 1 || got[0].ID != "1" {
+		t.Errorf("expected only rule 1 on ds-1, got %v", got)
 	}
-	if result.ID != "1" {
-		t.Errorf("expected ID=1, got %q", result.ID)
+	got = findReplaceCandidates(rules, "accuracy", "", "proj-1")
+	if len(got) != 1 || got[0].ID != "3" {
+		t.Errorf("expected only rule 3 on proj-1, got %v", got)
+	}
+	if got := findReplaceCandidates(rules, "accuracy", "ds-other", ""); len(got) != 0 {
+		t.Errorf("expected no match on another target, got %v", got)
+	}
+	if got := findReplaceCandidates(nil, "accuracy", "ds-1", ""); len(got) != 0 {
+		t.Errorf("expected no match for empty rules, got %v", got)
 	}
 }
 
-func TestFindEvaluator_MatchByProject(t *testing.T) {
+func TestFindReplaceCandidates_MatchesRenamedEvaluator(t *testing.T) {
+	rules := []langsmith.Evaluator{
+		{ID: "1", DisplayName: "test", EvaluatorName: "ready_for_task_grade", EvaluatorID: "ev-1", SessionID: "proj-1"},
+	}
+	for _, name := range []string{"test", "ready_for_task_grade"} {
+		if got := findReplaceCandidates(rules, name, "", "proj-1"); len(got) != 1 {
+			t.Errorf("expected %q to match the rule, got %v", name, got)
+		}
+	}
+	if got := findReplaceCandidates(rules, "other", "", "proj-1"); len(got) != 0 {
+		t.Errorf("expected no match, got %v", got)
+	}
+}
+
+func TestFindReplaceCandidates_SkipsNonEvaluatorRules(t *testing.T) {
 	rules := []langsmith.Evaluator{
 		{ID: "1", DisplayName: "accuracy", SessionID: "proj-1"},
-		{ID: "2", DisplayName: "accuracy", SessionID: "proj-2"},
 	}
-	result := findEvaluator(rules, "accuracy", "", "proj-2")
-	if result == nil {
-		t.Fatal("expected match")
-	}
-	if result.ID != "2" {
-		t.Errorf("expected ID=2, got %q", result.ID)
-	}
-}
-
-func TestFindEvaluator_NoMatch(t *testing.T) {
-	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-	}
-	result := findEvaluator(rules, "different-name", "ds-1", "")
-	if result != nil {
-		t.Error("expected nil for non-matching name")
-	}
-}
-
-func TestFindEvaluator_EmptyRules(t *testing.T) {
-	result := findEvaluator(nil, "accuracy", "ds-1", "")
-	if result != nil {
-		t.Error("expected nil for empty rules")
-	}
-}
-
-func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
-	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-	}
-	result := findEvaluator(rules, "accuracy", "ds-other", "")
-	if result != nil {
-		t.Error("expected nil when target doesn't match")
+	if got := findReplaceCandidates(rules, "accuracy", "", "proj-1"); len(got) != 0 {
+		t.Errorf("expected a rule without an evaluator to be skipped, got %v", got)
 	}
 }
 
@@ -726,6 +718,146 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 	}
 	if result["rule_id"] != "existing-rule" {
 		t.Errorf("expected output rule_id=existing-rule, got %v", result["rule_id"])
+	}
+}
+
+func TestEvaluatorUploadReplaceMatchesEvaluatorName(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(evaluatorFile, []byte("def grade(run, example):\n    return {\"score\": 1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var patchBody map[string]any
+	var posted bool
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
+			}})
+		case r.URL.Path == "/api/v1/runs/rules/"+testRuleID && r.Method == http.MethodPatch:
+			_ = json.NewDecoder(r.Body).Decode(&patchBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": testRuleID, "evaluator_id": testEvaluatorID})
+		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodPost:
+			posted = true
+			http.Error(w, "should replace, not create", http.StatusInternalServerError)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	captureStdout(t, func() {
+		cmd := newEvaluatorUploadCmd()
+		_ = cmd.Flags().Set("name", "ready_for_task_grade")
+		_ = cmd.Flags().Set("function", "grade")
+		_ = cmd.Flags().Set("project-id", testSessionID)
+		_ = cmd.Flags().Set("replace", "true")
+		_ = cmd.Flags().Set("yes", "true")
+		if err := runTestCommand(t, cmd, []string{evaluatorFile}); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	if posted {
+		t.Fatal("expected the evaluator name to match the existing rule instead of creating a new evaluator")
+	}
+	if patchBody == nil {
+		t.Fatal("expected the existing rule to be patched")
+	}
+	if patchBody["display_name"] != "test" {
+		t.Errorf("expected the rule to keep its name, got display_name=%v", patchBody["display_name"])
+	}
+}
+
+func TestEvaluatorUploadRefusesAmbiguousReplace(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(evaluatorFile, []byte("def grade(run, example):\n    return {\"score\": 1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var wrote bool
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+			// One rule is named "accuracy"; another rule's evaluator is named "accuracy".
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": testRuleID, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID, "evaluator_name": "accuracy_v1"},
+				{"id": testRuleID2, "display_name": "other", "session_id": testSessionID, "evaluator_id": testEvaluatorID2, "evaluator_name": "accuracy"},
+			})
+			return
+		}
+		wrote = true
+		http.Error(w, "unexpected write", http.StatusInternalServerError)
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	cmd := newEvaluatorUploadCmd()
+	_ = cmd.Flags().Set("name", "accuracy")
+	_ = cmd.Flags().Set("function", "grade")
+	_ = cmd.Flags().Set("project-id", testSessionID)
+	_ = cmd.Flags().Set("replace", "true")
+	_ = cmd.Flags().Set("yes", "true")
+	err := runTestCommand(t, cmd, []string{evaluatorFile})
+	if err == nil || !strings.Contains(err.Error(), testRuleID) || !strings.Contains(err.Error(), testRuleID2) {
+		t.Fatalf("expected an ambiguity error naming both rules, got %v", err)
+	}
+	if wrote {
+		t.Error("expected no write when the name is ambiguous")
+	}
+}
+
+func TestFindRuleForReplace_PromptNamesOtherTargets(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/runs/rules":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": testRuleID, "display_name": "test", "session_id": testSessionID, "session_name": "vanta-agent",
+				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
+			}})
+		case "/api/v1/platform/evaluators/" + testEvaluatorID:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": testEvaluatorID, "name": "ready_for_task_grade", "type": "code",
+				"run_rules": []map[string]any{
+					{"id": testRuleID, "session_id": testSessionID, "session_name": "vanta-agent"},
+					{"id": testRuleID2, "dataset_id": "ds-1", "dataset_name": "golden-set"},
+				},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	c, err := getClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdinR, stdinW, _ := os.Pipe()
+	_, _ = stdinW.WriteString("n\n")
+	_ = stdinW.Close()
+	stderrR, stderrW, _ := os.Pipe()
+	oldStdin, oldStderr := os.Stdin, os.Stderr
+	os.Stdin, os.Stderr = stdinR, stderrW
+	_, err = findRuleForReplace(context.Background(), c, "ready_for_task_grade", evaluatorTarget{projectID: testSessionID}, true, false)
+	os.Stdin, os.Stderr = oldStdin, oldStderr
+	_ = stderrW.Close()
+	prompt, _ := io.ReadAll(stderrR)
+
+	if err == nil || err.Error() != "aborted" {
+		t.Fatalf("expected aborted, got %v", err)
+	}
+	if !strings.Contains(string(prompt), "dataset golden-set") {
+		t.Errorf("expected the prompt to name the other target, got %q", prompt)
+	}
+	if strings.Contains(string(prompt), "vanta-agent;") || strings.Count(string(prompt), "vanta-agent") > 1 {
+		t.Errorf("expected the replaced rule's own target not to be listed as another target, got %q", prompt)
 	}
 }
 

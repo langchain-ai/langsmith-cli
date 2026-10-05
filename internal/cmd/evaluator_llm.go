@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
@@ -144,30 +145,78 @@ func resolveEvaluatorTarget(ctx context.Context, c *client.Client, dataset, proj
 	return target, nil
 }
 
-// Finds an existing evaluator with the same name on this dataset or project.
-// When the evaluator already exists and --replace is not set, returns the existing
-// rule alongside the error so callers can reuse it without another list call.
-func findLLMEvaluatorForCreate(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+// findRuleForReplace finds the evaluator rule on this dataset or project that
+// --name refers to, by rule name or evaluator name. When one exists and
+// --replace is not set, it returns the rule alongside the error so callers can
+// tell "already exists" apart from other failures.
+//
+// Replacing patches the rule, and the backend updates the rule's evaluator in
+// place, so every other project or dataset using that evaluator changes too.
+// The confirmation names them.
+func findRuleForReplace(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
+	rules, err := c.SDK.Evaluators.List(ctx, target.ruleListParams())
 	if err != nil {
 		return nil, fmt.Errorf("checking existing evaluators: %w", err)
 	}
-	existing := findEvaluator(*rules, name, target.datasetID, target.projectID)
-	if existing == nil {
+	matches := findReplaceCandidates(*rules, name, target.datasetID, target.projectID)
+	switch len(matches) {
+	case 0:
 		return nil, nil
+	case 1:
+	default:
+		descs := make([]string, 0, len(matches))
+		for _, r := range matches {
+			descs = append(descs, fmt.Sprintf("rule %q (%s, evaluator %q)", r.DisplayName, r.ID, r.EvaluatorName))
+		}
+		return nil, fmt.Errorf("%q matches %d rules on this target: %s; replace one with 'langsmith evaluator rule delete <rule-id>' and upload again", name, len(matches), strings.Join(descs, ", "))
 	}
+	existing := &matches[0]
 	if !replace {
-		return existing, fmt.Errorf("evaluator %q already exists (use --replace to overwrite)", name)
+		return existing, fmt.Errorf("evaluator %q already exists on this target (use --replace to overwrite)", name)
 	}
-	if !yes {
-		fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
-		var confirm string
-		_, _ = fmt.Scanln(&confirm)
-		if strings.ToLower(confirm) != "y" {
-			return nil, fmt.Errorf("aborted")
+	if yes {
+		return existing, nil
+	}
+
+	prompt := fmt.Sprintf("Replace evaluator %q through rule %q (%s)?", existing.EvaluatorName, existing.DisplayName, ruleTarget(*existing))
+	if existing.EvaluatorID != "" {
+		ev, err := c.SDK.OnlineEvaluators.Get(ctx, existing.EvaluatorID)
+		if err != nil {
+			return nil, fmt.Errorf("fetching evaluator %s: %w", existing.EvaluatorID, err)
+		}
+		others := slices.DeleteFunc(slices.Clone(ev.RunRules), func(r langsmith.OnlineEvaluatorRunRule) bool {
+			return r.ID == existing.ID
+		})
+		if len(others) > 0 {
+			prompt += fmt.Sprintf("\nThis evaluator is also attached to %s; those change too.", ruleTargetsSummary(others))
 		}
 	}
+	fmt.Fprintf(os.Stderr, "%s [y/N] ", prompt)
+	var confirm string
+	_, _ = fmt.Scanln(&confirm)
+	if strings.ToLower(confirm) != "y" {
+		return nil, fmt.Errorf("aborted")
+	}
 	return existing, nil
+}
+
+// findReplaceCandidates returns the evaluator rules on the given dataset or
+// project whose rule name or evaluator name is name. The two differ once an
+// evaluator is renamed, and users see only the evaluator name in the UI.
+func findReplaceCandidates(rules []langsmith.Evaluator, name, datasetID, projectID string) []langsmith.Evaluator {
+	var matches []langsmith.Evaluator
+	for _, r := range rules {
+		if r.DisplayName != name && r.EvaluatorName != name {
+			continue
+		}
+		if !isEvaluatorRule(r) {
+			continue
+		}
+		if (datasetID != "" && r.DatasetID == datasetID) || (projectID != "" && r.SessionID == projectID) {
+			matches = append(matches, r)
+		}
+	}
+	return matches
 }
 
 // Packages prompt, schema, model, and targeting into the create-evaluator request.
