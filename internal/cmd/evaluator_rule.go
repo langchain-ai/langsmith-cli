@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -72,15 +73,23 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 			if evaluatorID != "" {
 				params.EvaluatorID = langsmith.F(evaluatorID)
 			}
-			rules, err := c.SDK.Evaluators.List(ctx, params)
+			resp, err := c.SDK.Evaluators.List(ctx, params)
 			if err != nil {
 				return fmt.Errorf("listing evaluator rules: %w", err)
+			}
+			// The API applies only one of dataset_id, session_id, and evaluator_id,
+			// so the evaluator filter is reapplied when a target is also set.
+			rules := *resp
+			if evaluatorID != "" {
+				rules = slices.DeleteFunc(rules, func(r langsmith.Evaluator) bool {
+					return r.EvaluatorID != evaluatorID
+				})
 			}
 
 			if GetFormat() == "pretty" {
 				columns := []string{"Rule", "Evaluator", "Target", "Sampling Rate", "Enabled", "Rule ID"}
 				var rows [][]string
-				for _, r := range *rules {
+				for _, r := range rules {
 					enabled := "No"
 					if r.IsEnabled {
 						enabled = "Yes"
@@ -93,8 +102,8 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 				output.OutputTable(columns, rows, "Evaluator Rules")
 				return nil
 			}
-			data := make([]map[string]any, 0, len(*rules))
-			for _, r := range *rules {
+			data := make([]map[string]any, 0, len(rules))
+			for _, r := range rules {
 				data = append(data, ruleEntry(r))
 			}
 			return output.OutputJSON(data, outputFile)

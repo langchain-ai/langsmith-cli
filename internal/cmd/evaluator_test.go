@@ -1107,6 +1107,83 @@ func TestEvaluatorRuleList_ShowsRuleAndEvaluatorNames(t *testing.T) {
 	}
 }
 
+func TestEvaluatorGet_DuplicateNamesAlsoPointsToRuleEvaluator(t *testing.T) {
+	const ruleEvaluatorID = "7e590565-6032-4117-8087-659a58ac172d"
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/platform/evaluators":
+			serveEvaluatorPage(w, r, []map[string]any{
+				{"id": testEvaluatorID, "name": "test", "type": "code"},
+				{"id": testEvaluatorID2, "name": "test", "type": "code"},
+			})
+		case "/api/v1/runs/rules":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": testRuleID, "display_name": "test", "evaluator_id": testEvaluatorID, "evaluator_name": "test"},
+				{"id": testRuleID2, "display_name": "test", "evaluator_id": ruleEvaluatorID, "evaluator_name": "ready_for_task_grade"},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	err := runTestCommand(t, newEvaluatorGetCmd(), []string{"test"})
+	if err == nil {
+		t.Fatal("expected an ambiguity error")
+	}
+	msg := err.Error()
+	for _, want := range []string{testEvaluatorID, testEvaluatorID2, "ready_for_task_grade", ruleEvaluatorID} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected error to mention %q, got %v", want, msg)
+		}
+	}
+	if strings.Count(msg, testEvaluatorID) != 1 {
+		t.Errorf("expected evaluators named %q not to be repeated as rule hints, got %v", "test", msg)
+	}
+}
+
+func TestEvaluatorRuleList_EvaluatorFilterWithTarget(t *testing.T) {
+	var evaluatorFilter string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+			evaluatorFilter = r.URL.Query().Get("evaluator_id")
+			// The API applies session_id and ignores evaluator_id when both are set.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": testRuleID, "display_name": "test", "session_id": testSessionID, "evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade"},
+				{"id": testRuleID2, "display_name": "other", "session_id": testSessionID, "evaluator_id": testEvaluatorID2, "evaluator_name": "other"},
+			})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorRuleListCmd()
+		_ = cmd.Flags().Set("project-id", testSessionID)
+		_ = cmd.Flags().Set("evaluator-id", testEvaluatorID)
+		if err := runTestCommand(t, cmd, nil); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	if evaluatorFilter != testEvaluatorID {
+		t.Errorf("expected evaluator_id filter %s, got %q", testEvaluatorID, evaluatorFilter)
+	}
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if len(result) != 1 || result[0]["rule_id"] != testRuleID {
+		t.Fatalf("expected only rule %s, got %v", testRuleID, result)
+	}
+}
+
 func TestEvaluatorRuleGet_ShowsCodeEvaluator(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/runs/rules" && r.URL.Query().Get("id") == testRuleID {

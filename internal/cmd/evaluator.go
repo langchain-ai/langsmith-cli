@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -248,20 +249,33 @@ func resolveOnlineEvaluatorID(ctx context.Context, c *client.Client, nameOrID st
 	case 1:
 		return ids[0], nil
 	case 0:
-		return "", evaluatorNotFoundError(ctx, c, nameOrID)
+		hints := ruleNameHints(ctx, c, nameOrID, nil)
+		if len(hints) == 0 {
+			return "", fmt.Errorf("evaluator %q not found", nameOrID)
+		}
+		return "", fmt.Errorf("no evaluator named %q; that is a rule name, and its rules use evaluator %s", nameOrID, strings.Join(hints, ", "))
 	default:
-		return "", fmt.Errorf("%d evaluators are named %q; pass an ID instead: %s", len(ids), nameOrID, strings.Join(ids, ", "))
+		msg := fmt.Sprintf("%d evaluators are named %q; pass an ID instead: %s", len(ids), nameOrID, strings.Join(ids, ", "))
+		if hints := ruleNameHints(ctx, c, nameOrID, ids); len(hints) > 0 {
+			msg += fmt.Sprintf(". %q is also a rule name, and its rules use evaluator %s", nameOrID, strings.Join(hints, ", "))
+		}
+		return "", errors.New(msg)
 	}
 }
 
-// evaluatorNotFoundError points at the evaluator behind a rule when the name
-// given is a rule name, which the UI does not show once the evaluator is renamed.
-func evaluatorNotFoundError(ctx context.Context, c *client.Client, name string) error {
+// ruleNameHints names the evaluators behind rules called name, skipping
+// excludeIDs. A rule keeps its name when its evaluator is renamed, and the UI
+// shows only evaluator names, so a name taken from rule output may refer to a
+// different evaluator. Lookup failures yield no hints.
+func ruleNameHints(ctx context.Context, c *client.Client, name string, excludeIDs []string) []string {
 	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
 	if err != nil {
-		return fmt.Errorf("evaluator %q not found", name)
+		return nil
 	}
 	seen := map[string]bool{}
+	for _, id := range excludeIDs {
+		seen[id] = true
+	}
 	var hints []string
 	for _, r := range *rules {
 		if r.DisplayName != name || r.EvaluatorID == "" || seen[r.EvaluatorID] {
@@ -270,10 +284,7 @@ func evaluatorNotFoundError(ctx context.Context, c *client.Client, name string) 
 		seen[r.EvaluatorID] = true
 		hints = append(hints, fmt.Sprintf("%q (%s)", r.EvaluatorName, r.EvaluatorID))
 	}
-	if len(hints) == 0 {
-		return fmt.Errorf("evaluator %q not found", name)
-	}
-	return fmt.Errorf("no evaluator named %q; that is a rule name, and its rules use evaluator %s", name, strings.Join(hints, ", "))
+	return hints
 }
 
 func evaluatorEntry(ev langsmith.OnlineEvaluator) map[string]any {
