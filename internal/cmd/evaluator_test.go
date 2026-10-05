@@ -1247,8 +1247,8 @@ func TestEvaluatorRuleDelete_RefusesAmbiguousName(t *testing.T) {
 		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": testRuleID, "display_name": "accuracy", "session_id": testSessionID},
-				{"id": testRuleID2, "display_name": "accuracy", "session_id": testSessionID},
+				{"id": testRuleID, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID},
+				{"id": testRuleID2, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID2},
 			})
 			return
 		}
@@ -1307,6 +1307,81 @@ func TestEvaluatorRuleDelete_DeletesSingleMatch(t *testing.T) {
 	}
 	if result["rule_id"] != testRuleID || result["evaluator_id"] != testEvaluatorID {
 		t.Errorf("unexpected output: %v", result)
+	}
+}
+
+func TestEvaluatorRuleList_HidesNonEvaluatorRulesUnlessAll(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/rules" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": testRuleID, "display_name": "test", "evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade"},
+				{"id": testRuleID2, "display_name": "legacy", "code_evaluators": []map[string]any{{"code": "x", "language": "python"}}},
+				{"id": "1a2b3c4d-0000-4000-8000-000000000001", "display_name": "notify", "webhooks": []map[string]any{{"url": "https://example.com"}}},
+			})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	listNames := func(all bool) []string {
+		out := captureStdout(t, func() {
+			cmd := newEvaluatorRuleListCmd()
+			if all {
+				_ = cmd.Flags().Set("all", "true")
+			}
+			if err := runTestCommand(t, cmd, nil); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+		var result []map[string]any
+		if err := json.Unmarshal([]byte(out), &result); err != nil {
+			t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+		}
+		var names []string
+		for _, r := range result {
+			names = append(names, r["rule_name"].(string))
+		}
+		return names
+	}
+
+	if got := strings.Join(listNames(false), ","); got != "test,legacy" {
+		t.Errorf("expected evaluator and legacy inline rules only, got %s", got)
+	}
+	if got := strings.Join(listNames(true), ","); got != "test,legacy,notify" {
+		t.Errorf("expected --all to include the webhook rule, got %s", got)
+	}
+}
+
+func TestEvaluatorRuleDelete_RefusesNonEvaluatorRule(t *testing.T) {
+	var sawDelete bool
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			sawDelete = true
+		}
+		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": testRuleID, "display_name": "notify", "session_id": testSessionID, "webhooks": []map[string]any{{"url": "https://example.com"}}},
+			})
+			return
+		}
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	cmd := newEvaluatorRuleDeleteCmd()
+	_ = cmd.Flags().Set("yes", "true")
+	err := runTestCommand(t, cmd, []string{testRuleID})
+	if err == nil || !strings.Contains(err.Error(), "not an evaluator rule") {
+		t.Fatalf("expected refusal for a webhook rule, got %v", err)
+	}
+	if sawDelete {
+		t.Error("expected no DELETE request")
 	}
 }
 

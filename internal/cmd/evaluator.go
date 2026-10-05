@@ -484,7 +484,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Display name for the evaluator (required)")
+	cmd.Flags().StringVar(&name, "name", "", "Rule name (required); --replace matches an existing rule by this name, not by evaluator name")
 	cmd.Flags().StringVar(&funcName, "function", "", "Name of the function to upload (required)")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name (offline evaluator)")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
@@ -492,7 +492,7 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
 	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
-	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
+	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the rule with the same --name on this target")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt when replacing")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("function")
@@ -581,7 +581,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Display name (required)")
+	cmd.Flags().StringVar(&name, "name", "", "Rule name (required); --replace matches an existing rule by this name, not by evaluator name")
 	cmd.Flags().StringVar(&targetDataset, "dataset", "", "Target dataset name")
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name")
 	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
@@ -593,7 +593,7 @@ Examples:
 	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")
 	cmd.Flags().StringVar(&modelConfigPath, "model-config", "", "Serialized LangChain model JSON (required; copy from UI or GET /runs/rules)")
 	cmd.Flags().StringVar(&variableMapping, "variable-mapping", "", `Map prompt vars to trace paths (JSON or @file.json)`)
-	cmd.Flags().BoolVar(&replace, "replace", false, "Replace existing evaluator with same name")
+	cmd.Flags().BoolVar(&replace, "replace", false, "Replace the rule with the same --name on this target")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation when replacing")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("model-config")

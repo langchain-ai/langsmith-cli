@@ -45,12 +45,15 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 		projectID   string
 		dataset     string
 		evaluatorID string
+		all         bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List evaluator rules, optionally for one project, dataset, or evaluator",
-		Args:  cobra.NoArgs,
+		Long: `List evaluator rules, optionally for one project, dataset, or evaluator.
+Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is set.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if evaluatorID != "" {
 				if _, err := uuid.Parse(evaluatorID); err != nil {
@@ -79,12 +82,12 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 			}
 			// The API applies only one of dataset_id, session_id, and evaluator_id,
 			// so the evaluator filter is reapplied when a target is also set.
-			rules := *resp
-			if evaluatorID != "" {
-				rules = slices.DeleteFunc(rules, func(r langsmith.Evaluator) bool {
-					return r.EvaluatorID != evaluatorID
-				})
-			}
+			rules := slices.DeleteFunc(*resp, func(r langsmith.Evaluator) bool {
+				if evaluatorID != "" && r.EvaluatorID != evaluatorID {
+					return true
+				}
+				return !all && !isEvaluatorRule(r)
+			})
 
 			if GetFormat() == "pretty" {
 				columns := []string{"Rule", "Evaluator", "Target", "Sampling Rate", "Enabled", "Rule ID"}
@@ -114,6 +117,7 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Only rules on this dataset (name or ID)")
 	cmd.Flags().StringVar(&evaluatorID, "evaluator-id", "", "Only rules that use this evaluator")
+	cmd.Flags().BoolVar(&all, "all", false, "Include webhook, add-to-dataset, and annotation-queue rules")
 	return cmd
 }
 
@@ -185,6 +189,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if !isEvaluatorRule(*rule) {
+				return fmt.Errorf("rule %s is not an evaluator rule (webhook, add-to-dataset, or annotation-queue rule); not deleted", rule.ID)
+			}
 
 			if !yes {
 				if err := confirmDelete(cmd, deleteConfirmation{
@@ -236,7 +243,9 @@ func findRuleByName(ctx context.Context, c *client.Client, name, project, projec
 	if err != nil {
 		return nil, fmt.Errorf("listing evaluator rules: %w", err)
 	}
-	matches := findEvaluators(*rules, name, target.datasetID, target.projectID)
+	matches := slices.DeleteFunc(findEvaluators(*rules, name, target.datasetID, target.projectID), func(r langsmith.Evaluator) bool {
+		return !isEvaluatorRule(r)
+	})
 	switch len(matches) {
 	case 1:
 		return &matches[0], nil
@@ -249,6 +258,13 @@ func findRuleByName(ctx context.Context, c *client.Client, name, project, projec
 		}
 		return nil, fmt.Errorf("%d rules are named %q on that target; pass a rule ID instead: %s", len(matches), name, strings.Join(ids, ", "))
 	}
+}
+
+// isEvaluatorRule reports whether a rule runs an evaluator. The rules API also
+// holds webhook, add-to-dataset, and annotation-queue rules, and older rules
+// embed their evaluator inline instead of setting evaluator_id.
+func isEvaluatorRule(r langsmith.Evaluator) bool {
+	return r.EvaluatorID != "" || len(r.Evaluators) > 0 || len(r.CodeEvaluators) > 0
 }
 
 func ruleEntry(r langsmith.Evaluator) map[string]any {
