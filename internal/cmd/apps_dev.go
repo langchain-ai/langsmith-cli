@@ -44,6 +44,8 @@ var appsDevLogMode = logErrors
 func newAppsDevCmd() *cobra.Command {
 	var (
 		entrypoint string
+		threadID   string
+		projectID  string
 		noOpen     bool
 		quiet      bool
 		verbose    bool
@@ -63,7 +65,12 @@ Rebuilds automatically on save when package.json has a "watch" script.
 The app's failed API calls and errors stream to this terminal so problems
 show up without opening browser devtools. Use --verbose to also see every
 successful call and all console output, or --quiet to silence app output
-entirely (build output stays).`,
+entirely (build output stays).
+
+A "thread" context app is embedded in a project's thread view on LangSmith and
+receives { threadId, projectId } as render()'s data. Pass --thread-id and
+--project-id to supply that context locally; without them the app renders with
+empty context.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if quiet && verbose {
 				return fmt.Errorf("--quiet and --verbose cannot be used together")
@@ -90,19 +97,39 @@ entirely (build output stays).`,
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			return runAppsDev(ctx, c, dir, entrypoint, noOpen)
+			return runAppsDev(ctx, c, dir, entrypoint, devContext{threadID: threadID, projectID: projectID}, noOpen)
 		},
 	}
 
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
+	cmd.Flags().StringVar(&threadID, "thread-id", "", "Thread ID handed to a \"thread\" context app as render()'s data.threadId")
+	cmd.Flags().StringVar(&projectID, "project-id", "", "Tracing project (session) ID handed to a \"thread\" context app as render()'s data.projectId")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Print the local URL instead of opening a browser")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "Silence the app's console output and API call logging (build output still shows)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "Also log successful API calls and all console output, not just errors")
 	return cmd
 }
 
-func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, noOpen bool) error {
-	srv, ln, previewURL, err := prepareAppsDevServer(c, dir, entrypoint)
+type devContext struct {
+	threadID  string
+	projectID string
+}
+
+func (d devContext) renderData() map[string]any {
+	data := map[string]any{}
+	if d.threadID != "" {
+		data["threadId"] = d.threadID
+	}
+	if d.projectID != "" {
+		data["projectId"] = d.projectID
+	}
+	return data
+}
+
+func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, devCtx devContext, noOpen bool) error {
+	warnDevContextMismatch(dir, devCtx)
+
+	srv, ln, previewURL, err := prepareAppsDevServer(c, dir, entrypoint, devCtx)
 	if err != nil {
 		return err
 	}
@@ -147,6 +174,23 @@ func runAppsDev(ctx context.Context, c *client.Client, dir, entrypoint string, n
 		return fmt.Errorf("shutting down local server: %w", err)
 	}
 	return nil
+}
+
+func warnDevContextMismatch(dir string, devCtx devContext) {
+	link, err := readAppLink(dir)
+	if err != nil || link == nil {
+		return
+	}
+	configured := normalizeAppContextType(link.ContextType)
+	hasIDs := devCtx.threadID != "" || devCtx.projectID != ""
+
+	if configured == appContextThread && !hasIDs {
+		fmt.Fprintln(os.Stderr, `note: this app's context type is "thread" but no --thread-id/--project-id given — it will render with empty context`)
+		return
+	}
+	if configured != appContextThread && hasIDs {
+		fmt.Fprintf(os.Stderr, "note: --thread-id/--project-id given, but this app's context type is %q, not \"thread\" — the app may ignore them\n", contextTypeForOutput(configured))
+	}
 }
 
 // startWatchProcess runs package.json's "watch" script tied to ctx. Never
@@ -240,7 +284,7 @@ func resolveDevWorkspaceID(c *client.Client) string {
 // prepareAppsDevServer builds (but does not start) an HTTP server on
 // 127.0.0.1 serving the sandboxed preview ("/"), a rebuild-poll endpoint
 // ("/__ls_dev/mtime"), and the API proxy ("/__ls_dev/call").
-func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.Server, ln net.Listener, previewURL string, err error) {
+func prepareAppsDevServer(c *client.Client, dir, entrypoint string, devCtx devContext) (srv *http.Server, ln net.Listener, previewURL string, err error) {
 	token, err := newDevToken()
 	if err != nil {
 		return nil, nil, "", err
@@ -272,7 +316,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin, devCtx.renderData())))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -556,11 +600,15 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string, renderData map[string]any) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
 	workspaceIDJSON, _ := json.Marshal(workspaceID)
 	webOriginJSON, _ := json.Marshal(webOrigin)
+	if renderData == nil {
+		renderData = map[string]any{}
+	}
+	dataJSON, _ := json.Marshal(renderData)
 
 	inner := strings.NewReplacer(
 		"__FILES_JSON__", escapeForScript(filesJSON),
@@ -572,6 +620,7 @@ func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, 
 		"__LS_DEV_TOKEN__", token,
 		"__LS_WORKSPACE_ID_JSON__", escapeForScript(workspaceIDJSON),
 		"__LS_WEB_ORIGIN_JSON__", escapeForScript(webOriginJSON),
+		"__LS_DATA_JSON__", escapeForScript(dataJSON),
 	).Replace(devHostHTMLTemplate)
 }
 
@@ -670,8 +719,7 @@ const devHostHTMLTemplate = `<!doctype html>
 <script>
 (function() {
   var iframe = document.getElementById('ls-app');
-  // Apps get no host context: the sandbox always receives {} as render data.
-  var data = {};
+  var data = __LS_DATA_JSON__;
 
   function post(msg) {
     iframe.contentWindow.postMessage(msg, '*');

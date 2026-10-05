@@ -77,6 +77,11 @@ same app too.
 			// A link file can exist with no app_id yet (from "apps init").
 			notYetCreated := link == nil || link.AppID == ""
 
+			configuredContext := ""
+			if link != nil {
+				configuredContext = normalizeAppContextType(link.ContextType)
+			}
+
 			c := MustGetClient()
 			ctx := cmd.Context()
 
@@ -105,9 +110,13 @@ same app too.
 			}
 
 			if updated {
+				if err := checkContextTypeImmutable(app, configuredContext); err != nil {
+					return err
+				}
 				if err := writeAppLink(dir, appLink{
-					AppID: app.ID,
-					Name:  app.Name,
+					AppID:       app.ID,
+					Name:        app.Name,
+					ContextType: normalizeAppContextType(app.ContextType),
 				}); err != nil {
 					return err
 				}
@@ -125,6 +134,7 @@ same app too.
 					Entrypoint:    &entrypoint,
 					SourceArchive: optionalString(sourceArchive),
 					Description:   optionalString(description),
+					ContextType:   optionalString(configuredContext),
 				}
 				if err := c.RawPost(ctx, c.CustomAppsPath(), payload, &app); err != nil {
 					if isSourceArchiveRejection(err) {
@@ -136,8 +146,9 @@ same app too.
 					return fmt.Errorf("creating custom app: %w", err)
 				}
 				if err := writeAppLink(dir, appLink{
-					AppID: app.ID,
-					Name:  app.Name,
+					AppID:       app.ID,
+					Name:        app.Name,
+					ContextType: normalizeAppContextType(app.ContextType),
 				}); err != nil {
 					return err
 				}
@@ -154,11 +165,12 @@ same app too.
 				status = "updated"
 			}
 			result := map[string]any{
-				"status":     status,
-				"app_id":     app.ID,
-				"name":       app.Name,
-				"entrypoint": app.Entrypoint,
-				"files":      paths,
+				"status":       status,
+				"app_id":       app.ID,
+				"name":         app.Name,
+				"entrypoint":   app.Entrypoint,
+				"context_type": contextTypeForOutput(normalizeAppContextType(app.ContextType)),
+				"files":        paths,
 			}
 			if err := output.OutputJSON(result, ""); err != nil {
 				return err
@@ -180,6 +192,19 @@ same app too.
 	cmd.Flags().StringVar(&entrypoint, "entrypoint", "dist/bundle.js", "Path (relative to the current directory) of the file to render")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "Skip building before uploading, even if package.json has a \"build\" script")
 	return cmd
+}
+
+func checkContextTypeImmutable(app customApp, configured string) error {
+	serverContext := normalizeAppContextType(app.ContextType)
+	configured = normalizeAppContextType(configured)
+	if app.ContextType == "" || serverContext == configured {
+		return nil
+	}
+	return fmt.Errorf(
+		"this app was created with context type %q, but .langsmith/app.json now asks for %q. "+
+			"Context type is fixed when the app is first pushed and cannot be changed. "+
+			"To change it, delete and recreate the app: `langsmith apps delete %q --yes` then `langsmith apps push`",
+		contextTypeForOutput(serverContext), contextTypeForOutput(configured), app.Name)
 }
 
 func optionalString(s string) *string {

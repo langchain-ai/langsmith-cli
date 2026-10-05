@@ -25,8 +25,31 @@ const (
 
 // appLink is the contents of <dir>/.langsmith/app.json.
 type appLink struct {
-	AppID string `json:"app_id"`
-	Name  string `json:"name"`
+	AppID       string `json:"app_id"`
+	Name        string `json:"name"`
+	ContextType string `json:"context_type,omitempty"`
+}
+
+const (
+	appContextNone   = "none"
+	appContextThread = "thread"
+)
+
+func validateAppContextType(s string) error {
+	switch s {
+	case "", appContextNone, appContextThread:
+		return nil
+	default:
+		return fmt.Errorf("invalid context type %q: must be %q or %q",
+			s, appContextNone, appContextThread)
+	}
+}
+
+func normalizeAppContextType(s string) string {
+	if s == appContextNone {
+		return ""
+	}
+	return s
 }
 
 // Custom app visibility tiers.
@@ -43,6 +66,7 @@ type customApp struct {
 	Scope          string            `json:"scope,omitempty"`
 	Name           string            `json:"name"`
 	Description    *string           `json:"description,omitempty"`
+	ContextType    string            `json:"context_type,omitempty"`
 	Files          map[string]string `json:"files,omitempty"`
 	Entrypoint     string            `json:"entrypoint"`
 	IsEnabled      bool              `json:"is_enabled"`
@@ -87,12 +111,14 @@ func newAppsCmd() *cobra.Command {
 LangSmith API and run inside LangSmith.
 
 Pick a starter with --template (blank, annotation-queue,
-annotation-queue-grid).
+annotation-queue-grid, thread, ...).
 
 Examples:
   langsmith apps init --name my-app
   langsmith apps init --name my-queue-app --template annotation-queue
+  langsmith apps init --name my-thread-app --template thread
   langsmith apps dev
+  langsmith apps dev --thread-id THREAD_ID --project-id PROJECT_ID
   langsmith apps push
   langsmith apps pull my-app
   langsmith apps list
