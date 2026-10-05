@@ -559,16 +559,17 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	p := langsmith.RunQueryParams{
-		Trace:     langsmith.F("trace-1"),
-		IsRoot:    langsmith.F(true),
-		RunType:   langsmith.F(langsmith.RunTypeEnum("llm")),
-		Error:     langsmith.F(true),
-		StartTime: langsmith.F(start),
-		EndTime:   langsmith.F(end),
-		Filter:    langsmith.F(`eq(name, "x")`),
-		ID:        langsmith.F([]string{"id-1", "id-2"}),
-		Limit:     langsmith.F(int64(25)),
-		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
+		Trace:      langsmith.F("trace-1"),
+		IsRoot:     langsmith.F(true),
+		RunType:    langsmith.F(langsmith.RunTypeEnum("llm")),
+		Error:      langsmith.F(true),
+		StartTime:  langsmith.F(start),
+		EndTime:    langsmith.F(end),
+		Filter:     langsmith.F(`eq(name, "x")`),
+		TreeFilter: langsmith.F(`eq(name, "tool")`),
+		ID:         langsmith.F([]string{"id-1", "id-2"}),
+		Limit:      langsmith.F(int64(25)),
+		Order:      langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
 	}
 	sel := []langsmith.RunSelectField{langsmith.RunSelectFieldID}
 
@@ -595,6 +596,9 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 	if v2.Filter.Value != `eq(name, "x")` {
 		t.Errorf("Filter = %q", v2.Filter.Value)
 	}
+	if v2.TreeFilter.Value != `eq(name, "tool")` {
+		t.Errorf("TreeFilter = %q", v2.TreeFilter.Value)
+	}
 	if len(v2.IDs.Value) != 2 {
 		t.Errorf("IDs = %v, want 2 entries", v2.IDs.Value)
 	}
@@ -609,7 +613,7 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 func TestToV2Params_OmitsUnsetFields(t *testing.T) {
 	v2 := toV2Params(langsmith.RunQueryParams{}, nil)
 	if v2.TraceID.Present || v2.IsRoot.Present || v2.HasError.Present ||
-		v2.MinStartTime.Present || v2.Filter.Present || v2.IDs.Present ||
+		v2.MinStartTime.Present || v2.Filter.Present || v2.TreeFilter.Present || v2.IDs.Present ||
 		v2.PageSize.Present || v2.Selects.Present {
 		t.Error("expected all fields unset for empty input")
 	}

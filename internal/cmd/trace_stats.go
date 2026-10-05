@@ -47,6 +47,7 @@ func newTraceStatsCmd() *cobra.Command {
 		cmpBefore   string
 		cmpLastNMin int
 		filter      string
+		treeFilter  string
 		outputFile  string
 	)
 
@@ -86,7 +87,7 @@ Examples:
 				return err
 			}
 
-			primary, err := fetchRunStats(ctx, c, sessionID, since, before, lastNMin, filter, attrs)
+			primary, err := fetchRunStats(ctx, c, sessionID, since, before, lastNMin, filter, treeFilter, attrs)
 			if err != nil {
 				return fmt.Errorf("fetching stats: %w", err)
 			}
@@ -94,7 +95,7 @@ Examples:
 			hasCompare := cmpSince != "" || cmpBefore != "" || cmpLastNMin > 0
 			var compare *runStats
 			if hasCompare {
-				s, err := fetchRunStats(ctx, c, sessionID, cmpSince, cmpBefore, cmpLastNMin, filter, attrs)
+				s, err := fetchRunStats(ctx, c, sessionID, cmpSince, cmpBefore, cmpLastNMin, filter, treeFilter, attrs)
 				if err != nil {
 					return fmt.Errorf("fetching comparison stats: %w", err)
 				}
@@ -129,13 +130,14 @@ Examples:
 		"Stats to request, comma-separated (default: all of "+strings.Join(defaultStatsKeys(), ", ")+"). "+
 			"Fewer stats is a cheaper query; unrequested stats are omitted from the output rather than reported as zero.")
 	cmd.Flags().StringVar(&filter, "filter", "", "LangSmith filter DSL (applied to both windows if comparing)")
+	cmd.Flags().StringVar(&treeFilter, "tree-filter", "", treeFilterUsage)
 	cmd.Flags().StringVar(&outputFile, "output", "", "Write JSON output to file instead of stdout")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
 	return cmd
 }
 
 // fetchRunStats calls the SDK Runs.Stats endpoint and maps the result to runStats.
-func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, before string, lastNMin int, filter string, attrs []langsmith.RunStatsQueryParamsSelect) (runStats, error) {
+func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, before string, lastNMin int, filter, treeFilter string, attrs []langsmith.RunStatsQueryParamsSelect) (runStats, error) {
 	params := langsmith.RunStatsParams{
 		RunStatsQueryParams: langsmith.RunStatsQueryParams{
 			Session:   langsmith.F([]string{sessionID}),
@@ -151,6 +153,9 @@ func fetchRunStats(ctx context.Context, c *client.Client, sessionID, since, befo
 	}
 	if filter != "" {
 		params.RunStatsQueryParams.Filter = langsmith.F(filter)
+	}
+	if treeFilter != "" {
+		params.RunStatsQueryParams.TreeFilter = langsmith.F(treeFilter)
 	}
 
 	res, err := c.SDK.Runs.Stats(ctx, params)
