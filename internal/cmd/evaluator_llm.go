@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -144,27 +145,27 @@ func resolveEvaluatorTarget(ctx context.Context, c *client.Client, dataset, proj
 	return target, nil
 }
 
-// Finds an existing evaluator with the same name on this dataset or project.
-// When the evaluator already exists and --replace is not set, returns the existing
-// rule alongside the error so callers can reuse it without another list call.
-func findLLMEvaluatorForCreate(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+// findRuleToReplace returns the evaluator rule on the target that --name
+// refers to, or nil when there is none and a new one should be created. It
+// errors when one exists and --replace is not set, or the user declines.
+func findRuleToReplace(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
+	rules, err := c.SDK.Evaluators.List(ctx, target.ruleListParams())
 	if err != nil {
 		return nil, fmt.Errorf("checking existing evaluators: %w", err)
 	}
-	existing := findEvaluator(*rules, name, target.datasetID, target.projectID)
-	if existing == nil {
-		return nil, nil
+	existing, err := findRuleForReplace(*rules, name, target.datasetID, target.projectID)
+	if err != nil || existing == nil {
+		return nil, err
 	}
 	if !replace {
-		return existing, fmt.Errorf("evaluator %q already exists (use --replace to overwrite)", name)
+		return nil, fmt.Errorf("evaluator %q already exists on this target (rule %q, %s); use --replace to update it", existing.EvaluatorName, existing.DisplayName, existing.ID)
 	}
 	if !yes {
-		fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
+		fmt.Fprintf(os.Stderr, "Replace evaluator %q (rule %q)? This updates it on every project and dataset it is attached to. [y/N] ", existing.EvaluatorName, existing.DisplayName)
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if strings.ToLower(confirm) != "y" {
-			return nil, fmt.Errorf("aborted")
+			return nil, errors.New("aborted")
 		}
 	}
 	return existing, nil

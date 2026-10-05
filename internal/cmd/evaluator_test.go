@@ -310,60 +310,51 @@ func TestRenameJSFunction_AsyncArrowFunction(t *testing.T) {
 	}
 }
 
-// ---------- findEvaluator ----------
+// ---------- findRuleForReplace ----------
 
-func TestFindEvaluator_MatchByDataset(t *testing.T) {
+func TestFindRuleForReplace(t *testing.T) {
+	code := []langsmith.CodeEvaluatorTopLevel{{Code: "x"}}
 	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-		{ID: "2", DisplayName: "accuracy", DatasetID: "ds-2"},
+		{ID: "renamed", DisplayName: "test", EvaluatorID: "ev-1", EvaluatorName: "ready_for_task_grade", SessionID: "proj-1"},
+		{ID: "legacy", DisplayName: "accuracy", CodeEvaluators: code, DatasetID: "ds-1"},
+		{ID: "other-target", DisplayName: "accuracy", CodeEvaluators: code, DatasetID: "ds-2"},
+		{ID: "webhook", DisplayName: "notify", SessionID: "proj-1"},
+		{ID: "dup-a", DisplayName: "dup", EvaluatorID: "ev-2", EvaluatorName: "dup", SessionID: "proj-2"},
+		{ID: "dup-b", DisplayName: "dup-rule", EvaluatorID: "ev-3", EvaluatorName: "dup", SessionID: "proj-2"},
 	}
-	result := findEvaluator(rules, "accuracy", "ds-1", "")
-	if result == nil {
-		t.Fatal("expected match")
+	tests := []struct {
+		name, match, datasetID, projectID string
+		wantID                            string
+		wantErr                           bool
+	}{
+		{name: "evaluator name after a UI rename", match: "ready_for_task_grade", projectID: "proj-1", wantID: "renamed"},
+		{name: "rule name", match: "test", projectID: "proj-1", wantID: "renamed"},
+		{name: "legacy inline rule on its dataset", match: "accuracy", datasetID: "ds-1", wantID: "legacy"},
+		{name: "name on another target", match: "accuracy", datasetID: "ds-other"},
+		{name: "non-evaluator rule is never replaced", match: "notify", projectID: "proj-1"},
+		{name: "no match", match: "missing", projectID: "proj-1"},
+		{name: "ambiguous match", match: "dup", projectID: "proj-2", wantErr: true},
 	}
-	if result.ID != "1" {
-		t.Errorf("expected ID=1, got %q", result.ID)
-	}
-}
-
-func TestFindEvaluator_MatchByProject(t *testing.T) {
-	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", SessionID: "proj-1"},
-		{ID: "2", DisplayName: "accuracy", SessionID: "proj-2"},
-	}
-	result := findEvaluator(rules, "accuracy", "", "proj-2")
-	if result == nil {
-		t.Fatal("expected match")
-	}
-	if result.ID != "2" {
-		t.Errorf("expected ID=2, got %q", result.ID)
-	}
-}
-
-func TestFindEvaluator_NoMatch(t *testing.T) {
-	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-	}
-	result := findEvaluator(rules, "different-name", "ds-1", "")
-	if result != nil {
-		t.Error("expected nil for non-matching name")
-	}
-}
-
-func TestFindEvaluator_EmptyRules(t *testing.T) {
-	result := findEvaluator(nil, "accuracy", "ds-1", "")
-	if result != nil {
-		t.Error("expected nil for empty rules")
-	}
-}
-
-func TestFindEvaluator_NameMatchButNoTarget(t *testing.T) {
-	rules := []langsmith.Evaluator{
-		{ID: "1", DisplayName: "accuracy", DatasetID: "ds-1"},
-	}
-	result := findEvaluator(rules, "accuracy", "ds-other", "")
-	if result != nil {
-		t.Error("expected nil when target doesn't match")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := findRuleForReplace(rules, tt.match, tt.datasetID, tt.projectID)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "dup-a") || !strings.Contains(err.Error(), "dup-b") {
+					t.Fatalf("expected ambiguity error listing both rules, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			gotID := ""
+			if got != nil {
+				gotID = got.ID
+			}
+			if gotID != tt.wantID {
+				t.Errorf("expected %q, got %q", tt.wantID, gotID)
+			}
+		})
 	}
 }
 
@@ -1382,6 +1373,93 @@ func TestEvaluatorRuleDelete_RefusesNonEvaluatorRule(t *testing.T) {
 	}
 	if sawDelete {
 		t.Error("expected no DELETE request")
+	}
+}
+
+func TestEvaluatorUploadReplaceMatchesRenamedEvaluator(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(evaluatorFile, []byte("def grade(run, example):\n    return {\"score\": 1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var patchedPath string
+	var patchBody map[string]any
+	var sawPost bool
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
+			}})
+		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodPost:
+			sawPost = true
+			http.Error(w, "should not create", http.StatusInternalServerError)
+		case r.Method == http.MethodPatch:
+			patchedPath = r.URL.Path
+			_ = json.NewDecoder(r.Body).Decode(&patchBody)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": testRuleID, "evaluator_id": testEvaluatorID})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	captureStdout(t, func() {
+		cmd := newEvaluatorUploadCmd()
+		_ = cmd.Flags().Set("name", "ready_for_task_grade")
+		_ = cmd.Flags().Set("function", "grade")
+		_ = cmd.Flags().Set("project-id", testSessionID)
+		_ = cmd.Flags().Set("replace", "true")
+		_ = cmd.Flags().Set("yes", "true")
+		if err := runTestCommand(t, cmd, []string{evaluatorFile}); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	if sawPost {
+		t.Fatal("expected --replace to update the existing evaluator, not create a second one")
+	}
+	if patchedPath != "/api/v1/runs/rules/"+testRuleID {
+		t.Fatalf("expected PATCH of rule %s, got %q", testRuleID, patchedPath)
+	}
+	if patchBody["display_name"] != "test" {
+		t.Errorf("expected the rule to keep its name, got %v", patchBody["display_name"])
+	}
+}
+
+func TestEvaluatorUploadWithoutReplaceRefusesRenamedEvaluator(t *testing.T) {
+	evaluatorFile := t.TempDir() + "/eval.py"
+	if err := os.WriteFile(evaluatorFile, []byte("def grade(run, example):\n    return {\"score\": 1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var sawWrite bool
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			sawWrite = true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+			"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
+		}})
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	cmd := newEvaluatorUploadCmd()
+	_ = cmd.Flags().Set("name", "ready_for_task_grade")
+	_ = cmd.Flags().Set("function", "grade")
+	_ = cmd.Flags().Set("project-id", testSessionID)
+	err := runTestCommand(t, cmd, []string{evaluatorFile})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected already-exists error, got %v", err)
+	}
+	if sawWrite {
+		t.Error("expected no create or update request")
 	}
 }
 
