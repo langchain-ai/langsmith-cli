@@ -341,11 +341,21 @@ langsmith example create --dataset my-dataset \
 langsmith example delete <example-id> --yes
 ```
 
-### `evaluator` — Manage evaluator rules
+### `evaluator` — Manage evaluators and their rules
+
+An **evaluator** is the shared scorer shown on the Evaluators page. A **rule** attaches an evaluator to one project or dataset with its own sampling rate and filters. A rule's name can differ from its evaluator's name, so rule output shows both `rule_name` and `evaluator_name`.
 
 ```bash
-# List evaluators
+# Evaluators: list, get by name (as shown in the UI) or ID, delete by ID
 langsmith evaluator list
+langsmith evaluator get ready_for_task_grade
+langsmith evaluator delete <evaluator-id> --delete-rules --yes
+
+# Rules: list (optionally per project, dataset, or evaluator), get, delete one
+langsmith evaluator rule list --project my-app
+langsmith evaluator rule list --evaluator-id <evaluator-id>
+langsmith evaluator rule get <rule-id>
+langsmith evaluator rule delete accuracy --dataset my-eval-set --yes
 
 # Upload an offline evaluator (for experiments)
 langsmith evaluator upload evals.py \
@@ -362,9 +372,6 @@ langsmith evaluator upload evals.py \
 # Replace an existing evaluator
 langsmith evaluator upload evals.py \
   --name accuracy --function check_accuracy_v2 --dataset my-eval-set --replace --yes
-
-# Delete an evaluator
-langsmith evaluator delete accuracy --yes
 
 # Create an LLM-as-judge evaluator (--model-config is always required)
 # model.json: copy the structured.model block from an existing evaluator or the UI.

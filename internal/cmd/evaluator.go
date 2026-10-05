@@ -2,13 +2,15 @@ package cmd
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -17,179 +19,323 @@ import (
 func newEvaluatorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "evaluator",
-		Short: "Manage online and offline evaluator rules",
-		Long: `Manage online and offline evaluator rules.
+		Short: "Manage evaluators and the rules that attach them to projects and datasets",
+		Long: `Manage evaluators and their rules.
 
-Evaluators automatically score runs against a dataset (offline) or a project
-(online). Supported evaluator types:
+An evaluator is the shared scorer (LLM-as-judge prompt or code) shown on the
+Evaluators page. A rule attaches an evaluator to one project (online) or
+dataset (offline) with its own sampling rate and filters. One evaluator can
+have many rules, and a rule's name can differ from its evaluator's name.
 
-  upload      Code evaluator from a Python or JavaScript/TypeScript file
-  create-llm  LLM-as-judge evaluator (--model-config required; prompt via files or --hub-ref)
+  list, get, delete   Act on evaluators
+  rule                Act on rules (list, get, delete)
+  upload              Create a code evaluator rule from a Python or JavaScript/TypeScript file
+  create-llm          Create an LLM-as-judge evaluator rule (--model-config required)
 
 Examples:
   langsmith evaluator list
-  langsmith evaluator get accuracy
-  langsmith evaluator get --session-id <session-id>
-  langsmith evaluator get accuracy --session-id <session-id>
+  langsmith evaluator get ready_for_task_grade
+  langsmith evaluator delete <evaluator-id> --delete-rules --yes
+  langsmith evaluator rule list --project my-app
+  langsmith evaluator rule delete accuracy --project my-app --yes
   langsmith evaluator upload eval.py --name accuracy --function check_accuracy --dataset my-eval-set
-  langsmith evaluator upload eval.ts --name accuracy --function checkAccuracy --dataset my-eval-set
-  langsmith evaluator create-llm --name relevance --project my-app --prompt prompt.json --schema schema.json --model-config model.json
-  langsmith evaluator delete accuracy --yes`,
+  langsmith evaluator create-llm --name relevance --project my-app --prompt prompt.json --schema schema.json --model-config model.json`,
 	}
 
 	cmd.AddCommand(newEvaluatorGetCmd())
 	cmd.AddCommand(newEvaluatorListCmd())
+	cmd.AddCommand(newEvaluatorDeleteCmd())
+	cmd.AddCommand(newEvaluatorRuleCmd())
 	cmd.AddCommand(newEvaluatorUploadCmd())
 	cmd.AddCommand(newEvaluatorCreateLLMCmd())
-	cmd.AddCommand(newEvaluatorDeleteCmd())
-	return cmd
-}
-
-func newEvaluatorGetCmd() *cobra.Command {
-	var (
-		outputFile string
-		sessionID  string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "get [NAME]",
-		Short: "Get evaluator rule(s) by display name and/or session ID",
-		Long: `Get evaluator rules, optionally filtered by display name and/or session ID.
-
-At least one of NAME or --session-id must be provided.
-
-Examples:
-  langsmith evaluator get accuracy
-  langsmith evaluator get --session-id <session-id>
-  langsmith evaluator get accuracy --session-id <session-id>`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := ""
-			if len(args) > 0 {
-				name = args[0]
-			}
-
-			if name == "" && sessionID == "" {
-				ExitError("provide a NAME argument or --session-id (or both)")
-			}
-
-			c := MustGetClient()
-			ctx := context.Background()
-
-			params := langsmith.EvaluatorListParams{}
-			if sessionID != "" {
-				params.SessionID = langsmith.F(sessionID)
-			}
-			rules, err := c.SDK.Evaluators.List(ctx, params)
-			if err != nil {
-				ExitErrorf("fetching evaluators: %v", err)
-			}
-
-			var matching []langsmith.Evaluator
-			for _, r := range *rules {
-				if name != "" && r.DisplayName != name {
-					continue
-				}
-				matching = append(matching, r)
-			}
-
-			if len(matching) == 0 {
-				return errors.New("no matching evaluators found")
-			}
-
-			var data []map[string]any
-			for _, r := range matching {
-				entry := map[string]any{
-					"id":            r.ID,
-					"name":          r.DisplayName,
-					"sampling_rate": r.SamplingRate,
-					"is_enabled":    r.IsEnabled,
-					"dataset_id":    nilStr(r.DatasetID),
-					"session_id":    nilStr(r.SessionID),
-				}
-				if len(r.CodeEvaluators) > 0 {
-					entry["type"] = "code"
-					entry["language"] = string(r.CodeEvaluators[0].Language)
-					entry["code"] = r.CodeEvaluators[0].Code
-				} else if len(r.Evaluators) > 0 {
-					entry["type"] = "llm"
-					entry["hub_ref"] = r.Evaluators[0].Structured.HubRef
-					if len(r.Evaluators[0].Structured.VariableMapping) > 0 {
-						entry["variable_mapping"] = r.Evaluators[0].Structured.VariableMapping
-					}
-				}
-				data = append(data, entry)
-			}
-
-			if len(data) == 1 {
-				return output.OutputJSON(data[0], outputFile)
-			} else {
-				return output.OutputJSON(data, outputFile)
-			}
-		},
-	}
-
-	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
-	cmd.Flags().StringVar(&sessionID, "session-id", "", "Filter by session (project) ID")
 	return cmd
 }
 
 func newEvaluatorListCmd() *cobra.Command {
-	var outputFile string
+	var (
+		outputFile   string
+		evalType     string
+		nameContains string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all evaluator rules in the workspace",
-		Run: func(cmd *cobra.Command, args []string) {
-			c := MustGetClient()
+		Short: "List evaluators and the projects or datasets each one is attached to",
+		Long: `List evaluators in the workspace. Each entry includes the rules that attach
+it to projects or datasets. Use 'langsmith evaluator rule list' for rule details.
+
+Examples:
+  langsmith evaluator list
+  langsmith evaluator list --type llm
+  langsmith evaluator list --name-contains grade`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
 			ctx := context.Background()
 
-			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+			params := langsmith.OnlineEvaluatorListParams{}
+			if evalType != "" {
+				params.Type = langsmith.F(evalType)
+			}
+			if nameContains != "" {
+				params.NameContains = langsmith.F(nameContains)
+			}
+			evaluators, err := listOnlineEvaluators(ctx, c, params)
 			if err != nil {
-				ExitErrorf("listing evaluators: %v", err)
+				return err
 			}
 
-			fmt_ := GetFormat()
-
-			if fmt_ == "pretty" {
-				columns := []string{"Name", "Sampling Rate", "Target", "Enabled"}
+			if GetFormat() == "pretty" {
+				columns := []string{"Name", "Type", "Attached To", "ID"}
 				var rows [][]string
-				for _, rule := range *rules {
-					rate := fmt.Sprintf("%.0f%%", rule.SamplingRate*100)
-					target := "All runs"
-					if rule.DatasetID != "" {
-						target = "dataset"
-					} else if rule.SessionID != "" {
-						target = "project"
-					}
-					enabled := "No"
-					if rule.IsEnabled {
-						enabled = "Yes"
-					}
-					rows = append(rows, []string{rule.DisplayName, rate, target, enabled})
+				for _, ev := range evaluators {
+					rows = append(rows, []string{ev.Name, string(ev.Type), ruleTargetsSummary(ev.RunRules), ev.ID})
 				}
-				output.OutputTable(columns, rows, "Evaluator Rules")
-			} else {
-				var data []map[string]any
-				for _, rule := range *rules {
-					data = append(data, map[string]any{
-						"id":            rule.ID,
-						"name":          rule.DisplayName,
-						"sampling_rate": rule.SamplingRate,
-						"is_enabled":    rule.IsEnabled,
-						"dataset_id":    nilStr(rule.DatasetID),
-						"session_id":    nilStr(rule.SessionID),
-					})
-				}
-				if err := output.OutputJSON(data, outputFile); err != nil {
-					ExitErrorf("%v", err)
-				}
+				output.OutputTable(columns, rows, "Evaluators")
+				return nil
 			}
+			data := make([]map[string]any, 0, len(evaluators))
+			for _, ev := range evaluators {
+				data = append(data, evaluatorEntry(ev))
+			}
+			return output.OutputJSON(data, outputFile)
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
+	cmd.Flags().StringVar(&evalType, "type", "", "Filter by evaluator type (llm or code)")
+	cmd.Flags().StringVar(&nameContains, "name-contains", "", "Filter by name substring")
+	return cmd
+}
+
+func newEvaluatorGetCmd() *cobra.Command {
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "get NAME_OR_ID",
+		Short: "Get an evaluator by name or ID",
+		Long: `Get an evaluator, including its prompt or code and the rules that attach
+it to projects or datasets. NAME is the evaluator name shown in the UI.
+
+Examples:
+  langsmith evaluator get ready_for_task_grade
+  langsmith evaluator get <evaluator-id>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := context.Background()
+
+			id, err := resolveOnlineEvaluatorID(ctx, c, args[0])
+			if err != nil {
+				return err
+			}
+			ev, err := c.SDK.OnlineEvaluators.Get(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching evaluator %s: %w", id, err)
+			}
+			return output.OutputJSON(evaluatorDetail(*ev), outputFile)
 		},
 	}
 
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
+}
+
+func newEvaluatorDeleteCmd() *cobra.Command {
+	var deleteRules, yes bool
+
+	cmd := &cobra.Command{
+		Use:   "delete EVALUATOR_ID",
+		Short: "Delete an evaluator by ID",
+		Long: `Delete an evaluator. This affects every project and dataset it is attached
+to, so it takes an ID rather than a name. An evaluator that still has rules is
+only deleted with --delete-rules. To detach it from one project or dataset,
+use 'langsmith evaluator rule delete' instead.
+
+Examples:
+  langsmith evaluator delete <evaluator-id>
+  langsmith evaluator delete <evaluator-id> --delete-rules --yes`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			if _, err := uuid.Parse(id); err != nil {
+				return fmt.Errorf("evaluator delete takes an evaluator ID (see 'langsmith evaluator list'); to delete one rule, use 'langsmith evaluator rule delete'")
+			}
+			c, err := getClient()
+			if err != nil {
+				return err
+			}
+			ctx := context.Background()
+
+			ev, err := c.SDK.OnlineEvaluators.Get(ctx, id)
+			if err != nil {
+				return fmt.Errorf("fetching evaluator %s: %w", id, err)
+			}
+			if len(ev.RunRules) > 0 && !deleteRules {
+				return fmt.Errorf("evaluator %q is attached to %s; pass --delete-rules to delete those rules too", ev.Name, ruleTargetsSummary(ev.RunRules))
+			}
+			if !yes {
+				target := "the evaluator"
+				if len(ev.RunRules) > 0 {
+					target = fmt.Sprintf("the evaluator and its %d rule(s)", len(ev.RunRules))
+				}
+				if err := confirmDelete(cmd, deleteConfirmation{
+					target:   target,
+					identity: fmt.Sprintf("Evaluator: %q (id: %s, attached to: %s)", ev.Name, ev.ID, ruleTargetsSummary(ev.RunRules)),
+				}); err != nil {
+					return err
+				}
+			}
+
+			if err := c.SDK.OnlineEvaluators.Delete(ctx, id, langsmith.OnlineEvaluatorDeleteParams{
+				DeleteRunRules: langsmith.F(deleteRules),
+			}); err != nil {
+				return fmt.Errorf("deleting evaluator %s: %w", id, err)
+			}
+			return output.OutputJSON(map[string]any{
+				"status":        "deleted",
+				"id":            ev.ID,
+				"name":          ev.Name,
+				"rules_deleted": len(ev.RunRules),
+			}, "")
+		},
+	}
+
+	cmd.Flags().BoolVar(&deleteRules, "delete-rules", false, "Also delete the rules that attach the evaluator to projects and datasets")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
+	return cmd
+}
+
+func listOnlineEvaluators(ctx context.Context, c *client.Client, params langsmith.OnlineEvaluatorListParams) ([]langsmith.OnlineEvaluator, error) {
+	params.Limit = langsmith.F(int64(100))
+	pager := c.SDK.OnlineEvaluators.ListAutoPaging(ctx, params)
+	var evaluators []langsmith.OnlineEvaluator
+	for pager.Next() {
+		evaluators = append(evaluators, pager.Current())
+	}
+	if err := pager.Err(); err != nil {
+		return nil, fmt.Errorf("listing evaluators: %w", err)
+	}
+	return evaluators, nil
+}
+
+// resolveOnlineEvaluatorID accepts an evaluator ID or an exact evaluator name.
+// The API's name filter is a substring match that also matches creator names,
+// so the exact comparison happens here.
+func resolveOnlineEvaluatorID(ctx context.Context, c *client.Client, nameOrID string) (string, error) {
+	if _, err := uuid.Parse(nameOrID); err == nil {
+		return nameOrID, nil
+	}
+	candidates, err := listOnlineEvaluators(ctx, c, langsmith.OnlineEvaluatorListParams{
+		NameContains: langsmith.F(nameOrID),
+	})
+	if err != nil {
+		return "", err
+	}
+	var ids []string
+	for _, ev := range candidates {
+		if ev.Name == nameOrID {
+			ids = append(ids, ev.ID)
+		}
+	}
+	switch len(ids) {
+	case 1:
+		return ids[0], nil
+	case 0:
+		return "", evaluatorNotFoundError(ctx, c, nameOrID)
+	default:
+		return "", fmt.Errorf("%d evaluators are named %q; pass an ID instead: %s", len(ids), nameOrID, strings.Join(ids, ", "))
+	}
+}
+
+// evaluatorNotFoundError points at the evaluator behind a rule when the name
+// given is a rule name, which the UI does not show once the evaluator is renamed.
+func evaluatorNotFoundError(ctx context.Context, c *client.Client, name string) error {
+	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+	if err != nil {
+		return fmt.Errorf("evaluator %q not found", name)
+	}
+	seen := map[string]bool{}
+	var hints []string
+	for _, r := range *rules {
+		if r.DisplayName != name || r.EvaluatorID == "" || seen[r.EvaluatorID] {
+			continue
+		}
+		seen[r.EvaluatorID] = true
+		hints = append(hints, fmt.Sprintf("%q (%s)", r.EvaluatorName, r.EvaluatorID))
+	}
+	if len(hints) == 0 {
+		return fmt.Errorf("evaluator %q not found", name)
+	}
+	return fmt.Errorf("no evaluator named %q; that is a rule name, and its rules use evaluator %s", name, strings.Join(hints, ", "))
+}
+
+func evaluatorEntry(ev langsmith.OnlineEvaluator) map[string]any {
+	rules := make([]map[string]any, 0, len(ev.RunRules))
+	for _, r := range ev.RunRules {
+		rules = append(rules, map[string]any{
+			"rule_id":    r.ID,
+			"session_id": nilStr(r.SessionID),
+			"project":    nilStr(r.SessionName),
+			"dataset_id": nilStr(r.DatasetID),
+			"dataset":    nilStr(r.DatasetName),
+		})
+	}
+	return map[string]any{
+		"id":            ev.ID,
+		"name":          ev.Name,
+		"type":          string(ev.Type),
+		"feedback_keys": ev.FeedbackKeys,
+		"rules":         rules,
+	}
+}
+
+func evaluatorDetail(ev langsmith.OnlineEvaluator) map[string]any {
+	entry := evaluatorEntry(ev)
+	if raw := ev.JSON.LlmEvaluator.Raw(); raw != "" && raw != "null" {
+		entry["llm_evaluator"] = json.RawMessage(raw)
+	}
+	if raw := ev.JSON.CodeEvaluator.Raw(); raw != "" && raw != "null" {
+		entry["code_evaluator"] = json.RawMessage(raw)
+	}
+	return entry
+}
+
+func ruleTargetsSummary(rules []langsmith.OnlineEvaluatorRunRule) string {
+	if len(rules) == 0 {
+		return "nothing"
+	}
+	targets := make([]string, 0, len(rules))
+	for _, r := range rules {
+		label := targetLabel(r.SessionName, r.SessionID, r.DatasetName, r.DatasetID)
+		if label == "" {
+			label = "rule " + r.ID
+		}
+		targets = append(targets, label)
+	}
+	return strings.Join(targets, ", ")
+}
+
+// targetLabel names the project or dataset a rule runs on, preferring names over IDs.
+func targetLabel(sessionName, sessionID, datasetName, datasetID string) string {
+	switch {
+	case sessionName != "":
+		return "project " + sessionName
+	case datasetName != "":
+		return "dataset " + datasetName
+	case sessionID != "":
+		return "project " + sessionID
+	case datasetID != "":
+		return "dataset " + datasetID
+	default:
+		return ""
+	}
 }
 
 func newEvaluatorUploadCmd() *cobra.Command {
@@ -318,10 +464,11 @@ func newEvaluatorUploadCmd() *cobra.Command {
 				targetLabel = "dataset"
 			}
 			return output.OutputJSON(map[string]any{
-				"status": "uploaded",
-				"id":     result["id"],
-				"name":   name,
-				"target": targetLabel,
+				"status":       "uploaded",
+				"rule_id":      result["id"],
+				"evaluator_id": result["evaluator_id"],
+				"name":         name,
+				"target":       targetLabel,
 			}, "")
 		},
 	}
@@ -377,7 +524,7 @@ Examples:
 			c := MustGetClient()
 			ctx := context.Background()
 
-			target, err := resolveLLMEvaluatorTarget(ctx, c, targetDataset, targetProject, targetProjectID)
+			target, err := resolveEvaluatorTarget(ctx, c, targetDataset, targetProject, targetProjectID)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -417,7 +564,8 @@ Examples:
 			}
 			return output.OutputJSON(map[string]any{
 				"status": "created", "type": "llm",
-				"id": result["id"], "name": name, "target": targetLabel,
+				"rule_id": result["id"], "evaluator_id": result["evaluator_id"],
+				"name": name, "target": targetLabel,
 			}, "")
 		},
 	}
@@ -439,63 +587,6 @@ Examples:
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("model-config")
 
-	return cmd
-}
-
-func newEvaluatorDeleteCmd() *cobra.Command {
-	var yes bool
-
-	cmd := &cobra.Command{
-		Use:   "delete NAME",
-		Short: "Delete an evaluator rule by its display name",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-
-			c := MustGetClient()
-			ctx := context.Background()
-
-			rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
-			if err != nil {
-				ExitErrorf("listing evaluators: %v", err)
-			}
-
-			var matching []langsmith.Evaluator
-			for _, r := range *rules {
-				if r.DisplayName == name {
-					matching = append(matching, r)
-				}
-			}
-
-			if len(matching) == 0 {
-				return fmt.Errorf("Evaluator '%s' not found", name)
-			}
-
-			if !yes {
-				fmt.Fprintf(os.Stderr, "Delete evaluator '%s'? [y/N] ", name)
-				var confirm string
-				_, _ = fmt.Scanln(&confirm)
-				if strings.ToLower(confirm) != "y" {
-					ExitError("aborted")
-				}
-			}
-
-			deleted := 0
-			for _, rule := range matching {
-				if err := c.RawDelete(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", rule.ID), nil); err != nil {
-					ExitErrorf("deleting evaluator %s: %v", rule.ID, err)
-				}
-				deleted++
-			}
-			return output.OutputJSON(map[string]any{
-				"status": "deleted",
-				"name":   name,
-				"count":  deleted,
-			}, "")
-		},
-	}
-
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
 }
 
@@ -635,16 +726,23 @@ func renameJSFunction(source string, funcName string) string {
 }
 
 func findEvaluator(rules []langsmith.Evaluator, name, datasetID, projectID string) *langsmith.Evaluator {
-	for i, rule := range rules {
+	matches := findEvaluators(rules, name, datasetID, projectID)
+	if len(matches) == 0 {
+		return nil
+	}
+	return &matches[0]
+}
+
+// findEvaluators returns every rule with this name on the given dataset or project.
+func findEvaluators(rules []langsmith.Evaluator, name, datasetID, projectID string) []langsmith.Evaluator {
+	var matches []langsmith.Evaluator
+	for _, rule := range rules {
 		if rule.DisplayName != name {
 			continue
 		}
-		if datasetID != "" && rule.DatasetID == datasetID {
-			return &rules[i]
-		}
-		if projectID != "" && rule.SessionID == projectID {
-			return &rules[i]
+		if (datasetID != "" && rule.DatasetID == datasetID) || (projectID != "" && rule.SessionID == projectID) {
+			matches = append(matches, rule)
 		}
 	}
-	return nil
+	return matches
 }
