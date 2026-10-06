@@ -63,8 +63,10 @@ func addGeneratedCommands(root *cobra.Command) {
 					var yes bool
 					args, yes = extractFlag(args, "--yes")
 					if !yes && !hasHelpFlag(args) {
-						target := fmt.Sprintf("the %s selected by 'langsmith %s %s'", strings.ReplaceAll(name, "-", " "), name, op)
-						if err := confirmDelete(cmd, deleteConfirmation{target: target}); err != nil {
+						if err := confirmDelete(cmd, deleteConfirmation{
+							target:   "the " + strings.ReplaceAll(name, "-", " ") + " below",
+							identity: "Command: langsmith " + name + " " + strings.Join(args, " "),
+						}); err != nil {
 							return err
 						}
 					}
@@ -76,15 +78,31 @@ func addGeneratedCommands(root *cobra.Command) {
 	}
 }
 
+// valueFlags are the global flags that take a separate value argument, which
+// operationName must not mistake for the operation.
+var valueFlags = map[string]bool{
+	"--api-key": true, "--api-url": true, "--workspace": true, "--workspace-id": true,
+	"--profile": true, "--format": true, "--base-url": true, "--tenant-id": true,
+}
+
 // operationName returns the generated operation named in args, for example
-// "delete" in `prompt-webhooks delete --webhook-id x`.
+// "delete" in `prompt-webhooks delete --webhook-id x`: the first positional
+// argument, skipping global flags and their values.
 func operationName(resource *cli.Command, args []string) string {
-	for _, arg := range args {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			if valueFlags[arg] {
+				i++
+			}
+			continue
+		}
 		for _, op := range resource.Commands {
 			if arg == op.Name {
 				return arg
 			}
 		}
+		return ""
 	}
 	return ""
 }
@@ -116,22 +134,11 @@ func extractFlag(args []string, flag string) ([]string, bool) {
 // runGenerated hands the arguments to the generated command tree. Auth comes
 // from the Go SDK's defaults (the current profile in ~/.langsmith/config.json,
 // then LANGSMITH_* environment variables), which match how langsmith resolves
-// them; langsmith's global flags are forwarded on top.
+// them. The mounted command disables Cobra's flag parsing, so langsmith's
+// global flags arrive in args and are translated there.
 func runGenerated(cmd *cobra.Command, name string, args []string) {
 	argv := []string{"langsmith"}
-	if flagAPIKey != "" {
-		argv = append(argv, "--api-key", flagAPIKey)
-	}
-	if flagAPIURL != "" {
-		argv = append(argv, "--base-url", client.NormalizeURL(flagAPIURL))
-	}
-	if flagWorkspaceID != "" {
-		argv = append(argv, "--tenant-id", flagWorkspaceID)
-	}
 	rest, profile := translateGlobalFlags(args)
-	if profile == "" {
-		profile = flagProfile
-	}
 	if profile != "" {
 		// The SDK selects the profile from this variable.
 		_ = os.Setenv("LANGSMITH_PROFILE", profile)
@@ -151,8 +158,10 @@ func runGenerated(cmd *cobra.Command, name string, args []string) {
 	}
 }
 
-// translateGlobalFlags renames langsmith global flags that appear after the
-// command name and extracts --profile, which the generated tree does not define.
+// translateGlobalFlags renames langsmith's global flags for the generated tree,
+// normalizes --api-url like the hand-written commands (the generated paths
+// already start with /api/v1), and extracts --profile, which the generated
+// tree does not define.
 func translateGlobalFlags(args []string) (rest []string, profile string) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -166,14 +175,23 @@ func translateGlobalFlags(args []string) (rest []string, profile string) {
 			}
 			continue
 		}
-		if renamed, ok := globalFlagRenames[flag]; ok {
-			if hasValue {
-				arg = renamed + "=" + value
-			} else {
-				arg = renamed
-			}
+		renamed, ok := globalFlagRenames[flag]
+		if !ok {
+			rest = append(rest, arg)
+			continue
 		}
-		rest = append(rest, arg)
+		if !hasValue {
+			if i+1 >= len(args) {
+				rest = append(rest, renamed)
+				continue
+			}
+			value = args[i+1]
+			i++
+		}
+		if flag == "--api-url" {
+			value = client.NormalizeURL(value)
+		}
+		rest = append(rest, renamed+"="+value)
 	}
 	return rest, profile
 }
