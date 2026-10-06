@@ -62,7 +62,7 @@ func addGeneratedCommands(root *cobra.Command) {
 					if !yes && !hasHelpFlag(rest) {
 						if err := confirmDelete(cmd, deleteConfirmation{
 							target:   "the " + strings.ReplaceAll(name, "-", " ") + " below",
-							identity: "Command: langsmith " + name + " " + strings.Join(args, " "),
+							identity: "Command: langsmith " + name + " " + strings.Join(redactCredentials(args), " "),
 						}); err != nil {
 							return err
 						}
@@ -72,6 +72,27 @@ func addGeneratedCommands(root *cobra.Command) {
 			},
 		})
 	}
+}
+
+// redactCredentials returns args with the value of every --api-key replaced by
+// ***, so the command can be echoed without leaking the key.
+func redactCredentials(args []string) []string {
+	redacted := make([]string, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		redacted[i] = arg
+		if arg == "--" {
+			copy(redacted[i:], args[i:])
+			break
+		}
+		if strings.HasPrefix(arg, "--api-key=") {
+			redacted[i] = "--api-key=***"
+		} else if arg == "--api-key" && i+1 < len(args) {
+			redacted[i+1] = "***"
+			i++
+		}
+	}
+	return redacted
 }
 
 // generatedValueFlags returns every spelling of the generated root's flags

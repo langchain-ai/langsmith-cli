@@ -292,3 +292,26 @@ func TestGeneratedCommandAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestGeneratedDeletePromptRedactsAPIKey(t *testing.T) {
+	isolateGeneratedAuth(t)
+	var requests []generatedRequest
+	ts := fakeGeneratedAPI(t, &requests)
+	const secret = "secret-api-key-value"
+	for _, keyArgs := range [][]string{{"--api-key", secret}, {"--api-key=" + secret}} {
+		t.Run(keyArgs[0], func(t *testing.T) {
+			args := append([]string{"--api-url", ts.URL}, keyArgs...)
+			args = append(args, "prompt-webhooks", "delete", "--webhook-id", "11111111-1111-1111-1111-111111111111")
+			stderr, _, err := runGeneratedCommand(t, "n\n", args...)
+			if err == nil || !strings.Contains(err.Error(), "not confirmed") {
+				t.Fatalf("err = %v, want the delete prompt", err)
+			}
+			if !strings.Contains(stderr, "Command: langsmith prompt-webhooks") {
+				t.Errorf("stderr = %q, want the command echoed", stderr)
+			}
+			if strings.Contains(stderr, secret) || strings.Contains(err.Error(), secret) {
+				t.Errorf("prompt output leaks the API key: %q", stderr)
+			}
+		})
+	}
+}
