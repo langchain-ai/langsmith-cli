@@ -25,10 +25,6 @@ const (
 	digestResultMax = 200
 )
 
-// traceMessagesMaxRetries covers the per-tenant /api/v2/traces/messages rate
-// limit (1 req/s, burst 10): a long paginated fetch outruns the SDK default of 2.
-const traceMessagesMaxRetries = 5
-
 // errorishPattern is a heuristic flag for a tool result whose content looks
 // like an *error response* (not merely text that mentions the word "error" —
 // technical docs and search results say "error" constantly). It requires
@@ -192,7 +188,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result, traceMessagesMaxRetries); err != nil {
+				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
@@ -243,7 +239,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result, traceMessagesMaxRetries); err != nil {
+				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 

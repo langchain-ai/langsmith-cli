@@ -245,36 +245,37 @@ type CustomAppRequest struct {
 
 // RawGet performs a GET request to the LangSmith API.
 func (c *Client) RawGet(ctx context.Context, path string, result any) error {
-	return c.rawRequest(ctx, http.MethodGet, path, nil, result, 0)
+	return c.rawRequest(ctx, http.MethodGet, path, nil, result, false)
 }
 
 // RawPost performs a POST request to the LangSmith API.
 func (c *Client) RawPost(ctx context.Context, path string, body any, result any) error {
-	return c.rawRequest(ctx, http.MethodPost, path, body, result, 0)
+	return c.rawRequest(ctx, http.MethodPost, path, body, result, false)
 }
 
-// RawPostWithRetries is RawPost with up to maxRetries SDK retries on
-// 408/409/429/5xx, waiting the server's Retry-After when it sends one. Use it
-// only for read-only POSTs (queries), where a repeat is safe.
-func (c *Client) RawPostWithRetries(ctx context.Context, path string, body any, result any, maxRetries int) error {
-	return c.rawRequest(ctx, http.MethodPost, path, body, result, maxRetries)
+// RawPostWithRetries is RawPost with the SDK's default retry policy (the same
+// one typed SDK calls such as `trace list` get): 408/409/429/5xx are retried,
+// waiting the server's Retry-After when it sends one. Use it only for
+// read-only POSTs (queries), where a repeat is safe.
+func (c *Client) RawPostWithRetries(ctx context.Context, path string, body any, result any) error {
+	return c.rawRequest(ctx, http.MethodPost, path, body, result, true)
 }
 
 // RawPatch performs a PATCH request to the LangSmith API.
 func (c *Client) RawPatch(ctx context.Context, path string, body any, result any) error {
-	return c.rawRequest(ctx, http.MethodPatch, path, body, result, 0)
+	return c.rawRequest(ctx, http.MethodPatch, path, body, result, false)
 }
 
 // RawDelete performs a DELETE request to the LangSmith API.
 func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
-	return c.rawRequest(ctx, http.MethodDelete, path, nil, result, 0)
+	return c.rawRequest(ctx, http.MethodDelete, path, nil, result, false)
 }
 
 // FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
 	path := c.CustomAppPath(appID) + "/source"
-	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil, 0)
+	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -348,9 +349,9 @@ func (c *Client) requestURL(path string) (*url.URL, error) {
 }
 
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
-// maxRetries is the number of SDK retries; RawDo passes 0 so `langsmith api`
-// makes exactly one attempt.
-func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header, maxRetries int) (*httpResponse, error) {
+// Without sdkRetries it makes exactly one attempt, which `langsmith api`
+// (RawDo) relies on.
+func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header, sdkRetries bool) (*httpResponse, error) {
 	requestURL, err := c.requestURL(path)
 	if err != nil {
 		return nil, err
@@ -366,9 +367,11 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	// the user. requestURL is absolute, so the SDK sends it as-is rather than
 	// joining it onto its base URL.
 	opts := []option.RequestOption{
-		option.WithMaxRetries(maxRetries),
 		option.WithRequestTimeout(rawRequestTimeout),
 		option.WithHeader("Content-Type", "application/json"),
+	}
+	if !sdkRetries {
+		opts = append(opts, option.WithMaxRetries(0))
 	}
 	for k, vals := range extraHeaders {
 		opts = append(opts, option.WithHeaderDel(k))
@@ -441,7 +444,7 @@ const rawRequestTimeout = 30 * time.Second
 // does not treat 4xx/5xx as errors — callers decide how to handle status codes.
 // body may be nil. extraHeaders are merged on top of the default auth headers.
 func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, proto string, respHeaders http.Header, respBody []byte, err error) {
-	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders, 0)
+	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders, false)
 	if err != nil {
 		return 0, "", nil, nil, err
 	}
@@ -454,7 +457,7 @@ func (c *Client) APIKey() string { return c.apiKey }
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }
 
-func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any, maxRetries int) error {
+func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any, sdkRetries bool) error {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -464,7 +467,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 		bodyReader = bytes.NewReader(data)
 	}
 
-	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil, maxRetries)
+	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil, sdkRetries)
 	if err != nil {
 		return err
 	}
