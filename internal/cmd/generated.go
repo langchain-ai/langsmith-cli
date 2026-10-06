@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langchain-ai/langsmith-cli/internal/client"
 	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -19,13 +18,6 @@ import (
 // exitGenerated ends the process with the generated command's exit code after
 // its error has been printed. Tests replace it.
 var exitGenerated = os.Exit
-
-// globalFlagRenames maps langsmith's global flags to the generated tree's names.
-var globalFlagRenames = map[string]string{
-	"--api-url":      "--base-url",
-	"--workspace":    "--tenant-id",
-	"--workspace-id": "--tenant-id",
-}
 
 // generatedResources returns the resource commands in the generated tree,
 // which contains only the resources exposed by the generator's configuration.
@@ -57,12 +49,17 @@ func addGeneratedCommands(root *cobra.Command) {
 			Short:              "Manage " + strings.ReplaceAll(name, "-", " "),
 			DisableFlagParsing: true,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				rest, flags, err := translateGlobalFlags(args)
+				if err != nil {
+					return err
+				}
 				// --yes belongs to delete operations only; elsewhere the generated
 				// tree rejects it as an unknown flag.
-				if op := operationName(resource, args); strings.HasPrefix(op, "delete") {
+				if isDeleteInvocation(resource, rest, generatedValueFlags()) {
 					var yes bool
-					args, yes = extractFlag(args, "--yes")
-					if !yes && !hasHelpFlag(args) {
+					rest, yes = extractFlag(rest, "--yes")
+					args, _ = extractFlag(args, "--yes")
+					if !yes && !hasHelpFlag(rest) {
 						if err := confirmDelete(cmd, deleteConfirmation{
 							target:   "the " + strings.ReplaceAll(name, "-", " ") + " below",
 							identity: "Command: langsmith " + name + " " + strings.Join(args, " "),
@@ -71,40 +68,84 @@ func addGeneratedCommands(root *cobra.Command) {
 						}
 					}
 				}
-				runGenerated(cmd, name, args)
-				return nil
+				return runGenerated(cmd, resource, rest, flags)
 			},
 		})
 	}
 }
 
-// valueFlags are the global flags that take a separate value argument, which
-// operationName must not mistake for the operation.
-var valueFlags = map[string]bool{
-	"--api-key": true, "--api-url": true, "--workspace": true, "--workspace-id": true,
-	"--profile": true, "--format": true, "--base-url": true, "--tenant-id": true,
+// generatedValueFlags returns every spelling of the generated root's flags
+// that takes a separate value argument. langsmith's own global flags are
+// removed by translateGlobalFlags before operations are identified.
+func generatedValueFlags() map[string]bool {
+	names := map[string]bool{}
+	for _, f := range generated.Command.Flags {
+		// A flag that cannot say whether it takes a value is treated as taking
+		// one, which at worst hides the operation and keeps the delete prompt.
+		if v, ok := f.(interface{ TakesValue() bool }); ok && !v.TakesValue() {
+			continue
+		}
+		for _, n := range f.Names() {
+			if len(n) == 1 {
+				names["-"+n] = true
+			} else {
+				names["--"+n] = true
+			}
+		}
+	}
+	return names
 }
 
 // operationName returns the generated operation named in args, for example
 // "delete" in `prompt-webhooks delete --webhook-id x`: the first positional
-// argument, skipping global flags and their values.
-func operationName(resource *cli.Command, args []string) string {
+// argument, skipping flags in valueFlags and their values.
+func operationName(resource *cli.Command, args []string, valueFlags map[string]bool) string {
+	arg, ok := firstPositional(args, valueFlags)
+	if !ok {
+		return ""
+	}
+	for _, op := range resource.Commands {
+		if arg == op.Name {
+			return arg
+		}
+	}
+	return ""
+}
+
+// firstPositional returns the first argument that is neither a flag nor the
+// value of a flag in valueFlags.
+func firstPositional(args []string, valueFlags map[string]bool) (string, bool) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "--" {
+			return "", false
+		}
 		if strings.HasPrefix(arg, "-") {
 			if valueFlags[arg] {
 				i++
 			}
 			continue
 		}
+		return arg, true
+	}
+	return "", false
+}
+
+// isDeleteInvocation reports whether args may run a delete operation. When the
+// operation cannot be identified, any argument naming a delete operation counts,
+// so an unrecognized flag can never skip the confirmation.
+func isDeleteInvocation(resource *cli.Command, args []string, valueFlags map[string]bool) bool {
+	if op := operationName(resource, args, valueFlags); op != "" {
+		return strings.HasPrefix(op, "delete")
+	}
+	for _, arg := range args {
 		for _, op := range resource.Commands {
-			if arg == op.Name {
-				return arg
+			if arg == op.Name && strings.HasPrefix(op.Name, "delete") {
+				return true
 			}
 		}
-		return ""
 	}
-	return ""
+	return false
 }
 
 func hasHelpFlag(args []string) bool {
@@ -131,19 +172,38 @@ func extractFlag(args []string, flag string) ([]string, bool) {
 	return rest, found
 }
 
-// runGenerated hands the arguments to the generated command tree. Auth comes
-// from the Go SDK's defaults (the current profile in ~/.langsmith/config.json,
-// then LANGSMITH_* environment variables), which match how langsmith resolves
-// them. The mounted command disables Cobra's flag parsing, so langsmith's
-// global flags arrive in args and are translated there.
-func runGenerated(cmd *cobra.Command, name string, args []string) {
+// runGenerated hands the arguments to the generated command tree. The mounted
+// command disables Cobra's flag parsing, so translateGlobalFlags extracts
+// langsmith's global flags from the arguments. They are resolved exactly as
+// for hand-written commands and passed to the generated root as explicit
+// --base-url, --tenant-id, and --api-key flags, which take precedence over
+// anything the Go SDK reads from the environment or the config file.
+//
+// The generated root cannot take a bearer token, so a profile that
+// authenticates with OAuth is selected through LANGSMITH_PROFILE and the SDK
+// loads its token; the explicit --base-url still pins the host the token is
+// sent to.
+func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flags globalFlags) error {
 	argv := []string{"langsmith"}
-	rest, profile := translateGlobalFlags(args)
-	if profile != "" {
-		// The SDK selects the profile from this variable.
-		_ = os.Setenv("LANGSMITH_PROFILE", profile)
+	if !isHelpInvocation(rest) {
+		opts, err := resolveAuthenticatedOptions(flags)
+		if err != nil {
+			return err
+		}
+		argv = append(argv, "--base-url="+opts.APIURL)
+		if opts.WorkspaceID != "" {
+			argv = append(argv, "--tenant-id="+opts.WorkspaceID)
+		}
+		if opts.APIKey != "" {
+			argv = append(argv, "--api-key="+opts.APIKey)
+		}
+		if opts.ProfileName != "" {
+			if err := os.Setenv("LANGSMITH_PROFILE", opts.ProfileName); err != nil {
+				return err
+			}
+		}
 	}
-	argv = append(argv, name)
+	argv = append(argv, resource.Name)
 	argv = append(argv, rest...)
 
 	generated.CommandErrorBuffer.Reset()
@@ -156,44 +216,55 @@ func runGenerated(cmd *cobra.Command, name string, args []string) {
 		}
 		exitGenerated(code)
 	}
+	return nil
 }
 
-// translateGlobalFlags renames langsmith's global flags for the generated tree,
-// normalizes --api-url like the hand-written commands (the generated paths
-// already start with /api/v1), and extracts --profile, which the generated
-// tree does not define.
-func translateGlobalFlags(args []string) (rest []string, profile string) {
+// isHelpInvocation reports whether args only ask for help, which needs no
+// credentials.
+func isHelpInvocation(args []string) bool {
+	if hasHelpFlag(args) {
+		return true
+	}
+	arg, ok := firstPositional(args, generatedValueFlags())
+	return !ok || arg == "help"
+}
+
+// translateGlobalFlags removes langsmith's global auth and routing flags from
+// args and returns their values. The generated root's own spellings,
+// --base-url and --tenant-id, are accepted as aliases of --api-url and
+// --workspace.
+func translateGlobalFlags(args []string) (rest []string, flags globalFlags, err error) {
+	targets := map[string]*string{
+		"--api-key":      &flags.APIKey,
+		"--api-url":      &flags.APIURL,
+		"--base-url":     &flags.APIURL,
+		"--profile":      &flags.Profile,
+		"--workspace":    &flags.WorkspaceID,
+		"--workspace-id": &flags.WorkspaceID,
+		"--tenant-id":    &flags.WorkspaceID,
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		flag, value, hasValue := strings.Cut(arg, "=")
-		if flag == "--profile" {
-			if hasValue {
-				profile = value
-			} else if i+1 < len(args) {
-				profile = args[i+1]
-				i++
-			}
-			continue
+		if arg == "--" {
+			rest = append(rest, args[i:]...)
+			break
 		}
-		renamed, ok := globalFlagRenames[flag]
+		flag, value, hasValue := strings.Cut(arg, "=")
+		target, ok := targets[flag]
 		if !ok {
 			rest = append(rest, arg)
 			continue
 		}
 		if !hasValue {
 			if i+1 >= len(args) {
-				rest = append(rest, renamed)
-				continue
+				return nil, flags, fmt.Errorf("flag needs an argument: %s", flag)
 			}
 			value = args[i+1]
 			i++
 		}
-		if flag == "--api-url" {
-			value = client.NormalizeURL(value)
-		}
-		rest = append(rest, renamed+"="+value)
+		*target = value
 	}
-	return rest, profile
+	return rest, flags, nil
 }
 
 func printGeneratedError(w io.Writer, err error) {
