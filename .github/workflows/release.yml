@@ -26,14 +26,14 @@ jobs:
       - name: Require a released langsmith-go
         run: |
           module=github.com/langchain-ai/langsmith-go
-          # go list fails when go.mod does not require the module; the check
-          # below reports that case.
+          # go list fails when go.mod does not require the module; report that
+          # with its own error. Any later go list failure fails the step.
           version=$(go list -m -f '{{.Version}}' "$module" 2>/dev/null || true)
-          replace=$(go list -m -f '{{with .Replace}}{{.Path}} {{.Version}}{{end}}' "$module" 2>/dev/null || true)
           if [[ -z "$version" ]]; then
-            echo "::error::go.mod does not require $module; update this check if the module path changed."
+            echo "::error::go list found no $module requirement. Check that go.mod requires it, or update this check if the module path changed."
             exit 1
           fi
+          replace=$(go list -m -f '{{with .Replace}}{{.Path}} {{.Version}}{{end}}' "$module")
           if [[ -n "$replace" ]]; then
             echo "::error::go.mod replaces langsmith-go with $replace. Remove the replace and require a released tag, then tag the CLI again."
             exit 1
