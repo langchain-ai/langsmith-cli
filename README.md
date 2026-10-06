@@ -550,6 +550,8 @@ git tag v0.2.44          # next patch after the latest tag
 git push origin v0.2.44
 ```
 
+The release fails if `go.mod` requires an unreleased `langsmith-go` (a pseudo-version or a `replace`). Release `langsmith-go` first, update `go.mod` to that tag, and tag the CLI again.
+
 There is no version file or changelog to edit — the version is stamped into the binary from the
 tag via ldflags, so `git tag` is the only bump. Find the latest tag with `git tag --sort=-v:refname | head -1`.
 
