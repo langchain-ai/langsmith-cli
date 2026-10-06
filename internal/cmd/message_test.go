@@ -390,6 +390,69 @@ func TestTraceMessages_Pagination(t *testing.T) {
 	}
 }
 
+// A 429 mid-pagination is retried after the server's Retry-After instead of
+// discarding the pages already fetched.
+func TestTraceMessages_RetriesRateLimitedPage(t *testing.T) {
+	calls := 0
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "sess-rl", "name": "rl-proj"}})
+		case "/api/v2/traces/messages":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			calls++
+			if calls == 1 {
+				items := make([]map[string]any, 10)
+				for i := range items {
+					items[i] = map[string]any{"trace_id": fmt.Sprintf("trace-%d", i+1), "groups": []any{}}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": "cursor-page2"})
+				return
+			}
+			if body["cursor"] != "cursor-page2" {
+				t.Errorf("call %d: expected cursor=cursor-page2 on retry, got %v", calls, body["cursor"])
+			}
+			if calls <= 3 {
+				w.Header().Set("Retry-After", "0")
+				http.Error(w, `{"detail":"Rate limit exceeded"}`, http.StatusTooManyRequests)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{{"trace_id": "trace-11", "groups": []any{}}},
+			})
+		case "/api/v2/runs/query":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{"--project", "rl-proj", "--limit", "15", "--since", "2024-01-01T00:00:00Z"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	if traces, _ := result["traces"].([]any); len(traces) != 11 {
+		t.Errorf("expected 11 traces, got %d", len(traces))
+	}
+	if calls != 4 {
+		t.Errorf("expected 4 messages requests (page 1, two 429s, page 2), got %d", calls)
+	}
+}
+
 func TestTraceMessages_PaginationStopsAtLimit(t *testing.T) {
 	pageCount := 0
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {

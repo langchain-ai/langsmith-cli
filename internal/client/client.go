@@ -245,29 +245,36 @@ type CustomAppRequest struct {
 
 // RawGet performs a GET request to the LangSmith API.
 func (c *Client) RawGet(ctx context.Context, path string, result any) error {
-	return c.rawRequest(ctx, http.MethodGet, path, nil, result)
+	return c.rawRequest(ctx, http.MethodGet, path, nil, result, 0)
 }
 
 // RawPost performs a POST request to the LangSmith API.
 func (c *Client) RawPost(ctx context.Context, path string, body any, result any) error {
-	return c.rawRequest(ctx, http.MethodPost, path, body, result)
+	return c.rawRequest(ctx, http.MethodPost, path, body, result, 0)
+}
+
+// RawPostWithRetries is RawPost with up to maxRetries SDK retries on
+// 408/409/429/5xx, waiting the server's Retry-After when it sends one. Use it
+// only for read-only POSTs (queries), where a repeat is safe.
+func (c *Client) RawPostWithRetries(ctx context.Context, path string, body any, result any, maxRetries int) error {
+	return c.rawRequest(ctx, http.MethodPost, path, body, result, maxRetries)
 }
 
 // RawPatch performs a PATCH request to the LangSmith API.
 func (c *Client) RawPatch(ctx context.Context, path string, body any, result any) error {
-	return c.rawRequest(ctx, http.MethodPatch, path, body, result)
+	return c.rawRequest(ctx, http.MethodPatch, path, body, result, 0)
 }
 
 // RawDelete performs a DELETE request to the LangSmith API.
 func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
-	return c.rawRequest(ctx, http.MethodDelete, path, nil, result)
+	return c.rawRequest(ctx, http.MethodDelete, path, nil, result, 0)
 }
 
 // FetchCustomAppSource returns the stored .tar.gz bytes for a custom app.
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
 	path := c.CustomAppPath(appID) + "/source"
-	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil)
+	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +348,9 @@ func (c *Client) requestURL(path string) (*url.URL, error) {
 }
 
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
-func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
+// maxRetries is the number of SDK retries; RawDo passes 0 so `langsmith api`
+// makes exactly one attempt.
+func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header, maxRetries int) (*httpResponse, error) {
 	requestURL, err := c.requestURL(path)
 	if err != nil {
 		return nil, err
@@ -355,9 +364,9 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	// here instead raced other CLI processes on the single-use refresh token,
 	// and the server answers a replayed token by revoking every session for
 	// the user. requestURL is absolute, so the SDK sends it as-is rather than
-	// joining it onto its base URL; retries stay off to keep one attempt.
+	// joining it onto its base URL.
 	opts := []option.RequestOption{
-		option.WithMaxRetries(0),
+		option.WithMaxRetries(maxRetries),
 		option.WithRequestTimeout(rawRequestTimeout),
 		option.WithHeader("Content-Type", "application/json"),
 	}
@@ -432,7 +441,7 @@ const rawRequestTimeout = 30 * time.Second
 // does not treat 4xx/5xx as errors — callers decide how to handle status codes.
 // body may be nil. extraHeaders are merged on top of the default auth headers.
 func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, proto string, respHeaders http.Header, respBody []byte, err error) {
-	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders)
+	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders, 0)
 	if err != nil {
 		return 0, "", nil, nil, err
 	}
@@ -445,7 +454,7 @@ func (c *Client) APIKey() string { return c.apiKey }
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }
 
-func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any) error {
+func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any, maxRetries int) error {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -455,7 +464,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 		bodyReader = bytes.NewReader(data)
 	}
 
-	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil)
+	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil, maxRetries)
 	if err != nil {
 		return err
 	}
