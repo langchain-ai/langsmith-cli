@@ -514,6 +514,9 @@ func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
 	if !baseHas[langsmith.RunSelectFieldFirstTokenTime] {
 		t.Error("missing first_token_time field in base v2 select set")
 	}
+	if !baseHas[langsmith.RunSelectFieldStatus] {
+		t.Error("missing status field in base v2 select set")
+	}
 	if baseHas[langsmith.RunSelectFieldEvents] {
 		t.Error("events should not be requested without --include-io")
 	}
@@ -525,6 +528,132 @@ func TestBuildRunSelectV2_IncludesFirstTokenTimeAndEvents(t *testing.T) {
 	}
 	if !ioHas[langsmith.RunSelectFieldEvents] {
 		t.Error("missing events field when --include-io requested")
+	}
+}
+
+func TestRunV2ToSchema_StatusMetadata(t *testing.T) {
+	for _, status := range []string{"ERROR", "SUCCESS", "PENDING"} {
+		var run langsmith.Run
+		if err := json.Unmarshal([]byte(`{"status":"`+status+`"}`), &run); err != nil {
+			t.Fatal(err)
+		}
+		rows := extractRunsToMaps([]langsmith.RunSchema{runV2ToSchema(run)}, true, false, false)
+		if rows[0]["status"] != strings.ToLower(status) {
+			t.Errorf("status metadata = %v, want %s", rows[0]["status"], strings.ToLower(status))
+		}
+	}
+}
+
+func TestQueryTracesV2_TraceTotalsAndPagination(t *testing.T) {
+	var cursors []string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/traces/query" {
+			t.Fatalf("unexpected endpoint: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["project_id"] != "project-1" || body["trace_filter"] != `and(eq(name, "agent"), eq(error, true))` {
+			t.Errorf("scope not preserved: %v", body)
+		}
+		if strings.Contains(body["trace_filter"].(string), "total_tokens") {
+			t.Error("token bound must not target root usage")
+		}
+		cursor, _ := body["cursor"].(string)
+		cursors = append(cursors, cursor)
+		w.Header().Set("Content-Type", "application/json")
+		if cursor == "" {
+			_, _ = w.Write([]byte(`{"items":[{"root_run":{"id":"low","trace_id":"low","total_tokens":0},"trace_aggregates":{"total_tokens":10}}],"next_cursor":"next"}`))
+		} else {
+			_, _ = w.Write([]byte(`{"items":[{"root_run":{"id":"high","trace_id":"high","total_tokens":0,"status":"ERROR"},"trace_aggregates":{"total_tokens":700,"total_cost":0.25}}]}`))
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	params := langsmith.RunQueryParams{IsRoot: langsmith.F(true), Error: langsmith.F(true), Filter: langsmith.F(`eq(name, "agent")`)}
+	runs, err := queryTracesV2(context.Background(), MustGetClient(), params, buildRunSelectV2(false, false), "project-1", 1, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].TraceID != "high" || runs[0].TotalTokens != 700 || runs[0].TotalCost != 0.25 {
+		t.Fatalf("unexpected trace totals: %+v", runs)
+	}
+	rows := extractRunsToMaps(runs, true, false, false)
+	if rows[0]["token_usage"].(map[string]any)["total_tokens"] != int64(700) || rows[0]["costs"].(map[string]any)["total_cost"] != 0.25 {
+		t.Errorf("unexpected metadata: %v", rows)
+	}
+	if strings.Join(cursors, ",") != ",next" {
+		t.Errorf("unexpected cursors: %v", cursors)
+	}
+}
+
+func TestQueryTraceUsageV2_SumsOwnUsage(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if body["is_root"] == true {
+			_, _ = w.Write([]byte(`{"items":[{"id":"root","trace_id":"root","start_time":"2026-01-01T00:00:00Z"}]}`))
+		} else {
+			if body["trace_id"] != "root" || body["min_start_time"] != "2026-01-01T00:00:00Z" {
+				t.Errorf("usage query not scoped to trace: %v", body)
+			}
+			_, _ = w.Write([]byte(`{"items":[{"id":"root","total_tokens":0},{"id":"a","total_tokens":300,"total_cost":0.1},{"id":"b","total_tokens":400,"total_cost":0.2}]}`))
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	runs, err := queryTraceUsageV2(context.Background(), MustGetClient(), langsmith.RunQueryParams{IsRoot: langsmith.F(true)}, buildRunSelectV2(false, false), "project-1", 1, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].TotalTokens != 700 || runs[0].TotalCost < 0.299 || runs[0].TotalCost > 0.301 {
+		t.Fatalf("unexpected usage: %+v", runs)
+	}
+}
+
+func TestQueryRunsAuto_PreservesRunAndV1TokenFiltering(t *testing.T) {
+	for _, version := range []string{"0.15.9", "dev"} {
+		t.Run(version, func(t *testing.T) {
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/v1/info" {
+					_ = json.NewEncoder(w).Encode(map[string]any{"version": version})
+					return
+				}
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if version == "dev" {
+					if r.URL.Path != "/api/v2/runs/query" || body["filter"] != `and(gte(latency, 5), gte(total_tokens, 500))` {
+						t.Errorf("unexpected v2 run query: %s %v", r.URL.Path, body)
+					}
+					_, _ = w.Write([]byte(`{"items":[{"id":"high","total_tokens":700}]}`))
+				} else {
+					if r.URL.Path != "/api/v1/runs/query" || body["filter"] != `gte(latency, 5)` {
+						t.Errorf("unexpected v1 query: %s %v", r.URL.Path, body)
+					}
+					_, _ = w.Write([]byte(`{"runs":[{"id":"low","total_tokens":10},{"id":"high","total_tokens":700}],"cursors":{}}`))
+				}
+			})
+			cleanup := setupTestEnv(t, ts.URL)
+			defer cleanup()
+			params := langsmith.RunQueryParams{Filter: langsmith.F(`gte(latency, 5)`)}
+			if version != "dev" {
+				params.IsRoot = langsmith.F(true)
+			}
+			runs, err := queryRunsAuto(context.Background(), MustGetClient(), params, buildRunSelectV2(false, false), "project-1", 1, 500)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(runs) != 1 || runs[0].ID != "high" {
+				t.Fatalf("unexpected token filtering: %+v", runs)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,12 @@ func newTraceListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List traces (root runs) matching filter criteria (default: 20, newest first)",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("trace-ids") && len(splitTrim(ff.TraceIDs)) == 0 {
+				return fmt.Errorf("--trace-ids must contain at least one trace ID")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if full {
 				includeMetadata = true

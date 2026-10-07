@@ -135,6 +135,9 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 		return nil, err
 	}
 	if useV2 {
+		if params.IsRoot.Present && params.IsRoot.Value {
+			return queryTracesV2(ctx, c, params, v2Selects, sessionID, limit, minTokens)
+		}
 		// total_tokens is filterable on the v2 (SmithDB) path, so push the bound
 		// into the query and skip the client-side pass. v1 does not accept it,
 		// and an attribute it does not recognise fails the whole query rather
@@ -148,6 +151,108 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 		return queryRunsV2(ctx, c, toV2Params(params, v2Selects), sessionID, limit, minTokens)
 	}
 	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
+}
+
+func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+	if params.Error.Present {
+		addFilterClause(&params, fmt.Sprintf("eq(error, %t)", params.Error.Value))
+	}
+	if params.RunType.Present {
+		addFilterClause(&params, fmt.Sprintf("eq(run_type, %q)", params.RunType.Value))
+	}
+	if len(params.ID.Value) > 0 {
+		ids, err := json.Marshal(params.ID.Value)
+		if err != nil {
+			return nil, err
+		}
+		addFilterClause(&params, fmt.Sprintf("in(id, %s)", ids))
+	}
+	query := langsmith.TraceQueryParams{
+		ProjectID: langsmith.F(sessionID),
+		Selects:   langsmith.F(selects),
+		PageSize:  langsmith.F(int64(min(limit, 100))),
+	}
+	if params.StartTime.Present {
+		query.MinStartTime = langsmith.F(params.StartTime.Value)
+	}
+	if params.EndTime.Present {
+		query.MaxStartTime = langsmith.F(params.EndTime.Value)
+	}
+	if params.Filter.Present {
+		query.TraceFilter = langsmith.F(params.Filter.Value)
+	}
+	if params.Trace.Present {
+		query.TraceIDs = langsmith.F([]string{params.Trace.Value})
+	}
+	var runs []langsmith.RunSchema
+	iter := c.SDK.Traces.QueryAutoPaging(ctx, query)
+	for iter.Next() {
+		trace := iter.Current()
+		run := runV2ToSchema(trace.RootRun)
+		run.TotalTokens = trace.TraceAggregates.TotalTokens
+		run.TotalCost = trace.TraceAggregates.TotalCost
+		run.FirstTokenTime = trace.TraceAggregates.FirstTokenTime
+		run.PromptTokens, run.CompletionTokens = 0, 0
+		run.PromptCost, run.CompletionCost = 0, 0
+		if minTokens > 0 && run.TotalTokens < int64(minTokens) {
+			continue
+		}
+		runs = append(runs, run)
+		if len(runs) >= limit {
+			break
+		}
+	}
+	if err := iter.Err(); err != nil {
+		if isHTTP404(err) {
+			return queryTraceUsageV2(ctx, c, params, selects, sessionID, limit, minTokens)
+		}
+		return nil, fmt.Errorf("querying traces (v2): %w", err)
+	}
+	return runs, nil
+}
+
+func queryTraceUsageV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+	query := toV2Params(params, selects)
+	query.ProjectIDs = langsmith.F([]string{sessionID})
+	query.PageSize = langsmith.F(int64(min(limit, 100)))
+	var runs []langsmith.RunSchema
+	roots := c.SDK.Runs.QueryV2AutoPaging(ctx, query)
+	for roots.Next() {
+		root := runV2ToSchema(roots.Current())
+		usageQuery := langsmith.RunQueryV2Params{
+			ProjectIDs:   langsmith.F([]string{sessionID}),
+			TraceID:      langsmith.F(root.TraceID),
+			MinStartTime: langsmith.F(root.StartTime),
+			PageSize:     langsmith.F(int64(100)),
+			Selects:      langsmith.F(buildRunSelectV2(false, false)),
+		}
+		root.TotalTokens, root.PromptTokens, root.CompletionTokens = 0, 0, 0
+		root.TotalCost, root.PromptCost, root.CompletionCost = 0, 0, 0
+		usage := c.SDK.Runs.QueryV2AutoPaging(ctx, usageQuery)
+		for usage.Next() {
+			run := usage.Current()
+			root.TotalTokens += run.TotalTokens
+			root.PromptTokens += run.PromptTokens
+			root.CompletionTokens += run.CompletionTokens
+			root.TotalCost += run.TotalCost
+			root.PromptCost += run.PromptCost
+			root.CompletionCost += run.CompletionCost
+		}
+		if err := usage.Err(); err != nil {
+			return nil, fmt.Errorf("querying trace usage (v2): %w", err)
+		}
+		if minTokens > 0 && root.TotalTokens < int64(minTokens) {
+			continue
+		}
+		runs = append(runs, root)
+		if len(runs) >= limit {
+			break
+		}
+	}
+	if err := roots.Err(); err != nil {
+		return nil, fmt.Errorf("querying trace roots (v2): %w", err)
+	}
+	return runs, nil
 }
 
 // addFilterClause ANDs clause into params.Filter, preserving anything already
@@ -218,6 +323,7 @@ func buildRunSelectV2(includeIO, includeFeedback bool) []langsmith.RunSelectFiel
 		langsmith.RunSelectFieldTraceID,
 		langsmith.RunSelectFieldName,
 		langsmith.RunSelectFieldRunType,
+		langsmith.RunSelectFieldStatus,
 		langsmith.RunSelectFieldStartTime,
 		langsmith.RunSelectFieldEndTime,
 		langsmith.RunSelectFieldParentRunIDs,
@@ -278,6 +384,7 @@ func runV2ToSchema(r langsmith.Run) langsmith.RunSchema {
 		ThreadID:           r.ThreadID,
 		AppPath:            r.AppPath,
 		TotalTokens:        r.TotalTokens,
+		Status:             strings.ToLower(string(r.Status)),
 		PromptTokens:       r.PromptTokens,
 		CompletionTokens:   r.CompletionTokens,
 		TotalCost:          r.TotalCost,
