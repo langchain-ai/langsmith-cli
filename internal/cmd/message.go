@@ -188,7 +188,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
+				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
@@ -239,7 +239,7 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPost(ctx, "/api/v2/traces/messages", body, &result); err != nil {
+				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result); err != nil {
 					ExitErrorf("%v", err)
 				}
 
