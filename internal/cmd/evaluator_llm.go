@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,8 +12,19 @@ import (
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
-type llmEvaluatorTarget struct {
+type evaluatorTarget struct {
 	datasetID, projectID string
+}
+
+func (t evaluatorTarget) ruleListParams() langsmith.EvaluatorListParams {
+	params := langsmith.EvaluatorListParams{}
+	if t.projectID != "" {
+		params.SessionID = langsmith.F(t.projectID)
+	}
+	if t.datasetID != "" {
+		params.DatasetID = langsmith.F(t.datasetID)
+	}
+	return params
 }
 
 func loadJSONFile(path string, dest any) error {
@@ -110,50 +122,50 @@ func validateEvaluatorTargetFlags(dataset, project, projectID string) error {
 	return nil
 }
 
-// Finds the dataset or project this evaluator should run on.
-func resolveLLMEvaluatorTarget(ctx context.Context, c *client.Client, dataset, project, projectID string) (llmEvaluatorTarget, error) {
+// Finds the dataset or project an evaluator rule runs on.
+func resolveEvaluatorTarget(ctx context.Context, c *client.Client, dataset, project, projectID string) (evaluatorTarget, error) {
 	if err := validateEvaluatorTargetFlags(dataset, project, projectID); err != nil {
-		return llmEvaluatorTarget{}, err
+		return evaluatorTarget{}, err
 	}
-	var target llmEvaluatorTarget
+	var target evaluatorTarget
 	if dataset != "" {
 		ds, err := resolveDataset(ctx, c, dataset)
 		if err != nil {
-			return llmEvaluatorTarget{}, err
+			return evaluatorTarget{}, err
 		}
 		target.datasetID = ds.ID
 	}
 	if project != "" || projectID != "" {
 		sid, err := resolveSessionID(ctx, c, project, projectID, "evaluator llm create")
 		if err != nil {
-			return llmEvaluatorTarget{}, err
+			return evaluatorTarget{}, err
 		}
 		target.projectID = sid
 	}
 	return target, nil
 }
 
-// Finds an existing evaluator with the same name on this dataset or project.
-// When the evaluator already exists and --replace is not set, returns the existing
-// rule alongside the error so callers can reuse it without another list call.
-func findLLMEvaluatorForCreate(ctx context.Context, c *client.Client, name string, target llmEvaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+// findRuleToReplace returns the evaluator rule on the target that --name
+// refers to, or nil when there is none and a new one should be created. It
+// errors when one exists and --replace is not set, or the user declines.
+func findRuleToReplace(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
+	rules, err := c.SDK.Evaluators.List(ctx, target.ruleListParams())
 	if err != nil {
 		return nil, fmt.Errorf("checking existing evaluators: %w", err)
 	}
-	existing := findEvaluator(*rules, name, target.datasetID, target.projectID)
-	if existing == nil {
-		return nil, nil
+	existing, err := findRuleForReplace(*rules, name, target.datasetID, target.projectID)
+	if err != nil || existing == nil {
+		return nil, err
 	}
 	if !replace {
-		return existing, fmt.Errorf("evaluator %q already exists (use --replace to overwrite)", name)
+		return nil, fmt.Errorf("evaluator %q already exists on this target (rule %q, %s); use --replace to update it", existing.EvaluatorName, existing.DisplayName, existing.ID)
 	}
 	if !yes {
-		fmt.Fprintf(os.Stderr, "Replace existing evaluator '%s'? [y/N] ", name)
+		fmt.Fprintf(os.Stderr, "Replace evaluator %q (rule %q)? This updates it on every project and dataset it is attached to. [y/N] ", existing.EvaluatorName, existing.DisplayName)
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if strings.ToLower(confirm) != "y" {
-			return nil, fmt.Errorf("aborted")
+			return nil, errors.New("aborted")
 		}
 	}
 	return existing, nil
@@ -162,7 +174,7 @@ func findLLMEvaluatorForCreate(ctx context.Context, c *client.Client, name strin
 // Packages prompt, schema, model, and targeting into the create-evaluator request.
 func buildLLMEvaluatorPayload(
 	name string,
-	target llmEvaluatorTarget,
+	target evaluatorTarget,
 	samplingRate float64,
 	traceFilter, hubRef, promptPath, schemaPath, modelConfigPath string,
 	variableMapping map[string]string,

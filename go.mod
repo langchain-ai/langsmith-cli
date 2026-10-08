@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/itchyny/json2yaml v0.1.4
-	github.com/langchain-ai/langsmith-go v0.27.0
+	github.com/langchain-ai/langsmith-go v0.27.1
 	github.com/muesli/reflow v0.3.0
 	github.com/olekukonko/tablewriter v1.1.5
 	github.com/pelletier/go-toml/v2 v2.4.3

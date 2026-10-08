@@ -294,6 +294,18 @@ func newTraceExportCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
+			// Resolve every destination before creating any files. A pattern such as
+			// "trace.jsonl" or {name} can map multiple traces to one path; allowing
+			// os.Create to handle that would silently truncate an earlier export.
+			paths := make(map[string]string, len(rootRuns))
+			for _, root := range rootRuns {
+				fpath := traceExportPath(outputDir, filenamePattern, root)
+				if previous, ok := paths[fpath]; ok {
+					ExitErrorf("filename pattern resolves multiple traces to %s (trace IDs %s and %s); include {trace_id} or another unique placeholder", fpath, previous, root.TraceID)
+				}
+				paths[fpath] = root.TraceID
+			}
+
 			exported := 0
 			for _, root := range rootRuns {
 				tid := root.TraceID
@@ -313,16 +325,7 @@ func newTraceExportCmd() *cobra.Command {
 					ExitErrorf("%v", err)
 				}
 
-				name := root.Name
-				if name == "" {
-					name = "unknown"
-				}
-
-				filename := filenamePattern
-				filename = strings.ReplaceAll(filename, "{trace_id}", tid)
-				filename = strings.ReplaceAll(filename, "{name}", name)
-				filename = filepath.Base(filename)
-				fpath := filepath.Join(outputDir, filename)
+				fpath := traceExportPath(outputDir, filenamePattern, root)
 
 				f, err := os.Create(fpath)
 				if err != nil {
@@ -357,6 +360,16 @@ func newTraceExportCmd() *cobra.Command {
 		"Filename pattern. Supports {trace_id} and {name} placeholders.")
 
 	return cmd
+}
+
+func traceExportPath(outputDir, pattern string, root langsmith.RunSchema) string {
+	name := root.Name
+	if name == "" {
+		name = "unknown"
+	}
+	filename := strings.ReplaceAll(pattern, "{trace_id}", root.TraceID)
+	filename = strings.ReplaceAll(filename, "{name}", name)
+	return filepath.Join(outputDir, filepath.Base(filename))
 }
 
 // annotateFlagged mutates each run map to add a "flagged_comment" field
