@@ -554,7 +554,7 @@ func TestQueryTracesV2_TraceTotalsAndPagination(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["project_id"] != "project-1" || body["trace_filter"] != `and(eq(name, "agent"), eq(error, true))` {
+		if body["project_id"] != "project-1" || body["trace_filter"] != `and(eq(name, "agent"), eq(status, "error"))` {
 			t.Errorf("scope not preserved: %v", body)
 		}
 		if strings.Contains(body["trace_filter"].(string), "total_tokens") {
@@ -612,6 +612,35 @@ func TestQueryTraceUsageV2_SumsOwnUsage(t *testing.T) {
 	}
 	if len(runs) != 1 || runs[0].TotalTokens != 700 || runs[0].TotalCost < 0.299 || runs[0].TotalCost > 0.301 {
 		t.Fatalf("unexpected usage: %+v", runs)
+	}
+}
+
+func TestQueryTracesV2_NoErrorFilterPreservesWindow(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["trace_filter"] != `and(gte(latency, 5), neq(status, "error"))` {
+			t.Errorf("unexpected --no-error translation: %v", body)
+		}
+		if body["min_start_time"] != "2026-01-01T00:00:00Z" || body["max_start_time"] != "2026-01-02T00:00:00Z" {
+			t.Errorf("scan window not preserved: %v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	params := langsmith.RunQueryParams{
+		IsRoot: langsmith.F(true), Error: langsmith.F(false),
+		StartTime: langsmith.F(start), EndTime: langsmith.F(end),
+		Filter: langsmith.F(`gte(latency, 5)`),
+	}
+	if _, err := queryTracesV2(context.Background(), MustGetClient(), params, buildRunSelectV2(false, false), "project-1", 1, 0); err != nil {
+		t.Fatal(err)
 	}
 }
 

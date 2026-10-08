@@ -155,7 +155,11 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 
 func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
 	if params.Error.Present {
-		addFilterClause(&params, fmt.Sprintf("eq(error, %t)", params.Error.Value))
+		clause := `eq(status, "error")`
+		if !params.Error.Value {
+			clause = `neq(status, "error")`
+		}
+		addFilterClause(&params, clause)
 	}
 	if params.RunType.Present {
 		addFilterClause(&params, fmt.Sprintf("eq(run_type, %q)", params.RunType.Value))
