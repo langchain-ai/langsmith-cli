@@ -10,6 +10,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/spf13/cobra"
 )
 
 type evaluatorTarget struct {
@@ -169,6 +170,61 @@ func findRuleToReplace(ctx context.Context, c *client.Client, name string, targe
 		}
 	}
 	return existing, nil
+}
+
+// replaceOverrides says which rule settings the user passed explicitly on a
+// --replace; the rest keep the rule's current values.
+type replaceOverrides struct {
+	samplingRate, traceFilter bool
+}
+
+func replaceOverridesFromFlags(cmd *cobra.Command) replaceOverrides {
+	return replaceOverrides{
+		samplingRate: cmd.Flags().Changed("sampling-rate"),
+		traceFilter:  cmd.Flags().Changed("trace-filter"),
+	}
+}
+
+// keepRuleSettings copies the existing rule's settings into a --replace
+// payload. PATCH /runs/rules/{id} replaces the rule: webhooks, filters,
+// sampling rate, enablement, and the add-to-dataset and annotation-queue
+// actions are taken from the request and cleared when omitted. The server
+// keeps group_by, spend_limit, use_corrections_dataset, num_few_shot_examples,
+// is_tracing_disabled, and the trace-retention flags when they are omitted, so
+// those are left out; sending a retention flag also needs an extra permission.
+func keepRuleSettings(payload map[string]any, existing langsmith.Evaluator, overrides replaceOverrides) error {
+	if len(existing.Alerts) > 0 {
+		return fmt.Errorf("rule %q (%s) has %d alert(s), which the API no longer accepts on update, so --replace would remove them; not updated", existing.DisplayName, existing.ID, len(existing.Alerts))
+	}
+	payload["display_name"] = existing.DisplayName
+	payload["is_enabled"] = existing.IsEnabled
+	payload["include_extended_stats"] = existing.IncludeExtendedStats
+	payload["extend_only"] = existing.ExtendOnly
+	payload["add_to_dataset_prefer_correction"] = existing.AddToDatasetPreferCorrection
+	if !overrides.samplingRate {
+		payload["sampling_rate"] = existing.SamplingRate
+	}
+	if !overrides.traceFilter {
+		delete(payload, "trace_filter")
+		if existing.TraceFilter != "" {
+			payload["trace_filter"] = existing.TraceFilter
+		}
+	}
+	for key, value := range map[string]string{
+		"filter":                     existing.Filter,
+		"tree_filter":                existing.TreeFilter,
+		"add_to_dataset_id":          existing.AddToDatasetID,
+		"add_to_annotation_queue_id": existing.AddToAnnotationQueueID,
+	} {
+		if value != "" {
+			payload[key] = value
+		}
+	}
+	// The raw JSON keeps webhook headers and any fields the SDK type omits.
+	if raw := existing.JSON.Webhooks.Raw(); raw != "" && raw != "null" {
+		payload["webhooks"] = json.RawMessage(raw)
+	}
+	return nil
 }
 
 // Packages prompt, schema, model, and targeting into the create-evaluator request.

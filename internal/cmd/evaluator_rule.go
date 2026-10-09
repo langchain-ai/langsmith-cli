@@ -194,9 +194,13 @@ Examples:
 			}
 
 			if !yes {
+				identity := fmt.Sprintf("Rule: %q (id: %s, evaluator: %q, target: %s)", rule.DisplayName, rule.ID, rule.EvaluatorName, ruleTarget(*rule))
+				if actions := ruleSideActions(*rule); len(actions) > 0 {
+					identity += "\nThe rule's other actions are deleted with it: " + strings.Join(actions, ", ")
+				}
 				if err := confirmDelete(cmd, deleteConfirmation{
 					target:   "the evaluator rule (the evaluator itself is kept)",
-					identity: fmt.Sprintf("Rule: %q (id: %s, evaluator: %q, target: %s)", rule.DisplayName, rule.ID, rule.EvaluatorName, ruleTarget(*rule)),
+					identity: identity,
 				}); err != nil {
 					return err
 				}
@@ -265,6 +269,32 @@ func findRuleByName(ctx context.Context, c *client.Client, name, project, projec
 // embed their evaluator inline instead of setting evaluator_id.
 func isEvaluatorRule(r langsmith.Evaluator) bool {
 	return r.EvaluatorID != "" || len(r.Evaluators) > 0 || len(r.CodeEvaluators) > 0
+}
+
+// ruleSideActions describes what a rule does besides running its evaluator.
+// Deleting the rule deletes these too.
+func ruleSideActions(r langsmith.Evaluator) []string {
+	var actions []string
+	if n := len(r.Webhooks); n > 0 {
+		actions = append(actions, fmt.Sprintf("%d webhook(s)", n))
+	}
+	if r.AddToDatasetID != "" {
+		actions = append(actions, "add to dataset "+nameOrID(r.AddToDatasetName, r.AddToDatasetID))
+	}
+	if r.AddToAnnotationQueueID != "" {
+		actions = append(actions, "add to annotation queue "+nameOrID(r.AddToAnnotationQueueName, r.AddToAnnotationQueueID))
+	}
+	if n := len(r.Alerts); n > 0 {
+		actions = append(actions, fmt.Sprintf("%d alert(s)", n))
+	}
+	return actions
+}
+
+func nameOrID(name, id string) string {
+	if name != "" {
+		return fmt.Sprintf("%q", name)
+	}
+	return id
 }
 
 func ruleEntry(r langsmith.Evaluator) map[string]any {
