@@ -194,6 +194,10 @@ langsmith trace export ./traces --project my-app --limit 20 --full
 langsmith trace export ./traces --project my-app --filename-pattern "{name}_{trace_id}.jsonl"
 ```
 
+On v2, `trace list --min-tokens` compares trace-wide usage, and root metadata
+reports trace-wide total tokens and cost. `run list --min-tokens` continues to
+filter each run's own usage. An explicitly empty `trace list --trace-ids` is rejected.
+
 ### `run` — Query individual runs
 
 A run is a single step within a trace (LLM call, tool call, chain step, etc.).
