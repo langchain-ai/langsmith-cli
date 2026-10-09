@@ -369,7 +369,8 @@ langsmith evaluator upload evals.py \
 langsmith evaluator upload evals.py \
   --name latency-check --function check_latency --project my-app --sampling-rate 0.5
 
-# Replace an existing evaluator
+# Replace an existing evaluator's code. The rule keeps its sampling rate, filters,
+# webhooks, and other actions unless you pass --sampling-rate or --trace-filter.
 langsmith evaluator upload evals.py \
   --name accuracy --function check_accuracy_v2 --dataset my-eval-set --replace --yes
 
