@@ -112,9 +112,8 @@ Requires --project and an explicit start time (--since or --last-n-minutes);
 unlike the read/query commands this one has no implicit time window.
 Default limit: 10, max: 100.
 
---feedback-since and --feedback-before limit the feedback conditions in --filter
-to feedback modified in that window, which finds recent feedback on traces that
-ran earlier. The start time still bounds when the traces ran.
+--feedback-since/--feedback-before only match feedback modified in that window;
+the start time still bounds when the traces ran.
 
 Examples:
   langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
