@@ -146,6 +146,78 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	}
 }
 
+func TestLoginOpensVerificationURIComplete(t *testing.T) {
+	oldKey := flagAPIKey
+	oldURL := flagAPIURL
+	oldProfile := flagProfile
+	oldFormat := flagOutputFormat
+	oldOpenBrowser := openBrowser
+	defer func() {
+		flagAPIKey = oldKey
+		flagAPIURL = oldURL
+		flagProfile = oldProfile
+		flagOutputFormat = oldFormat
+		openBrowser = oldOpenBrowser
+	}()
+	flagAPIKey = ""
+	flagAPIURL = ""
+	flagProfile = ""
+	flagOutputFormat = "json"
+	var opened []string
+	openBrowser = func(rawURL string) error {
+		opened = append(opened, rawURL)
+		return nil
+	}
+
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+
+	var completeURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/device/code":
+			completeURL = tsActivateURL(r) + "?user_code=ABCD-EFGH"
+			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
+				DeviceCode:              "device-code",
+				UserCode:                "ABCD-EFGH",
+				VerificationURI:         tsActivateURL(r),
+				VerificationURIComplete: completeURL,
+				ExpiresIn:               60,
+			})
+		case "/oauth/token":
+			_ = json.NewEncoder(w).Encode(oauthTokenResponse{
+				AccessToken:  "test-access-token",
+				ExpiresIn:    300,
+				RefreshToken: "test-refresh-token",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	root := NewRootCmd("test", "test")
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL + "/api/v1", "--workspace-id", "00000000-0000-0000-0000-000000000123"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(opened) != 1 || opened[0] != completeURL {
+		t.Fatalf("expected the browser to open %q, opened %v", completeURL, opened)
+	}
+	if !strings.Contains(stderr.String(), completeURL) {
+		t.Fatalf("expected login instructions to include %q, got %q", completeURL, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Check that the page shows this code, or enter it: ABCD-EFGH") {
+		t.Fatalf("expected login instructions to ask to check the code, got %q", stderr.String())
+	}
+}
+
 func TestLoginDoesNotSaveTokenWorkspaceByDefault(t *testing.T) {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL

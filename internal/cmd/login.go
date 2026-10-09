@@ -33,11 +33,22 @@ var inputIsTerminal = func(r io.Reader) bool {
 }
 
 type deviceCodeResponse struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
+}
+
+// instructions are what to open and what to do with the code there. When the
+// server sends verification_uri_complete (RFC 8628 §3.3.1), the page opens with
+// the code filled in, so the person only checks it matches.
+func (d *deviceCodeResponse) instructions() (string, string) {
+	if d.VerificationURIComplete != "" {
+		return d.VerificationURIComplete, "Check that the page shows this code, or enter it"
+	}
+	return d.VerificationURI, "Enter code"
 }
 
 type oauthTokenResponse struct {
@@ -116,9 +127,10 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	}
 
 	errOut := cmd.ErrOrStderr()
-	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\nEnter code: %s\n\n", device.VerificationURI, device.UserCode)
+	verificationURL, codeHint := device.instructions()
+	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\n%s: %s\n\n", verificationURL, codeHint, device.UserCode)
 	if !noBrowser {
-		if err := openBrowser(device.VerificationURI); err != nil {
+		if err := openBrowser(verificationURL); err != nil {
 			fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
 		}
 	}
