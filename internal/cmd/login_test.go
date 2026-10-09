@@ -213,7 +213,7 @@ func TestLoginOpensVerificationURIComplete(t *testing.T) {
 	if !strings.Contains(stderr.String(), completeURL) {
 		t.Fatalf("expected login instructions to include %q, got %q", completeURL, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "Check that the page shows this code: ABCD-EFGH") {
+	if !strings.Contains(stderr.String(), "Check that the page shows this code, or enter it: ABCD-EFGH") {
 		t.Fatalf("expected login instructions to ask to check the code, got %q", stderr.String())
 	}
 }

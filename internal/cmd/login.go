@@ -46,7 +46,7 @@ type deviceCodeResponse struct {
 // the code filled in, so the person only checks it matches.
 func (d *deviceCodeResponse) instructions() (string, string) {
 	if d.VerificationURIComplete != "" {
-		return d.VerificationURIComplete, "Check that the page shows this code"
+		return d.VerificationURIComplete, "Check that the page shows this code, or enter it"
 	}
 	return d.VerificationURI, "Enter code"
 }
