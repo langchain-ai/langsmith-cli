@@ -190,6 +190,17 @@ func TestBuildRunQueryParams_RunType(t *testing.T) {
 	}
 }
 
+func TestBuildRunQueryParams_TreeFilterStaysSeparate(t *testing.T) {
+	f := &FilterFlags{RawFilter: `eq(status, "success")`, TreeFilter: `eq(name, "tool")`}
+	params := BuildRunQueryParams(f, true, 20)
+	if params.TreeFilter.Value != `eq(name, "tool")` {
+		t.Errorf("TreeFilter = %q", params.TreeFilter.Value)
+	}
+	if params.Filter.Value != `eq(status, "success")` {
+		t.Errorf("Filter = %q, want the root filter only", params.Filter.Value)
+	}
+}
+
 func TestBuildRunQueryParams_ErrorFlag(t *testing.T) {
 	f := &FilterFlags{ErrorFlag: true}
 	params := BuildRunQueryParams(f, false, 20)

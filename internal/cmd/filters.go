@@ -30,9 +30,11 @@ type FilterFlags struct {
 	Tags         string
 	Metadata     string
 	RawFilter    string
+	TreeFilter   string
 }
 
 const (
+	treeFilterUsage    = "Filter DSL matched against every run in a trace; keeps traces where any run matches"
 	projectFlagUsage   = "Project name [env: LANGSMITH_PROJECT]"
 	projectIDFlagUsage = "Project (session) UUID; skips the name lookup. Mutually exclusive with --project; overrides $LANGSMITH_PROJECT"
 )
@@ -64,6 +66,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().StringVar(&f.Tags, "tags", "", "Comma-separated tags (OR logic)")
 	cmd.Flags().StringVar(&f.Metadata, "metadata", "", "Filter by metadata key=value (e.g. revision_id=abc123)")
 	cmd.Flags().StringVar(&f.RawFilter, "filter", "", "Raw LangSmith filter DSL string")
+	cmd.Flags().StringVar(&f.TreeFilter, "tree-filter", "", treeFilterUsage)
 
 	if includeRunType {
 		cmd.Flags().StringVar(&f.RunType, "run-type", "", "Filter by run type (llm, chain, tool, retriever, prompt, parser)")
@@ -148,6 +151,9 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 	filterStr := buildFilterDSL(f)
 	if filterStr != "" {
 		params.Filter = langsmith.F(filterStr)
+	}
+	if f.TreeFilter != "" {
+		params.TreeFilter = langsmith.F(f.TreeFilter)
 	}
 
 	return params

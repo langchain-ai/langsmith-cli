@@ -55,7 +55,7 @@ func TestTraceStatsCmd_RequestsAndDecodesTotalCost(t *testing.T) {
 	})
 	defer setupTestEnv(t, ts.URL)()
 
-	stats, err := fetchRunStats(t.Context(), MustGetClient(), "00000000-0000-0000-0000-000000000000", "2026-01-01", "2026-01-02", 0, "", traceStatsSelect())
+	stats, err := fetchRunStats(t.Context(), MustGetClient(), "00000000-0000-0000-0000-000000000000", "2026-01-01", "2026-01-02", 0, "", "", traceStatsSelect())
 	if err != nil {
 		t.Fatalf("fetchRunStats: %v", err)
 	}
@@ -222,5 +222,26 @@ func TestEveryStatsKeyIsReadable(t *testing.T) {
 		if v := selectedStats(s, []string{name})[name]; v == nil {
 			t.Fatalf("select %q reads back nil", name)
 		}
+	}
+}
+
+func TestTraceStats_SendsTreeFilter(t *testing.T) {
+	var got string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			TreeFilter string `json:"tree_filter"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		got = req.TreeFilter
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_count": 1}`))
+	})
+	defer setupTestEnv(t, ts.URL)()
+
+	if _, err := fetchRunStats(t.Context(), MustGetClient(), "00000000-0000-0000-0000-000000000000", "2026-01-01", "2026-01-02", 0, "", `eq(name, "tool")`, traceStatsSelect()); err != nil {
+		t.Fatalf("fetchRunStats: %v", err)
+	}
+	if got != `eq(name, "tool")` {
+		t.Errorf("tree_filter = %q", got)
 	}
 }
