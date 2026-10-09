@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -52,7 +53,9 @@ func newEvaluatorRuleListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List evaluator rules, optionally for one project, dataset, or evaluator",
 		Long: `List evaluator rules, optionally for one project, dataset, or evaluator.
-Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is set.`,
+Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is set.
+Each rule's actions field lists what it does: evaluator, webhook, add_to_dataset,
+add_to_annotation_queue, or alert. 'rule get' shows the details.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if evaluatorID != "" {
@@ -90,7 +93,7 @@ Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is s
 			})
 
 			if GetFormat() == "pretty" {
-				columns := []string{"Rule", "Evaluator", "Target", "Sampling Rate", "Enabled", "Rule ID"}
+				columns := []string{"Rule", "Evaluator", "Target", "Actions", "Sampling Rate", "Enabled", "Rule ID"}
 				var rows [][]string
 				for _, r := range rules {
 					enabled := "No"
@@ -98,7 +101,7 @@ Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is s
 						enabled = "Yes"
 					}
 					rows = append(rows, []string{
-						r.DisplayName, r.EvaluatorName, ruleTarget(r),
+						r.DisplayName, r.EvaluatorName, ruleTarget(r), strings.Join(ruleActions(r), ", "),
 						fmt.Sprintf("%.0f%%", r.SamplingRate*100), enabled, r.ID,
 					})
 				}
@@ -297,6 +300,43 @@ func nameOrID(name, id string) string {
 	return id
 }
 
+// ruleActions names what a rule does to each sampled run: evaluator, webhook,
+// add_to_dataset, add_to_annotation_queue, and alert.
+func ruleActions(r langsmith.Evaluator) []string {
+	actions := []string{}
+	if isEvaluatorRule(r) {
+		actions = append(actions, "evaluator")
+	}
+	if len(r.Webhooks) > 0 {
+		actions = append(actions, "webhook")
+	}
+	if r.AddToDatasetID != "" {
+		actions = append(actions, "add_to_dataset")
+	}
+	if r.AddToAnnotationQueueID != "" {
+		actions = append(actions, "add_to_annotation_queue")
+	}
+	if len(r.Alerts) > 0 {
+		actions = append(actions, "alert")
+	}
+	return actions
+}
+
+// maskWebhookURL keeps only the scheme and host of a webhook URL. Webhook URLs
+// often carry secrets in their userinfo, query string, or path (for example
+// chat-app incoming webhooks), so the rest is never printed.
+func maskWebhookURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "(hidden)"
+	}
+	masked := u.Scheme + "://" + u.Host
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
+		masked += "/..."
+	}
+	return masked
+}
+
 func ruleEntry(r langsmith.Evaluator) map[string]any {
 	return map[string]any{
 		"rule_id":        r.ID,
@@ -309,13 +349,60 @@ func ruleEntry(r langsmith.Evaluator) map[string]any {
 		"dataset":        nilStr(r.DatasetName),
 		"sampling_rate":  r.SamplingRate,
 		"is_enabled":     r.IsEnabled,
+		"actions":        ruleActions(r),
 	}
 }
 
 func ruleDetail(r langsmith.Evaluator) map[string]any {
 	entry := ruleEntry(r)
-	if r.Filter != "" {
-		entry["filter"] = r.Filter
+	for key, value := range map[string]string{
+		"filter":       r.Filter,
+		"trace_filter": r.TraceFilter,
+		"tree_filter":  r.TreeFilter,
+		"group_by":     string(r.GroupBy),
+	} {
+		if value != "" {
+			entry[key] = value
+		}
+	}
+	if len(r.Webhooks) > 0 {
+		// Headers usually hold credentials, so only the masked URL is shown.
+		webhooks := make([]map[string]any, 0, len(r.Webhooks))
+		for _, w := range r.Webhooks {
+			webhooks = append(webhooks, map[string]any{"url": maskWebhookURL(w.URL)})
+		}
+		entry["webhooks"] = webhooks
+	}
+	if r.AddToDatasetID != "" {
+		entry["add_to_dataset"] = map[string]any{
+			"id":                r.AddToDatasetID,
+			"name":              nilStr(r.AddToDatasetName),
+			"prefer_correction": r.AddToDatasetPreferCorrection,
+		}
+	}
+	if r.AddToAnnotationQueueID != "" {
+		entry["add_to_annotation_queue"] = map[string]any{
+			"id":   r.AddToAnnotationQueueID,
+			"name": nilStr(r.AddToAnnotationQueueName),
+		}
+	}
+	if len(r.Alerts) > 0 {
+		// The routing key is a credential, so it is left out.
+		alerts := make([]map[string]any, 0, len(r.Alerts))
+		for _, a := range r.Alerts {
+			alerts = append(alerts, map[string]any{
+				"type":     nilStr(string(a.Type)),
+				"severity": nilStr(string(a.Severity)),
+				"summary":  nilStr(a.Summary),
+			})
+		}
+		entry["alerts"] = alerts
+	}
+	if r.SpendLimit.LimitUsd != "" {
+		entry["spend_limit"] = map[string]any{
+			"limit_usd": r.SpendLimit.LimitUsd,
+			"window":    string(r.SpendLimit.Window),
+		}
 	}
 	if len(r.CodeEvaluators) > 0 {
 		entry["type"] = "code"
