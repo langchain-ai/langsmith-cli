@@ -652,6 +652,48 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 	}
 }
 
+func TestTraceMessages_FeedbackWindowFlags(t *testing.T) {
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": "sess-fb", "name": "fb-proj"},
+			})
+		case r.URL.Path == "/api/v2/traces/messages":
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []any{},
+			})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{
+			"--project", "fb-proj",
+			"--since", "2024-01-01T00:00:00Z",
+			"--filter", `eq(feedback_key, "correctness")`,
+			"--feedback-since", "2024-01-14T12:30:00Z",
+			"--feedback-before", "2024-01-15",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if receivedBody["min_feedback_modified_at"] != "2024-01-14T12:30:00Z" {
+		t.Errorf("expected min_feedback_modified_at=2024-01-14T12:30:00Z, got %v", receivedBody["min_feedback_modified_at"])
+	}
+	if receivedBody["max_feedback_modified_at"] != "2024-01-15T00:00:00Z" {
+		t.Errorf("expected max_feedback_modified_at=2024-01-15T00:00:00Z, got %v", receivedBody["max_feedback_modified_at"])
+	}
+}
+
 // TestTraceMessages_FeedbackStats verifies that feedback_stats returned by the
 // /v2/traces/messages API is preserved in the CLI output without being
 // overwritten or dropped by attachRootIO.
