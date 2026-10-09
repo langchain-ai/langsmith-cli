@@ -39,6 +39,8 @@ Never install dependencies inside the embedded template directories.
 
 Use the generated Go SDK through the shared client's `SDK` field. Do not add raw API calls when the endpoint is available in `langsmith-go`, and do not copy existing raw-call patterns for new code.
 
+Before a write command relies on a partial PATCH, read the backend handler to confirm it is not a full replace. `PATCH /runs/rules/{id}`, for example, clears webhooks, filters, and add-to-dataset/queue actions that the request omits, so `--replace` sends the existing rule's settings back. Cover such commands in `internal/cmd/evaluator_integration_test.go` (`make test-integration`, needs `LANGSMITH_API_KEY`): seed a resource with non-default settings, run the command, and check every setting afterwards.
+
 If an endpoint is missing from the Go SDK, expose and configure it through the public OpenAPI and Stainless definitions in `langchain-ai/langchainplus`, release the generated `langsmith-go` client, and update this repository's SDK dependency. Prefer that workflow over adding `RawGet`, `RawPost`, `RawPatch`, or other direct HTTP calls.
 
 ## Releasing
