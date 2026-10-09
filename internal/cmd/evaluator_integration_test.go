@@ -46,6 +46,8 @@ func TestIntegrationCLIHelperProcess(t *testing.T) {
 	cmd := NewRootCmd("dev", "dev")
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
+		// Matches cmd/langsmith/main.go, which prints the error to stdout.
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -91,8 +93,8 @@ func runCLIExpectFailure(t *testing.T, wantErr string, args ...string) cliResult
 	if res.exitCode == 0 {
 		t.Fatalf("expected langsmith %s to fail, it succeeded:\n%s", strings.Join(args, " "), res.stdout)
 	}
-	if !strings.Contains(res.stderr, wantErr) {
-		t.Fatalf("expected langsmith %s to fail with %q, got:\n%s", strings.Join(args, " "), wantErr, res.stderr)
+	if output := res.stdout + res.stderr; !strings.Contains(output, wantErr) {
+		t.Fatalf("expected langsmith %s to fail with %q, got:\n%s", strings.Join(args, " "), wantErr, output)
 	}
 	return res
 }
@@ -183,6 +185,7 @@ func seedRule(t *testing.T, c *client.Client, ctx context.Context, datasetID, na
 		ID string `json:"id"`
 	}
 	if err := c.RawPost(ctx, "/api/v1/runs/rules", body, &created); err != nil {
+		skipWithoutModelCredentials(t, err.Error())
 		t.Fatalf("seeding rule %q: %v", name, err)
 	}
 	t.Cleanup(func() {
@@ -325,8 +328,14 @@ func TestIntegrationEvaluatorCreateLLMCreatesRule(t *testing.T) {
 	prompt, schema, model := writeLLMFiles(t)
 	name := randomHandle("llm-new")
 
-	out := mustRunCLI(t, "evaluator", "create-llm", "--name", name, "--dataset", datasetName,
-		"--prompt", prompt, "--schema", schema, "--model-config", model, "--sampling-rate", "0.25")
+	args := []string{"evaluator", "create-llm", "--name", name, "--dataset", datasetName,
+		"--prompt", prompt, "--schema", schema, "--model-config", model, "--sampling-rate", "0.25"}
+	res := runCLI(t, args...)
+	if res.exitCode != 0 {
+		skipWithoutModelCredentials(t, res.stdout+res.stderr)
+		t.Fatalf("langsmith %s failed (exit %d):\n%s%s", strings.Join(args, " "), res.exitCode, res.stdout, res.stderr)
+	}
+	out := res.stdout
 	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("parsing create-llm output: %v\n%s", err, out)
@@ -523,5 +532,14 @@ func TestIntegrationTraceExportFilenameCollision(t *testing.T) {
 		"trace", "export", clashDir, "--project-id", projectID, "--filename-pattern", "{name}.jsonl")
 	if entries, _ := os.ReadDir(clashDir); len(entries) != 0 {
 		t.Errorf("expected no files written on a filename collision, got %d", len(entries))
+	}
+}
+
+// skipWithoutModelCredentials skips LLM evaluator tests in workspaces that have
+// no model provider key, where the API rejects every LLM evaluator.
+func skipWithoutModelCredentials(t *testing.T, output string) {
+	t.Helper()
+	if strings.Contains(output, "Missing credentials") {
+		t.Skip("workspace has no model provider credentials for LLM evaluators")
 	}
 }
