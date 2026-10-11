@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"regexp"
 	"strings"
 	"time"
 
@@ -701,6 +703,8 @@ type exampleAssertion struct {
 	Comment string `json:"comment"`
 }
 
+var assertionKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
 // parseAssertion parses a "key=comment" string into an exampleAssertion.
 // The first '=' is the delimiter; the comment may contain '=' characters.
 func parseAssertion(s string) (exampleAssertion, error) {
@@ -712,6 +716,12 @@ func parseAssertion(s string) (exampleAssertion, error) {
 	comment := strings.TrimSpace(s[idx+1:])
 	if key == "" {
 		return exampleAssertion{}, fmt.Errorf("assertion key cannot be empty in %q", s)
+	}
+	if strings.HasPrefix(key, "'") || strings.HasPrefix(key, `"`) {
+		return exampleAssertion{}, fmt.Errorf("assertion %q appears shell-quoted or double-shell-quoted; argv callers must pass raw key=comment without extra surrounding quotes", s)
+	}
+	if !assertionKeyPattern.MatchString(key) {
+		return exampleAssertion{}, fmt.Errorf("assertion key %q must match ^[A-Za-z][A-Za-z0-9_]*$ (start with a letter, followed by letters, digits, or underscores)", key)
 	}
 	if comment == "" {
 		return exampleAssertion{}, fmt.Errorf("assertion comment cannot be empty in %q", s)
@@ -732,6 +742,26 @@ func proposeExampleBody(runID, startTime string, assertions []exampleAssertion) 
 		body["start_time"] = startTime
 	}
 	return body
+}
+
+func assertionSetsMatch(returned any, submitted []exampleAssertion) bool {
+	data, err := json.Marshal(returned)
+	if err != nil {
+		return false
+	}
+	var assertions []exampleAssertion
+	if err := json.Unmarshal(data, &assertions); err != nil {
+		return false
+	}
+	expected := make(map[exampleAssertion]bool, len(submitted))
+	actual := make(map[exampleAssertion]bool, len(assertions))
+	for _, assertion := range submitted {
+		expected[assertion] = true
+	}
+	for _, assertion := range assertions {
+		actual[assertion] = true
+	}
+	return maps.Equal(expected, actual)
 }
 
 func newProjectIssuesProposeExampleCmd() *cobra.Command {
@@ -759,9 +789,13 @@ automatically.
 this build still works against servers predating that lookup, which accept a
 bare run_id for a run already linked to the issue.
 
-Each --assertion flag takes a key=comment pair. The key is a short identifier
-for the assertion (e.g. "correctness"), and the comment describes what the run
-should demonstrate. You may specify up to 10 assertions; keys must be unique.
+Each --assertion flag takes a key=comment pair. Keys must match
+^[A-Za-z][A-Za-z0-9_]*$ (e.g. "correctness"), and the comment describes what the
+run should demonstrate. You may specify up to 10 assertions; keys must be unique.
+Argv callers must pass raw key=comment values without extra surrounding quotes;
+shell quoting is only for serializing raw arguments into a shell command string.
+If an existing proposal is returned with different assertions, a warning is
+printed to stderr; the submitted assertions do not overwrite that proposal.
 
 Examples:
   langsmith project issues examples propose <issue-id> \
@@ -810,6 +844,9 @@ Examples:
 			var result map[string]any
 			if err := c.RawPost(ctx, path, body, &result); err != nil {
 				ExitErrorf("proposing example: %v", err)
+			}
+			if !assertionSetsMatch(result["assertions"], parsed) {
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning: the existing proposal was returned with different assertions; the submitted assertions were not applied")
 			}
 			if err := output.OutputJSON(result, outputFile); err != nil {
 				ExitErrorf("%v", err)
