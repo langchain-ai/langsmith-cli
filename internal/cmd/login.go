@@ -180,7 +180,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		result["workspace_id"] = profile.WorkspaceID
 	}
 	if GetFormat() == "pretty" {
-		fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s as profile %q\n", apiURL, profileName)
+		writeLoginSuccess(cmd.OutOrStdout(), apiURL, profileName)
 		return nil
 	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
