@@ -655,13 +655,7 @@ func TestTraceMessages_BeforeFlag(t *testing.T) {
 func TestTraceMessages_FeedbackWindowFlags(t *testing.T) {
 	var receivedBody map[string]any
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/api/v1/sessions":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": "sess-fb", "name": "fb-proj"},
-			})
-		case r.URL.Path == "/api/v2/traces/messages":
+		if r.URL.Path == "/api/v2/traces/messages" {
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -675,7 +669,7 @@ func TestTraceMessages_FeedbackWindowFlags(t *testing.T) {
 	captureStdout(t, func() {
 		cmd := newTraceMessagesCmd()
 		cmd.SetArgs([]string{
-			"--project", "fb-proj",
+			"--project-id", "018e4c7e-a9fb-7ef0-a5b6-6ea3a82e9327",
 			"--since", "2024-01-01T00:00:00Z",
 			"--filter", `eq(feedback_key, "correctness")`,
 			"--feedback-since", "2024-01-14T12:30:00Z",
