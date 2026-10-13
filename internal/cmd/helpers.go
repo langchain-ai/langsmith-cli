@@ -188,6 +188,9 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) 
 	if p.Filter.Present {
 		v2.Filter = langsmith.F(p.Filter.Value)
 	}
+	if p.TreeFilter.Present {
+		v2.TreeFilter = langsmith.F(p.TreeFilter.Value)
+	}
 	if len(p.ID.Value) > 0 {
 		v2.IDs = langsmith.F(p.ID.Value)
 	}
