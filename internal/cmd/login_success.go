@@ -38,14 +38,14 @@ func writeLoginSuccess(w io.Writer, apiURL, profileName string) {
 		style = func(code, s string) string { return "\x1b[" + code + "m" + s + "\x1b[0m" }
 	}
 	captions := map[int]string{
-		2: style("1;32", "✓ You're in."),
+		2: style("1;94", "✓ You're in."),
 		4: fmt.Sprintf("Logged in as profile %q.", profileName),
 		6: style("2", "Ready when you are."),
 	}
 	var b strings.Builder
 	b.WriteString("\n")
 	for i, row := range loginLogo {
-		line := style("32", row)
+		line := style("94", row)
 		if caption, ok := captions[i]; ok {
 			line += "  " + caption
 		}
