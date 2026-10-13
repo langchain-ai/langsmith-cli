@@ -34,7 +34,7 @@ func writeLoginSuccess(w io.Writer, apiURL, profileName string) {
 		return
 	}
 	style := func(code, s string) string { return s }
-	if getenv("NO_COLOR") == "" {
+	if os.Getenv("NO_COLOR") == "" {
 		style = func(code, s string) string { return "\x1b[" + code + "m" + s + "\x1b[0m" }
 	}
 	captions := map[int]string{
