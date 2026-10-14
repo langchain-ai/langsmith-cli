@@ -65,11 +65,7 @@ func newRunListCmd() *cobra.Command {
 				ExitErrorf("%v", err)
 			}
 
-			params := BuildRunQueryParams(&ff, false, ff.Limit)
-			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
-				params.Select = langsmith.F(sel)
-			}
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
+			runs, err := listRuns(ctx, c, &ff, false, includeIO, includeFeedback, sessionID)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -89,6 +85,7 @@ func newRunListCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
+	cmd.Flags().StringVar(&ff.AISearch, "ai-search", "", "Plain-language search of the run's messages")
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")
