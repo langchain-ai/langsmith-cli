@@ -30,6 +30,9 @@ type FilterFlags struct {
 	Tags         string
 	Metadata     string
 	RawFilter    string
+
+	FeedbackSince  string
+	FeedbackBefore string
 }
 
 const (
