@@ -126,21 +126,20 @@ func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	}
 }
 
-// feedbackWindowOptions exits on v1, which cannot apply the window, rather than returning unfiltered runs.
-func feedbackWindowOptions(ctx context.Context, c *client.Client, f *FilterFlags) []func(*langsmith.RunQueryV2Params) {
+// feedbackWindowOption exits on v1, which cannot apply the window, rather than returning unfiltered runs.
+func feedbackWindowOption(ctx context.Context, c *client.Client, f *FilterFlags) func(*langsmith.RunQueryV2Params) {
 	since, before := feedbackWindow(f)
-	if since.IsZero() && before.IsZero() {
-		return nil
+	if !since.IsZero() || !before.IsZero() {
+		requireV2Feature(ctx, c, "--feedback-since/--feedback-before")
 	}
-	requireV2Feature(ctx, c, "--feedback-since/--feedback-before")
-	return []func(*langsmith.RunQueryV2Params){func(p *langsmith.RunQueryV2Params) {
+	return func(p *langsmith.RunQueryV2Params) {
 		if !since.IsZero() {
 			p.MinFeedbackModifiedAt = langsmith.F(since)
 		}
 		if !before.IsZero() {
 			p.MaxFeedbackModifiedAt = langsmith.F(before)
 		}
-	}}
+	}
 }
 
 // queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment

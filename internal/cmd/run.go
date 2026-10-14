@@ -69,7 +69,7 @@ func newRunListCmd() *cobra.Command {
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, feedbackWindowOptions(ctx, c, &ff)...)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, feedbackWindowOption(ctx, c, &ff))
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
