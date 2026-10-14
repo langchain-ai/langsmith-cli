@@ -126,10 +126,33 @@ func requireV2Feature(ctx context.Context, c *client.Client, feature string) {
 	}
 }
 
+// v2Option sets a v2 query field that the v1 API has no equivalent for.
+type v2Option func(*langsmith.RunQueryV2Params)
+
+// feedbackWindowOptions returns the v2 options for --feedback-since and
+// --feedback-before. v1 cannot apply them, so a set bound exits on a v1
+// deployment rather than returning unfiltered runs.
+func feedbackWindowOptions(ctx context.Context, c *client.Client, f *FilterFlags) []v2Option {
+	since, before := feedbackWindow(f)
+	if since.IsZero() && before.IsZero() {
+		return nil
+	}
+	requireV2Feature(ctx, c, "--feedback-since/--feedback-before")
+	return []v2Option{func(p *langsmith.RunQueryV2Params) {
+		if !since.IsZero() {
+			p.MinFeedbackModifiedAt = langsmith.F(since)
+		}
+		if !before.IsZero() {
+			p.MaxFeedbackModifiedAt = langsmith.F(before)
+		}
+	}}
+}
+
 // queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment
 // supports it, else v1. params is the canonical v1 query; always pass a base
-// v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
-func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+// v2Selects set (see buildRunSelectV2) or v2 returns only run IDs. v2Opts apply
+// only on the v2 path.
+func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, v2Opts ...v2Option) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
@@ -145,7 +168,11 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 			addFilterClause(&params, fmt.Sprintf("gte(total_tokens, %d)", minTokens))
 			minTokens = 0
 		}
-		return queryRunsV2(ctx, c, toV2Params(params, v2Selects), sessionID, limit, minTokens)
+		v2 := toV2Params(params, v2Selects)
+		for _, opt := range v2Opts {
+			opt(&v2)
+		}
+		return queryRunsV2(ctx, c, v2, sessionID, limit, minTokens)
 	}
 	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
 }

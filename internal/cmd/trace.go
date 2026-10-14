@@ -77,7 +77,7 @@ func newTraceListCmd() *cobra.Command {
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, feedbackWindowOptions(ctx, c, &ff)...)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -158,6 +158,7 @@ func newTraceListCmd() *cobra.Command {
 	}
 
 	addCommonFilterFlags(cmd, &ff, false)
+	addFeedbackWindowFlags(cmd, &ff)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")

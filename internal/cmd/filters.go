@@ -73,6 +73,33 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	}
 }
 
+// addFeedbackWindowFlags attaches --feedback-since/--feedback-before, which
+// limit the feedback conditions in --filter to feedback modified in a window.
+func addFeedbackWindowFlags(cmd *cobra.Command, f *FilterFlags) {
+	cmd.Flags().StringVar(&f.FeedbackSince, "feedback-since", "", "Only match feedback modified at or after this timestamp, e.g. 2024-01-15T00:00:00Z (requires a feedback condition in --filter)")
+	cmd.Flags().StringVar(&f.FeedbackBefore, "feedback-before", "", "Only match feedback modified before this timestamp, e.g. 2024-01-15T00:00:00Z (requires a feedback condition in --filter)")
+}
+
+// feedbackWindow parses --feedback-since/--feedback-before, accepting the same
+// layouts as --since. An unset bound is the zero time.
+func feedbackWindow(f *FilterFlags) (since, before time.Time) {
+	return parseFeedbackBound("--feedback-since", f.FeedbackSince), parseFeedbackBound("--feedback-before", f.FeedbackBefore)
+}
+
+func parseFeedbackBound(flag, value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	t, err := parseFlexTime(value)
+	if err != nil {
+		t, err = time.Parse("2006-01-02T15:04:05", value)
+	}
+	if err != nil {
+		ExitErrorf("invalid %s timestamp: %s", flag, value)
+	}
+	return t
+}
+
 // resolveStartTime returns the start time for a query.
 // Priority: lastNMinutes > since > default (7 days ago).
 func resolveStartTime(since string, lastNMinutes int) time.Time {
