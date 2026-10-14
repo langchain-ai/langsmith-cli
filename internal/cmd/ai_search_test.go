@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -66,5 +67,18 @@ func TestRunListCmd_AISearchReadsEventStream(t *testing.T) {
 	}
 	if len(result) != 2 || result[1]["name"] != "refund" {
 		t.Fatalf("runs = %#v", result)
+	}
+}
+
+func TestCollectSSEPatchesRequiresEndEvent(t *testing.T) {
+	const stream = "event: data\n" +
+		"data: [{\"op\":\"add\",\"path\":\"\",\"value\":{\"items\":[{\"id\":\"run-1\"}],\"next_cursor\":null}}]\n" +
+		"\n"
+	_, err := collectSSEPatches(strings.NewReader(stream))
+	if err == nil || !strings.Contains(err.Error(), "end event") {
+		t.Fatalf("err = %v", err)
+	}
+	if errors.Is(err, errSSEEnd) {
+		t.Fatal("end sentinel leaked")
 	}
 }

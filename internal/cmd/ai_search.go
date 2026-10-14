@@ -223,6 +223,7 @@ func collectSSEPatches(r io.Reader) (any, error) {
 		event string
 		data  string
 		doc   any
+		ended bool
 	)
 	flush := func() error {
 		kind := event
@@ -230,6 +231,7 @@ func collectSSEPatches(r io.Reader) (any, error) {
 		event, data = "", ""
 		switch kind {
 		case "end":
+			ended = true
 			return errSSEEnd
 		case "error":
 			msg := strings.TrimSpace(payload)
@@ -282,6 +284,9 @@ func collectSSEPatches(r io.Reader) (any, error) {
 		if err := flush(); err != nil && !errors.Is(err, errSSEEnd) {
 			return nil, err
 		}
+	}
+	if !ended {
+		return nil, errors.New("query stream ended before the end event")
 	}
 	return docOrEmpty(doc), nil
 }
