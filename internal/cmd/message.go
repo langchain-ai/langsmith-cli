@@ -159,21 +159,12 @@ Examples:
 				body["max_start_time"] = ff.Before
 			}
 
-			for _, bound := range []struct{ flag, value, field string }{
-				{"--feedback-since", ff.FeedbackSince, "min_feedback_modified_at"},
-				{"--feedback-before", ff.FeedbackBefore, "max_feedback_modified_at"},
-			} {
-				if bound.value == "" {
-					continue
-				}
-				t, err := parseFlexTime(bound.value)
-				if err != nil {
-					t, err = time.Parse("2006-01-02T15:04:05", bound.value)
-				}
-				if err != nil {
-					ExitErrorf("invalid %s timestamp: %s", bound.flag, bound.value)
-				}
-				body[bound.field] = t.Format(time.RFC3339Nano)
+			feedbackSince, feedbackBefore := feedbackWindow(&ff)
+			if !feedbackSince.IsZero() {
+				body["min_feedback_modified_at"] = feedbackSince.Format(time.RFC3339Nano)
+			}
+			if !feedbackBefore.IsZero() {
+				body["max_feedback_modified_at"] = feedbackBefore.Format(time.RFC3339Nano)
 			}
 
 			if ff.TraceIDs != "" {
@@ -306,8 +297,7 @@ Examples:
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
-	cmd.Flags().StringVar(&ff.FeedbackSince, "feedback-since", "", "Only match feedback modified at or after this timestamp, e.g. 2024-01-15T00:00:00Z (requires a feedback condition in --filter)")
-	cmd.Flags().StringVar(&ff.FeedbackBefore, "feedback-before", "", "Only match feedback modified before this timestamp, e.g. 2024-01-15T00:00:00Z (requires a feedback condition in --filter)")
+	addFeedbackWindowFlags(cmd, &ff)
 	cmd.Flags().StringVar(&ff.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
