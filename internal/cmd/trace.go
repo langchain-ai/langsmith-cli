@@ -77,7 +77,8 @@ func newTraceListCmd() *cobra.Command {
 			if sel := buildRunSelect(includeIO, includeFeedback); sel != nil {
 				params.Select = langsmith.F(sel)
 			}
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, feedbackWindowOption(ctx, c, &ff))
+			setFeedbackWindow := feedbackWindowOption(ctx, c, &ff)
+			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, setFeedbackWindow)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
