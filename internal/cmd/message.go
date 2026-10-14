@@ -168,6 +168,9 @@ Examples:
 				}
 				t, err := parseFlexTime(bound.value)
 				if err != nil {
+					t, err = time.Parse("2006-01-02T15:04:05", bound.value)
+				}
+				if err != nil {
 					ExitErrorf("invalid %s timestamp: %s", bound.flag, bound.value)
 				}
 				body[bound.field] = t.Format(time.RFC3339Nano)

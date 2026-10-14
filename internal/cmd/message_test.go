@@ -672,7 +672,7 @@ func TestTraceMessages_FeedbackWindowFlags(t *testing.T) {
 			"--project-id", "018e4c7e-a9fb-7ef0-a5b6-6ea3a82e9327",
 			"--since", "2024-01-01T00:00:00Z",
 			"--filter", `eq(feedback_key, "correctness")`,
-			"--feedback-since", "2024-01-14T12:30:00Z",
+			"--feedback-since", "2024-01-14T12:30:00",
 			"--feedback-before", "2024-01-15",
 		})
 		if err := cmd.Execute(); err != nil {
