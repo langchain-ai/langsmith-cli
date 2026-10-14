@@ -145,7 +145,7 @@ func feedbackWindowOption(ctx context.Context, c *client.Client, f *FilterFlags)
 // queryRunsAuto queries runs via the v2 (SmithDB) backend when the deployment
 // supports it, else v1. params is the canonical v1 query; always pass a base
 // v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
-func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, v2Opts ...func(*langsmith.RunQueryV2Params)) ([]langsmith.RunSchema, error) {
+func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, setV2 ...func(*langsmith.RunQueryV2Params)) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
@@ -162,8 +162,8 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 			minTokens = 0
 		}
 		v2 := toV2Params(params, v2Selects)
-		for _, opt := range v2Opts {
-			opt(&v2)
+		for _, set := range setV2 {
+			set(&v2)
 		}
 		return queryRunsV2(ctx, c, v2, sessionID, limit, minTokens)
 	}
