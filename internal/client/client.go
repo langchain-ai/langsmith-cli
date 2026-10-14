@@ -275,7 +275,7 @@ func (c *Client) RawDelete(ctx context.Context, path string, result any) error {
 // The response is binary, so it bypasses the JSON-decoding raw helpers.
 func (c *Client) FetchCustomAppSource(ctx context.Context, appID string) ([]byte, error) {
 	path := c.CustomAppPath(appID) + "/source"
-	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil, false)
+	resp, err := c.doHTTP(ctx, http.MethodGet, path, nil, nil, false, rawRequestTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -348,16 +348,35 @@ func (c *Client) requestURL(path string) (*url.URL, error) {
 	return base, nil
 }
 
+// PostEventStream posts JSON and returns the raw body. Callers that need the
+// v2 query event stream set Accept themselves via this method.
+func (c *Client) PostEventStream(ctx context.Context, path string, body any) (int, []byte, error) {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("marshaling request body: %w", err)
+	}
+	headers := make(http.Header)
+	headers.Set("Accept", "text/event-stream")
+	resp, err := c.doHTTP(ctx, http.MethodPost, path, bytes.NewReader(data), headers, true, 3*time.Minute)
+	if err != nil {
+		return 0, nil, err
+	}
+	if resp.statusCode >= 400 {
+		return resp.statusCode, resp.body, &httpError{statusCode: resp.statusCode, body: resp.body}
+	}
+	return resp.statusCode, resp.body, nil
+}
+
 // doHTTP is the shared low-level helper used by RawDo and rawRequest.
 // Without sdkRetries it makes exactly one attempt, which `langsmith api`
 // (RawDo) relies on.
-func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header, sdkRetries bool) (*httpResponse, error) {
+func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header, sdkRetries bool, timeout time.Duration) (*httpResponse, error) {
 	requestURL, err := c.requestURL(path)
 	if err != nil {
 		return nil, err
 	}
 	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
-		return c.doUnauthenticated(ctx, method, path, requestURL, body, extraHeaders)
+		return c.doUnauthenticated(ctx, method, path, requestURL, body, extraHeaders, timeout)
 	}
 
 	// Send through the SDK client so it attaches auth, refreshing OAuth
@@ -367,7 +386,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	// the user. requestURL is absolute, so the SDK sends it as-is rather than
 	// joining it onto its base URL.
 	opts := []option.RequestOption{
-		option.WithRequestTimeout(rawRequestTimeout),
+		option.WithRequestTimeout(timeout),
 		option.WithHeader("Content-Type", "application/json"),
 	}
 	if !sdkRetries {
@@ -397,7 +416,7 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 // doUnauthenticated sends a request with no credentials. It serves the
 // cross-host `api` client, which must stay off the SDK: the SDK would pick up
 // auth from the environment or the default profile.
-func (c *Client) doUnauthenticated(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header) (*httpResponse, error) {
+func (c *Client) doUnauthenticated(ctx context.Context, method, path string, requestURL *url.URL, body io.Reader, extraHeaders http.Header, timeout time.Duration) (*httpResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.apiURL, body)
 	if err == nil {
 		req.URL.Path = requestURL.Path
@@ -416,7 +435,7 @@ func (c *Client) doUnauthenticated(ctx context.Context, method, path string, req
 		req.Header[k] = vals
 	}
 
-	res, err := (&http.Client{Timeout: rawRequestTimeout}).Do(req)
+	res, err := (&http.Client{Timeout: timeout}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
 	}
@@ -444,7 +463,7 @@ const rawRequestTimeout = 30 * time.Second
 // does not treat 4xx/5xx as errors — callers decide how to handle status codes.
 // body may be nil. extraHeaders are merged on top of the default auth headers.
 func (c *Client) RawDo(ctx context.Context, method, path string, body io.Reader, extraHeaders http.Header) (statusCode int, proto string, respHeaders http.Header, respBody []byte, err error) {
-	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders, false)
+	resp, err := c.doHTTP(ctx, method, path, body, extraHeaders, false, rawRequestTimeout)
 	if err != nil {
 		return 0, "", nil, nil, err
 	}
@@ -467,7 +486,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any, 
 		bodyReader = bytes.NewReader(data)
 	}
 
-	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil, sdkRetries)
+	resp, err := c.doHTTP(ctx, method, path, bodyReader, nil, sdkRetries, rawRequestTimeout)
 	if err != nil {
 		return err
 	}

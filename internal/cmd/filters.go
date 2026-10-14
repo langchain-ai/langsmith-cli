@@ -30,6 +30,7 @@ type FilterFlags struct {
 	Tags         string
 	Metadata     string
 	RawFilter    string
+	AISearch     string
 }
 
 const (
