@@ -1,1 +1,9 @@
-* @langchain-ai/agentic-dx
+# agentic-dx review is required only on release, CI, install and auth paths.
+# Everything else can be approved by anyone with write access.
+/.github/                  @langchain-ai/agentic-dx
+/.goreleaser.yml           @langchain-ai/agentic-dx
+/scripts/                  @langchain-ai/agentic-dx
+/internal/client/          @langchain-ai/agentic-dx
+/internal/config/          @langchain-ai/agentic-dx
+/internal/cmd/auth.go      @langchain-ai/agentic-dx
+/internal/cmd/login*.go    @langchain-ai/agentic-dx
