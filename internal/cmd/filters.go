@@ -210,8 +210,8 @@ func buildFilterDSL(f *FilterFlags) string {
 
 	// Note: --min-tokens is not emitted here. total_tokens is filterable on the
 	// v2 (SmithDB) path but not on v1, and buildFilterDSL cannot see which
-	// backend a deployment uses. queryRunsAuto adds the clause when v2 is in
-	// play and falls back to the client-side bound otherwise.
+	// backend a deployment uses. queryRunsAuto and queryTracesAuto add the
+	// clause when v2 is in play and fall back to the client-side bound otherwise.
 
 	// Tags
 	if f.Tags != "" {
