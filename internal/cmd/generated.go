@@ -35,6 +35,10 @@ func generatedResources() []*cli.Command {
 // command. A name that clashes with a hand-written command is a programming
 // error.
 func addGeneratedCommands(root *cobra.Command) {
+	// The generated tree also has hidden helpers (@manpages, __complete) that
+	// langsmith covers itself. The generated root validates every subcommand's
+	// flags on each run, so keep only the resources.
+	generated.Command.Commands = generatedResources()
 	existing := map[string]bool{}
 	for _, c := range root.Commands() {
 		existing[c.Name()] = true
