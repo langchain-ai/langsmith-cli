@@ -15,7 +15,7 @@ type rawDeleteBlock struct {
 var rawDeleteBlocks = map[string]rawDeleteBlock{
 	"sessions": {
 		resource:    "tracing projects",
-		replacement: "`langsmith project delete --project-id PROJECT_ID`",
+		replacement: "`langsmith projects delete --project-id PROJECT_ID`",
 	},
 }
 

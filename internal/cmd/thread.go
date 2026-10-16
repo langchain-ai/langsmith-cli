@@ -21,8 +21,9 @@ import (
 
 func newThreadCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "thread",
-		Short: "Query multi-turn conversation threads",
+		Use:     "threads",
+		Aliases: []string{"thread"},
+		Short:   "Query multi-turn conversation threads",
 		Long: `Query multi-turn conversation threads.
 
 A thread groups multiple root runs that share a thread_id, representing
@@ -33,8 +34,8 @@ Results are paginated and return at most 20 threads by default
 (newest first).
 
 Examples:
-  langsmith thread list --project my-chatbot --limit 10
-  langsmith thread get <thread-id> --project my-chatbot --full`,
+  langsmith threads list --project my-chatbot --limit 10
+  langsmith threads get <thread-id> --project my-chatbot --full`,
 	}
 
 	cmd.AddCommand(newThreadListCmd())
@@ -291,10 +292,10 @@ Results are paginated (default: 10 turns, max: 100). Pass --cursor with the
 value from a previous response to advance forward or backward.
 
 Examples:
-  langsmith thread messages <thread-id> --project my-chatbot
-  langsmith thread messages <thread-id> --project my-chatbot --limit 5
-  langsmith thread messages <thread-id> --project my-chatbot --cursor <cursor>
-  langsmith thread messages <thread-id> --project my-chatbot --trace-id <trace-id>`,
+  langsmith threads messages <thread-id> --project my-chatbot
+  langsmith threads messages <thread-id> --project my-chatbot --limit 5
+  langsmith threads messages <thread-id> --project my-chatbot --cursor <cursor>
+  langsmith threads messages <thread-id> --project my-chatbot --trace-id <trace-id>`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			threadID := args[0]

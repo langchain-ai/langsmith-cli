@@ -22,8 +22,8 @@ import (
 
 func TestSandboxCmd_UseField(t *testing.T) {
 	cmd := newSandboxCmd()
-	if cmd.Use != "sandbox" {
-		t.Errorf("expected Use=sandbox, got %q", cmd.Use)
+	if cmd.Use != "sandboxes" {
+		t.Errorf("expected Use=sandboxes, got %q", cmd.Use)
 	}
 }
 

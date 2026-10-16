@@ -14,8 +14,9 @@ import (
 
 func newTraceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "trace",
-		Short: "Query and export traces (top-level agent runs and their full hierarchy)",
+		Use:     "traces",
+		Aliases: []string{"trace"},
+		Short:   "Query and export traces (top-level agent runs and their full hierarchy)",
 		Long: `Query and export traces (top-level agent runs and their full hierarchy).
 
 A trace is a tree of runs representing one end-to-end invocation of your
@@ -25,9 +26,9 @@ LLM calls, tool calls, retriever steps, etc.
 Results are sorted newest-first by start time.
 
 Examples:
-  langsmith trace list --project my-app --limit 5
-  langsmith trace get <trace-id> --project my-app --full
-  langsmith trace export ./traces --project my-app --limit 20 --full`,
+  langsmith traces list --project my-app --limit 5
+  langsmith traces get <trace-id> --project my-app --full
+  langsmith traces export ./traces --project my-app --limit 20 --full`,
 	}
 
 	cmd.AddCommand(newTraceListCmd())

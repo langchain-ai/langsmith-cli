@@ -33,10 +33,10 @@ Connects via WebSocket to the sandbox daemon and allocates a PTY,
 giving you a full interactive shell (bash by default).
 
 Examples:
-  langsmith sandbox console my-vm
-  langsmith sandbox console my-vm --shell /bin/sh
-  langsmith sandbox console my-vm --env TERM=xterm-256color --env FOO
-  langsmith sandbox console my-vm --forward-ssh-agent`,
+  langsmith sandboxes console my-vm
+  langsmith sandboxes console my-vm --shell /bin/sh
+  langsmith sandboxes console my-vm --env TERM=xterm-256color --env FOO
+  langsmith sandboxes console my-vm --forward-ssh-agent`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxConsoleInput {
 		in := &sandboxConsoleInput{}

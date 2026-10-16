@@ -12,8 +12,9 @@ import (
 
 func newProjectCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "project",
-		Short: "List and inspect tracing projects (sessions)",
+		Use:     "projects",
+		Aliases: []string{"project", "sessions"},
+		Short:   "List and inspect tracing projects (sessions)",
 		Long: `List and inspect tracing projects (sessions).
 
 Tracing projects collect runs from your application. Each project
@@ -24,13 +25,13 @@ Results are paginated and return at most 20 projects by default
 (last_run_start_time, descending).
 
 Note: This lists tracing projects only (not experiments). Use
-'langsmith experiment list' for experiments.
+'langsmith experiments list' for experiments.
 
 Examples:
-  langsmith project list                        # first 20 projects, most recently active first
-  langsmith project list --limit 10             # first 10 projects
-  langsmith project list --name-contains chatbot
-  langsmith project delete --project-id <uuid>`,
+  langsmith projects list                        # first 20 projects, most recently active first
+  langsmith projects list --limit 10             # first 10 projects
+  langsmith projects list --name-contains chatbot
+  langsmith projects delete --project-id <uuid>`,
 	}
 
 	cmd.AddCommand(newProjectListCmd())

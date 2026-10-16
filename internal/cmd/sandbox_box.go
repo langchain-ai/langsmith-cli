@@ -196,15 +196,15 @@ make calls under the grant, so prefer --delegate-permission for a sandbox
 others can reach.
 
 Examples:
-  langsmith sandbox create
-  langsmith sandbox create my-vm
-  langsmith sandbox create my-vm --snapshot <id-or-name>
-  langsmith sandbox create my-vm --snapshot-id <id>
-  langsmith sandbox create my-vm --snapshot-id <id> --rootfs-capacity 8gb
-  langsmith sandbox create my-vm --snapshot-id <id> --proxy-config @proxy.json
-  langsmith sandbox create my-vm --snapshot-id <id> --console
-  langsmith sandbox create my-vm --delegate-access
-  langsmith sandbox create my-vm --delegate-permission tracer_sessions:read`,
+  langsmith sandboxes create
+  langsmith sandboxes create my-vm
+  langsmith sandboxes create my-vm --snapshot <id-or-name>
+  langsmith sandboxes create my-vm --snapshot-id <id>
+  langsmith sandboxes create my-vm --snapshot-id <id> --rootfs-capacity 8gb
+  langsmith sandboxes create my-vm --snapshot-id <id> --proxy-config @proxy.json
+  langsmith sandboxes create my-vm --snapshot-id <id> --console
+  langsmith sandboxes create my-vm --delegate-access
+  langsmith sandboxes create my-vm --delegate-permission tracer_sessions:read`,
 	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxCreateInput {
 		in := &sandboxCreateInput{}
@@ -290,9 +290,9 @@ A login grant is durable, so token mode is refused while one is in place, and
 --expires-in-seconds does not apply.
 
 Examples:
-  langsmith sandbox service-url my-vm --port 8000
-  langsmith sandbox service-url my-vm --port 8000 --expires-in-seconds 3600
-  langsmith sandbox service-url my-vm --port 8000 --access workspace`,
+  langsmith sandboxes service-url my-vm --port 8000
+  langsmith sandboxes service-url my-vm --port 8000 --expires-in-seconds 3600
+  langsmith sandboxes service-url my-vm --port 8000 --access workspace`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxServiceURLInput {
 		in := &sandboxServiceURLInput{}
@@ -375,9 +375,9 @@ link when the contents change.
 Without --expires-in-seconds the link never expires.
 
 Examples:
-  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf
-  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf --expires-in-seconds 3600
-  langsmith sandbox generate-download-url my-vm --path /tmp/page.html --content-disposition inline`,
+  langsmith sandboxes generate-download-url my-vm --path /tmp/report.pdf
+  langsmith sandboxes generate-download-url my-vm --path /tmp/report.pdf --expires-in-seconds 3600
+  langsmith sandboxes generate-download-url my-vm --path /tmp/page.html --content-disposition inline`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxDownloadURLInput {
 		in := &sandboxDownloadURLInput{}
@@ -622,9 +622,9 @@ var sandboxExecCommand = structured.Command[sandboxExecInput]{
 	Long: `Execute a one-off command inside a running sandbox and print its output.
 
 Examples:
-  langsmith sandbox exec my-vm -- uname -a
-  langsmith sandbox exec my-vm -- ls -la /
-  langsmith sandbox exec my-vm -- cat /etc/os-release`,
+  langsmith sandboxes exec my-vm -- uname -a
+  langsmith sandboxes exec my-vm -- ls -la /
+  langsmith sandboxes exec my-vm -- cat /etc/os-release`,
 	Args:         cobra.MinimumNArgs(1),
 	Input:        func(cmd *cobra.Command) sandboxExecInput { return sandboxExecInput{} },
 	CustomOutput: true,
@@ -633,7 +633,7 @@ Examples:
 
 		cmdArgs := cmd.ArgsLenAtDash()
 		if cmdArgs < 0 || cmdArgs >= len(args) {
-			return nil, fmt.Errorf("usage: langsmith sandbox exec <name> -- <command>")
+			return nil, fmt.Errorf("usage: langsmith sandboxes exec <name> -- <command>")
 		}
 		command := args[cmdArgs:]
 		if len(command) == 0 {

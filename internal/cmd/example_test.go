@@ -55,8 +55,8 @@ func TestExampleCmd_Subcommands(t *testing.T) {
 
 func TestExampleCmd_UseField(t *testing.T) {
 	cmd := newExampleCmd()
-	if cmd.Use != "example" {
-		t.Errorf("expected Use=example, got %q", cmd.Use)
+	if cmd.Use != "examples" {
+		t.Errorf("expected Use=examples, got %q", cmd.Use)
 	}
 }
 

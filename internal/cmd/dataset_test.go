@@ -26,8 +26,8 @@ func TestDatasetCmd_Subcommands(t *testing.T) {
 
 func TestDatasetCmd_UseField(t *testing.T) {
 	cmd := newDatasetCmd()
-	if cmd.Use != "dataset" {
-		t.Errorf("expected Use=dataset, got %q", cmd.Use)
+	if cmd.Use != "datasets" {
+		t.Errorf("expected Use=datasets, got %q", cmd.Use)
 	}
 }
 

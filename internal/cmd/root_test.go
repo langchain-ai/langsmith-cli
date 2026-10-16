@@ -19,7 +19,7 @@ func isolateConfig(t *testing.T) {
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"project", "trace", "run", "thread", "dataset", "example", "evaluator", "experiment", "sandbox", "auth", "profile", "workspace", "self-update", "api"}
+	expected := []string{"projects", "traces", "runs", "threads", "datasets", "examples", "evaluator", "experiments", "sandboxes", "auth", "profiles", "workspaces", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))
@@ -29,6 +29,44 @@ func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	for _, exp := range expected {
 		if !names[exp] {
 			t.Errorf("root command missing subcommand %q", exp)
+		}
+	}
+}
+
+func TestRootCmd_OldCommandNamesStillWork(t *testing.T) {
+	root := NewRootCmd("1.0.0", "1.0.0")
+	for old, want := range map[string]string{
+		"project":    "projects",
+		"sessions":   "projects",
+		"trace":      "traces",
+		"run":        "runs",
+		"chart":      "charts",
+		"thread":     "threads",
+		"dataset":    "datasets",
+		"example":    "examples",
+		"experiment": "experiments",
+		"sandbox":    "sandboxes",
+		"profile":    "profiles",
+		"workspace":  "workspaces",
+	} {
+		cmd, _, err := root.Find([]string{old, "list"})
+		require.NoError(t, err, old)
+		for cmd.Parent() != root {
+			cmd = cmd.Parent()
+		}
+		require.Equal(t, want, cmd.Name(), old)
+	}
+}
+
+func TestRootCmd_CommandNamesAndAliasesAreUnique(t *testing.T) {
+	root := NewRootCmd("1.0.0", "1.0.0")
+	seen := map[string]string{}
+	for _, c := range root.Commands() {
+		for _, name := range append([]string{c.Name()}, c.Aliases...) {
+			if other, ok := seen[name]; ok {
+				t.Errorf("%q is used by both %q and %q", name, other, c.Name())
+			}
+			seen[name] = c.Name()
 		}
 	}
 }

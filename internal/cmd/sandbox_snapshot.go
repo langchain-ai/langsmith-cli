@@ -25,11 +25,11 @@ immutable snapshot, and a bare name means "name:latest". Publishing over an
 existing name:tag moves the pointer; the old snapshot stays addressable by id.
 
 Examples:
-  langsmith sandbox snapshot list
-  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
-  langsmith sandbox snapshot capture my-snap:v2 --box my-vm
-  langsmith sandbox snapshot get my-snap:v2
-  langsmith sandbox snapshot delete <id>`,
+  langsmith sandboxes snapshot list
+  langsmith sandboxes snapshot build my-snap --docker-image ubuntu:24.04
+  langsmith sandboxes snapshot capture my-snap:v2 --box my-vm
+  langsmith sandboxes snapshot get my-snap:v2
+  langsmith sandboxes snapshot delete <id>`,
 	Children: []func() *cobra.Command{
 		snapshotListCommand.Cobra,
 		snapshotBuildCommand.Cobra,
@@ -89,10 +89,10 @@ The tag is applied once the build finishes. Omit it and the snapshot inherits th
 Docker image's tag (ubuntu:24.04 becomes 24.04), else "latest".
 
 	Examples:
-	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
-	  langsmith sandbox snapshot build my-snap:v2 --docker-image ubuntu:24.04
-	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb
-	  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04 --description "Python 3.12 with uv and ruff"`,
+	  langsmith sandboxes snapshot build my-snap --docker-image ubuntu:24.04
+	  langsmith sandboxes snapshot build my-snap:v2 --docker-image ubuntu:24.04
+	  langsmith sandboxes snapshot build my-snap --docker-image ubuntu:24.04 --capacity 8gb
+	  langsmith sandboxes snapshot build my-snap --docker-image ubuntu:24.04 --description "Python 3.12 with uv and ruff"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotBuildInput {
 		in := &snapshotBuildInput{
@@ -169,10 +169,10 @@ fresh checkpoint from the running VM's current state.
 An omitted tag means "latest".
 
 	Examples:
-	  langsmith sandbox snapshot capture my-snap --box my-vm
-	  langsmith sandbox snapshot capture my-snap:2026081101 --box my-vm
-	  langsmith sandbox snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z
-	  langsmith sandbox snapshot capture my-snap --box my-vm --description "repo cloned, deps installed"`,
+	  langsmith sandboxes snapshot capture my-snap --box my-vm
+	  langsmith sandboxes snapshot capture my-snap:2026081101 --box my-vm
+	  langsmith sandboxes snapshot capture my-snap --box my-vm --checkpoint 2026-03-29T00:09:28Z
+	  langsmith sandboxes snapshot capture my-snap --box my-vm --description "repo cloned, deps installed"`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *snapshotCaptureInput {
 		in := &snapshotCaptureInput{}

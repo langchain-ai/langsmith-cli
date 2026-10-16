@@ -12,8 +12,9 @@ import (
 
 func newExperimentCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "experiment",
-		Short: "Query evaluation experiments and their results",
+		Use:     "experiments",
+		Aliases: []string{"experiment"},
+		Short:   "Query evaluation experiments and their results",
 		Long: `Query evaluation experiments and their results.
 
 Experiments are evaluation runs that test your application against a
@@ -23,9 +24,9 @@ List results are paginated and return at most 20 experiments by default
 (use --limit to change).
 
 Examples:
-  langsmith experiment list
-  langsmith experiment list --dataset my-eval-dataset
-  langsmith experiment get my-experiment-name`,
+  langsmith experiments list
+  langsmith experiments list --dataset my-eval-dataset
+  langsmith experiments get my-experiment-name`,
 	}
 
 	cmd.AddCommand(newExperimentListCmd())

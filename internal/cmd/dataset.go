@@ -14,8 +14,9 @@ import (
 
 func newDatasetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "dataset",
-		Short: "Create, manage, and inspect evaluation datasets",
+		Use:     "datasets",
+		Aliases: []string{"dataset"},
+		Short:   "Create, manage, and inspect evaluation datasets",
 		Long: `Create, manage, and inspect evaluation datasets.
 
 Datasets are collections of input/output examples used for evaluating
@@ -26,11 +27,11 @@ List results are paginated and return at most 100 datasets by default
 (use --limit to change).
 
 Examples:
-  langsmith dataset list
-  langsmith dataset get my-dataset
-  langsmith dataset create --name my-dataset
-  langsmith dataset export my-dataset ./export.json
-  langsmith dataset upload data.json --name new-dataset`,
+  langsmith datasets list
+  langsmith datasets get my-dataset
+  langsmith datasets create --name my-dataset
+  langsmith datasets export my-dataset ./export.json
+  langsmith datasets upload data.json --name new-dataset`,
 	}
 
 	cmd.AddCommand(newDatasetListCmd())

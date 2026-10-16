@@ -12,8 +12,9 @@ import (
 
 func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Query and export individual runs (LLM calls, tool calls, chain steps, etc.)",
+		Use:     "runs",
+		Aliases: []string{"run"},
+		Short:   "Query and export individual runs (LLM calls, tool calls, chain steps, etc.)",
 		Long: `Query and export individual runs (LLM calls, tool calls, chain steps, etc.).
 
 A run is a single step within a trace. Unlike trace commands (which
@@ -23,9 +24,9 @@ depth in the hierarchy.
 Results are sorted newest-first by start time.
 
 Examples:
-  langsmith run list --project my-app --run-type llm --limit 10
-  langsmith run get <run-id> --full
-  langsmith run export runs.jsonl --project my-app --run-type llm`,
+  langsmith runs list --project my-app --run-type llm --limit 10
+  langsmith runs get <run-id> --full
+  langsmith runs export runs.jsonl --project my-app --run-type llm`,
 	}
 
 	cmd.AddCommand(newRunListCmd())
