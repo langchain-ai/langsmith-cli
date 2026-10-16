@@ -43,10 +43,10 @@ plugin, your API key + project, and your name/email as run metadata) and asks
 for confirmation before writing them, then installs the plugin via the claude
 CLI. The API key, URL, and project may be positional args or flags.
 
-  langsmith trace setup claude demo-key dev.smith.com shared-claude
-  langsmith trace setup claude                          # key/URL from env or profile
-  langsmith trace setup claude --user "Jane Doe"      # override the auto-detected name
-  langsmith trace setup [SAFE_TO_USE:PERSON_oxyzyjwd]                    # apply without the confirmation prompt`,
+  langsmith traces setup claude demo-key dev.smith.com shared-claude
+  langsmith traces setup claude                          # key/URL from env or profile
+  langsmith traces setup claude --user "Jane Doe"      # override the auto-detected name
+  langsmith traces setup [SAFE_TO_USE:PERSON_oxyzyjwd]                    # apply without the confirmation prompt`,
 		Args: cobra.MaximumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSetupClaude(cmd, args, project, scope, user, email, yes, noInstall)

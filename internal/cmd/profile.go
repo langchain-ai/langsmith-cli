@@ -34,8 +34,9 @@ type profileShowItem struct {
 
 func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "profile",
-		Short: "Manage saved LangSmith profiles",
+		Use:     "profiles",
+		Aliases: []string{"profile"},
+		Short:   "Manage saved LangSmith profiles",
 	}
 	cmd.AddCommand(newProfileCreateCmd())
 	cmd.AddCommand(newProfileListCmd())

@@ -12,9 +12,9 @@ import (
 // its per-agent variants record a project name for the tracing SDK, which
 // auto-creates the project by name on first trace.
 var projectIDExemptCommands = map[string]bool{
-	"trace setup":        true,
-	"trace setup claude": true,
-	"trace setup codex":  true,
+	"traces setup":        true,
+	"traces setup claude": true,
+	"traces setup codex":  true,
 }
 
 func walkCommands(cmd *cobra.Command, path []string, fn func(path string, c *cobra.Command)) {

@@ -18,7 +18,7 @@ func TestTraceMessagesCmd_HelpExamplesHaveStartTime(t *testing.T) {
 	var examples int
 	for _, line := range strings.Split(cmd.Long, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "langsmith trace messages") {
+		if !strings.HasPrefix(line, "langsmith traces messages") {
 			continue
 		}
 		examples++

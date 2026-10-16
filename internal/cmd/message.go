@@ -116,11 +116,11 @@ Default limit: 10, max: 100.
 the start time still bounds when the traces ran.
 
 Examples:
-  langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
-  langsmith trace messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
-  langsmith trace messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
-  langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>
-  langsmith trace messages --project my-chatbot --last-n-minutes 10080 --filter "eq(feedback_key, \"user_score\")" --feedback-since <YYYY-MM-DDTHH:MM:SSZ>`,
+  langsmith traces messages --project my-chatbot --last-n-minutes 60 --limit 5
+  langsmith traces messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
+  langsmith traces messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
+  langsmith traces messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>
+  langsmith traces messages --project my-chatbot --last-n-minutes 10080 --filter "eq(feedback_key, \"user_score\")" --feedback-since <YYYY-MM-DDTHH:MM:SSZ>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {

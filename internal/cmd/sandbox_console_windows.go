@@ -14,7 +14,7 @@ var sandboxConsoleCommand = structured.Command[struct{}]{
 	Args:         cobra.ExactArgs(1),
 	CustomOutput: true,
 	Action: func(ctx context.Context, cmd *cobra.Command, in struct{}, args []string) (any, error) {
-		return nil, fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandbox ssh-setup %s", args[0])
+		return nil, fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandboxes ssh-setup %s", args[0])
 	},
 }
 
@@ -23,5 +23,5 @@ func newSandboxConsoleCmd() *cobra.Command {
 }
 
 func runConsole(name, shell string, forwardSSHAgent bool, extraEnv []string) error {
-	return fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandbox ssh-setup %s", name)
+	return fmt.Errorf("sandbox console is not supported on Windows; use SSH instead: langsmith sandboxes ssh-setup %s", name)
 }

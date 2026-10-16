@@ -9,36 +9,37 @@ type sandboxMessage struct {
 
 func newSandboxCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "sandbox",
-		Short: "Manage and interact with sandboxes (experimental)",
+		Use:     "sandboxes",
+		Aliases: []string{"sandbox"},
+		Short:   "Manage and interact with sandboxes (experimental)",
 		Long: `Manage and interact with sandboxes (currently in experimental preview).
 
 Common workflows:
 
   # Build a snapshot from a Docker image
-  langsmith sandbox snapshot build my-snap --docker-image ubuntu:24.04
+  langsmith sandboxes snapshot build my-snap --docker-image ubuntu:24.04
 
   # Create a sandbox from the snapshot
-  langsmith sandbox create my-vm --snapshot-id <id>
+  langsmith sandboxes create my-vm --snapshot-id <id>
 
   # Run a command inside the sandbox
-  langsmith sandbox exec my-vm -- uname -a
+  langsmith sandboxes exec my-vm -- uname -a
 
   # Open an interactive shell
-  langsmith sandbox console my-vm
+  langsmith sandboxes console my-vm
 
   # Tunnel a remote port (e.g. Postgres) to localhost
-  langsmith sandbox tunnel my-vm --remote-port 5432
+  langsmith sandboxes tunnel my-vm --remote-port 5432
 
   # Generate an authenticated HTTP URL for a service inside the sandbox
-  langsmith sandbox service-url my-vm --port 8000
+  langsmith sandboxes service-url my-vm --port 8000
 
   # Generate a credential-free link that downloads one file from the sandbox
-  langsmith sandbox generate-download-url my-vm --path /tmp/report.pdf
+  langsmith sandboxes generate-download-url my-vm --path /tmp/report.pdf
 
   # Set up SSH access (writes ~/.ssh/config so "ssh sandbox-my-vm" works)
   # Requires sshd to be installed in your Docker image.
-  langsmith sandbox ssh-setup my-vm`,
+  langsmith sandboxes ssh-setup my-vm`,
 	}
 
 	// Lifecycle

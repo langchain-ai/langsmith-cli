@@ -27,8 +27,8 @@ func TestRunCmd_Subcommands(t *testing.T) {
 
 func TestRunCmd_UseField(t *testing.T) {
 	cmd := newRunCmd()
-	if cmd.Use != "run" {
-		t.Errorf("expected Use=run, got %q", cmd.Use)
+	if cmd.Use != "runs" {
+		t.Errorf("expected Use=runs, got %q", cmd.Use)
 	}
 }
 

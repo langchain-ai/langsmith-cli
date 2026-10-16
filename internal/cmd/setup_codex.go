@@ -40,10 +40,10 @@ langsmith.json (your API key + project, and your name/email as run metadata),
 asks for confirmation, writes them, then fetches the plugin via 'codex plugin
 marketplace add'. The API key, URL, and project may be positional args or flags.
 
-  langsmith trace setup codex demo-key dev.smith.com shared-codex
-  langsmith trace setup codex                              # key/URL from env or profile
-  langsmith trace setup codex --user "Jane Doe"       # override the auto-detected name
-  langsmith trace setup codex --yes                        # apply without the confirmation prompt`,
+  langsmith traces setup codex demo-key dev.smith.com shared-codex
+  langsmith traces setup codex                              # key/URL from env or profile
+  langsmith traces setup codex --user "Jane Doe"       # override the auto-detected name
+  langsmith traces setup codex --yes                        # apply without the confirmation prompt`,
 		Args: cobra.MaximumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSetupCodex(cmd, args, project, scope, user, email, yes, noInstall)
