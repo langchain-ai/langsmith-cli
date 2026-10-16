@@ -237,12 +237,25 @@ type gitignoreRules []gitignoreRule
 
 // loadGitignore parses root/.gitignore; best-effort, never fatal.
 func loadGitignore(root string) gitignoreRules {
-	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if err != nil {
-		return nil
-	}
+	return loadIgnoreFiles(root, ".gitignore")
+}
+
+// loadIgnoreFiles parses gitignore-syntax files; missing ones are skipped.
+func loadIgnoreFiles(root string, names ...string) gitignoreRules {
 	var rules gitignoreRules
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		rules = append(rules, parseIgnoreLines(string(data))...)
+	}
+	return rules
+}
+
+func parseIgnoreLines(data string) gitignoreRules {
+	var rules gitignoreRules
+	for _, line := range strings.Split(data, "\n") {
 		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
