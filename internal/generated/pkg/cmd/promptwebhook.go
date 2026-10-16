@@ -411,24 +411,7 @@ func handlePromptWebhooksDelete(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	var res []byte
-	options = append(options, option.WithResponseBodyInto(&res))
-	_, err = client.PromptWebhooks.Delete(ctx, cmd.Value("webhook-id").(string), options...)
-	if err != nil {
-		return err
-	}
-
-	obj := gjson.ParseBytes(res)
-	format := cmd.Root().String("format")
-	explicitFormat := cmd.Root().IsSet("format")
-	transform := cmd.Root().String("transform")
-	return ShowJSON(obj, ShowJSONOpts{
-		ExplicitFormat: explicitFormat,
-		Format:         format,
-		RawOutput:      cmd.Root().Bool("raw-output"),
-		Title:          "prompt-webhooks delete",
-		Transform:      transform,
-	})
+	return client.PromptWebhooks.Delete(ctx, cmd.Value("webhook-id").(string), options...)
 }
 
 func handlePromptWebhooksTest(ctx context.Context, cmd *cli.Command) error {

@@ -94,6 +94,8 @@ contract:
     op: delete
     args: [--webhook-id, 11111111-1111-1111-1111-111111111111]
     stdin: "y\n"
+    response:
+      status: 204
     want:
       method: DELETE
       path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
@@ -111,6 +113,8 @@ contract:
   - name: delete with --yes skips the prompt
     op: delete
     args: [--webhook-id, 11111111-1111-1111-1111-111111111111, --yes]
+    response:
+      status: 204
     want:
       method: DELETE
       path: /api/v1/prompt-webhooks/11111111-1111-1111-1111-111111111111
@@ -120,6 +124,9 @@ contract:
     args:
       - --webhook.url
       - https://example.com/hook
+      # Without a trigger matching the payload event, nothing is sent.
+      - --webhook.triggers
+      - "[commit]"
       - --payload.commit-hash
       - abc123
       - --payload.created-at
@@ -140,7 +147,7 @@ contract:
       method: POST
       path: /api/v1/prompt-webhooks/test
       body:
-        webhook: {url: https://example.com/hook}
+        webhook: {url: https://example.com/hook, triggers: [commit]}
         payload:
           commit_hash: abc123
           created_at: "2026-09-30T00:00:00Z"
@@ -152,7 +159,8 @@ contract:
       stdout: Test notification sent successfully
 
 # Runs against a live API with -tags=integration. It creates no prompt
-# commits, so the webhook never fires.
+# commits, so the webhook never fires. A workspace allows one prompt webhook by
+# default, so run it in a workspace with none, or with a raised limit.
 lifecycle:
   steps:
     - name: create
