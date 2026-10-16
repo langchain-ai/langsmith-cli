@@ -81,10 +81,10 @@ func newProjectIssuesCmd() *cobra.Command {
 		Long: `Manage Issues Board issues for a tracing project.
 
 Examples:
-  langsmith project issues list --project my-app
-  langsmith project issues get <issue-id>
-  langsmith project issues list --project my-app --status open --priority high
-  langsmith project issues events --project my-app`,
+  langsmith projects issues list --project my-app
+  langsmith projects issues get <issue-id>
+  langsmith projects issues list --project my-app --status open --priority high
+  langsmith projects issues events --project my-app`,
 	}
 
 	cmd.AddCommand(newProjectIssuesListCmd())
@@ -123,11 +123,11 @@ that many issues. To read a board larger than one page, advance --offset by
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
-  langsmith project issues list --project my-app
-  langsmith project issues list --project my-app --status open
-  langsmith project issues list --project my-app --priority high --limit 10
-  langsmith project issues list --project my-app --limit 100 --offset 100
-  langsmith project issues list --project my-app --format pretty`,
+  langsmith projects issues list --project my-app
+  langsmith projects issues list --project my-app --status open
+  langsmith projects issues list --project my-app --priority high --limit 10
+  langsmith projects issues list --project my-app --limit 100 --offset 100
+  langsmith projects issues list --project my-app --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
@@ -225,11 +225,11 @@ func newProjectIssuesGetCmd() *cobra.Command {
 		Short: "Get an issue by ID",
 		Long: `Get full details for a specific issue.
 
-The issue ID is the UUID returned by 'langsmith project issues list'.
+The issue ID is the UUID returned by 'langsmith projects issues list'.
 
 Examples:
-  langsmith project issues get <issue-id>
-  langsmith project issues get <issue-id> --output issue.json`,
+  langsmith projects issues get <issue-id>
+  langsmith projects issues get <issue-id> --output issue.json`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
@@ -282,9 +282,9 @@ cron runs to update the User Preferences section of the Agent Overview.
 Output is JSON by default; pass --format pretty for a human-readable table.
 
 Examples:
-  langsmith project issues events --project my-app
-  langsmith project issues events --project my-app --look-back-minutes 1440
-  langsmith project issues events --project my-app --limit 50 --format pretty`,
+  langsmith projects issues events --project my-app
+  langsmith projects issues events --project my-app --look-back-minutes 1440
+  langsmith projects issues events --project my-app --limit 50 --format pretty`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c := MustGetClient()
 			ctx := context.Background()
@@ -383,9 +383,9 @@ func newProjectIssuesUpdateCmd() *cobra.Command {
 		Short: "Update an existing issue's name, description, proposed fix, evaluator, or status",
 		Long: `Update an existing issue.
 
-To link runs as evidence, use 'langsmith project issues runs add' instead.
+To link runs as evidence, use 'langsmith projects issues runs add' instead.
 
-The issue ID is the UUID returned by 'langsmith project issues list'.
+The issue ID is the UUID returned by 'langsmith projects issues list'.
 
 --name and --description are for factual corrections only (when new evidence disproves the original finding).
 --proposed-fix updates the suggested code fix shown to users.
@@ -393,12 +393,12 @@ The issue ID is the UUID returned by 'langsmith project issues list'.
 --status sets the issue's lifecycle state: open, fixing, watching, completed, or ignored ('ignored' is shown as "Incorrectly Flagged"). Pass --reason to record why; it is stored on the issue's history alongside who made the change. Which transitions you may make depends on your role — the server rejects the ones you may not.
 
 Examples:
-  langsmith project issues update <id> --name "Corrected name" --description "New finding..."
-  langsmith project issues update <id> --status open
-  langsmith project issues update <id> --status ignored --reason "Duplicate of 1ac6dbe2 — same root cause, one fix closes both"
-  langsmith project issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
-  langsmith project issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
-  langsmith project issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
+  langsmith projects issues update <id> --name "Corrected name" --description "New finding..."
+  langsmith projects issues update <id> --status open
+  langsmith projects issues update <id> --status ignored --reason "Duplicate of 1ac6dbe2 — same root cause, one fix closes both"
+  langsmith projects issues update <id> --proposed-fix "Root cause: missing null check.\n\` + "`" + `` + "`" + `diff\n-if result:\n+if result is not None:\n` + "`" + `` + "`" + `"
+  langsmith projects issues update <id> --evaluator '{"type":"llm","display_name":"no_hallucination","prompt":[["system","Evaluate whether the response contains hallucinated facts. Score 1 if grounded, 0 if not."],["user","Evaluate and score."]],"schema":{"type":"object","properties":{"score":{"type":"integer","minimum":0,"maximum":1},"reasoning":{"type":"string"}},"required":["score","reasoning"]}}'
+  langsmith projects issues update <id> --evaluator '{"type":"code","display_name":"no_tool_errors","code_evaluators":[{"code":"def perform_eval(run, example=None):\n    out = str((run.outputs or {}).get(\"output\",\"\")).lower()\n    return {\"score\": 0 if \"error\" in out else 1, \"key\": \"no_tool_errors\"}","language":"python"}]}'`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
@@ -596,9 +596,9 @@ func newProjectIssuesRunsCmd() *cobra.Command {
 		Long: `Link and unlink runs to/from an issue.
 
 Examples:
-  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
-  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "updated"
-  langsmith project issues runs remove <issue-id> <run-id>`,
+  langsmith projects issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
+  langsmith projects issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "updated"
+  langsmith projects issues runs remove <issue-id> <run-id>`,
 	}
 
 	cmd.AddCommand(newProjectIssuesRunsAddCmd())
@@ -623,8 +623,8 @@ The server validates the run_id and start_time against the runs database and
 resolves the trace_id automatically.
 
 Examples:
-  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
-  langsmith project issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "evidence"`,
+  langsmith projects issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z
+  langsmith projects issues runs add <issue-id> --run-id <run-id> --start-time 2026-04-10T00:00:00Z --comment "evidence"`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueID := args[0]
@@ -687,8 +687,8 @@ func newProjectIssuesExamplesCmd() *cobra.Command {
 		Long: `Propose regression examples for an issue.
 
 Examples:
-  langsmith project issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Response must be factually correct"
-  langsmith project issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Must be correct" --assertion format="Output must be JSON"`,
+  langsmith projects issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Response must be factually correct"
+  langsmith projects issues examples propose <issue-id> --run-id <run-id> --assertion correctness="Must be correct" --assertion format="Output must be JSON"`,
 	}
 
 	cmd.AddCommand(newProjectIssuesProposeExampleCmd())
@@ -764,12 +764,12 @@ for the assertion (e.g. "correctness"), and the comment describes what the run
 should demonstrate. You may specify up to 10 assertions; keys must be unique.
 
 Examples:
-  langsmith project issues examples propose <issue-id> \
+  langsmith projects issues examples propose <issue-id> \
     --run-id <run-id> \
     --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Response must be factually correct"
 
-  langsmith project issues examples propose <issue-id> \
+  langsmith projects issues examples propose <issue-id> \
     --run-id <run-id> \
     --start-time 2026-04-10T00:00:00Z \
     --assertion correctness="Must cite sources" \

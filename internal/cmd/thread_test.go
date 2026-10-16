@@ -67,8 +67,8 @@ func TestThreadCmd_Subcommands(t *testing.T) {
 
 func TestThreadCmd_UseField(t *testing.T) {
 	cmd := newThreadCmd()
-	if cmd.Use != "thread" {
-		t.Errorf("expected Use=thread, got %q", cmd.Use)
+	if cmd.Use != "threads" {
+		t.Errorf("expected Use=threads, got %q", cmd.Use)
 	}
 }
 

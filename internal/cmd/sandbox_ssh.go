@@ -30,8 +30,8 @@ This command uploads your key, fetches the host key, writes a
 immediately connect with: ssh sandbox-<name>
 
 Examples:
-  langsmith sandbox ssh-setup my-sandbox
-  langsmith sandbox ssh-setup my-sandbox --identity ~/.ssh/id_ed25519.pub`,
+  langsmith sandboxes ssh-setup my-sandbox
+  langsmith sandboxes ssh-setup my-sandbox --identity ~/.ssh/id_ed25519.pub`,
 	Args: cobra.ExactArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxSSHSetupInput {
 		in := &sandboxSSHSetupInput{}
@@ -96,7 +96,7 @@ func runSSHSetup(cmd *cobra.Command, name, identity string) error {
 		}
 	}
 
-	proxyCmd := fmt.Sprintf("langsmith sandbox tunnel %s --remote-port 22 --stdio", shellQuote(name))
+	proxyCmd := fmt.Sprintf("langsmith sandboxes tunnel %s --remote-port 22 --stdio", shellQuote(name))
 	if apiKey := GetAPIKey(); apiKey != "" {
 		proxyCmd += " --api-key " + shellQuote(apiKey)
 	}
@@ -105,7 +105,7 @@ func runSSHSetup(cmd *cobra.Command, name, identity string) error {
 	}
 
 	configBlock := fmt.Sprintf(
-		"# Added by: langsmith sandbox ssh-setup %s\nHost %s\n    User root\n    ProxyCommand %s\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
+		"# Added by: langsmith sandboxes ssh-setup %s\nHost %s\n    User root\n    ProxyCommand %s\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
 		name, hostAlias, proxyCmd, shellQuote(knownHostsPath),
 	)
 

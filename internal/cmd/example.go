@@ -15,8 +15,9 @@ import (
 
 func newExampleCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "example",
-		Short: "Manage individual examples within datasets",
+		Use:     "examples",
+		Aliases: []string{"example"},
+		Short:   "Manage individual examples within datasets",
 		Long: `Manage individual examples within datasets.
 
 Examples are the individual input/output pairs stored in a dataset.
@@ -26,9 +27,9 @@ List results are paginated and return at most 20 examples by default
 (use --limit to change). Use --offset to paginate through results.
 
 Examples:
-  langsmith example list --dataset my-dataset
-  langsmith example create --dataset my-dataset --inputs '{"question": "What is LangSmith?"}'
-  langsmith example delete <example-id> --yes`,
+  langsmith examples list --dataset my-dataset
+  langsmith examples create --dataset my-dataset --inputs '{"question": "What is LangSmith?"}'
+  langsmith examples delete <example-id> --yes`,
 	}
 
 	cmd.AddCommand(newExampleListCmd())

@@ -46,7 +46,7 @@ func confirmApply(cmd *cobra.Command, yes bool, preview string) (bool, error) {
 	return strings.ToLower(strings.TrimSpace(confirm)) == "y", nil
 }
 
-// newTraceSetupCmd is `langsmith trace setup`: configure coding agents to send
+// newTraceSetupCmd is `langsmith traces setup`: configure coding agents to send
 // traces to LangSmith. With no subcommand it tries both Claude Code and Codex
 // (best-effort — an agent that isn't installed just fails its own install step).
 func newTraceSetupCmd() *cobra.Command {
@@ -67,9 +67,9 @@ With no agent subcommand it configures both Claude Code and Codex; each is
 best-effort, so an agent that isn't installed simply fails its own install step.
 Use the claude/codex subcommands to target one.
 
-  langsmith trace setup                         # try both Claude Code and Codex
-  langsmith trace setup claude demo-key dev.smith.com shared-claude
-  langsmith trace setup codex --yes
+  langsmith traces setup                         # try both Claude Code and Codex
+  langsmith traces setup claude demo-key dev.smith.com shared-claude
+  langsmith traces setup codex --yes
 
 The API key, URL, and project may be positional args or come from
 LANGSMITH_API_KEY / LANGSMITH_ENDPOINT / LANGSMITH_PROJECT, the --api-url

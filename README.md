@@ -50,7 +50,7 @@ Or save the credentials in a profile:
 
 ```bash
 langsmith auth login                    # OAuth
-langsmith profile create prod           # API key, taken from $LANGSMITH_API_KEY
+langsmith profiles create prod           # API key, taken from $LANGSMITH_API_KEY
 ```
 
 Profiles live in `~/.langsmith/config.json`, written owner-only; the CLI warns
@@ -66,22 +66,22 @@ langsmith --workspace <workspace-id> trace list --project my-app
 
 ```bash
 # List tracing projects
-langsmith project list
+langsmith projects list
 
 # List recent traces in a project
-langsmith trace list --project my-app --limit 5
+langsmith traces list --project my-app --limit 5
 
 # Get a specific trace with full detail
-langsmith trace get <trace-id> --project my-app --full
+langsmith traces get <trace-id> --project my-app --full
 
 # List LLM calls with token counts
-langsmith run list --project my-app --run-type llm --include-metadata
+langsmith runs list --project my-app --run-type llm --include-metadata
 
 # List datasets
-langsmith dataset list
+langsmith datasets list
 
 # List experiments for a dataset
-langsmith experiment list --dataset my-eval-set
+langsmith experiments list --dataset my-eval-set
 ```
 
 ## Product feedback
@@ -104,7 +104,7 @@ on LangSmith Cloud and BYOC, not standalone self-hosted deployments.
 ## Output Formats
 
 ```bash
-langsmith trace list --project my-app
+langsmith traces list --project my-app
 ```
 
 ```bash
@@ -112,7 +112,7 @@ langsmith --format=json trace list --project my-app
 ```
 
 ```bash
-langsmith trace list --project my-app -o traces.json
+langsmith traces list --project my-app -o traces.json
 ```
 
 ## Selecting a project
@@ -122,8 +122,8 @@ Every command that operates on a project takes either `--project <name>` or
 neither is set. The two flags are mutually exclusive.
 
 ```bash
-langsmith trace list --project 'my-app'
-langsmith trace list --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
+langsmith traces list --project 'my-app'
+langsmith traces list --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 ```
 
 Prefer `--project-id` when a program is building the command line. Project names
@@ -133,7 +133,7 @@ name that is quoted wrongly matches nothing and returns an empty result rather
 than an error. A UUID needs no quoting. `--project-id` also skips the name
 lookup, saving a round-trip.
 
-`langsmith project list` returns the `id` to use.
+`langsmith projects list` returns the `id` to use.
 
 ## Command Reference
 
@@ -145,17 +145,17 @@ Results are **paginated** — by default, only the first **20** projects are ret
 
 ```bash
 # List tracing projects (default: 20 results, most recently active first)
-langsmith project list
-langsmith project list --limit 50
+langsmith projects list
+langsmith projects list --limit 50
 
 # Filter by name
-langsmith project list --name-contains chatbot
+langsmith projects list --name-contains chatbot
 
 # Machine-readable JSON
 langsmith --format=json project list
 
 # Permanently delete a project and all of its traces (requires confirmation)
-langsmith project delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
+langsmith projects delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 ```
 
 ### `trace` — Query and export traces
@@ -166,32 +166,32 @@ Results are **paginated** — by default, only the first **20** traces are retur
 
 ```bash
 # List recent traces (default: 20 results, newest first)
-langsmith trace list --project my-app
-langsmith trace list --project my-app --limit 50 --last-n-minutes 60
+langsmith traces list --project my-app
+langsmith traces list --project my-app --limit 50 --last-n-minutes 60
 
 # Filter traces
-langsmith trace list --project my-app --error           # Only errors
-langsmith trace list --project my-app --min-latency 5   # Slow traces (>5s)
-langsmith trace list --project my-app --tags production  # By tag
-langsmith trace list --project my-app --name "agent"     # By name
+langsmith traces list --project my-app --error           # Only errors
+langsmith traces list --project my-app --min-latency 5   # Slow traces (>5s)
+langsmith traces list --project my-app --tags production  # By tag
+langsmith traces list --project my-app --name "agent"     # By name
 
 # Include additional fields
-langsmith trace list --project my-app --include-metadata   # + status, duration, tokens, costs
-langsmith trace list --project my-app --include-io         # + inputs, outputs, error
-langsmith trace list --project my-app --include-feedback   # + feedback_stats
-langsmith trace list --project my-app --full               # All fields (metadata + io + feedback)
+langsmith traces list --project my-app --include-metadata   # + status, duration, tokens, costs
+langsmith traces list --project my-app --include-io         # + inputs, outputs, error
+langsmith traces list --project my-app --include-feedback   # + feedback_stats
+langsmith traces list --project my-app --full               # All fields (metadata + io + feedback)
 
 # Show trace hierarchy (fetches full run tree for each trace)
-langsmith trace list --project my-app --show-hierarchy --limit 3
+langsmith traces list --project my-app --show-hierarchy --limit 3
 
 # Get a specific trace
-langsmith trace get <trace-id> --project my-app --full
+langsmith traces get <trace-id> --project my-app --full
 
 # Export traces to JSONL files (one per trace)
-langsmith trace export ./traces --project my-app --limit 20 --full
+langsmith traces export ./traces --project my-app --limit 20 --full
 
 # Custom filename pattern (supports {trace_id} and {name} placeholders)
-langsmith trace export ./traces --project my-app --filename-pattern "{name}_{trace_id}.jsonl"
+langsmith traces export ./traces --project my-app --filename-pattern "{name}_{trace_id}.jsonl"
 ```
 
 ### `run` — Query individual runs
@@ -202,23 +202,23 @@ Results are **paginated** — by default, only the first **50** runs are returne
 
 ```bash
 # List LLM calls (default: 50 results, oldest first)
-langsmith run list --project my-app --run-type llm
-langsmith run list --project my-app --run-type tool --name search
+langsmith runs list --project my-app --run-type llm
+langsmith runs list --project my-app --run-type tool --name search
 
 # --name is an exact match; use --filter for a substring match
-langsmith run list --project my-app --filter 'like(name, "%search%")'
+langsmith runs list --project my-app --filter 'like(name, "%search%")'
 
 # Find expensive calls
-langsmith run list --project my-app --run-type llm --min-tokens 1000 --include-metadata
+langsmith runs list --project my-app --run-type llm --min-tokens 1000 --include-metadata
 
 # Include feedback scores
-langsmith run list --project my-app --include-feedback
+langsmith runs list --project my-app --include-feedback
 
 # Get a specific run
-langsmith run get <run-id> --full
+langsmith runs get <run-id> --full
 
 # Export to JSONL (default limit: 100)
-langsmith run export llm_calls.jsonl --project my-app --run-type llm --full
+langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
 > **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
@@ -231,11 +231,11 @@ Results are **paginated** — by default, only the first **20** threads are retu
 
 ```bash
 # List threads (default: 20 results, newest first; requires --project)
-langsmith thread list --project my-chatbot
-langsmith thread list --project my-chatbot --last-n-minutes 120
+langsmith threads list --project my-chatbot
+langsmith threads list --project my-chatbot --last-n-minutes 120
 
 # Get all turns in a thread
-langsmith thread get <thread-id> --project my-chatbot --full
+langsmith threads get <thread-id> --project my-chatbot --full
 ```
 
 ### `insights` — Create and query insight reports
@@ -296,21 +296,21 @@ List results are **paginated** — by default, only the first **100** datasets a
 
 ```bash
 # List datasets (default: 100 results)
-langsmith dataset list
-langsmith dataset list --name-contains eval
+langsmith datasets list
+langsmith datasets list --name-contains eval
 
 # Get dataset details
-langsmith dataset get my-dataset
+langsmith datasets get my-dataset
 
 # Create and delete
-langsmith dataset create --name my-eval-set --description "QA pairs for v2"
-langsmith dataset delete my-old-dataset --yes
+langsmith datasets create --name my-eval-set --description "QA pairs for v2"
+langsmith datasets delete my-old-dataset --yes
 
 # Export examples to JSON
-langsmith dataset export my-dataset ./data.json --limit 500
+langsmith datasets export my-dataset ./data.json --limit 500
 
 # Upload from JSON file
-langsmith dataset upload data.json --name new-dataset
+langsmith datasets upload data.json --name new-dataset
 ```
 
 ### `example` — Manage dataset examples
@@ -319,26 +319,26 @@ List results are **paginated** — by default, only the first **20** examples ar
 
 ```bash
 # List examples (default: 20 results)
-langsmith example list --dataset my-dataset
-langsmith example list --dataset my-dataset --split test --limit 50
+langsmith examples list --dataset my-dataset
+langsmith examples list --dataset my-dataset --split test --limit 50
 
 # Paginate through examples
-langsmith example list --dataset my-dataset --limit 20 --offset 20
+langsmith examples list --dataset my-dataset --limit 20 --offset 20
 
 # Create an example
-langsmith example create --dataset my-dataset \
+langsmith examples create --dataset my-dataset \
   --inputs '{"question": "What is LangSmith?"}' \
   --outputs '{"answer": "A platform for LLM observability"}'
 
 # Create with metadata and split assignment
-langsmith example create --dataset my-dataset \
+langsmith examples create --dataset my-dataset \
   --inputs '{"question": "What is tracing?"}' \
   --outputs '{"answer": "Recording LLM application execution"}' \
   --metadata '{"source": "manual", "version": 2}' \
   --split test
 
 # Delete an example
-langsmith example delete <example-id> --yes
+langsmith examples delete <example-id> --yes
 ```
 
 ### `evaluator` — Manage evaluators and their rules
@@ -393,11 +393,11 @@ List results are **paginated** — by default, only the first **20** experiments
 
 ```bash
 # List experiments (default: 20 results)
-langsmith experiment list
-langsmith experiment list --dataset my-eval-set
+langsmith experiments list
+langsmith experiments list --dataset my-eval-set
 
 # Get experiment results (feedback stats, run stats)
-langsmith experiment get my-experiment-2024-01-15
+langsmith experiments get my-experiment-2024-01-15
 ```
 
 ### `hub` — Manage agent and skill repos on the LangSmith Hub
@@ -458,35 +458,35 @@ here). Each command previews the exact changes and asks you to confirm (pass `--
 
 ```bash
 # Bare: try both Claude Code and Codex (best-effort; an uninstalled agent just fails)
-langsmith trace setup
+langsmith traces setup
 
 # Configure Claude Code: API key, URL, and project as positional args (bare host gains https://)
-langsmith trace setup claude demo-key dev.smith.com shared-claude
+langsmith traces setup claude demo-key dev.smith.com shared-claude
 
 # Or take the key + URL from env/profile
-langsmith trace setup claude
+langsmith traces setup claude
 
 # Configure Codex (writes ~/.codex/config.toml + ~/.codex/langsmith.json)
-langsmith trace setup codex
+langsmith traces setup codex
 
 # Trace to a named project (default: "claude-code" / "codex", or $LANGSMITH_PROJECT)
-langsmith trace setup claude --project my-agent
+langsmith traces setup claude --project my-agent
 
 # Override the auto-detected name/email attached to every trace
-langsmith trace setup claude --user "Jane Doe" --email jane@example.com
+langsmith traces setup claude --user "Jane Doe" --email jane@example.com
 
 # Pass everything explicitly (self-hosted or a specific workspace key)
-langsmith trace setup claude demo-key https://my-host/api/v1 my-team   # all positional
+langsmith traces setup claude demo-key https://my-host/api/v1 my-team   # all positional
 
 # Apply without the interactive confirmation prompt
-langsmith trace setup claude --yes
+langsmith traces setup claude --yes
 
 # Write config only; skip running the plugin install
-langsmith trace setup claude --no-install
+langsmith traces setup claude --no-install
 
 # Write project-local config instead of user-global
-langsmith trace setup claude --scope project    # ./.claude/settings.local.json
-langsmith trace setup codex --scope project     # ./.codex/...
+langsmith traces setup claude --scope project    # ./.claude/settings.local.json
+langsmith traces setup codex --scope project     # ./.codex/...
 ```
 
 `trace setup claude` installs the plugin via `claude plugin marketplace add` + `claude plugin install`;
@@ -531,7 +531,7 @@ EOF
 chmod +x ~/.local/bin/langsmith
 ```
 
-Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands like `langsmith sandbox list` and SSH ProxyCommand entries work without manually sourcing `.env` each time.
+Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands like `langsmith sandboxes list` and SSH ProxyCommand entries work without manually sourcing `.env` each time.
 
 ### Requirements
 

@@ -40,16 +40,16 @@ Authentication:
   Optionally set LANGSMITH_ENDPOINT for self-hosted instances.
   Use --profile or LANGSMITH_PROFILE to select a saved profile.
   Pass --workspace to target a specific workspace for one command.
-  Set a default workspace with 'langsmith profile set-workspace <workspace-id>'.
+  Set a default workspace with 'langsmith profiles set-workspace <workspace-id>'.
   Set LANGSMITH_PROJECT as a default project name for trace/run queries.
 
 Quick start:
-  langsmith project list
-  langsmith trace list --project my-project --limit 5
-  langsmith run list --project my-project --run-type llm --limit 10
-  langsmith dataset list
+  langsmith projects list
+  langsmith traces list --project my-project --limit 5
+  langsmith runs list --project my-project --run-type llm --limit 10
+  langsmith datasets list
   langsmith evaluator list
-  langsmith experiment list --dataset my-eval-dataset
+  langsmith experiments list --dataset my-eval-dataset
 
 	Output:
 	  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).

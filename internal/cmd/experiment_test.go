@@ -23,8 +23,8 @@ func TestExperimentCmd_Subcommands(t *testing.T) {
 
 func TestExperimentCmd_UseField(t *testing.T) {
 	cmd := newExperimentCmd()
-	if cmd.Use != "experiment" {
-		t.Errorf("expected Use=experiment, got %q", cmd.Use)
+	if cmd.Use != "experiments" {
+		t.Errorf("expected Use=experiments, got %q", cmd.Use)
 	}
 }
 

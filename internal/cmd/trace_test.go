@@ -43,8 +43,8 @@ func TestTraceCmd_Subcommands(t *testing.T) {
 
 func TestTraceCmd_UseField(t *testing.T) {
 	cmd := newTraceCmd()
-	if cmd.Use != "trace" {
-		t.Errorf("expected Use=trace, got %q", cmd.Use)
+	if cmd.Use != "traces" {
+		t.Errorf("expected Use=traces, got %q", cmd.Use)
 	}
 }
 

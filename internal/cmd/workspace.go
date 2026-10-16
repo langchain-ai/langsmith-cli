@@ -12,8 +12,9 @@ import (
 
 func newWorkspaceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "workspace",
-		Short: "List and select LangSmith workspaces",
+		Use:     "workspaces",
+		Aliases: []string{"workspace"},
+		Short:   "List and select LangSmith workspaces",
 	}
 	cmd.AddCommand(newWorkspaceListCmd())
 	cmd.AddCommand(newWorkspaceSetDefaultCmd())

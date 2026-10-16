@@ -38,10 +38,10 @@ remote port instead of listening locally. This is designed for use
 as an SSH ProxyCommand.
 
 Examples:
-  langsmith sandbox tunnel my-vm --remote-port 5432
-  langsmith sandbox tunnel my-vm --remote-port 5432 --local-port 15432
-  langsmith sandbox tunnel my-vm --remote-port 22 --stdio
-  langsmith sandbox tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432`,
+  langsmith sandboxes tunnel my-vm --remote-port 5432
+  langsmith sandboxes tunnel my-vm --remote-port 5432 --local-port 15432
+  langsmith sandboxes tunnel my-vm --remote-port 22 --stdio
+  langsmith sandboxes tunnel --url https://sandboxes.langsmith.com/my-sandbox --remote-port 5432`,
 	Args: cobra.MaximumNArgs(1),
 	Input: func(cmd *cobra.Command) *sandboxTunnelInput {
 		in := &sandboxTunnelInput{LogLevel: "info"}

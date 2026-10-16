@@ -22,8 +22,8 @@ func TestProjectCmd_Subcommands(t *testing.T) {
 
 func TestProjectCmd_UseField(t *testing.T) {
 	cmd := newProjectCmd()
-	if cmd.Use != "project" {
-		t.Errorf("expected Use=project, got %q", cmd.Use)
+	if cmd.Use != "projects" {
+		t.Errorf("expected Use=projects, got %q", cmd.Use)
 	}
 }
 

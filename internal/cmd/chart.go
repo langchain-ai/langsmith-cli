@@ -21,8 +21,9 @@ import (
 
 func newChartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "chart",
-		Short: "Compute charts over runs without saving them",
+		Use:     "charts",
+		Aliases: []string{"chart"},
+		Short:   "Compute charts over runs without saving them",
 	}
 	cmd.AddCommand(newChartPreviewCmd())
 	return cmd
@@ -47,7 +48,7 @@ group, with "." for a bucket that has no data. --format json prints the API
 response unchanged.
 
 Example:
-  langsmith chart preview --body '{
+  langsmith charts preview --body '{
     "bucket_info": {
       "start_time": "2026-01-01T00:00:00Z",
       "end_time": "2026-01-02T00:00:00Z",
@@ -65,7 +66,7 @@ Example:
     }]}
   }'
 
-  langsmith chart preview --body @chart.json --format json`,
+  langsmith charts preview --body @chart.json --format json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			raw, err := loadJSONArg(body)
 			if err != nil {
