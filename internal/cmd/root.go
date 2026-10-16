@@ -93,6 +93,7 @@ Quick start:
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
+	addGeneratedCommands(rootCmd)
 
 	return rootCmd
 }
@@ -148,17 +149,46 @@ func MustGetClient() *client.Client {
 // getClient is the non-exiting sibling of MustGetClient: it returns an error
 // instead of calling os.Exit, so request handlers can't crash.
 func getClient() (*client.Client, error) {
-	opts, err := resolveClientOptions()
+	opts, err := resolveAuthenticatedOptions(currentGlobalFlags())
 	if err != nil {
 		return nil, err
-	}
-	if !opts.HasAuth() {
-		return nil, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
 	}
 	return client.NewWithOptions(opts), nil
 }
 
+// globalFlags holds the values of langsmith's global auth and routing flags.
+type globalFlags struct {
+	APIKey      string
+	APIURL      string
+	Profile     string
+	WorkspaceID string
+}
+
+// currentGlobalFlags returns the global flags Cobra parsed.
+func currentGlobalFlags() globalFlags {
+	return globalFlags{APIKey: flagAPIKey, APIURL: flagAPIURL, Profile: flagProfile, WorkspaceID: flagWorkspaceID}
+}
+
+// resolveAuthenticatedOptions resolves the client options and fails when they
+// carry no credentials.
+func resolveAuthenticatedOptions(flags globalFlags) (client.Options, error) {
+	opts, err := resolveClientOptionsFor(flags)
+	if err != nil {
+		return opts, err
+	}
+	if !opts.HasAuth() {
+		return opts, fmt.Errorf("not authenticated; run 'langsmith auth login', set LANGSMITH_API_KEY, or pass --api-key")
+	}
+	return opts, nil
+}
+
 func resolveClientOptions() (client.Options, error) {
+	return resolveClientOptionsFor(currentGlobalFlags())
+}
+
+// resolveClientOptionsFor resolves auth, endpoint, and workspace from the given
+// global flags, then the environment, then the selected profile.
+func resolveClientOptionsFor(flags globalFlags) (client.Options, error) {
 	opts := client.Options{APIURL: lsconfig.DefaultAPIURL}
 
 	cfg, err := lsconfig.Load()
@@ -170,12 +200,12 @@ func resolveClientOptions() (client.Options, error) {
 
 	envProfile := strings.TrimSpace(os.Getenv("LANGSMITH_PROFILE"))
 	profileName, profile, hasProfile := "", lsconfig.Profile{}, false
-	if flagProfile != "" || envProfile != "" || cfgErr == nil {
-		if cfgErr != nil && (flagProfile != "" || envProfile != "") {
+	if flags.Profile != "" || envProfile != "" || cfgErr == nil {
+		if cfgErr != nil && (flags.Profile != "" || envProfile != "") {
 			return opts, cfgErr
 		}
-		profileName, profile, hasProfile = cfg.ResolveProfile(flagProfile, envProfile)
-		if (flagProfile != "" || envProfile != "") && !hasProfile {
+		profileName, profile, hasProfile = cfg.ResolveProfile(flags.Profile, envProfile)
+		if (flags.Profile != "" || envProfile != "") && !hasProfile {
 			return opts, fmt.Errorf("profile not found: %s", profileName)
 		}
 	}
@@ -188,14 +218,14 @@ func resolveClientOptions() (client.Options, error) {
 	}
 
 	if v := os.Getenv("LANGSMITH_ENDPOINT"); v != "" {
-		if flagProfile != "" && hasProfile && profile.APIURL != "" {
+		if flags.Profile != "" && hasProfile && profile.APIURL != "" {
 			fmt.Fprintf(os.Stderr, "warning: ignoring LANGSMITH_ENDPOINT because profile %q was selected with --profile\n", profileName)
 		} else {
 			opts.APIURL = client.NormalizeURL(v)
 		}
 	}
-	if flagAPIURL != "" {
-		opts.APIURL = client.NormalizeURL(flagAPIURL)
+	if flags.APIURL != "" {
+		opts.APIURL = client.NormalizeURL(flags.APIURL)
 	}
 
 	if v := os.Getenv("LANGSMITH_TENANT_ID"); v != "" {
@@ -204,14 +234,14 @@ func resolveClientOptions() (client.Options, error) {
 	if v := os.Getenv("LANGSMITH_WORKSPACE_ID"); v != "" {
 		opts.WorkspaceID = v
 	}
-	if flagWorkspaceID != "" {
-		opts.WorkspaceID = flagWorkspaceID
+	if flags.WorkspaceID != "" {
+		opts.WorkspaceID = flags.WorkspaceID
 	}
 	switch {
-	case flagAPIKey != "":
-		opts.APIKey = flagAPIKey
+	case flags.APIKey != "":
+		opts.APIKey = flags.APIKey
 	case os.Getenv("LANGSMITH_API_KEY") != "":
-		if flagProfile != "" {
+		if flags.Profile != "" {
 			fmt.Fprintln(os.Stderr, "warning: --profile was specified, but LANGSMITH_API_KEY is set and takes precedence over saved profile auth")
 		}
 		opts.APIKey = os.Getenv("LANGSMITH_API_KEY")
