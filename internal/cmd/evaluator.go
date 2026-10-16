@@ -183,12 +183,14 @@ Examples:
 			}
 			if !yes {
 				target := "the evaluator"
+				identity := fmt.Sprintf("Evaluator: %q (id: %s, attached to: %s)", ev.Name, ev.ID, ruleTargetsSummary(ev.RunRules))
 				if len(ev.RunRules) > 0 {
 					target = fmt.Sprintf("the evaluator and its %d rule(s)", len(ev.RunRules))
+					identity += rulesSideActionsNotice(ctx, c, ev.ID)
 				}
 				if err := confirmDelete(cmd, deleteConfirmation{
 					target:   target,
-					identity: fmt.Sprintf("Evaluator: %q (id: %s, attached to: %s)", ev.Name, ev.ID, ruleTargetsSummary(ev.RunRules)),
+					identity: identity,
 				}); err != nil {
 					return err
 				}
@@ -211,6 +213,28 @@ Examples:
 	cmd.Flags().BoolVar(&deleteRules, "delete-rules", false, "Also delete the rules that attach the evaluator to projects and datasets")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
+}
+
+// rulesSideActionsNotice lists the webhooks, add-to-dataset and annotation-queue
+// actions, and alerts on the evaluator's rules, which are deleted with them.
+func rulesSideActionsNotice(ctx context.Context, c *client.Client, evaluatorID string) string {
+	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{EvaluatorID: langsmith.F(evaluatorID)})
+	if err != nil {
+		return "\nCould not check the rules for webhooks, add-to-dataset or annotation-queue actions, or alerts; any they have are deleted too."
+	}
+	var lines []string
+	for _, r := range *rules {
+		if r.EvaluatorID != evaluatorID {
+			continue
+		}
+		if actions := ruleSideActions(r); len(actions) > 0 {
+			lines = append(lines, fmt.Sprintf("  rule %q (%s): %s", r.DisplayName, ruleTarget(r), strings.Join(actions, ", ")))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\nThese rules' other actions are deleted with them:\n" + strings.Join(lines, "\n")
 }
 
 func listOnlineEvaluators(ctx context.Context, c *client.Client, params langsmith.OnlineEvaluatorListParams) ([]langsmith.OnlineEvaluator, error) {
@@ -448,7 +472,9 @@ func newEvaluatorUploadCmd() *cobra.Command {
 
 			var result map[string]any
 			if existing != nil {
-				payload["display_name"] = existing.DisplayName
+				if err := keepRuleSettings(payload, *existing, replaceOverridesFromFlags(cmd)); err != nil {
+					return err
+				}
 				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing evaluator: %v", err)
 				}
@@ -476,8 +502,8 @@ func newEvaluatorUploadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name (online evaluator)")
 	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
-	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
-	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
+	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0); --replace keeps the rule's current rate unless this is set")
+	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate; --replace keeps the rule's current filter unless this is set")
 	cmd.Flags().BoolVar(&replace, "replace", false, "Update the existing evaluator rule matched by --name on this target")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt when replacing")
 	_ = cmd.MarkFlagRequired("name")
@@ -543,7 +569,9 @@ Examples:
 
 			var result map[string]any
 			if existing != nil {
-				payload["display_name"] = existing.DisplayName
+				if err := keepRuleSettings(payload, *existing, replaceOverridesFromFlags(cmd)); err != nil {
+					return err
+				}
 				if err := c.RawPatch(ctx, fmt.Sprintf("/api/v1/runs/rules/%s", existing.ID), payload, &result); err != nil {
 					ExitErrorf("replacing LLM evaluator: %v", err)
 				}
@@ -567,8 +595,8 @@ Examples:
 	cmd.Flags().StringVar(&targetProject, "project", "", "Target project name")
 	cmd.Flags().StringVar(&targetProjectID, "project-id", "", "Target project (session) UUID; skips the name lookup")
 	cmd.MarkFlagsMutuallyExclusive("project", "project-id")
-	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0)")
-	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate")
+	cmd.Flags().Float64Var(&samplingRate, "sampling-rate", 1.0, "Fraction of runs to evaluate (0.0-1.0); --replace keeps the rule's current rate unless this is set")
+	cmd.Flags().StringVar(&traceFilter, "trace-filter", "", "Filter expression for which runs to evaluate; --replace keeps the rule's current filter unless this is set")
 	cmd.Flags().StringVar(&hubRef, "hub-ref", "", "Prompt Hub reference; replaces --prompt and --schema (e.g. my-org/prompt:latest)")
 	cmd.Flags().StringVar(&promptPath, "prompt", "", "Prompt JSON file ([[role,content],...] or [{role,content},...]); omit if --hub-ref is set")
 	cmd.Flags().StringVar(&schemaPath, "schema", "", "JSON schema file for structured output; omit if --hub-ref is set")

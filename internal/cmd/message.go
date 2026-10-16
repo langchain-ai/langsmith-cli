@@ -112,11 +112,15 @@ Requires --project and an explicit start time (--since or --last-n-minutes);
 unlike the read/query commands this one has no implicit time window.
 Default limit: 10, max: 100.
 
+--feedback-since/--feedback-before only match feedback modified in that window;
+the start time still bounds when the traces ran.
+
 Examples:
   langsmith trace messages --project my-chatbot --last-n-minutes 60 --limit 5
   langsmith trace messages --project my-chatbot --last-n-minutes 60 --filter "eq(status, \"error\")"
   langsmith trace messages --project my-chatbot --since <YYYY-MM-DDTHH:MM:SSZ>
-  langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>`,
+  langsmith trace messages --project my-chatbot --last-n-minutes 1440 --trace-ids <id1,id2>
+  langsmith trace messages --project my-chatbot --last-n-minutes 10080 --filter "eq(feedback_key, \"user_score\")" --feedback-since <YYYY-MM-DDTHH:MM:SSZ>`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defaultLimit := 10
 			if ff.Limit == 0 {
@@ -153,6 +157,14 @@ Examples:
 
 			if ff.Before != "" {
 				body["max_start_time"] = ff.Before
+			}
+
+			feedbackSince, feedbackBefore := feedbackWindow(&ff)
+			if !feedbackSince.IsZero() {
+				body["min_feedback_modified_at"] = feedbackSince.Format(time.RFC3339Nano)
+			}
+			if !feedbackBefore.IsZero() {
+				body["max_feedback_modified_at"] = feedbackBefore.Format(time.RFC3339Nano)
 			}
 
 			if ff.TraceIDs != "" {
@@ -285,6 +297,7 @@ Examples:
 	}
 
 	addCommonFilterFlags(cmd, &ff, true)
+	addFeedbackWindowFlags(cmd, &ff)
 	cmd.Flags().StringVar(&ff.Cursor, "cursor", "", "Resume from a pagination cursor returned by a previous call; enables single-page mode with cursors.next in output")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 

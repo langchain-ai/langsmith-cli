@@ -10,6 +10,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/spf13/cobra"
 )
 
 // ---------- resolveSessionID ----------
@@ -697,5 +698,45 @@ func TestQueryRunsV2_SDKAutoPagerSendsCursorInBody(t *testing.T) {
 	}
 	if strings.Join(bodyCursors, ",") != ",cursor-2,cursor-3" {
 		t.Errorf("body cursors = %v, want [\"\", cursor-2, cursor-3]", bodyCursors)
+	}
+}
+
+func TestListCommands_SendFeedbackWindowToV2Query(t *testing.T) {
+	for name, newCmd := range map[string]func() *cobra.Command{
+		"trace list": newTraceListCmd,
+		"run list":   newRunListCmd,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var body map[string]any
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v2/runs/query" {
+					_ = json.NewDecoder(r.Body).Decode(&body)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+			})
+			cleanup := setupTestEnv(t, ts.URL)
+			defer cleanup()
+
+			cmd := newCmd()
+			cmd.SetArgs([]string{
+				"--project-id", "018e4c7e-a9fb-7ef0-a5b6-6ea3a82e9327",
+				"--filter", `eq(feedback_key, "correctness")`,
+				"--feedback-since", "2024-01-14T12:30:00",
+				"--feedback-before", "2024-01-15",
+			})
+			captureStdout(t, func() {
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			})
+
+			if body["min_feedback_modified_at"] != "2024-01-14T12:30:00Z" {
+				t.Errorf("expected min_feedback_modified_at=2024-01-14T12:30:00Z, got %v", body["min_feedback_modified_at"])
+			}
+			if body["max_feedback_modified_at"] != "2024-01-15T00:00:00Z" {
+				t.Errorf("expected max_feedback_modified_at=2024-01-15T00:00:00Z, got %v", body["max_feedback_modified_at"])
+			}
+		})
 	}
 }
