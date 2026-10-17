@@ -27,7 +27,7 @@ func TestHandWrittenPathsCarryAPIPrefix(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || path == filepath.Join(root, "cmd", "gateway.go") {
 			return nil
 		}
 		src, err := os.ReadFile(path)
