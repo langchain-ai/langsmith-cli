@@ -78,6 +78,18 @@ func TestTraceListCmd_Flags(t *testing.T) {
 	}
 }
 
+func TestTraceListCmd_RejectsEmptyTraceIDs(t *testing.T) {
+	for _, ids := range []string{"", " , "} {
+		cmd := newTraceListCmd()
+		if err := cmd.Flags().Set("trace-ids", ids); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.PreRunE(cmd, nil); err == nil {
+			t.Errorf("expected empty --trace-ids %q to fail", ids)
+		}
+	}
+}
+
 func TestTraceListCmd_HasCommonFilterFlags(t *testing.T) {
 	cmd := newTraceListCmd()
 	common := []string{"trace-ids", "limit", "project", "last-n-minutes", "since",
