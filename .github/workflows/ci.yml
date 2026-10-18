@@ -36,7 +36,14 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        if: matrix.os != 'windows-latest'
         run: go test ./...
+
+      # The generated TestEmbedFiles leaves a file open, which Windows can't delete
+      # at cleanup. Drop the skip once the Stainless CLI template closes it.
+      - name: Test (Windows)
+        if: matrix.os == 'windows-latest'
+        run: go test -skip '^TestEmbedFiles$' ./...
 
       - name: Build
         run: go build -o ${{ matrix.build-output }} ./cmd/langsmith
