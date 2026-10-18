@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
@@ -31,51 +32,132 @@ func generatedResources() []*cli.Command {
 	return resources
 }
 
+// generatedAnnotation marks a cobra command that runs a generated resource; its
+// value is the resource's generated name.
+const generatedAnnotation = "langsmith/generated-resource"
+
 // addGeneratedCommands mounts every generated resource as a `langsmith`
-// command. A name that clashes with a hand-written command is a programming
-// error.
+// command.
 func addGeneratedCommands(root *cobra.Command) {
 	// The generated tree also has hidden helpers (@manpages, __complete) that
 	// langsmith covers itself. The generated root validates every subcommand's
 	// flags on each run, so keep only the resources.
 	generated.Command.Commands = generatedResources()
-	existing := map[string]bool{}
-	for _, c := range root.Commands() {
-		existing[c.Name()] = true
-	}
 	for _, resource := range generatedResources() {
-		name := resource.Name
-		if existing[name] {
-			panic(fmt.Sprintf("generated command %q clashes with a hand-written command", name))
-		}
-		root.AddCommand(&cobra.Command{
-			Use:                name,
-			Short:              "Manage " + strings.ReplaceAll(name, "-", " "),
-			DisableFlagParsing: true,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				rest, flags, err := translateGlobalFlags(args)
-				if err != nil {
-					return err
-				}
-				// --yes belongs to delete operations only; elsewhere the generated
-				// tree rejects it as an unknown flag.
-				if isDeleteInvocation(resource, rest, generatedValueFlags()) {
-					var yes bool
-					rest, yes = extractFlag(rest, "--yes")
-					args, _ = extractFlag(args, "--yes")
-					if !yes && !hasHelpFlag(rest) {
-						if err := confirmDelete(cmd, deleteConfirmation{
-							target:   "the " + strings.ReplaceAll(name, "-", " ") + " below",
-							identity: "Command: langsmith " + name + " " + strings.Join(redactCredentials(args), " "),
-						}); err != nil {
-							return err
-						}
-					}
-				}
-				return runGenerated(cmd, resource, rest, flags)
-			},
-		})
+		mountGenerated(root, resource)
 	}
+}
+
+// mountGenerated mounts a resource at its path: the subresource
+// sessions:insights becomes `sessions insights`. Each segment matches an
+// existing command by name or alias, so it also lands under `projects`, whose
+// alias is sessions. When the resource's own name is taken, its operations are
+// added to that command, and a hand-written subcommand wins on a clash.
+func mountGenerated(root *cobra.Command, resource *cli.Command) {
+	path := strings.Split(resource.Name, ":")
+	parent := root
+	for _, name := range path[:len(path)-1] {
+		next := subcommand(parent, name)
+		if next == nil {
+			next = &cobra.Command{Use: name, Short: "Manage " + strings.ReplaceAll(name, "-", " ")}
+			parent.AddCommand(next)
+		}
+		parent = next
+	}
+	name := path[len(path)-1]
+	existing := subcommand(parent, name)
+	if existing == nil {
+		parent.AddCommand(generatedCommand(name, resource, nil))
+		return
+	}
+	for _, op := range resource.Commands {
+		if subcommand(existing, op.Name) == nil {
+			existing.AddCommand(generatedCommand(op.Name, resource, op))
+		}
+	}
+}
+
+// subcommand returns parent's direct subcommand with this name or alias.
+func subcommand(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name || slices.Contains(c.Aliases, name) {
+			return c
+		}
+	}
+	return nil
+}
+
+// generatedCommand returns a command that hands its arguments to the generated
+// resource, or with op set, runs only that operation.
+func generatedCommand(name string, resource, op *cli.Command) *cobra.Command {
+	short := "Manage " + strings.ReplaceAll(name, "-", " ")
+	if op != nil {
+		short = op.Usage
+	}
+	return &cobra.Command{
+		Use:                name,
+		Short:              short,
+		DisableFlagParsing: true,
+		Annotations:        map[string]string{generatedAnnotation: resource.Name},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := cmd.CommandPath()
+			if op != nil {
+				path = cmd.Parent().CommandPath()
+				args = append([]string{op.Name}, args...)
+			}
+			return forwardGenerated(cmd, resource, path, args)
+		},
+	}
+}
+
+// forwardGenerated runs args against the generated resource mounted at path,
+// first asking to confirm a delete unless --yes is set.
+func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, args []string) error {
+	rest, flags, err := translateGlobalFlags(args)
+	if err != nil {
+		return err
+	}
+	// --yes belongs to delete operations only; elsewhere the generated tree
+	// rejects it as an unknown flag.
+	if isDeleteInvocation(resource, rest, generatedValueFlags()) {
+		var yes bool
+		rest, yes = extractFlag(rest, "--yes")
+		args, _ = extractFlag(args, "--yes")
+		if !yes && !hasHelpFlag(rest) {
+			noun := strings.NewReplacer(":", " ", "-", " ").Replace(resource.Name)
+			if err := confirmDelete(cmd, deleteConfirmation{
+				target:   "the " + noun + " below",
+				identity: "Command: " + path + " " + strings.Join(redactCredentials(args), " "),
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return runGenerated(cmd, resource, rest, flags)
+}
+
+// shadowedGeneratedOperations lists the generated operations that a
+// hand-written subcommand of the same name hides, e.g. "langsmith projects
+// list". Hand-written operations should be skipped in stainless.yml instead.
+func shadowedGeneratedOperations(root *cobra.Command) []string {
+	var shadowed []string
+	for _, resource := range generatedResources() {
+		mount := root
+		for _, name := range strings.Split(resource.Name, ":") {
+			if mount = subcommand(mount, name); mount == nil {
+				break
+			}
+		}
+		if mount == nil || mount.Annotations[generatedAnnotation] == resource.Name {
+			continue
+		}
+		for _, op := range resource.Commands {
+			if c := subcommand(mount, op.Name); c != nil && c.Annotations[generatedAnnotation] != resource.Name {
+				shadowed = append(shadowed, mount.CommandPath()+" "+op.Name)
+			}
+		}
+	}
+	return shadowed
 }
 
 // redactCredentials returns args with the value of every --api-key replaced by
