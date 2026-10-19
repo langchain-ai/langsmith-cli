@@ -80,19 +80,29 @@ func newTraceListCmd() *cobra.Command {
 				params.Select = langsmith.F(sel)
 			}
 			v2Select := buildRunSelectV2(includeIO, includeFeedback)
+			since, before := feedbackWindow(&ff)
+			fallback := false
+			if !since.IsZero() || !before.IsZero() {
+				ok, err := c.SupportsTraceFeedbackWindow(ctx)
+				if err != nil {
+					ExitErrorf("%v", err)
+				}
+				fallback = !ok
+			}
 			var runs []langsmith.RunSchema
-			if since, before := feedbackWindow(&ff); !since.IsZero() || !before.IsZero() {
-				// /v2/traces/query has no feedback window, so the roots come from
-				// /v2/runs/query and the trace totals are added after.
+			if fallback {
+				// /v2/traces/query on this server ignores the feedback window, so
+				// the roots come from /v2/runs/query and the trace totals are
+				// added after.
 				if ff.MinTokens > 0 {
-					ExitErrorf("--min-tokens cannot be combined with --feedback-since or --feedback-before")
+					ExitErrorf("--min-tokens cannot be combined with --feedback-since or --feedback-before on this deployment (requires LangSmith Cloud or self-hosted >= 0.18.15)")
 				}
 				runs, err = queryRunsAuto(ctx, c, params, v2Select, sessionID, ff.Limit, 0, feedbackWindowOption(ctx, c, &ff))
 				if err == nil {
 					err = hydrateTraceAggregates(ctx, c, sessionID, runs)
 				}
 			} else {
-				runs, err = queryTracesAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens)
+				runs, err = queryTracesAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens, traceFeedbackWindowOptions(since, before)...)
 			}
 			if err != nil {
 				ExitErrorf("%v", err)

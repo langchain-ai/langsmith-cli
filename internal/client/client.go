@@ -31,9 +31,9 @@ type Client struct {
 	// Cached session name → ID mappings (per invocation).
 	sessionCache map[string]string
 
-	// Cached v2-API decision (see UseV2API), resolved once per invocation
-	// from GET /info.
-	cachedUseV2API *bool
+	// Cached GET /info version (see deploymentVersion), resolved once per
+	// invocation.
+	cachedVersion *string
 }
 
 // Options controls LangSmith client authentication and routing.
@@ -129,26 +129,49 @@ func (c *Client) ResolveSessionID(ctx context.Context, projectName string) (stri
 // Self-hosted gains the v2 (SmithDB) run-query API at 0.16.
 const minSelfHostedV2Minor = 16
 
-// UseV2API reports whether the connected deployment's v2 (SmithDB) API should
-// be used, resolved once from GET /info and cached.
-func (c *Client) UseV2API(ctx context.Context) (bool, error) {
-	if c.cachedUseV2API != nil {
-		return *c.cachedUseV2API, nil
+// Self-hosted /v2/traces/query accepts the feedback modified-at window from
+// 0.18.15.
+const minTraceFeedbackWindowMinor, minTraceFeedbackWindowPatch = 18, 15
+
+// deploymentVersion returns the version from GET /info, fetched once and cached.
+func (c *Client) deploymentVersion(ctx context.Context) (string, error) {
+	if c.cachedVersion != nil {
+		return *c.cachedVersion, nil
 	}
 	info, err := c.SDK.Info.List(ctx)
 	if err != nil {
-		return false, fmt.Errorf("fetching deployment info: %w", err)
+		return "", fmt.Errorf("fetching deployment info: %w", err)
 	}
-	v := useV2API(info.Version)
-	c.cachedUseV2API = &v
-	return v, nil
+	c.cachedVersion = &info.Version
+	return info.Version, nil
+}
+
+// UseV2API reports whether the connected deployment's v2 (SmithDB) API should
+// be used.
+func (c *Client) UseV2API(ctx context.Context) (bool, error) {
+	v, err := c.deploymentVersion(ctx)
+	if err != nil {
+		return false, err
+	}
+	return useV2API(v), nil
+}
+
+// SupportsTraceFeedbackWindow reports whether /v2/traces/query accepts
+// min_feedback_modified_at and max_feedback_modified_at. Older servers ignore
+// the fields rather than rejecting them, so this has to come from the version.
+func (c *Client) SupportsTraceFeedbackWindow(ctx context.Context) (bool, error) {
+	v, err := c.deploymentVersion(ctx)
+	if err != nil {
+		return false, err
+	}
+	return supportsTraceFeedbackWindow(v), nil
 }
 
 // useV2API decides whether to use the v2 API from the /info version. Cloud reports
 // a non-release version (e.g. "dev") → v2; self-hosted reports a semver, v2 at
 // >= 0.16 else v1.
 func useV2API(version string) bool {
-	major, minor, ok := parseReleaseVersion(version)
+	major, minor, _, ok := parseReleaseVersion(version)
 	if !ok {
 		return true // Cloud / non-release version
 	}
@@ -158,23 +181,39 @@ func useV2API(version string) bool {
 	return minor >= minSelfHostedV2Minor
 }
 
-// parseReleaseVersion pulls major.minor from a release version like "0.16.18rc1"
-// or "v1.2.3"; ok=false for non-release versions (e.g. "dev", "").
-func parseReleaseVersion(v string) (major, minor int, ok bool) {
+// supportsTraceFeedbackWindow is true for non-release versions and >= 0.18.15.
+func supportsTraceFeedbackWindow(version string) bool {
+	major, minor, patch, ok := parseReleaseVersion(version)
+	if !ok || major != 0 {
+		return true
+	}
+	if minor != minTraceFeedbackWindowMinor {
+		return minor > minTraceFeedbackWindowMinor
+	}
+	return patch >= minTraceFeedbackWindowPatch
+}
+
+// parseReleaseVersion pulls major.minor.patch from a release version like
+// "0.16.18rc1" or "v1.2.3"; patch is 0 when absent. ok=false for non-release
+// versions (e.g. "dev", "").
+func parseReleaseVersion(v string) (major, minor, patch int, ok bool) {
 	v = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v), "v"))
 	parts := strings.SplitN(v, ".", 3)
 	if len(parts) < 2 {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	major, err := strconv.Atoi(leadingDigits(parts[0]))
 	if err != nil {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	minor, err = strconv.Atoi(leadingDigits(parts[1]))
 	if err != nil {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	return major, minor, true
+	if len(parts) == 3 {
+		patch, _ = strconv.Atoi(leadingDigits(parts[2]))
+	}
+	return major, minor, patch, true
 }
 
 // leadingDigits returns the leading ASCII digits of s (e.g. "16rc1" → "16").

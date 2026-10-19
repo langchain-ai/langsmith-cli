@@ -8,6 +8,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 )
 
 // traceRunsV1Limit caps how many runs a v1 trace fetch returns. The v2 trace
@@ -18,8 +19,9 @@ const traceRunsV1Limit = 1000
 // whose total_tokens, total_cost and first_token_time cover the whole trace; a
 // root row from /v2/runs/query carries only the root's own usage, which is
 // empty for a chain root. v1 root rows already carry the trace-wide rollup.
-// params is the canonical v1 query from BuildRunQueryParams.
-func queryTracesAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+// params is the canonical v1 query from BuildRunQueryParams; v2Opts apply only
+// to the v2 request.
+func queryTracesAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, v2Opts ...option.RequestOption) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
@@ -27,10 +29,10 @@ func queryTracesAuto(ctx context.Context, c *client.Client, params langsmith.Run
 	if !useV2 {
 		return queryRuns(ctx, c, params, sessionID, limit, minTokens)
 	}
-	return queryTracesV2(ctx, c, params, v2Selects, sessionID, limit, minTokens)
+	return queryTracesV2(ctx, c, params, v2Selects, sessionID, limit, minTokens, v2Opts...)
 }
 
-func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int) ([]langsmith.RunSchema, error) {
+func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, opts ...option.RequestOption) ([]langsmith.RunSchema, error) {
 	if params.Error.Present {
 		if params.Error.Value {
 			addFilterClause(&params, `eq(status, "error")`)
@@ -62,7 +64,7 @@ func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQu
 	}
 
 	var runs []langsmith.RunSchema
-	iter := c.SDK.Traces.QueryAutoPaging(ctx, query)
+	iter := c.SDK.Traces.QueryAutoPaging(ctx, query, opts...)
 	for len(runs) < limit && iter.Next() {
 		trace := iter.Current()
 		runs = append(runs, withTraceAggregates(runV2ToSchema(trace.RootRun), trace.TraceAggregates))
@@ -71,6 +73,19 @@ func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQu
 		return nil, fmt.Errorf("querying traces (v2): %w", err)
 	}
 	return runs, nil
+}
+
+// traceFeedbackWindowOptions sets the feedback modified-at window on a
+// /v2/traces/query request. The SDK release in use has no typed fields for it.
+func traceFeedbackWindowOptions(since, before time.Time) []option.RequestOption {
+	var opts []option.RequestOption
+	if !since.IsZero() {
+		opts = append(opts, option.WithJSONSet("min_feedback_modified_at", since))
+	}
+	if !before.IsZero() {
+		opts = append(opts, option.WithJSONSet("max_feedback_modified_at", before))
+	}
+	return opts
 }
 
 // withTraceAggregates replaces a root's own usage with the trace-wide totals.
@@ -88,8 +103,8 @@ func withTraceAggregates(run langsmith.RunSchema, agg langsmith.TraceAggregates)
 }
 
 // hydrateTraceAggregates fills trace-wide usage onto v2 roots that were read
-// from /v2/runs/query, which `trace list` still uses for the feedback window
-// that /v2/traces/query does not accept.
+// from /v2/runs/query, which `trace list` uses for the feedback window on
+// servers whose /v2/traces/query does not accept it.
 func hydrateTraceAggregates(ctx context.Context, c *client.Client, sessionID string, roots []langsmith.RunSchema) error {
 	for start := 0; start < len(roots); start += 100 {
 		batch := roots[start:min(start+100, len(roots))]

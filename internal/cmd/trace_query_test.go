@@ -127,7 +127,38 @@ func TestTraceGet_V2SinceSendsBothBounds(t *testing.T) {
 	}
 }
 
-func TestTraceList_V2FeedbackWindowAddsTraceTotals(t *testing.T) {
+func TestTraceList_FeedbackWindowOnTracesQuery(t *testing.T) {
+	for _, version := range []string{"dev", "0.18.15", "0.19.0"} {
+		t.Run(version, func(t *testing.T) {
+			withDeploymentVersion(t, version)
+			var paths []string
+			var body map[string]any
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"items":[{"root_run":{"trace_id":"t1"},"trace_aggregates":{"total_tokens":700}}]}`))
+			})
+
+			runTraceCmdJSON(t, ts.URL, "list", "--project-id", testProjectID, "--min-tokens", "500",
+				"--filter", `eq(feedback_key, "correctness")`,
+				"--feedback-since", "2026-01-01", "--feedback-before", "2026-01-02")
+
+			if strings.Join(paths, ",") != "/api/v2/traces/query" {
+				t.Errorf("requests = %v, want one /api/v2/traces/query", paths)
+			}
+			if body["min_feedback_modified_at"] != "2026-01-01T00:00:00Z" || body["max_feedback_modified_at"] != "2026-01-02T00:00:00Z" {
+				t.Errorf("feedback window = %v / %v", body["min_feedback_modified_at"], body["max_feedback_modified_at"])
+			}
+			if f, _ := body["trace_filter"].(string); !strings.Contains(f, "gte(total_tokens, 500)") {
+				t.Errorf("trace_filter = %q, want the --min-tokens bound", f)
+			}
+		})
+	}
+}
+
+func TestTraceList_FeedbackWindowFallbackAddsTraceTotals(t *testing.T) {
+	withDeploymentVersion(t, "0.18.14")
 	var paths []string
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
