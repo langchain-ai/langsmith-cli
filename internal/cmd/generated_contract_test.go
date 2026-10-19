@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -138,7 +140,26 @@ func TestGeneratedCommandContracts(t *testing.T) {
 	for _, resource := range generatedResources() {
 		for _, c := range tests[resource.Name].Contract {
 			t.Run(resource.Name+"/"+c.Name, func(t *testing.T) {
-				runGeneratedContractCase(t, resource.Name, c)
+				const caseEnv = "LANGSMITH_CLI_CONTRACT_CASE"
+				if os.Getenv(caseEnv) == t.Name() {
+					runGeneratedContractCase(t, resource.Name, c)
+					return
+				}
+
+				// Each CLI invocation starts with fresh generated flag state.
+				executable, err := os.Executable()
+				if err != nil {
+					t.Fatal(err)
+				}
+				parts := strings.Split(t.Name(), "/")
+				for i, part := range parts {
+					parts[i] = "^" + regexp.QuoteMeta(part) + "$"
+				}
+				child := exec.CommandContext(t.Context(), executable, "-test.run="+strings.Join(parts, "/"))
+				child.Env = append(os.Environ(), caseEnv+"="+t.Name())
+				if out, err := child.CombinedOutput(); err != nil {
+					t.Fatalf("contract case: %v\n%s", err, out)
+				}
 			})
 		}
 	}
