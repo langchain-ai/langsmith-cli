@@ -9,22 +9,148 @@ import (
 	"strings"
 	"testing"
 
+	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
+	"github.com/spf13/cobra"
 	"github.com/urfave/cli/v3"
 )
 
 func TestGeneratedCommandsAreRegistered(t *testing.T) {
 	root := NewRootCmd("dev", "dev")
 	for _, resource := range generatedResources() {
-		name := resource.Name
-		matches := 0
-		for _, c := range root.Commands() {
-			if c.Name() == name {
-				matches++
+		for _, op := range resource.Commands {
+			args := append(strings.Split(resource.Name, ":"), op.Name)
+			c, _, err := root.Find(args)
+			if err != nil || c.Annotations[generatedAnnotation] != resource.Name {
+				t.Errorf("langsmith %s does not reach generated %s", strings.Join(args, " "), resource.Name)
 			}
 		}
-		if matches != 1 {
-			t.Errorf("command %q registered %d times, want 1", name, matches)
+	}
+}
+
+func TestNoGeneratedOperationIsShadowed(t *testing.T) {
+	if shadowed := shadowedGeneratedOperations(NewRootCmd("dev", "dev")); len(shadowed) > 0 {
+		t.Errorf("hand-written commands hide these generated operations; add skip: [cli] to them in stainless.yml:\n%s",
+			strings.Join(shadowed, "\n"))
+	}
+}
+
+// handWrittenProjects returns a root with a hand-written `projects` command,
+// aliased sessions, that has a `list` subcommand.
+func handWrittenProjects() *cobra.Command {
+	root := &cobra.Command{Use: "langsmith"}
+	projects := &cobra.Command{Use: "projects", Aliases: []string{"project", "sessions"}}
+	projects.AddCommand(&cobra.Command{Use: "list", Run: func(*cobra.Command, []string) {}})
+	root.AddCommand(projects)
+	return root
+}
+
+func resource(name string, ops ...string) *cli.Command {
+	r := &cli.Command{Name: name, Category: "API RESOURCE"}
+	for _, op := range ops {
+		r.Commands = append(r.Commands, &cli.Command{Name: op, Usage: op + " things"})
+	}
+	return r
+}
+
+// commandPath resolves args from root and returns the matched command's path
+// and the generated resource it runs, if any.
+func commandPath(t *testing.T, root *cobra.Command, args ...string) (path, resource string) {
+	t.Helper()
+	c, rest, err := root.Find(args)
+	if err != nil || len(rest) > 0 {
+		t.Fatalf("Find(%q) = %v, rest %q", args, err, rest)
+	}
+	return c.CommandPath(), c.Annotations[generatedAnnotation]
+}
+
+func TestMountGeneratedMergesIntoHandWrittenCommand(t *testing.T) {
+	root := handWrittenProjects()
+	mountGeneratedResources(root, []*cli.Command{resource("sessions", "list", "create")})
+
+	if path, r := commandPath(t, root, "projects", "create"); path != "langsmith projects create" || r != "sessions" {
+		t.Errorf("projects create = %q (%q), want the generated sessions create", path, r)
+	}
+	if _, r := commandPath(t, root, "projects", "list"); r != "" {
+		t.Errorf("projects list runs generated %q, want the hand-written command", r)
+	}
+	if got := len(root.Commands()); got != 1 {
+		t.Errorf("root has %d commands, want 1", got)
+	}
+}
+
+func TestMountGeneratedNestsSubresources(t *testing.T) {
+	root := handWrittenProjects()
+	mountGeneratedResources(root, []*cli.Command{resource("sessions:insights", "list"), resource("datasets:versions", "diff")})
+
+	for _, args := range [][]string{{"projects", "insights"}, {"project", "insights"}, {"sessions", "insights"}} {
+		if path, r := commandPath(t, root, args...); path != "langsmith projects insights" || r != "sessions:insights" {
+			t.Errorf("%q = %q (%q), want langsmith projects insights", args, path, r)
 		}
+	}
+	if path, r := commandPath(t, root, "datasets", "versions"); path != "langsmith datasets versions" || r != "datasets:versions" {
+		t.Errorf("datasets versions = %q (%q)", path, r)
+	}
+}
+
+func TestMountGeneratedIgnoresOrder(t *testing.T) {
+	queues, items := resource("queues", "list"), resource("queues:items", "list")
+	for _, order := range [][]*cli.Command{{queues, items}, {items, queues}} {
+		root := &cobra.Command{Use: "langsmith"}
+		mountGeneratedResources(root, order)
+		if path, r := commandPath(t, root, "queues", "list"); path != "langsmith queues list" || r != "queues" {
+			t.Errorf("order %s: queues list = %q (%q)", order[0].Name, path, r)
+		}
+		if path, r := commandPath(t, root, "queues", "items"); path != "langsmith queues items" || r != "queues:items" {
+			t.Errorf("order %s: queues items = %q (%q)", order[0].Name, path, r)
+		}
+	}
+}
+
+func TestMountGeneratedEmptyGroupRejectsUnknownSubcommand(t *testing.T) {
+	root := &cobra.Command{Use: "langsmith"}
+	mountGeneratedResources(root, []*cli.Command{resource("datasets:versions", "diff")})
+	root.SetArgs([]string{"datasets", "versionz"})
+	root.SetOut(&bytes.Buffer{})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), `unknown command "versionz"`) {
+		t.Errorf("err = %v, want unknown command", err)
+	}
+}
+
+func TestMountGeneratedKeepsOperationAliases(t *testing.T) {
+	root := handWrittenProjects()
+	r := resource("sessions", "remove")
+	r.Commands[0].Aliases = []string{"rm"}
+	mountGeneratedResources(root, []*cli.Command{r})
+	if path, _ := commandPath(t, root, "projects", "rm"); path != "langsmith projects remove" {
+		t.Errorf("projects rm = %q, want langsmith projects remove", path)
+	}
+}
+
+func TestMountGeneratedPanicsOnGeneratedClash(t *testing.T) {
+	queues, items := resource("queues", "items"), resource("queues:items", "list")
+	for _, order := range [][]*cli.Command{{queues, items}, {items, queues}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("order %s: want a panic when the items operation clashes with the items subresource", order[0].Name)
+				}
+			}()
+			mountGeneratedResources(&cobra.Command{Use: "langsmith"}, order)
+		}()
+	}
+}
+
+func TestShadowedGeneratedOperations(t *testing.T) {
+	root := handWrittenProjects()
+	prev := generated.Command.Commands
+	t.Cleanup(func() { generated.Command.Commands = prev })
+	sessions := resource("sessions", "list", "create", "remove")
+	sessions.Commands[2].Aliases = []string{"list"}
+	generated.Command.Commands = []*cli.Command{sessions}
+	mountGeneratedResources(root, generated.Command.Commands)
+
+	if got := strings.Join(shadowedGeneratedOperations(root), ","); got != "langsmith projects list,langsmith projects list (alias of remove)" {
+		t.Errorf("shadowed = %q, want the list operation and the list alias of remove", got)
 	}
 }
 
