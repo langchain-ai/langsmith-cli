@@ -89,8 +89,8 @@ langsmith experiments list --dataset my-eval-set
 Submit feedback about the CLI directly from the terminal:
 
 ```bash
-langsmith feedback "Trace output is hard to scan"
-langsmith feedback --category bug "The command fails on Windows"
+langsmith report "Trace output is hard to scan"
+langsmith report --category bug "The command fails on Windows"
 ```
 
 `--category` accepts `bug`, `feature-request`, `usability` (the default),
