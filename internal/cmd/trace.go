@@ -95,7 +95,7 @@ func newTraceListCmd() *cobra.Command {
 				// the roots come from /v2/runs/query and the trace totals are
 				// added after.
 				if ff.MinTokens > 0 {
-					ExitErrorf("--min-tokens cannot be combined with --feedback-since or --feedback-before on this deployment (requires LangSmith Cloud or self-hosted >= 0.18.15)")
+					ExitErrorf("--min-tokens cannot be combined with --feedback-since or --feedback-before on this deployment (needs LangSmith 0.18.15 or later)")
 				}
 				runs, err = queryRunsAuto(ctx, c, params, v2Select, sessionID, ff.Limit, 0, feedbackWindowOption(ctx, c, &ff))
 				if err == nil {
