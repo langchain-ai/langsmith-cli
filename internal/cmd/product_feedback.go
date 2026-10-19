@@ -24,10 +24,19 @@ var productFeedbackCategories = map[string]langsmith.ProductFeedbackNewParamsCat
 	"other":           langsmith.ProductFeedbackNewParamsCategoryOther,
 }
 
+// newDeprecatedFeedbackCmd keeps `langsmith feedback "<note>"` working for one
+// release; the feedback name goes to the LangSmith feedback API.
+func newDeprecatedFeedbackCmd(version string) *cobra.Command {
+	cmd := newProductFeedbackCmd(version)
+	cmd.Use = "feedback <note>"
+	cmd.Deprecated = `use "langsmith report" instead`
+	return cmd
+}
+
 func newProductFeedbackCmd(version string) *cobra.Command {
 	var category string
 	cmd := &cobra.Command{
-		Use:   "feedback <note>",
+		Use:   "report <note>",
 		Short: "Submit feedback about the LangSmith CLI",
 		Long: `Submit concise feedback about the LangSmith CLI.
 

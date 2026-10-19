@@ -17,7 +17,7 @@ import (
 
 func TestProductFeedbackCommandMetadata(t *testing.T) {
 	cmd := newProductFeedbackCmd("1.2.3")
-	if cmd.Use != "feedback <note>" {
+	if cmd.Use != "report <note>" {
 		t.Fatalf("Use = %q", cmd.Use)
 	}
 	if got := cmd.Flags().Lookup("category").DefValue; got != "usability" {
@@ -25,6 +25,23 @@ func TestProductFeedbackCommandMetadata(t *testing.T) {
 	}
 	if !strings.Contains(cmd.Long, "does not collect command") || !strings.Contains(cmd.Long, "Authentication, routing, idempotency") {
 		t.Fatalf("privacy disclosure missing from help: %q", cmd.Long)
+	}
+}
+
+func TestDeprecatedFeedbackCommandStillWorks(t *testing.T) {
+	root := NewRootCmd("1.2.3", "1.2.3")
+	var stderr bytes.Buffer
+	root.SetOut(&stderr)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"feedback", "  "})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+		t.Fatalf("feedback error = %v, want the report validation error", err)
+	}
+	if !strings.Contains(stderr.String(), `use "langsmith report" instead`) {
+		t.Errorf("stderr = %q, want a deprecation notice", stderr.String())
+	}
+	if c, _, _ := root.Find([]string{"feedback"}); c.IsAvailableCommand() {
+		t.Error("feedback should be hidden from help")
 	}
 }
 
@@ -134,11 +151,11 @@ func TestFeedbackHint(t *testing.T) {
 	oldFormat := flagOutputFormat
 	t.Cleanup(func() { flagOutputFormat = oldFormat })
 	root := &cobra.Command{Use: "langsmith"}
-	feedback := &cobra.Command{Use: "feedback"}
+	report := &cobra.Command{Use: "report"}
 	auth := &cobra.Command{Use: "auth"}
 	login := &cobra.Command{Use: "login"}
 	project := &cobra.Command{Use: "project"}
-	root.AddCommand(feedback, auth, project)
+	root.AddCommand(report, auth, project)
 	auth.AddCommand(login)
 
 	var output bytes.Buffer
@@ -147,7 +164,7 @@ func TestFeedbackHint(t *testing.T) {
 		cmd  *cobra.Command
 	}{
 		{name: "root", cmd: root},
-		{name: "feedback", cmd: feedback},
+		{name: "report", cmd: report},
 		{name: "auth", cmd: auth},
 		{name: "auth login", cmd: login},
 	} {
@@ -171,7 +188,7 @@ func TestFeedbackHint(t *testing.T) {
 	flagOutputFormat = "pretty"
 	showFeedbackHint(project)
 	showFeedbackHint(project)
-	if got := strings.Count(output.String(), "langsmith feedback"); got != 1 {
+	if got := strings.Count(output.String(), "langsmith report"); got != 1 {
 		t.Fatalf("feedback hints = %d, output = %q", got, output.String())
 	}
 
@@ -182,7 +199,7 @@ func TestFeedbackHint(t *testing.T) {
 			t.Fatal(err)
 		}
 		showFeedbackHint(project)
-		if got, want := strings.Contains(output.String(), "langsmith feedback"), age > 24*time.Hour; got != want {
+		if got, want := strings.Contains(output.String(), "langsmith report"), age > 24*time.Hour; got != want {
 			t.Fatalf("hint after %s = %t, want %t", age, got, want)
 		}
 	}

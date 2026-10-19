@@ -74,6 +74,7 @@ Quick start:
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
+	rootCmd.AddCommand(newDeprecatedFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
@@ -126,14 +127,14 @@ func showFeedbackHint(cmd *cobra.Command) {
 		return
 	}
 	path := cmd.CommandPath()
-	if path == "langsmith" || path == "langsmith feedback" || path == "langsmith auth" || path == "langsmith auth login" {
+	if path == "langsmith" || path == "langsmith report" || path == "langsmith feedback" || path == "langsmith auth" || path == "langsmith auth login" {
 		return
 	}
 	marker := filepath.Join(cache.DefaultDir(), "feedback-hint")
 	if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < feedbackHintInterval {
 		return
 	}
-	fmt.Fprintln(cmd.ErrOrStderr(), "Tip: report CLI friction with 'langsmith feedback \"note\"'.")
+	fmt.Fprintln(cmd.ErrOrStderr(), "Tip: report CLI friction with 'langsmith report \"note\"'.")
 	_ = cache.Write(marker, nil)
 }
 
