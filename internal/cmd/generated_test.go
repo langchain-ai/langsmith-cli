@@ -127,23 +127,30 @@ func TestMountGeneratedKeepsOperationAliases(t *testing.T) {
 }
 
 func TestMountGeneratedPanicsOnGeneratedClash(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("want a panic when a generated operation clashes with a generated subresource")
-		}
-	}()
-	mountGeneratedResources(&cobra.Command{Use: "langsmith"}, []*cli.Command{resource("queues:items", "list"), resource("queues", "items")})
+	queues, items := resource("queues", "items"), resource("queues:items", "list")
+	for _, order := range [][]*cli.Command{{queues, items}, {items, queues}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("order %s: want a panic when the items operation clashes with the items subresource", order[0].Name)
+				}
+			}()
+			mountGeneratedResources(&cobra.Command{Use: "langsmith"}, order)
+		}()
+	}
 }
 
 func TestShadowedGeneratedOperations(t *testing.T) {
 	root := handWrittenProjects()
 	prev := generated.Command.Commands
 	t.Cleanup(func() { generated.Command.Commands = prev })
-	generated.Command.Commands = []*cli.Command{resource("sessions", "list", "create")}
+	sessions := resource("sessions", "list", "create", "remove")
+	sessions.Commands[2].Aliases = []string{"list"}
+	generated.Command.Commands = []*cli.Command{sessions}
 	mountGeneratedResources(root, generated.Command.Commands)
 
-	if got := shadowedGeneratedOperations(root); strings.Join(got, ",") != "langsmith projects list" {
-		t.Errorf("shadowed = %q, want [langsmith projects list]", got)
+	if got := strings.Join(shadowedGeneratedOperations(root), ","); got != "langsmith projects list,langsmith projects list (alias of remove)" {
+		t.Errorf("shadowed = %q, want the list operation and the list alias of remove", got)
 	}
 }
 

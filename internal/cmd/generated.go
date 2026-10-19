@@ -63,14 +63,14 @@ func mountGenerated(root *cobra.Command, resource *cli.Command, hasSubresources 
 	path := strings.Split(resource.Name, ":")
 	parent := root
 	for _, name := range path[:len(path)-1] {
-		parent = subcommandOrGroup(parent, name)
+		parent = mountPoint(parent, name, resource)
 	}
 	name := path[len(path)-1]
 	if subcommand(parent, name) == nil && !hasSubresources {
 		parent.AddCommand(generatedCommand(name, resource, nil))
 		return
 	}
-	group := subcommandOrGroup(parent, name)
+	group := mountPoint(parent, name, resource)
 	for _, op := range resource.Commands {
 		switch c := subcommand(group, op.Name); {
 		case c == nil:
@@ -91,9 +91,23 @@ func subcommand(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-// subcommandOrGroup finds a subcommand, or adds an empty group for it.
-func subcommandOrGroup(parent *cobra.Command, name string) *cobra.Command {
+// handWritten finds a hand-written subcommand by name or alias.
+func handWritten(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Annotations[generatedAnnotation] == "" && (c.Name() == name || slices.Contains(c.Aliases, name)) {
+			return c
+		}
+	}
+	return nil
+}
+
+// mountPoint finds or adds the group resource mounts under. Nesting under a
+// generated command is a clash.
+func mountPoint(parent *cobra.Command, name string, resource *cli.Command) *cobra.Command {
 	if c := subcommand(parent, name); c != nil {
+		if other := c.Annotations[generatedAnnotation]; other != "" {
+			panic(fmt.Sprintf("generated %s clashes with generated %s at %s", resource.Name, other, c.CommandPath()))
+		}
 		return c
 	}
 	group := &cobra.Command{
@@ -156,8 +170,8 @@ func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, ar
 	return runGenerated(cmd, resource, rest, flags)
 }
 
-// shadowedGeneratedOperations lists generated operations a hand-written
-// subcommand hides; skip them in stainless.yml instead.
+// shadowedGeneratedOperations lists generated operation names and aliases a
+// hand-written subcommand hides; skip or rename them in stainless.yml.
 func shadowedGeneratedOperations(root *cobra.Command) []string {
 	var shadowed []string
 	for _, resource := range generatedResources() {
@@ -171,8 +185,14 @@ func shadowedGeneratedOperations(root *cobra.Command) []string {
 			continue
 		}
 		for _, op := range resource.Commands {
-			if c := subcommand(mount, op.Name); c != nil && c.Annotations[generatedAnnotation] == "" {
-				shadowed = append(shadowed, mount.CommandPath()+" "+op.Name)
+			for _, name := range append([]string{op.Name}, op.Aliases...) {
+				if handWritten(mount, name) == nil {
+					continue
+				}
+				if name != op.Name {
+					name += " (alias of " + op.Name + ")"
+				}
+				shadowed = append(shadowed, mount.CommandPath()+" "+name)
 			}
 		}
 	}
