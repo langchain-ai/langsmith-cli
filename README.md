@@ -221,7 +221,7 @@ langsmith runs get <run-id> --full
 langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 
@@ -511,7 +511,7 @@ Most `trace` and `run` commands share these filter options:
 | `--run-type` | Run type (run commands only) | `--run-type llm` |
 | `--min-latency` | Min latency (seconds) | `--min-latency 2.5` |
 | `--max-latency` | Max latency (seconds) | `--max-latency 10` |
-| `--min-tokens` | Min total tokens | `--min-tokens 1000` |
+| `--min-tokens` | Min total tokens; on `trace` commands, the whole trace's total | `--min-tokens 1000` |
 | `--tags` | Tags (comma-separated, OR logic) | `--tags prod,v2` |
 | `--filter` | Raw LangSmith filter DSL | `--filter 'eq(status, "error")'` |
 | `--trace-ids` | Specific trace IDs | `--trace-ids abc123,def456` |

@@ -810,6 +810,30 @@ func TestAPIURL(t *testing.T) {
 
 // ---------- Run-query backend selection ----------
 
+func TestSupportsTraceFeedbackWindow(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		{"dev", true},
+		{"", true},
+		{"0.18.15", true},
+		{"0.18.16rc1", true},
+		{"v0.18.15", true},
+		{"0.19.0", true},
+		{"1.0.0", true},
+		{"0.18.14", false},
+		{"0.18", false},
+		{"0.17.40", false},
+		{"0.16.0", false},
+	}
+	for _, tc := range cases {
+		if got := supportsTraceFeedbackWindow(tc.version); got != tc.want {
+			t.Errorf("supportsTraceFeedbackWindow(%q) = %v, want %v", tc.version, got, tc.want)
+		}
+	}
+}
+
 func TestUseV2API(t *testing.T) {
 	cases := []struct {
 		version string

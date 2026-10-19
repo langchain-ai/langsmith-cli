@@ -709,7 +709,7 @@ func TestListCommands_SendFeedbackWindowToV2Query(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var body map[string]any
 			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/api/v2/runs/query" {
+				if r.URL.Path == "/api/v2/runs/query" || r.URL.Path == "/api/v2/traces/query" {
 					_ = json.NewDecoder(r.Body).Decode(&body)
 				}
 				w.Header().Set("Content-Type", "application/json")
