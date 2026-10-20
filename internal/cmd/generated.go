@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
+	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"github.com/tidwall/gjson"
@@ -351,6 +352,8 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 	}
 	argv = append(argv, resource.Name)
 	argv = append(argv, rest...)
+
+	defer usage.WrapDefaultTransport()()
 
 	generated.CommandErrorBuffer.Reset()
 	if err := generated.Command.Run(cmd.Context(), argv); err != nil {
