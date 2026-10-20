@@ -1,0 +1,171 @@
+# Tests for `langsmith threads`. Contract cases run against a fake API.
+resource: threads
+
+contract:
+  - name: query with every field
+    op: query
+    args:
+      - --project-id
+      - 11111111-1111-1111-1111-111111111111
+      - --filter
+      - eq(status, "error")
+      - --thread-filter
+      - gt(turns, 2)
+      - --trace-filter
+      - has(tags, "production")
+      - --tree-filter
+      - eq(name, "retriever")
+      - --min-start-time
+      - "2026-10-01T00:00:00Z"
+      - --max-start-time
+      - "2026-10-02T00:00:00Z"
+      - --page-size
+      - "50"
+      - --cursor
+      - abc123
+    response:
+      body: &threads
+        items:
+          - thread_id: thread-1
+            count: 3
+        next_cursor: null
+    want:
+      method: POST
+      path: /api/v2/threads/query
+      body:
+        project_id: 11111111-1111-1111-1111-111111111111
+        filter: eq(status, "error")
+        thread_filter: gt(turns, 2)
+        trace_filter: has(tags, "production")
+        tree_filter: eq(name, "retriever")
+        min_start_time: "2026-10-01T00:00:00Z"
+        max_start_time: "2026-10-02T00:00:00Z"
+        page_size: 50
+        cursor: abc123
+      stdout: thread-1
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: query sends only the flags given
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: *threads
+    want:
+      method: POST
+      path: /api/v2/threads/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111}
+      stdout: thread-1
+
+  - name: query reports API errors
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --page-size, "500"]
+    response:
+      status: 400
+      body: {detail: page_size must be between 1 and 100}
+    want:
+      method: POST
+      path: /api/v2/threads/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111, page_size: 500}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  # The API serves AI search only as a stream (Accept: text/event-stream), which
+  # generated commands can't read, so --ai-search returns the API's 406.
+  - name: ai search requires streaming
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --ai-search, the user asked for a refund]
+    response:
+      status: 406
+      body: {detail: "Set Accept: text/event-stream to use ai_search: AI search requires streaming"}
+    want:
+      method: POST
+      path: /api/v2/threads/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111, ai_search: the user asked for a refund}
+      exit_code: 1
+      stderr: 406 Not Acceptable
+
+  - name: aggregate stats with every field
+    op: aggregate-stats
+    args:
+      - --project-id
+      - 11111111-1111-1111-1111-111111111111
+      - --select
+      - THREAD_COUNT
+      - --select
+      - TOTAL_COST
+      - --thread-filter
+      - gt(turns, 2)
+      - --trace-filter
+      - has(tags, "production")
+      - --tree-filter
+      - eq(name, "retriever")
+      - --filter
+      - eq(status, "error")
+      - --min-start-time
+      - "2026-10-01T00:00:00Z"
+      - --max-start-time
+      - "2026-10-02T00:00:00Z"
+    response:
+      body: {thread_count: 12, total_cost: 1.5}
+    want:
+      method: POST
+      path: /api/v2/threads/stats
+      body:
+        project_id: 11111111-1111-1111-1111-111111111111
+        select: [THREAD_COUNT, TOTAL_COST]
+        thread_filter: gt(turns, 2)
+        trace_filter: has(tags, "production")
+        tree_filter: eq(name, "retriever")
+        filter: eq(status, "error")
+        min_start_time: "2026-10-01T00:00:00Z"
+        max_start_time: "2026-10-02T00:00:00Z"
+      stdout: '"thread_count": 12'
+
+  - name: aggregate stats in a workspace
+    op: aggregate-stats
+    args:
+      - --project-id
+      - 11111111-1111-1111-1111-111111111111
+      - --select
+      - THREAD_COUNT
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: {thread_count: 12}
+    want:
+      method: POST
+      path: /api/v2/threads/stats
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {project_id: 11111111-1111-1111-1111-111111111111, select: [THREAD_COUNT]}
+
+  - name: stats for one thread
+    op: stats
+    args:
+      - --thread-id
+      - thread-1
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --select
+      - TURNS
+      - --filter
+      - eq(status, "error")
+    response:
+      body: {turns: 3}
+    want:
+      method: GET
+      path: /api/v2/threads/thread-1/stats
+      query:
+        session_id: 11111111-1111-1111-1111-111111111111
+        selects: TURNS
+        filter: eq(status, "error")
+      stdout: '"turns": 3'
+
+  - name: --yes is rejected outside delete
+    op: stats
+    args: [--thread-id, thread-1, --session-id, 11111111-1111-1111-1111-111111111111, --select, TURNS, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: "yes"
+
+lifecycle_skip: "Read-only operations on existing threads, which the CLI cannot create; traces are ingested through the SDKs."
