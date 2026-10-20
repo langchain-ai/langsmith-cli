@@ -109,6 +109,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "traces",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&tracesQuery,
+				},
+			},
+			{
 				Name:     "prompt-webhooks",
 				Category: "API RESOURCE",
 				Suggest:  true,

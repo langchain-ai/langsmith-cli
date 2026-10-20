@@ -1,0 +1,114 @@
+# Tests for `langsmith traces`. Contract cases run against a fake API.
+resource: traces
+
+contract:
+  - name: query with every field
+    op: query
+    args:
+      - --project-id
+      - 11111111-1111-1111-1111-111111111111
+      - --select
+      - ID
+      - --select
+      - NAME
+      - --trace-id
+      - 22222222-2222-2222-2222-222222222222
+      - --trace-id
+      - 33333333-3333-3333-3333-333333333333
+      - --trace-filter
+      - eq(status, "error")
+      - --tree-filter
+      - eq(name, "retriever")
+      - --min-start-time
+      - "2026-10-01T00:00:00Z"
+      - --max-start-time
+      - "2026-10-02T00:00:00Z"
+      - --min-feedback-modified-at
+      - "2026-10-01T06:00:00Z"
+      - --max-feedback-modified-at
+      - "2026-10-01T18:00:00Z"
+      - --page-size
+      - "50"
+      - --cursor
+      - abc123
+    response:
+      body: &traces
+        items:
+          - root_run: {id: 22222222-2222-2222-2222-222222222222, name: agent}
+        next_cursor: null
+    want:
+      method: POST
+      path: /api/v2/traces/query
+      body:
+        project_id: 11111111-1111-1111-1111-111111111111
+        selects: [ID, NAME]
+        trace_ids: [22222222-2222-2222-2222-222222222222, 33333333-3333-3333-3333-333333333333]
+        trace_filter: eq(status, "error")
+        tree_filter: eq(name, "retriever")
+        min_start_time: "2026-10-01T00:00:00Z"
+        max_start_time: "2026-10-02T00:00:00Z"
+        min_feedback_modified_at: "2026-10-01T06:00:00Z"
+        max_feedback_modified_at: "2026-10-01T18:00:00Z"
+        page_size: 50
+        cursor: abc123
+      stdout: 22222222-2222-2222-2222-222222222222
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: query sends only the flags given
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: *traces
+    want:
+      method: POST
+      path: /api/v2/traces/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111}
+
+  - name: query in a workspace
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *traces
+    want:
+      method: POST
+      path: /api/v2/traces/query
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {project_id: 11111111-1111-1111-1111-111111111111}
+
+  - name: query reports API errors
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --page-size, "500"]
+    response:
+      status: 400
+      body: {detail: page_size must be between 1 and 100}
+    want:
+      method: POST
+      path: /api/v2/traces/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111, page_size: 500}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  # The API serves AI search only as a stream (Accept: text/event-stream), which
+  # generated commands can't read, so --ai-search returns the API's 406.
+  - name: ai search requires streaming
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --ai-search, the agent refused the request]
+    response:
+      status: 406
+      body: {detail: "Set Accept: text/event-stream to use ai_search: AI search requires streaming"}
+    want:
+      method: POST
+      path: /api/v2/traces/query
+      body: {project_id: 11111111-1111-1111-1111-111111111111, ai_search: the agent refused the request}
+      exit_code: 1
+      stderr: 406 Not Acceptable
+
+  - name: --yes is rejected outside delete
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: "yes"
+
+lifecycle_skip: "Read-only queries over traces, which the CLI cannot create; traces are ingested through the SDKs."
