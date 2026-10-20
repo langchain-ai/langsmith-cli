@@ -89,6 +89,23 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "runs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&runsGetURL,
+				},
+			},
+			{
+				Name:     "runs:share",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&runsShareCreate,
+					&runsShareDelete,
+				},
+			},
+			{
 				Name:     "threads",
 				Category: "API RESOURCE",
 				Suggest:  true,
