@@ -236,7 +236,9 @@ func runGeneratedContractCase(t *testing.T, resource string, c generatedContract
 	exitGenerated = func(code int) { exitCode = code }
 	defer func() { exitGenerated = prevExit }()
 
-	args := append([]string{"--api-url", ts.URL, "--api-key", "test-key", resource, c.Op}, c.Args...)
+	// A subresource like threads:share is mounted as `threads share`.
+	args := append([]string{"--api-url", ts.URL, "--api-key", "test-key"}, strings.Split(resource, ":")...)
+	args = append(append(args, c.Op), c.Args...)
 	args = append(args, "--format", "json")
 	root := NewRootCmd("dev", "dev")
 	var stderr bytes.Buffer

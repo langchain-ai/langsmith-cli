@@ -96,7 +96,7 @@ func runGeneratedLifecycle(t *testing.T, resource string, lifecycle generatedLif
 		return s
 	}
 	command := func(step generatedLifecycleStep) []string {
-		args := []string{resource}
+		args := strings.Split(resource, ":")
 		for _, arg := range step.Args {
 			args = append(args, expand(arg))
 		}
