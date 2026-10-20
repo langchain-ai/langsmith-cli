@@ -11,6 +11,7 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +58,11 @@ Quick start:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       displayVersion,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			usage.SetCommand(cmd)
+		},
 	}
+	usage.SetVersion(rawVersion)
 
 	rootCmd.PersistentFlags().StringVar(&flagAPIKey, "api-key", "", "LangSmith API key [env: LANGSMITH_API_KEY]")
 	_ = rootCmd.PersistentFlags().MarkHidden("api-key")

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-go/option"
 )
@@ -93,6 +94,8 @@ func NewWithOptions(options Options) *Client {
 	if options.WorkspaceID != "" {
 		opts = append(opts, option.WithTenantID(options.WorkspaceID))
 	}
+
+	opts = append(opts, usage.Option())
 
 	return &Client{
 		SDK:              langsmith.NewClient(opts...),
