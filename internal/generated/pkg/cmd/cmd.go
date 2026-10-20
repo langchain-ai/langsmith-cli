@@ -89,6 +89,51 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "runs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&runsGetURL,
+				},
+			},
+			{
+				Name:     "runs:share",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&runsShareCreate,
+					&runsShareDelete,
+				},
+			},
+			{
+				Name:     "threads",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&threadsAggregateStats,
+					&threadsQuery,
+					&threadsStats,
+				},
+			},
+			{
+				Name:     "threads:share",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&threadsShareCreate,
+					&threadsShareRetrieve,
+					&threadsShareDelete,
+				},
+			},
+			{
+				Name:     "traces",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&tracesQuery,
+				},
+			},
+			{
 				Name:     "prompt-webhooks",
 				Category: "API RESOURCE",
 				Suggest:  true,

@@ -236,7 +236,7 @@ func exampleListParams(datasetID string, pageSize int64, offset int, split strin
 func exampleCreateParams(datasetID string, inputs, outputs, metadata map[string]any, split string) langsmith.ExampleNewParams {
 	params := langsmith.ExampleNewParams{DatasetID: langsmith.F(datasetID), Inputs: langsmith.F(inputs)}
 	if outputs != nil {
-		params.Outputs = langsmith.F(outputs)
+		params.Outputs = langsmith.F(outputs) //nolint:staticcheck // older servers reject reference_outputs
 	}
 	if metadata != nil {
 		params.Metadata = langsmith.F(metadata)

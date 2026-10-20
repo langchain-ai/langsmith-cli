@@ -1,0 +1,92 @@
+# Tests for `langsmith runs share`. Contract cases run against a fake API.
+resource: runs:share
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --trace-id
+      - 33333333-3333-3333-3333-333333333333
+    response:
+      body: {share_token: 55555555-5555-5555-5555-555555555555}
+    want:
+      method: POST
+      path: /api/v2/runs/22222222-2222-2222-2222-222222222222/share
+      body:
+        session_id: 11111111-1111-1111-1111-111111111111
+        trace_id: 33333333-3333-3333-3333-333333333333
+      stdout: 55555555-5555-5555-5555-555555555555
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: create requires session and trace
+    op: create
+    args: [--run-id, 22222222-2222-2222-2222-222222222222]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: Required flags "session-id, trace-id" not set
+
+  - name: create reports API errors
+    op: create
+    args:
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --trace-id
+      - 33333333-3333-3333-3333-333333333333
+    response:
+      status: 404
+      body: {detail: Run not found}
+    want:
+      method: POST
+      path: /api/v2/runs/22222222-2222-2222-2222-222222222222/share
+      body:
+        session_id: 11111111-1111-1111-1111-111111111111
+        trace_id: 33333333-3333-3333-3333-333333333333
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: delete after confirmation
+    op: delete
+    args: [--trace-id, 33333333-3333-3333-3333-333333333333, --session-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "y\n"
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/runs/33333333-3333-3333-3333-333333333333/share
+      body: {session_id: 11111111-1111-1111-1111-111111111111}
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--trace-id, 33333333-3333-3333-3333-333333333333, --session-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--trace-id, 33333333-3333-3333-3333-333333333333, --session-id, 11111111-1111-1111-1111-111111111111, --yes]
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/runs/33333333-3333-3333-3333-333333333333/share
+      body: {session_id: 11111111-1111-1111-1111-111111111111}
+
+  - name: delete requires session
+    op: delete
+    args: [--trace-id, 33333333-3333-3333-3333-333333333333, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: Required flag "session-id" not set
+
+lifecycle_skip: "Sharing makes an existing run public, and the CLI cannot create a run to share; runs are ingested through the SDKs."

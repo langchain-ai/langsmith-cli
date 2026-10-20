@@ -394,7 +394,7 @@ func newDatasetUploadCmd() *cobra.Command {
 					Inputs:    langsmith.F(inputs),
 				}
 				if outputs != nil {
-					exParams.Outputs = langsmith.F(outputs)
+					exParams.Outputs = langsmith.F(outputs) //nolint:staticcheck // older servers reject reference_outputs
 				}
 
 				_, err := c.SDK.Examples.New(ctx, exParams)
