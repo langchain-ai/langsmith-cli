@@ -43,15 +43,23 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	os.Stdout = w
 
+	// Drain while fn runs: a full pipe buffer (about 4 KB on Windows) blocks its writes.
+	var buf bytes.Buffer
+	copied := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&buf, r)
+		copied <- err
+	}()
+
 	fn()
 
 	w.Close()
 	os.Stdout = old
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if err := <-copied; err != nil {
 		t.Fatalf("reading captured stdout: %v", err)
 	}
+	r.Close()
 	return buf.String()
 }
 
