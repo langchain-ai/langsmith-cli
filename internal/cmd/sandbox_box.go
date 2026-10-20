@@ -127,7 +127,7 @@ func sandboxCreateParams(name string, in *sandboxCreateInput) (langsmith.Sandbox
 		if err != nil {
 			return langsmith.SandboxBoxNewParams{}, fmt.Errorf("invalid --proxy-config: %w", err)
 		}
-		params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxNewParamsProxyConfig](pc)
+		params.ProxyConfig = langsmith.Raw[langsmith.ProxyConfigParam](pc)
 	}
 	switch {
 	case in.DelegateAccess && len(in.DelegatePermissions) > 0:
@@ -534,7 +534,7 @@ for the proxy config JSON format.`,
 			if err != nil {
 				return nil, fmt.Errorf("invalid --proxy-config: %w", err)
 			}
-			params.ProxyConfig = langsmith.Raw[langsmith.SandboxBoxUpdateParamsProxyConfig](pc)
+			params.ProxyConfig = langsmith.Raw[langsmith.ProxyConfigParam](pc)
 		}
 
 		if !cmd.Flags().Changed("vcpus") && !cmd.Flags().Changed("memory") && !cmd.Flags().Changed("rootfs-capacity") && !cmd.Flags().Changed("proxy-config") {
