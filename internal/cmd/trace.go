@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -29,7 +30,7 @@ Results are sorted newest-first by start time.
 
 Examples:
   langsmith traces list --project my-app --limit 5
-  langsmith traces get <trace-id> --full
+  langsmith traces get <trace-id> --project my-app --full
   langsmith traces export ./traces --project my-app --limit 20 --full`,
 	}
 
@@ -195,10 +196,11 @@ func newTraceGetCmd() *cobra.Command {
 		Short: "Fetch every run in a single trace",
 		Long: `Fetch every run in a single trace.
 
-The trace is looked up by ID in the current workspace. --project or
---project-id is optional and narrows the lookup to one project. Without a
-project, runs are read from the last 7 days unless --since or
---last-n-minutes is set.`,
+LangSmith Cloud and self-hosted >= 0.16 read the trace through
+/v2/traces/{trace_id}/runs, which requires --project or --project-id.
+Older self-hosted deployments read it through the v1 runs query, where the
+project is optional: without one, the trace is looked up by ID in the
+current workspace.`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			traceID := args[0]
@@ -215,7 +217,11 @@ project, runs are read from the last 7 days unless --since or
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveOptionalSessionID(ctx, c, project, projectID)
+			useV2, err := c.UseV2API(ctx)
+			if err != nil {
+				ExitErrorf("%v", err)
+			}
+			sessionID, err := traceGetSessionID(ctx, c, project, projectID, useV2)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -259,6 +265,16 @@ project, runs are read from the last 7 days unless --since or
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
+}
+
+// traceGetSessionID resolves the project for trace get. /v2/traces/{trace_id}/runs
+// requires one; the v1 runs query accepts a trace filter alone, so on v1 the
+// project is optional and returns "" when none is given.
+func traceGetSessionID(ctx context.Context, c *client.Client, project, projectID string, useV2 bool) (string, error) {
+	if !useV2 && projectID == "" && ResolveProject(project) == "" {
+		return "", nil
+	}
+	return resolveSessionID(ctx, c, project, projectID, "trace get on LangSmith Cloud and self-hosted >= 0.16")
 }
 
 func newTraceExportCmd() *cobra.Command {

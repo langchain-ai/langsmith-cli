@@ -153,15 +153,13 @@ func hydrateTraceAggregates(ctx context.Context, c *client.Client, sessionID str
 // /v2/traces/{trace_id}/runs, which returns the whole trace in one response and
 // finds it without a start-time window; since, when set, keeps only runs that
 // started at or after it. v1 queries runs by trace from v1Start and caps the
-// result at traceRunsV1Limit. The v2 endpoint requires a project, so with an
-// empty sessionID the v1 query, which accepts a trace filter alone, is used on
-// every deployment.
+// result at traceRunsV1Limit.
 func fetchTraceRuns(ctx context.Context, c *client.Client, sessionID, traceID string, v1Start, since time.Time, v1Select []langsmith.RunQueryParamsSelect, v2Selects []langsmith.RunSelectField) ([]langsmith.RunSchema, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !useV2 || sessionID == "" {
+	if !useV2 {
 		params := langsmith.RunQueryParams{
 			Trace: langsmith.F(traceID),
 			Order: langsmith.F(langsmith.RunQueryParamsOrderAsc),
