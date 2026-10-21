@@ -45,7 +45,7 @@ If an endpoint is missing from the Go SDK, expose and configure it through the p
 
 ## Generated commands
 
-`internal/generated/` is generated from the same OpenAPI and Stainless definitions as `langsmith-go`, together with each resource's tests in `internal/generated/tests/*.yaml`, and is replaced by the automated `sync/generated-commands` PR; never edit it, and don't open PRs that add generated resources by hand. `internal/cmd/generated.go` mounts every generated resource as a `langsmith` command. `generated_contract_test.go` runs each resource's contract cases and fails when an operation has none; `generated_integration_test.go` (`-tags=integration`) runs each lifecycle against a live API. While the sync PR needs an unreleased `langsmith-go`, it carries the `sdk-pending` label and automation bumps `go.mod` when the release is out.
+`internal/generated/` is generated in langchainplus from the OpenAPI spec and the CLI tests, and Copybara opens `copybara/export-cli` with that tree. Never edit it, and don't open PRs that add generated resources by hand. `internal/cmd/generated.go` mounts every generated resource as a `langsmith` command. `generated_contract_test.go` runs each resource's contract cases and fails when an operation has none; `generated_integration_test.go` (`-tags=integration`) runs each lifecycle against a live API.
 
 ## Releasing
 
