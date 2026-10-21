@@ -1,0 +1,104 @@
+# Tests for `langsmith datasets comparative`. Contract cases run against a fake API.
+resource: datasets:comparative
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --experiment-id
+      - 11111111-1111-1111-1111-111111111111
+      - --experiment-id
+      - 22222222-2222-2222-2222-222222222222
+      - --id
+      - 33333333-3333-3333-3333-333333333333
+      - --name
+      - baseline vs candidate
+      - --description
+      - nightly eval
+      - --reference-dataset-id
+      - 44444444-4444-4444-4444-444444444444
+      - --extra
+      - "{owner: evals, run: 7}"
+      - --created-at
+      - "2026-10-01T00:00:00Z"
+      - --modified-at
+      - "2026-10-01T00:00:00Z"
+    response:
+      body: &comparative
+        id: 33333333-3333-3333-3333-333333333333
+        name: baseline vs candidate
+        reference_dataset_id: 44444444-4444-4444-4444-444444444444
+        tenant_id: 55555555-5555-5555-5555-555555555555
+        created_at: "2026-10-01T00:00:00Z"
+        modified_at: "2026-10-01T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/datasets/comparative
+      body:
+        experiment_ids: [11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222]
+        id: 33333333-3333-3333-3333-333333333333
+        name: baseline vs candidate
+        description: nightly eval
+        reference_dataset_id: 44444444-4444-4444-4444-444444444444
+        extra: {owner: evals, run: 7}
+        created_at: "2026-10-01T00:00:00Z"
+        modified_at: "2026-10-01T00:00:00Z"
+      stdout: baseline vs candidate
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: create with only experiments
+    op: create
+    args:
+      - --experiment-id
+      - 11111111-1111-1111-1111-111111111111
+      - --experiment-id
+      - 22222222-2222-2222-2222-222222222222
+      - --workspace
+      - 66666666-6666-6666-6666-666666666666
+    response:
+      body: *comparative
+    want:
+      method: POST
+      path: /api/v1/datasets/comparative
+      headers: {X-Tenant-Id: 66666666-6666-6666-6666-666666666666}
+      body:
+        experiment_ids: [11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222]
+
+  - name: create reports API errors
+    op: create
+    args: [--experiment-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      status: 400
+      body: {detail: All sessions must belong to the same dataset.}
+    want:
+      method: POST
+      path: /api/v1/datasets/comparative
+      body: {experiment_ids: [11111111-1111-1111-1111-111111111111]}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  - name: delete after confirmation
+    op: delete
+    args: [--comparative-experiment-id, 33333333-3333-3333-3333-333333333333]
+    stdin: "y\n"
+    want:
+      method: DELETE
+      path: /api/v1/datasets/comparative/33333333-3333-3333-3333-333333333333
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--comparative-experiment-id, 33333333-3333-3333-3333-333333333333]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--comparative-experiment-id, 33333333-3333-3333-3333-333333333333, --yes]
+    want:
+      method: DELETE
+      path: /api/v1/datasets/comparative/33333333-3333-3333-3333-333333333333
+
+lifecycle_skip: "Compares existing experiments, which these generated commands cannot create; experiments are run through the SDKs."
