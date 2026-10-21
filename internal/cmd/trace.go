@@ -103,7 +103,7 @@ func newTraceListCmd() *cobra.Command {
 					err = hydrateTraceAggregates(ctx, c, sessionID, runs)
 				}
 			} else {
-				runs, err = queryTracesAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens, traceFeedbackWindowOptions(since, before)...)
+				runs, err = queryTracesAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens, traceFeedbackWindow(since, before))
 			}
 			if err != nil {
 				ExitErrorf("%v", err)
