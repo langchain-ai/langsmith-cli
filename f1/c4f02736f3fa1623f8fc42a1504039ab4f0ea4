@@ -1,0 +1,21 @@
+internal/cmd/trace.go
+  s_1629d2ac64f491::t_95374e4c995374 106
+internal/cmd/trace_query.go
+  s_1629d2ac64f491::t_097dfd8f804961 21,23,31,34,64-66,69,80-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1c4f02736f3fa1623f8fc42a1504039ab4f0ea4",
+  "prompts": {},
+  "sessions": {
+    "s_1629d2ac64f491": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4100ac-3f7f-4c44-afda-9966bb0e74fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Bagatur Askaryan <baskaryan@gmail.com>"
+    }
+  }
+}
