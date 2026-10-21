@@ -89,6 +89,18 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "agents",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&agentsCreate,
+					&agentsRetrieve,
+					&agentsUpdate,
+					&agentsList,
+					&agentsDelete,
+				},
+			},
+			{
 				Name:     "datasets",
 				Category: "API RESOURCE",
 				Suggest:  true,

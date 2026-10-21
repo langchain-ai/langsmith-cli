@@ -1,0 +1,141 @@
+resource: agents
+
+contract:
+  - name: create with all fields
+    op: create
+    args: [--id, example-agent, --name, Example Agent, --source-type, FLEET, --agent-type, CODING, --production-only=true]
+    response:
+      status: 201
+      body: &agent
+        id: example-agent
+        name: Example Agent
+        source_type: EXTERNAL
+        agent_type: CUSTOM
+        created_at: "2026-10-01T00:00:00Z"
+        environments: []
+    want:
+      method: POST
+      path: /api/v1/agents
+      body: {id: example-agent, name: Example Agent, source_type: FLEET, agent_type: CODING, production_only: true}
+      stdout: example-agent
+
+  - name: create with required fields only
+    op: create
+    args: [--id, another-agent, --source-type, EXTERNAL]
+    response:
+      status: 201
+      body: *agent
+    want:
+      method: POST
+      path: /api/v1/agents
+      body: {id: another-agent, source_type: EXTERNAL}
+
+  - name: duplicate creation reports conflict
+    op: create
+    args: [--id, example-agent, --source-type, EXTERNAL]
+    response:
+      status: 409
+      body: {title: Conflict, status: 409, detail: Agent already exists}
+    want:
+      method: POST
+      path: /api/v1/agents
+      body: {id: example-agent, source_type: EXTERNAL}
+      exit_code: 1
+      stderr: 409 Conflict
+      requests: 3
+
+  - name: retrieve with runtime information
+    op: retrieve
+    args: [--agent-id, example-agent, --include, runtime_bindings]
+    response:
+      body: *agent
+    want:
+      method: GET
+      path: /api/v1/agents/example-agent
+      query: {include: runtime_bindings}
+      stdout: example-agent
+
+  - name: list scoped to a workspace with filters and cursor
+    op: list
+    args: [--workspace, 44444444-4444-4444-4444-444444444444, --id, example-agent, --name, Example, --source-type, EXTERNAL, --sort-by, name, --sort-order, asc, --page-size, "2", --cursor, opaque-cursor]
+    response:
+      body: {items: [*agent], next_cursor: null}
+    want:
+      method: GET
+      path: /api/v1/agents
+      query: {id: example-agent, name: Example, source_type: EXTERNAL, sort_by: name, sort_order: asc, page_size: "2", cursor: opaque-cursor}
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      stdout: example-agent
+
+  - name: update supplied fields
+    op: update
+    args: [--agent-id, example-agent, --name, Renamed Agent, --source-type, MDA, --agent-type, CODING]
+    response:
+      body: *agent
+    want:
+      method: PATCH
+      path: /api/v1/agents/example-agent
+      body: {name: Renamed Agent, source_type: MDA, agent_type: CODING}
+
+  - name: update does not retain previous flags
+    op: update
+    args: [--agent-id, example-agent, --name, Another Name]
+    response:
+      body: *agent
+    want:
+      method: PATCH
+      path: /api/v1/agents/example-agent
+      body: {name: Another Name}
+
+  - name: delete after confirmation
+    op: delete
+    args: [--agent-id, example-agent]
+    stdin: "y\n"
+    response: {status: 204}
+    want:
+      method: DELETE
+      path: /api/v1/agents/example-agent
+      stderr: This permanently deletes
+
+  - name: declined deletion sends no request
+    op: delete
+    args: [--agent-id, example-agent]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with explicit confirmation
+    op: delete
+    args: [--agent-id, example-agent, --yes]
+    response: {status: 204}
+    want:
+      method: DELETE
+      path: /api/v1/agents/example-agent
+
+lifecycle:
+  steps:
+    - name: create disposable external agent
+      args: [create, --id, "cli-agent-{{run}}", --source-type, EXTERNAL]
+      capture: {id: id}
+    - name: retrieve
+      args: [retrieve, --agent-id, "{{id}}"]
+      expect: {id: "{{id}}", source_type: EXTERNAL}
+    - name: duplicate create fails
+      args: [create, --id, "{{id}}", --source-type, EXTERNAL]
+      exit_code: 1
+    - name: update
+      args: [update, --agent-id, "{{id}}", --name, Renamed Agent]
+      expect: {name: Renamed Agent}
+    - name: list
+      args: [list, --id, "{{id}}"]
+      expect: {id: "{{id}}"}
+    - name: delete
+      args: [delete, --agent-id, "{{id}}", --yes]
+      forget: [id]
+    - name: retrieve after deletion fails
+      args: [retrieve, --agent-id, "{{id}}"]
+      exit_code: 1
+  cleanup:
+    - args: [delete, --agent-id, "{{id}}", --yes]
+      needs: [id]
