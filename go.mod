@@ -18,7 +18,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.20.0
-	github.com/tidwall/pretty v1.2.1
+	github.com/tidwall/pretty v1.2.2
 	github.com/urfave/cli-docs/v3 v3.1.0
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/xlab/treeprint v1.2.0
