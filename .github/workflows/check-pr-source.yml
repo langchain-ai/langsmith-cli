@@ -1,0 +1,44 @@
+name: Check PR source
+
+# Production only receives code through the [EXPORT] pull request (head
+# `copybara/export-cli`), which Copybara opens from cli/ in langchainplus.
+# Anything merged to production main by another route is not in langchainplus,
+# so the next export reverts it. Dependency bumps included: they land in cli/
+# and ride the export like everything else. This repo has no release-please.
+#
+# Escape hatch for an urgent production fix: add the `skip-pr-source-check`
+# label. Afterwards make the same change in cli/ in langchainplus before the
+# next export.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  check:
+    # The main ruleset requires a check by this name.
+    name: PR comes from staging
+    if: github.repository == 'langchain-ai/langsmith-cli'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the head branch
+        env:
+          HEAD: ${{ github.head_ref }}
+          # A fork can name its branch anything, so the head must be in this repo.
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'skip-pr-source-check') }}
+        run: |
+          if [ "$SKIP" = "true" ]; then
+            echo "::warning::skip-pr-source-check label present. After merging, make the same change in cli/ in langchainplus so the next export does not revert it."
+            exit 0
+          fi
+          if [ "$SAME_REPO" = "true" ]; then
+            case "$HEAD" in
+              copybara/export-cli) exit 0 ;;
+            esac
+          fi
+          echo "::error::PRs to main must come from copybara/export-cli. Change cli/ in langchainplus instead, or add the skip-pr-source-check label for an urgent production fix."
+          exit 1
