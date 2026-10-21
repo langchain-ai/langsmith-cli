@@ -170,6 +170,9 @@ func TestTraceGet_V1WithoutProjectQueriesByTraceOnly(t *testing.T) {
 	if _, ok := body["session"]; ok {
 		t.Errorf("sent a session filter without --project: %v", body["session"])
 	}
+	if _, ok := body["start_time"]; !ok {
+		t.Error("start_time missing: the v1 lookup should keep its default window")
+	}
 	if got["run_count"] != float64(1) {
 		t.Errorf("run_count = %v, want 1", got["run_count"])
 	}

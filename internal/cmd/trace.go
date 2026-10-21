@@ -199,8 +199,9 @@ func newTraceGetCmd() *cobra.Command {
 LangSmith Cloud and self-hosted >= 0.16 read the trace through
 /v2/traces/{trace_id}/runs, which requires --project or --project-id.
 Older self-hosted deployments read it through the v1 runs query, where the
-project is optional: without one, the trace is looked up by ID in the
-current workspace.`,
+project is optional: without --project, --project-id or $LANGSMITH_PROJECT,
+the trace is looked up by ID across the current workspace. The v1 query only
+returns runs from the last 7 days unless --since or --last-n-minutes is set.`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			traceID := args[0]
@@ -274,7 +275,7 @@ func traceGetSessionID(ctx context.Context, c *client.Client, project, projectID
 	if !useV2 && projectID == "" && ResolveProject(project) == "" {
 		return "", nil
 	}
-	return resolveSessionID(ctx, c, project, projectID, "trace get on LangSmith Cloud and self-hosted >= 0.16")
+	return resolveSessionID(ctx, c, project, projectID, "trace get")
 }
 
 func newTraceExportCmd() *cobra.Command {
