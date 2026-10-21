@@ -89,6 +89,15 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "datasets:comparative",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsComparativeCreate,
+					&datasetsComparativeDelete,
+				},
+			},
+			{
 				Name:     "runs",
 				Category: "API RESOURCE",
 				Suggest:  true,
