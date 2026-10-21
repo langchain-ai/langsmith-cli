@@ -89,6 +89,22 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "datasets",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsRetrieveVersion,
+				},
+			},
+			{
+				Name:     "datasets:versions",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsVersionsRetrieveDiff,
+				},
+			},
+			{
 				Name:     "datasets:comparative",
 				Category: "API RESOURCE",
 				Suggest:  true,

@@ -1,0 +1,48 @@
+# Tests for `langsmith datasets`. Contract cases run against a fake API.
+resource: datasets
+
+contract:
+  - name: retrieve-version by time
+    op: retrieve-version
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --as-of, "2026-10-01T00:00:00Z"]
+    response:
+      body: &version {as_of: "2026-10-01T00:00:00Z", tags: [prod]}
+    want:
+      method: GET
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/version
+      query: {as_of: "2026-10-01T00:00:00Z"}
+      stdout: prod
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: retrieve-version by tag
+    op: retrieve-version
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --tag, prod, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *version
+    want:
+      method: GET
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/version
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      query: {tag: prod}
+
+  - name: retrieve-version reports API errors
+    op: retrieve-version
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      status: 400
+      body: {detail: Exactly one of as_of and tag must be specified.}
+    want:
+      method: GET
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/version
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  - name: --yes is rejected outside delete
+    op: retrieve-version
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --tag, prod, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: "yes"
+
+lifecycle_skip: "Reads versions of an existing dataset, which these generated commands cannot create."
