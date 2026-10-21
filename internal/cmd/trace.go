@@ -29,7 +29,7 @@ Results are sorted newest-first by start time.
 
 Examples:
   langsmith traces list --project my-app --limit 5
-  langsmith traces get <trace-id> --project my-app --full
+  langsmith traces get <trace-id> --full
   langsmith traces export ./traces --project my-app --limit 20 --full`,
 	}
 
@@ -193,7 +193,13 @@ func newTraceGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get TRACE_ID",
 		Short: "Fetch every run in a single trace",
-		Args:  cobra.ExactArgs(1),
+		Long: `Fetch every run in a single trace.
+
+The trace is looked up by ID in the current workspace. --project or
+--project-id is optional and narrows the lookup to one project. Without a
+project, runs are read from the last 7 days unless --since or
+--last-n-minutes is set.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			traceID := args[0]
 			// The v2 endpoint puts the ID in the URL path.
@@ -209,7 +215,7 @@ func newTraceGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, project, projectID, "trace get")
+			sessionID, err := resolveOptionalSessionID(ctx, c, project, projectID)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}

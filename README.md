@@ -72,7 +72,7 @@ langsmith projects list
 langsmith traces list --project my-app --limit 5
 
 # Get a specific trace with full detail
-langsmith traces get <trace-id> --project my-app --full
+langsmith traces get <trace-id> --full
 
 # List LLM calls with token counts
 langsmith runs list --project my-app --run-type llm --include-metadata
@@ -184,8 +184,8 @@ langsmith traces list --project my-app --full               # All fields (metada
 # Show trace hierarchy (fetches full run tree for each trace)
 langsmith traces list --project my-app --show-hierarchy --limit 3
 
-# Get a specific trace
-langsmith traces get <trace-id> --project my-app --full
+# Get a specific trace (--project is optional and narrows the lookup)
+langsmith traces get <trace-id> --full
 
 # Export traces to JSONL files (one per trace)
 langsmith traces export ./traces --project my-app --limit 20 --full
@@ -221,7 +221,7 @@ langsmith runs get <run-id> --full
 langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`. That endpoint needs a project, so `trace get` without `--project` / `--project-id` reads the trace through the v1 runs query on every deployment. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 

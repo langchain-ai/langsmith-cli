@@ -35,6 +35,16 @@ func resolveSessionID(ctx context.Context, c *client.Client, projectName, projec
 	return c.ResolveSessionID(ctx, name)
 }
 
+// resolveOptionalSessionID resolves the project like resolveSessionID but
+// returns "" instead of an error when no project is given, for commands where
+// the project only narrows the lookup.
+func resolveOptionalSessionID(ctx context.Context, c *client.Client, projectName, projectID string) (string, error) {
+	if projectID == "" && ResolveProject(projectName) == "" {
+		return "", nil
+	}
+	return resolveSessionID(ctx, c, projectName, projectID, "")
+}
+
 // validateProjectID returns a --project-id value unchanged once it is a
 // well-formed UUID, so a malformed one fails here rather than as a server 4xx.
 // Callers that filter by session ID without going through resolveSessionID

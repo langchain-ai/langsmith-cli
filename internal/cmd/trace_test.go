@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -139,6 +141,40 @@ func TestTraceGetCmd_TimeFlags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("trace get missing flag --%s", name)
 		}
+	}
+}
+
+func TestTraceGet_WithoutProjectQueriesByTraceOnly(t *testing.T) {
+	const traceID = "01a10aa3-0e17-7eb6-b255-d8a470732c91"
+	t.Setenv("LANGSMITH_PROJECT", "")
+	// v2 servers too: /v2/traces/{trace_id}/runs requires a project.
+	for _, version := range []string{"dev", "0.15.0"} {
+		t.Run(version, func(t *testing.T) {
+			withDeploymentVersion(t, version)
+			var paths []string
+			var body map[string]any
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"runs":[{"id":"r1","trace_id":"` + traceID + `"}],"cursors":{}}`))
+			})
+
+			got := runTraceCmdJSON(t, ts.URL, "get", traceID).(map[string]any)
+
+			if len(paths) != 1 || paths[0] != "/api/v1/runs/query" {
+				t.Fatalf("requests = %v, want one /api/v1/runs/query", paths)
+			}
+			if body["trace"] != traceID {
+				t.Errorf("trace = %v, want %s", body["trace"], traceID)
+			}
+			if _, ok := body["session"]; ok {
+				t.Errorf("sent a session filter without --project: %v", body["session"])
+			}
+			if got["run_count"] != float64(1) {
+				t.Errorf("run_count = %v, want 1", got["run_count"])
+			}
+		})
 	}
 }
 
