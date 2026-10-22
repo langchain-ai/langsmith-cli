@@ -22,6 +22,7 @@ var appsMaxSourceArchiveBytes int64 = 50 << 20
 // Never archived, whatever .gitignore says.
 var appsSourceDenyDirs = map[string]bool{
 	".git":          true,
+	".langsmith":    true,
 	"node_modules":  true,
 	"dist":          true,
 	"build":         true,
@@ -38,42 +39,10 @@ var appsSourceDenyDirs = map[string]bool{
 	"venv":          true,
 }
 
-var appsSourceDenyFiles = map[string]bool{
-	".DS_Store":        true,
-	"Thumbs.db":        true,
-	".npmrc":           true,
-	".netrc":           true,
-	".pgpass":          true,
-	".htpasswd":        true,
-	"id_rsa":           true,
-	"id_dsa":           true,
-	"id_ecdsa":         true,
-	"id_ed25519":       true,
-	"credentials.json": true,
-	"secrets.json":     true,
-}
-
-var appsSourceDenySuffixes = []string{
-	".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".ppk", ".local",
-}
-
 type sourceFile struct {
 	rel  string
 	size int64
 	mode fs.FileMode
-}
-
-func deniedSourceFile(base string) bool {
-	if appsSourceDenyFiles[base] || strings.HasPrefix(base, ".env") {
-		return true
-	}
-	lower := strings.ToLower(base)
-	for _, suffix := range appsSourceDenySuffixes {
-		if strings.HasSuffix(lower, suffix) {
-			return true
-		}
-	}
-	return false
 }
 
 // buildSourceArchive returns the base64 of a .tar.gz of root.
@@ -125,13 +94,17 @@ func buildSourceArchive(root string) (string, error) {
 }
 
 func collectSourceFiles(root string) ([]sourceFile, error) {
+	configInfo, err := appConfigFileInfo()
+	if err != nil {
+		return nil, err
+	}
 	rules := loadGitignore(root)
 
 	var (
 		files []sourceFile
 		total int64
 	)
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -154,13 +127,16 @@ func collectSourceFiles(root string) ([]sourceFile, error) {
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		if deniedSourceFile(base) || rules.ignored(rel, false) {
+		if deniedAppFile(base) || rules.ignored(rel, false) {
 			return nil
 		}
 
 		info, err := d.Info()
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", rel, err)
+		}
+		if configInfo != nil && os.SameFile(info, configInfo) {
+			return nil
 		}
 		total += info.Size()
 		if total > appsMaxSourceRawBytes {

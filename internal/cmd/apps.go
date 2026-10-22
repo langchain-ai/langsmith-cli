@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -75,8 +76,50 @@ var appsExcludedDirs = map[string]bool{
 }
 
 var appsExcludedFiles = map[string]bool{
-	".DS_Store": true,
-	"Thumbs.db": true,
+	".ds_store":        true,
+	"thumbs.db":        true,
+	".npmrc":           true,
+	".netrc":           true,
+	".pgpass":          true,
+	".htpasswd":        true,
+	"id_rsa":           true,
+	"id_dsa":           true,
+	"id_ecdsa":         true,
+	"id_ed25519":       true,
+	"credentials.json": true,
+	"secrets.json":     true,
+}
+
+var appsExcludedSuffixes = []string{
+	".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".ppk", ".local",
+}
+
+func deniedAppFile(base string) bool {
+	lower := strings.ToLower(base)
+	if appsExcludedFiles[lower] || strings.HasPrefix(lower, ".env") {
+		return true
+	}
+	for _, suffix := range appsExcludedSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func appConfigFileInfo() (fs.FileInfo, error) {
+	path, err := config.DefaultConfigPath()
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("checking CLI config: %w", err)
+	}
+	return info, nil
 }
 
 func newAppsCmd() *cobra.Command {
@@ -187,6 +230,10 @@ func readDirectoryAsAppFiles(root string) (map[string]string, error) {
 		return nil, fmt.Errorf("%s is not a directory", root)
 	}
 
+	configInfo, err := appConfigFileInfo()
+	if err != nil {
+		return nil, err
+	}
 	files := make(map[string]string)
 	totalBytes := 0
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
@@ -210,8 +257,17 @@ func readDirectoryAsAppFiles(root string) (map[string]string, error) {
 		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
-		if appsExcludedFiles[base] || strings.HasPrefix(base, ".env") {
+		if deniedAppFile(base) {
 			return nil
+		}
+		if configInfo != nil {
+			info, err := d.Info()
+			if err != nil {
+				return fmt.Errorf("reading %s: %w", rel, err)
+			}
+			if os.SameFile(info, configInfo) {
+				return nil
+			}
 		}
 
 		rel = filepath.ToSlash(rel)
