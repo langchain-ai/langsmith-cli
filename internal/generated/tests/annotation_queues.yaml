@@ -1,0 +1,151 @@
+# Tests for `langsmith annotation-queues`. Contract cases run against a fake API;
+# the lifecycle runs against a live API with -tags=integration.
+resource: annotation-queues
+
+contract:
+  - name: update with every field
+    op: update
+    args:
+      - --queue-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - renamed
+      - --description
+      - New description
+      - --default-dataset
+      - 22222222-2222-2222-2222-222222222222
+      - --enable-reservations
+      - "false"
+      - --metadata
+      - "{team: support}"
+      - --num-reviewers-per-item
+      - "3"
+      - --reservation-minutes
+      - "10"
+      - --reviewer-access-mode
+      - any
+      - --rubric-instructions
+      - Be strict
+      - --rubric-item
+      - "[{feedback_key: helpfulness}]"
+    response:
+      body: {}
+    want:
+      method: PATCH
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      body:
+        name: renamed
+        description: New description
+        default_dataset: 22222222-2222-2222-2222-222222222222
+        enable_reservations: false
+        metadata: {team: support}
+        num_reviewers_per_item: 3
+        reservation_minutes: 10
+        reviewer_access_mode: any
+        rubric_instructions: Be strict
+        rubric_items: [{feedback_key: helpfulness}]
+
+  - name: update sends only the flags given
+    op: update
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111, --name, renamed-again]
+    response:
+      body: {}
+    want:
+      method: PATCH
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      body: {name: renamed-again}
+
+  - name: retrieve
+    op: retrieve
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: &queue
+        id: 11111111-1111-1111-1111-111111111111
+        tenant_id: 44444444-4444-4444-4444-444444444444
+        name: my-queue
+        description: Review support answers
+        created_at: "2026-10-01T00:00:00Z"
+        updated_at: "2026-10-01T00:00:00Z"
+        queue_type: single
+    want:
+      method: GET
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      stdout: my-queue
+
+  - name: retrieve in a workspace
+    op: retrieve
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *queue
+    want:
+      method: GET
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+
+  - name: retrieve reports API errors
+    op: retrieve
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      status: 404
+      body: {detail: Annotation queue not found}
+    want:
+      method: GET
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: populate from experiments
+    op: populate
+    args:
+      - --queue-id
+      - 11111111-1111-1111-1111-111111111111
+      - --session-id
+      - 33333333-3333-3333-3333-333333333333
+      - --session-id
+      - 55555555-5555-5555-5555-555555555555
+      - --extend-trace-retention
+    response:
+      body: {}
+    want:
+      method: POST
+      path: /api/v1/annotation-queues/populate
+      body:
+        queue_id: 11111111-1111-1111-1111-111111111111
+        session_ids: [33333333-3333-3333-3333-333333333333, 55555555-5555-5555-5555-555555555555]
+        extend_trace_retention: true
+
+  - name: queues for a run
+    op: retrieve-queues
+    args: [--run-id, 66666666-6666-6666-6666-666666666666]
+    response:
+      body: [*queue]
+    want:
+      method: GET
+      path: /api/v1/annotation-queues/66666666-6666-6666-6666-666666666666/queues
+      stdout: my-queue
+
+  - name: delete after confirmation
+    op: delete
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "y\n"
+    want:
+      method: DELETE
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111, --yes]
+    want:
+      method: DELETE
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+
+lifecycle_skip: "Creating and listing queues are not CLI commands yet, so the CLI cannot create a queue to test against."

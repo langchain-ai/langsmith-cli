@@ -274,6 +274,32 @@ func init() {
 				},
 			},
 			{
+				Name:     "annotation-queues",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&annotationQueuesRetrieve,
+					&annotationQueuesUpdate,
+					&annotationQueuesDelete,
+					&annotationQueuesPopulate,
+					&annotationQueuesRetrieveQueues,
+				},
+			},
+			{
+				Name:     "annotation-queues:items",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&annotationQueuesItemsCreate,
+					&annotationQueuesItemsUpdate,
+					&annotationQueuesItemsList,
+					&annotationQueuesItemsCreateStatus,
+					&annotationQueuesItemsDeleteAll,
+					&annotationQueuesItemsRetrieveCount,
+					&annotationQueuesItemsRetrievePlacement,
+				},
+			},
+			{
 				Name:     "prompt-webhooks",
 				Category: "API RESOURCE",
 				Suggest:  true,
