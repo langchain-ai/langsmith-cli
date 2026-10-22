@@ -21,6 +21,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
 
@@ -379,7 +380,7 @@ func makeLsDevLogHandler(token string) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		fmt.Fprintf(os.Stderr, "[app %s] %s\n", level, entry.Message)
+		fmt.Fprintf(os.Stderr, "[app %s] %s\n", printableDevLog(level), printableDevLog(entry.Message))
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -443,7 +444,7 @@ func handleLsDevCall(c *client.Client, w http.ResponseWriter, r *http.Request, r
 	status, _, respHeaders, respBody, err := c.RawDo(r.Context(), method, path, bodyReader, nil)
 	if err != nil {
 		if appsDevLogMode != logQuiet {
-			fmt.Fprintf(os.Stderr, "[app api] %s %s → error: %s\n", method, path, err)
+			fmt.Fprintf(os.Stderr, "[app api] %s %s → error: %s\n", printableDevLog(method), printableDevLog(path), printableDevLog(err.Error()))
 		}
 		http.Error(w, "request failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -475,7 +476,16 @@ func logProxyCall(method, path string, status int, body []byte) {
 			line += " " + msg
 		}
 	}
-	fmt.Fprintln(os.Stderr, line)
+	fmt.Fprintln(os.Stderr, printableDevLog(line))
+}
+
+func printableDevLog(s string) string {
+	return strings.Map(func(r rune) rune {
+		if !unicode.IsPrint(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func proxyErrorSummary(body []byte) string {

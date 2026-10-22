@@ -362,6 +362,57 @@ func serveLsDevCall(t *testing.T, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func TestDevLogs_PrintableOutput(t *testing.T) {
+	previousMode := appsDevLogMode
+	appsDevLogMode = logVerbose
+	t.Cleanup(func() { appsDevLogMode = previousMode })
+
+	cases := []struct {
+		name, body, want string
+		proxy            bool
+	}{
+		{"console text", `{"level":"log","message":"Hello 世界"}`, "[app log] Hello 世界\n", false},
+		{"console controls", `{"level":"lo\u001bg","message":"\u001b[2Khello\r\n\b\t\u0007\u009b31m\u007f"}`, "[app log] [2Khello31m\n", false},
+		{"console default level", `{"message":"hello"}`, "[app log] hello\n", false},
+		{"API message", `{"message":"\u001b[2Kdenied\r\n\u0007"}`, "[app api] GET /runs?q=[2K → 400 [2Kdenied\n", true},
+		{"API detail", `{"detail":"\u009b31mdenied\b"}`, "[app api] GET /runs?q=[2K → 400 31mdenied\n", true},
+		{"API plain text", "denied\x1b]52;c;payload\a", "[app api] GET /runs?q=[2K → 400 denied]52;c;payload\n", true},
+		{"API normal text", `{"message":"Not found 世界"}`, "[app api] GET /runs?q=[2K → 400 Not found 世界\n", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := os.CreateTemp(t.TempDir(), "stderr")
+			if err != nil {
+				t.Fatal(err)
+			}
+			previousStderr := os.Stderr
+			os.Stderr = f
+			t.Cleanup(func() {
+				os.Stderr = previousStderr
+				_ = f.Close()
+			})
+			if tc.proxy {
+				logProxyCall("GET", "/runs?q=\x1b[2K", http.StatusBadRequest, []byte(tc.body))
+			} else {
+				req := httptest.NewRequest(http.MethodPost, "/__ls_dev/log", strings.NewReader(tc.body))
+				req.Header.Set("X-LS-Dev-Token", "test-token")
+				rec := httptest.NewRecorder()
+				makeLsDevLogHandler("test-token")(rec, req)
+				if rec.Code != http.StatusNoContent {
+					t.Fatalf("status = %d, want 204", rec.Code)
+				}
+			}
+			got, err := os.ReadFile(f.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("stderr = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestProxyErrorSummary(t *testing.T) {
 	cases := []struct {
 		name, body, want string
