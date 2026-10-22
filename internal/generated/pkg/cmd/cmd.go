@@ -250,6 +250,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "workspaces",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&workspacesCreate,
+				},
+			},
+			{
 				Name:     "settings",
 				Category: "API RESOURCE",
 				Suggest:  true,

@@ -1,0 +1,67 @@
+# Tests for the generated `langsmith workspaces create`. The other workspaces
+# commands are hand-written. Contract cases run against a fake API.
+resource: workspaces
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --display-name
+      - Team (prod)
+      - --id
+      - 11111111-1111-1111-1111-111111111111
+      - --tenant-handle
+      - team-prod
+    response:
+      body: &workspace
+        id: 11111111-1111-1111-1111-111111111111
+        organization_id: 22222222-2222-2222-2222-222222222222
+        display_name: Team (prod)
+        tenant_handle: team-prod
+        is_personal: false
+        is_deleted: false
+        created_at: "2026-09-30T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/workspaces
+      body:
+        display_name: Team (prod)
+        id: 11111111-1111-1111-1111-111111111111
+        tenant_handle: team-prod
+      stdout: '"id": "11111111-1111-1111-1111-111111111111"'
+
+  # Runs after the case above, so it also shows flag values do not carry over
+  # between invocations.
+  - name: create sends only the flags given
+    op: create
+    args: [--display-name, Team]
+    response:
+      body: *workspace
+    want:
+      method: POST
+      path: /api/v1/workspaces
+      body: {display_name: Team}
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: create reports API errors
+    op: create
+    args: [--display-name, Team]
+    response:
+      status: 403
+      body: {detail: Forbidden}
+    want:
+      method: POST
+      path: /api/v1/workspaces
+      body: {display_name: Team}
+      exit_code: 1
+      stderr: 403 Forbidden
+
+  - name: --yes is rejected outside delete
+    op: create
+    args: [--display-name, Team, --yes]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: "yes"
+
+lifecycle_skip: "Needs organization admin rights and creates workspaces in a shared organization, which the CLI cannot delete."
