@@ -1,0 +1,43 @@
+# Tests for `langsmith sandboxes browsers attachments links` (beta). Contract cases run against a fake API.
+resource: sandboxes:browsers:attachments:links
+
+contract:
+  - name: create with embed origins and a lifetime
+    op: create
+    args: [--name, research-browser, --attachment-id, att-1, --embed-origin, "https://app.example.com", --embed-origin, "http://localhost:3000", --ttl-seconds, "3600"]
+    response:
+      body: &links
+        view_url: https://browser.example.com/view
+        act_url: https://browser.example.com/act
+        expires_at: "2026-10-01T01:00:00Z"
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/links
+      body: {embed_origins: ["https://app.example.com", "http://localhost:3000"], ttl_seconds: 3600}
+      stdout: https://browser.example.com/act
+
+  - name: create with only a lifetime in a workspace
+    op: create
+    args: [--name, research-browser, --attachment-id, att-1, --ttl-seconds, "60", --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *links
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/links
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {ttl_seconds: 60}
+
+  - name: create reports API errors
+    op: create
+    args: [--name, research-browser, --attachment-id, att-1, --ttl-seconds, "10"]
+    response:
+      status: 400
+      body: {detail: ttl_seconds must be between 60 and 86400}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/links
+      body: {ttl_seconds: 10}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle_skip: "Mints links to a window of an existing browser, which bills compute and which these generated commands cannot delete."

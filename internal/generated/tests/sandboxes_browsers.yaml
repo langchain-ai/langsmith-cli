@@ -1,0 +1,77 @@
+# Tests for `langsmith sandboxes browsers` (beta). Contract cases run against a fake API.
+resource: sandboxes:browsers
+
+contract:
+  - name: create with every field
+    op: create
+    args: [--name, research-browser, --vcpus, "4", --mem-bytes, "8589934592", --idle-ttl-seconds, "600", --hidpi]
+    response:
+      status: 201
+      body: &browser
+        id: 11111111-1111-1111-1111-111111111111
+        name: research-browser
+        status: running
+        hidpi: true
+        attachments: []
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers
+      body: {name: research-browser, vcpus: 4, mem_bytes: 8589934592, idle_ttl_seconds: 600, hidpi: true}
+      stdout: research-browser
+
+  - name: create with a few flags sends only those
+    op: create
+    args: [--name, quick-browser, --idle-ttl-seconds, "0"]
+    response:
+      status: 201
+      body: {id: 22222222-2222-2222-2222-222222222222, name: quick-browser}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers
+      body: {name: quick-browser, idle_ttl_seconds: 0}
+
+  - name: create in a workspace
+    op: create
+    args: [--name, research-browser, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      status: 201
+      body: *browser
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {name: research-browser}
+
+  - name: retrieve
+    op: retrieve
+    args: [--name, research-browser]
+    response:
+      body: *browser
+    want:
+      method: GET
+      path: /api/v2/sandboxes/browsers/research-browser
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: retrieve reports API errors
+    op: retrieve
+    args: [--name, missing-browser]
+    response:
+      status: 404
+      body: {detail: browser not found}
+    want:
+      method: GET
+      path: /api/v2/sandboxes/browsers/missing-browser
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: load-extensions
+    op: load-extensions
+    args: [--name, research-browser]
+    response:
+      body: {loaded: [example-extension]}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/extensions/load
+      stdout: example-extension
+
+lifecycle_skip: "A browser is a running sandbox that bills compute and is never deleted automatically, and these generated commands cannot delete one."

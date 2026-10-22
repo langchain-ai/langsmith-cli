@@ -1,0 +1,85 @@
+# Tests for `langsmith sandboxes browsers attachments` (beta). Contract cases run against a fake API.
+resource: sandboxes:browsers:attachments
+
+contract:
+  - name: update resizes the window
+    op: update
+    args: [--name, research-browser, --attachment-id, att-1, --width, "1440", --height, "900"]
+    response:
+      body: &attachment
+        id: att-1
+        name: my-box
+        sandbox: my-box
+        controller: agent
+        width: 1440
+        height: 900
+    want:
+      method: PATCH
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1
+      body: {width: 1440, height: 900}
+      stdout: att-1
+
+  - name: update reports API errors
+    op: update
+    args: [--name, research-browser, --attachment-id, missing, --width, "1440", --height, "900"]
+    response:
+      status: 404
+      body: {detail: attachment not found}
+    want:
+      method: PATCH
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/missing
+      body: {width: 1440, height: 900}
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: set-controller hands the window to a person in a workspace
+    op: set-controller
+    args: [--name, research-browser, --attachment-id, att-1, --controller, user, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: {id: att-1, controller: user}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/controller
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {controller: user}
+      stdout: user
+
+  - name: set-controller hands the window back to the agent
+    op: set-controller
+    args: [--name, research-browser, --attachment-id, att-1, --controller, agent]
+    response:
+      body: {id: att-1, controller: agent}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/controller
+      body: {controller: agent}
+
+  - name: delete after confirmation
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1]
+    stdin: "y\n"
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1, --yes]
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1
+
+lifecycle_skip: "Changes windows of an existing browser, which bills compute and which these generated commands cannot delete."

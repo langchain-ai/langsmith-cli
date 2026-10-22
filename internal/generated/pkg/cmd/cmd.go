@@ -329,6 +329,79 @@ func init() {
 				},
 			},
 			{
+				Name:     "sandboxes",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesListUsageCosts,
+				},
+			},
+			{
+				Name:     "sandboxes:boxes",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesBoxesDeleteServiceURL,
+					&sandboxesBoxesListServiceURLs,
+				},
+			},
+			{
+				Name:     "sandboxes:registries",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesRegistriesCreate,
+					&sandboxesRegistriesRetrieve,
+					&sandboxesRegistriesList,
+					&sandboxesRegistriesDelete,
+				},
+			},
+			{
+				Name:     "sandboxes:snapshots",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesSnapshotsRetrieveByName,
+				},
+			},
+			{
+				Name:     "sandboxes:browsers",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesBrowsersCreate,
+					&sandboxesBrowsersRetrieve,
+					&sandboxesBrowsersLoadExtensions,
+				},
+			},
+			{
+				Name:     "sandboxes:browsers:attachments",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesBrowsersAttachmentsUpdate,
+					&sandboxesBrowsersAttachmentsDelete,
+					&sandboxesBrowsersAttachmentsSetController,
+				},
+			},
+			{
+				Name:     "sandboxes:browsers:attachments:links",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesBrowsersAttachmentsLinksCreate,
+				},
+			},
+			{
+				Name:     "sandboxes:browsers:attachments:tabs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sandboxesBrowsersAttachmentsTabsCreate,
+					&sandboxesBrowsersAttachmentsTabsDelete,
+				},
+			},
+			{
 				Name:            "@manpages",
 				Usage:           "Generate documentation for 'man'",
 				UsageText:       "langsmith @manpages [-o langsmith.1] [--gzip]",

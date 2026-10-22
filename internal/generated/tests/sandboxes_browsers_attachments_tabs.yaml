@@ -1,0 +1,70 @@
+# Tests for `langsmith sandboxes browsers attachments tabs` (beta). Contract cases run against a fake API.
+resource: sandboxes:browsers:attachments:tabs
+
+contract:
+  - name: create opens a URL
+    op: create
+    args: [--name, research-browser, --attachment-id, att-1, --url, "https://example.com/docs"]
+    response:
+      status: 201
+      body: {id: tab-1, url: "https://example.com/docs", title: Docs}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/tabs
+      body: {url: "https://example.com/docs"}
+      stdout: tab-1
+
+  - name: create without a URL in a workspace
+    op: create
+    args: [--name, research-browser, --attachment-id, att-1, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      status: 201
+      body: {id: tab-2, url: "about:blank"}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/tabs
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {}
+
+  - name: create reports API errors
+    op: create
+    args: [--name, research-browser, --attachment-id, missing, --url, "https://example.com"]
+    response:
+      status: 404
+      body: {detail: attachment not found}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/missing/tabs
+      body: {url: "https://example.com"}
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: delete after confirmation
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1, --tab-id, tab-1]
+    stdin: "y\n"
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/tabs/tab-1
+      stderr: This permanently deletes
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1, --tab-id, tab-1]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete with --yes skips the prompt
+    op: delete
+    args: [--name, research-browser, --attachment-id, att-1, --tab-id, tab-1, --yes]
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/browsers/research-browser/attachments/att-1/tabs/tab-1
+
+lifecycle_skip: "Opens and closes tabs in a window of an existing browser, which bills compute and which these generated commands cannot delete."

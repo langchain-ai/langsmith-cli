@@ -1,0 +1,75 @@
+# Tests for `langsmith sandboxes list-usage-costs`. Contract cases run against a fake API.
+resource: sandboxes
+
+contract:
+  - name: list-usage-costs with every filter in a workspace
+    op: list-usage-costs
+    args:
+      - --start-time
+      - "2026-10-01T00:00:00Z"
+      - --end-time
+      - "2026-10-02T00:00:00Z"
+      - --resource-type
+      - SANDBOX
+      - --resource-id
+      - 11111111-1111-1111-1111-111111111111
+      - --granularity
+      - RESOURCE
+      - --include-totals
+      - --page-size
+      - "50"
+      - --cursor
+      - opaque-cursor
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body:
+        items:
+          - resource_id: 11111111-1111-1111-1111-111111111111
+            resource_type: SANDBOX
+            period_start: "2026-10-01T00:00:00Z"
+            lcu: "1.25"
+            lsu: "0.5"
+        next_cursor: null
+        totals: {lcu: "1.25", lsu: "0.5"}
+    want:
+      method: GET
+      path: /api/v2/sandboxes/usage/costs
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      query:
+        start_time: "2026-10-01T00:00:00Z"
+        end_time: "2026-10-02T00:00:00Z"
+        resource_type: SANDBOX
+        resource_ids: 11111111-1111-1111-1111-111111111111
+        granularity: RESOURCE
+        include_totals: "true"
+        page_size: "50"
+        cursor: opaque-cursor
+      stdout: "1.25"
+
+  - name: list-usage-costs with only the time range
+    op: list-usage-costs
+    args: [--start-time, "2026-10-01T00:00:00Z", --end-time, "2026-10-01T06:00:00Z"]
+    response:
+      body: {items: [], next_cursor: null}
+    want:
+      method: GET
+      path: /api/v2/sandboxes/usage/costs
+      query: {start_time: "2026-10-01T00:00:00Z", end_time: "2026-10-01T06:00:00Z"}
+
+  - name: list-usage-costs reports API errors
+    op: list-usage-costs
+    args: [--start-time, "2026-08-01T00:00:00Z", --end-time, "2026-10-01T00:00:00Z"]
+    response:
+      status: 400
+      body: {detail: the range must not exceed 31 days}
+    want:
+      method: GET
+      path: /api/v2/sandboxes/usage/costs
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle:
+  steps:
+    - name: list-usage-costs reads one day
+      args: [list-usage-costs, --start-time, "2026-10-01T00:00:00Z", --end-time, "2026-10-02T00:00:00Z", --page-size, "5", --max-items, "5"]

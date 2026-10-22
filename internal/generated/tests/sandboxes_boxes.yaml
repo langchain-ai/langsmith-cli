@@ -1,0 +1,63 @@
+# Tests for `langsmith sandboxes boxes`. Contract cases run against a fake API.
+resource: sandboxes:boxes
+
+contract:
+  - name: list-service-urls with paging in a workspace
+    op: list-service-urls
+    args: [--name, my-box, --page-size, "10", --cursor, opaque-cursor, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body:
+        items:
+          - port: 8080
+            access: workspace
+            created_at: "2026-10-01T00:00:00Z"
+        next_cursor: null
+    want:
+      method: GET
+      path: /api/v2/sandboxes/boxes/my-box/service-urls
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      query: {page_size: "10", cursor: opaque-cursor}
+      stdout: "8080"
+
+  - name: list-service-urls reports API errors
+    op: list-service-urls
+    args: [--name, missing-box]
+    response:
+      status: 404
+      body: {detail: sandbox not found}
+    want:
+      method: GET
+      path: /api/v2/sandboxes/boxes/missing-box/service-urls
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: delete-service-url for one port after confirmation
+    op: delete-service-url
+    args: [--name, my-box, --port, "8080"]
+    stdin: "y\n"
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/boxes/my-box/service-urls
+      query: {port: "8080"}
+      stderr: This permanently deletes
+
+  - name: delete-service-url without confirmation sends nothing
+    op: delete-service-url
+    args: [--name, my-box, --port, "8080"]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  - name: delete-service-url for every port with --yes
+    op: delete-service-url
+    args: [--name, my-box, --yes]
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v2/sandboxes/boxes/my-box/service-urls
+
+lifecycle_skip: "Reads and removes service URL sharing on an existing sandbox, which these generated commands cannot create."
