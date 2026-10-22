@@ -45,4 +45,40 @@ contract:
       exit_code: 1
       stderr: "yes"
 
-lifecycle_skip: "Reads versions of an existing dataset, which these generated commands cannot create."
+  - name: update-tags at a time
+    op: update-tags
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --as-of, "2026-10-01T00:00:00Z", --tag, prod]
+    response:
+      body: {as_of: "2026-10-01T00:00:00Z", tags: [prod]}
+    want:
+      method: PUT
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/tags
+      body: {as_of: "2026-10-01T00:00:00Z", tag: prod}
+      stdout: "2026-10-01T00:00:00Z"
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: update-tags from another tag in a workspace
+    op: update-tags
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --as-of, staging, --tag, prod, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: {as_of: "2026-10-02T00:00:00Z", tags: [prod]}
+    want:
+      method: PUT
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/tags
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {as_of: staging, tag: prod}
+
+  - name: update-tags reports API errors
+    op: update-tags
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --as-of, "2026-10-01T00:00:00Z", --tag, latest]
+    response:
+      status: 400
+      body: {detail: The tag 'latest' is reserved and cannot be used as a tag.}
+    want:
+      method: PUT
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111/tags
+      body: {as_of: "2026-10-01T00:00:00Z", tag: latest}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle_skip: "Reads and tags versions of an existing dataset, which these generated commands cannot create."
