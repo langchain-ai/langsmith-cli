@@ -1,0 +1,183 @@
+# Tests for the generated `langsmith projects` operations (the sessions
+# resource). Contract cases run against a fake API.
+resource: sessions
+
+contract:
+  - name: update with every field
+    op: update
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - my-project
+      - --description
+      - Traces from my app
+      - --default-dataset-id
+      - 22222222-2222-2222-2222-222222222222
+      - --end-time
+      - "2026-09-30T00:00:00Z"
+      - --extra
+      - "{metadata: {team: search}}"
+      - --trace-tier
+      - longlived
+    response:
+      body: &project
+        id: 11111111-1111-1111-1111-111111111111
+        tenant_id: 33333333-3333-3333-3333-333333333333
+        name: my-project
+        description: Traces from my app
+        start_time: "2026-09-01T00:00:00Z"
+        trace_tier: longlived
+    want:
+      method: PATCH
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111
+      body:
+        name: my-project
+        description: Traces from my app
+        default_dataset_id: 22222222-2222-2222-2222-222222222222
+        end_time: "2026-09-30T00:00:00Z"
+        extra: {metadata: {team: search}}
+        trace_tier: longlived
+      stdout: '"id": "11111111-1111-1111-1111-111111111111"'
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: update sends only the flags given
+    op: update
+    args: [--session-id, 11111111-1111-1111-1111-111111111111, --description, New description]
+    response:
+      body: *project
+    want:
+      method: PATCH
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111
+      body: {description: New description}
+
+  - name: update in a workspace
+    op: update
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - renamed
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: *project
+    want:
+      method: PATCH
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {name: renamed}
+
+  - name: update reports API errors
+    op: update
+    args: [--session-id, 11111111-1111-1111-1111-111111111111, --name, renamed]
+    response:
+      status: 404
+      body: {detail: Session not found}
+    want:
+      method: PATCH
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111
+      body: {name: renamed}
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: resolve an agent address
+    op: resolve
+    args: [--kind, AGENT, --id, my-agent, --environment, PRODUCTION]
+    response:
+      body: {session_id: 11111111-1111-1111-1111-111111111111}
+    want:
+      method: GET
+      path: /api/v1/sessions/resolutions
+      query: {kind: AGENT, id: my-agent, environment: PRODUCTION}
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: resolve sends only the flags given
+    op: resolve
+    args: [--kind, EVALUATOR]
+    response:
+      body: {session_id: 11111111-1111-1111-1111-111111111111}
+    want:
+      method: GET
+      path: /api/v1/sessions/resolutions
+      query: {kind: EVALUATOR}
+
+  - name: resolve reports API errors
+    op: resolve
+    args: [--kind, EXPERIMENT, --id, 22222222-2222-2222-2222-222222222222]
+    response:
+      status: 404
+      body: {detail: Not found}
+    want:
+      method: GET
+      path: /api/v1/sessions/resolutions
+      query: {kind: EXPERIMENT, id: 22222222-2222-2222-2222-222222222222}
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: dashboard with every field
+    op: dashboard
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --start-time
+      - "2026-09-01T00:00:00Z"
+      - --end-time
+      - "2026-09-30T00:00:00Z"
+      - --timezone
+      - Europe/Paris
+      - --omit-data
+      - --group-by.attribute
+      - metadata
+      - --group-by.path
+      - team
+      - --group-by.max-groups
+      - "5"
+      - --stride.days
+      - "1"
+      - --stride.hours
+      - "2"
+      - --stride.minutes
+      - "30"
+    response:
+      body: &dashboard
+        id: 55555555-5555-5555-5555-555555555555
+        title: Traces
+        charts: []
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/dashboard
+      body:
+        start_time: "2026-09-01T00:00:00Z"
+        end_time: "2026-09-30T00:00:00Z"
+        timezone: Europe/Paris
+        omit_data: true
+        group_by: {attribute: metadata, path: team, max_groups: 5}
+        stride: {days: 1, hours: 2, minutes: 30}
+      stdout: 55555555-5555-5555-5555-555555555555
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: dashboard sends only the flags given
+    op: dashboard
+    args: [--session-id, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: *dashboard
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/dashboard
+      body: {}
+
+  - name: dashboard reports API errors
+    op: dashboard
+    args: [--session-id, 11111111-1111-1111-1111-111111111111, --stride.hours, "-1"]
+    response:
+      status: 422
+      body: {detail: Invalid stride}
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/dashboard
+      body: {stride: {hours: -1}}
+      exit_code: 1
+      stderr: "422"
+
+lifecycle_skip: "Operates on an existing tracing project, which these generated commands cannot create; projects are created by tracing through the SDKs."

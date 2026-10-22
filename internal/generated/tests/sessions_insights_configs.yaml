@@ -1,0 +1,104 @@
+# Tests for `langsmith projects insights configs`. Contract cases run against a
+# fake API.
+resource: sessions:insights:configs
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - Weekly usage
+      - --description
+      - Usage patterns over the last week
+      - --schedule-cron
+      - "0 9 * * 1"
+      - --config.model
+      - anthropic
+      - --config.name
+      - Weekly usage
+      - --config.filter
+      - eq(is_root, true)
+      - --config.last-n-hours
+      - "168"
+      - --config.sample
+      - "0.5"
+      - --config.is-scheduled
+      - --config.summary-prompt
+      - Summarize how people use the app.
+      - --config.user-context
+      - "{product: a support chatbot}"
+    response:
+      body: &config
+        id: 22222222-2222-2222-2222-222222222222
+        name: Weekly usage
+        config: {model: anthropic}
+        created_at: "2026-09-30T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/insights/configs
+      body:
+        name: Weekly usage
+        description: Usage patterns over the last week
+        schedule_cron: "0 9 * * 1"
+        config:
+          model: anthropic
+          name: Weekly usage
+          filter: eq(is_root, true)
+          last_n_hours: 168
+          sample: 0.5
+          is_scheduled: true
+          summary_prompt: Summarize how people use the app.
+          user_context: {product: a support chatbot}
+      stdout: '"id": "22222222-2222-2222-2222-222222222222"'
+
+  - name: create with the config as one flag in a workspace
+    op: create
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - Errors
+      - --config
+      - "{model: openai, last_n_hours: 24}"
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: *config
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/insights/configs
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body:
+        name: Errors
+        config: {model: openai, last_n_hours: 24}
+
+  - name: create requires a config and a name
+    op: create
+    args: [--session-id, 11111111-1111-1111-1111-111111111111]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: Required flags "config, name" not set
+
+  - name: create reports API errors
+    op: create
+    args:
+      - --session-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - Errors
+      - --config.model
+      - openai
+    response:
+      status: 400
+      body: {detail: Invalid config}
+    want:
+      method: POST
+      path: /api/v1/sessions/11111111-1111-1111-1111-111111111111/insights/configs
+      body: {name: Errors, config: {model: openai}}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle_skip: "Needs an existing tracing project, which these generated commands cannot create; projects are created by tracing through the SDKs."

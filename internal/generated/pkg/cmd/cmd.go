@@ -101,6 +101,34 @@ func init() {
 				},
 			},
 			{
+				Name:     "sessions",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sessionsUpdate,
+					&sessionsDashboard,
+					&sessionsResolve,
+				},
+			},
+			{
+				Name:     "sessions:insights",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sessionsInsightsUpdate,
+					&sessionsInsightsDelete,
+					&sessionsInsightsRetrieveRuns,
+				},
+			},
+			{
+				Name:     "sessions:insights:configs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sessionsInsightsConfigsCreate,
+				},
+			},
+			{
 				Name:     "datasets",
 				Category: "API RESOURCE",
 				Suggest:  true,
