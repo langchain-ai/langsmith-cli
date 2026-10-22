@@ -117,6 +117,16 @@ func init() {
 				},
 			},
 			{
+				Name:     "datasets:share",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsShareCreate,
+					&datasetsShareRetrieve,
+					&datasetsShareDeleteAll,
+				},
+			},
+			{
 				Name:     "datasets:comparative",
 				Category: "API RESOURCE",
 				Suggest:  true,
