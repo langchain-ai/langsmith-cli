@@ -45,7 +45,7 @@ If an endpoint is missing from the Go SDK, expose and configure it through the p
 
 ## Generated commands
 
-`internal/generated/` is generated in langchainplus from the OpenAPI spec and the CLI tests, and Copybara opens `copybara/export-cli` with that tree. Never edit it, and don't open PRs that add generated resources by hand. `internal/cmd/generated.go` mounts every generated resource as a `langsmith` command. `generated_contract_test.go` runs each resource's contract cases and fails when an operation has none; `generated_integration_test.go` (`-tags=integration`) runs each lifecycle against a live API.
+`internal/generated/` is generated in langchainplus from the OpenAPI spec and the CLI tests, and Copybara pushes that tree to langsmith-cli main. Never edit it, and don't open PRs that add generated resources by hand. `internal/cmd/generated.go` mounts every generated resource as a `langsmith` command. `generated_contract_test.go` runs each resource's contract cases and fails when an operation has none; `generated_integration_test.go` (`-tags=integration`) runs each lifecycle against a live API.
 
 ## Releasing
 

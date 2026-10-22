@@ -1,7 +1,7 @@
 name: Check PR source
 
-# Production only receives code through the [EXPORT] pull request (head
-# `copybara/export-cli`), which Copybara opens from cli/ in langchainplus.
+# Production main receives CLI changes when Copybara pushes cli/ from
+# langchainplus. A pull request is allowed only from `copybara/export-cli`.
 # Anything merged to production main by another route is not in langchainplus,
 # so the next export reverts it. Dependency bumps included: they land in cli/
 # and ride the export like everything else. This repo has no release-please.
