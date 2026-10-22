@@ -228,6 +228,16 @@ func init() {
 				},
 			},
 			{
+				Name:     "online-evaluators",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&onlineEvaluatorsCreate,
+					&onlineEvaluatorsUpdate,
+					&onlineEvaluatorsSpend,
+				},
+			},
+			{
 				Name:     "public:runs",
 				Category: "API RESOURCE",
 				Suggest:  true,

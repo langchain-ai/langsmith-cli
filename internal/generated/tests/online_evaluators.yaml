@@ -1,0 +1,270 @@
+# Tests for `langsmith online-evaluators`. Contract cases run against a fake API;
+# the lifecycle runs against a live API with -tags=integration.
+resource: online-evaluators
+
+contract:
+  - name: create a code evaluator with every field
+    op: create
+    args:
+      - --name
+      - accuracy
+      - --type
+      - code
+      - --code-evaluator.code
+      - "def perform_eval(run, example): return {'score': 1}"
+      - --code-evaluator.language
+      - python
+      - --code-evaluator.advanced-features-enabled
+      - --code-evaluator.require-attachments
+      - --code-evaluator.dependencies
+      - requests==2.32.3
+      - --code-evaluator.code-evaluator-input
+      - thread
+      # Inner list flags take a YAML list; a bare value is rejected.
+      - --code-evaluator.workspace-secrets-keys
+      - "[API_KEY, OTHER_KEY]"
+    response:
+      status: 201
+      body: &evaluator
+        evaluator:
+          id: 11111111-1111-1111-1111-111111111111
+          tenant_id: 33333333-3333-3333-3333-333333333333
+          name: accuracy
+          type: code
+          created_at: "2026-09-30T00:00:00Z"
+          updated_at: "2026-09-30T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/platform/evaluators
+      body:
+        name: accuracy
+        type: code
+        code_evaluator:
+          code: "def perform_eval(run, example): return {'score': 1}"
+          language: python
+          advanced_features_enabled: true
+          require_attachments: true
+          dependencies: requests==2.32.3
+          code_evaluator_input: thread
+          workspace_secrets_keys: [API_KEY, OTHER_KEY]
+      stdout: '"id": "11111111-1111-1111-1111-111111111111"'
+
+  # llm_evaluator and code_evaluator are exclusive, so the LLM fields get their own case.
+  - name: create an LLM evaluator
+    op: create
+    args:
+      - --name
+      - relevance
+      - --type
+      - llm
+      - --llm-evaluator.prompt-repo-handle
+      - my-judge-prompt
+      - --llm-evaluator.commit-hash-or-tag
+      - latest
+      - --llm-evaluator.playground-settings-id
+      - 22222222-2222-2222-2222-222222222222
+      - --llm-evaluator.variable-mapping
+      - "{input: input.question, output: output.answer}"
+    response:
+      status: 201
+      body: *evaluator
+    want:
+      method: POST
+      path: /api/v1/platform/evaluators
+      body:
+        name: relevance
+        type: llm
+        llm_evaluator:
+          prompt_repo_handle: my-judge-prompt
+          commit_hash_or_tag: latest
+          playground_settings_id: 22222222-2222-2222-2222-222222222222
+          variable_mapping: {input: input.question, output: output.answer}
+
+  - name: create reports API errors
+    op: create
+    args: [--type, code]
+    response:
+      status: 400
+      body: {detail: "bad request: name is required"}
+    want:
+      method: POST
+      path: /api/v1/platform/evaluators
+      body: {type: code}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  - name: update the LLM configuration
+    op: update
+    args:
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - relevance-v2
+      - --llm-evaluator.prompt-repo-handle
+      - my-judge-prompt
+      - --llm-evaluator.commit-hash-or-tag
+      - abc123
+      - --llm-evaluator.playground-settings-id
+      - 22222222-2222-2222-2222-222222222222
+      - --llm-evaluator.num-few-shot-examples
+      - "5"
+      - --llm-evaluator.use-corrections-dataset
+      - --llm-evaluator.variable-mapping
+      - "{input: input.question}"
+    response:
+      body: *evaluator
+    want:
+      method: PATCH
+      path: /api/v1/platform/evaluators/11111111-1111-1111-1111-111111111111
+      body:
+        name: relevance-v2
+        llm_evaluator:
+          prompt_repo_handle: my-judge-prompt
+          commit_hash_or_tag: abc123
+          playground_settings_id: 22222222-2222-2222-2222-222222222222
+          num_few_shot_examples: 5
+          use_corrections_dataset: true
+          variable_mapping: {input: input.question}
+
+  # Runs after the cases above, so it also shows flag values do not carry over.
+  - name: update sends only the flags given
+    op: update
+    args:
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+      - --code-evaluator.code
+      - "def perform_eval(run, example): return {'score': 0}"
+      - --code-evaluator.workspace-secrets-keys
+      - "[]"
+    response:
+      body: *evaluator
+    want:
+      method: PATCH
+      path: /api/v1/platform/evaluators/11111111-1111-1111-1111-111111111111
+      body:
+        code_evaluator:
+          code: "def perform_eval(run, example): return {'score': 0}"
+          workspace_secrets_keys: []
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  - name: update in a workspace
+    op: update
+    args:
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - renamed
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: *evaluator
+    want:
+      method: PATCH
+      path: /api/v1/platform/evaluators/11111111-1111-1111-1111-111111111111
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {name: renamed}
+
+  - name: update reports API errors
+    op: update
+    args: [--evaluator-id, 11111111-1111-1111-1111-111111111111, --name, renamed]
+    response:
+      status: 404
+      body: {detail: evaluator not found}
+    want:
+      method: PATCH
+      path: /api/v1/platform/evaluators/11111111-1111-1111-1111-111111111111
+      body: {name: renamed}
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: spend grouped with every filter
+    op: spend
+    args:
+      - --period-start
+      - "2026-09-01"
+      - --group-by
+      - evaluator
+      - --resource-id
+      - 55555555-5555-5555-5555-555555555555
+      - --tag-value-id
+      - 66666666-6666-6666-6666-666666666666
+      - --type
+      - llm
+      - --feedback-key
+      - correctness
+      - --agent-id
+      - 77777777-7777-7777-7777-777777777777
+    response:
+      body: &spend
+        period_start: "2026-09-01"
+        period_end: "2026-09-07"
+        groups:
+          - evaluator_id: 11111111-1111-1111-1111-111111111111
+            evaluator_name: relevance
+            total_spend_usd: 1.25
+            total_trace_count: 10
+            days: [{date: "2026-09-01", spend_usd: 1.25, trace_count: 10}]
+    want:
+      method: GET
+      path: /api/v1/platform/evaluators/spend
+      query:
+        period_start: "2026-09-01"
+        group_by: evaluator
+        resource_id: 55555555-5555-5555-5555-555555555555
+        tag_value_id: 66666666-6666-6666-6666-666666666666
+        type: llm
+        feedback_key: correctness
+        agent_id: 77777777-7777-7777-7777-777777777777
+      stdout: '"total_spend_usd": 1.25'
+
+  - name: spend for one evaluator
+    op: spend
+    args:
+      - --period-start
+      - "2026-09-01"
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+    response:
+      body: *spend
+    want:
+      method: GET
+      path: /api/v1/platform/evaluators/spend
+      query:
+        period_start: "2026-09-01"
+        evaluator_id: 11111111-1111-1111-1111-111111111111
+
+  - name: spend sends the project and dataset filters
+    op: spend
+    args:
+      - --period-start
+      - "2026-09-01"
+      - --session-id
+      - 88888888-8888-8888-8888-888888888888
+      - --dataset-id
+      - 99999999-9999-9999-9999-999999999999
+    response:
+      body: *spend
+    want:
+      method: GET
+      path: /api/v1/platform/evaluators/spend
+      query:
+        period_start: "2026-09-01"
+        session_id: 88888888-8888-8888-8888-888888888888
+        dataset_id: 99999999-9999-9999-9999-999999999999
+
+  - name: spend requires a period start
+    op: spend
+    args: [--group-by, evaluator]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: period-start
+
+# Runs against a live API with -tags=integration. The command has no delete
+# (`langsmith evaluator delete` covers it), so a live create here would leave an
+# evaluator behind; the lifecycle only reads spend.
+lifecycle:
+  steps:
+    - name: spend grouped by evaluator
+      args: [spend, --period-start, "2026-09-01", --group-by, evaluator]
+      exists: [period_start]
