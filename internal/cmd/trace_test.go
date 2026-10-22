@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 
 	langsmith "github.com/langchain-ai/langsmith-go"
@@ -138,6 +142,56 @@ func TestTraceGetCmd_TimeFlags(t *testing.T) {
 	for _, name := range []string{"since", "last-n-minutes"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("trace get missing flag --%s", name)
+		}
+	}
+}
+
+func TestTraceGet_V1WithoutProjectQueriesByTraceOnly(t *testing.T) {
+	withDeploymentVersion(t, "0.15.0")
+	t.Setenv("LANGSMITH_PROJECT", "")
+	const traceID = "01a10aa3-0e17-7eb6-b255-d8a470732c91"
+	var paths []string
+	var body map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"runs":[{"id":"r1","trace_id":"` + traceID + `"}],"cursors":{}}`))
+	})
+
+	got := runTraceCmdJSON(t, ts.URL, "get", traceID).(map[string]any)
+
+	if len(paths) != 1 || paths[0] != "/api/v1/runs/query" {
+		t.Fatalf("requests = %v, want one /api/v1/runs/query", paths)
+	}
+	if body["trace"] != traceID {
+		t.Errorf("trace = %v, want %s", body["trace"], traceID)
+	}
+	if _, ok := body["session"]; ok {
+		t.Errorf("sent a session filter without --project: %v", body["session"])
+	}
+	if _, ok := body["start_time"]; !ok {
+		t.Error("start_time missing: the v1 lookup should keep its default window")
+	}
+	if got["run_count"] != float64(1) {
+		t.Errorf("run_count = %v, want 1", got["run_count"])
+	}
+}
+
+func TestTraceGetSessionID(t *testing.T) {
+	t.Setenv("LANGSMITH_PROJECT", "")
+	ctx := context.Background()
+
+	if got, err := traceGetSessionID(ctx, nil, "", "", false); err != nil || got != "" {
+		t.Errorf("v1 without a project = (%q, %v), want no project and no error", got, err)
+	}
+	// /v2/traces/{trace_id}/runs rejects a request without project_id.
+	if _, err := traceGetSessionID(ctx, nil, "", "", true); err == nil || !strings.Contains(err.Error(), "--project") {
+		t.Errorf("v2 without a project: err = %v, want a --project required error", err)
+	}
+	for _, useV2 := range []bool{false, true} {
+		if got, err := traceGetSessionID(ctx, nil, "", testProjectID, useV2); err != nil || got != testProjectID {
+			t.Errorf("useV2=%v with --project-id = (%q, %v), want %s", useV2, got, err, testProjectID)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -193,7 +194,15 @@ func newTraceGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get TRACE_ID",
 		Short: "Fetch every run in a single trace",
-		Args:  cobra.ExactArgs(1),
+		Long: `Fetch every run in a single trace.
+
+LangSmith Cloud and self-hosted >= 0.16 read the trace through
+/v2/traces/{trace_id}/runs, which requires --project or --project-id.
+Older self-hosted deployments read it through the v1 runs query, where the
+project is optional: without --project, --project-id or $LANGSMITH_PROJECT,
+the trace is looked up by ID across the current workspace. The v1 query only
+returns runs from the last 7 days unless --since or --last-n-minutes is set.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			traceID := args[0]
 			// The v2 endpoint puts the ID in the URL path.
@@ -209,7 +218,11 @@ func newTraceGetCmd() *cobra.Command {
 
 			c := MustGetClient()
 			ctx := context.Background()
-			sessionID, err := resolveSessionID(ctx, c, project, projectID, "trace get")
+			useV2, err := c.UseV2API(ctx)
+			if err != nil {
+				ExitErrorf("%v", err)
+			}
+			sessionID, err := traceGetSessionID(ctx, c, project, projectID, useV2)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -253,6 +266,16 @@ func newTraceGetCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
+}
+
+// traceGetSessionID resolves the project for trace get. /v2/traces/{trace_id}/runs
+// requires one; the v1 runs query accepts a trace filter alone, so on v1 the
+// project is optional and returns "" when none is given.
+func traceGetSessionID(ctx context.Context, c *client.Client, project, projectID string, useV2 bool) (string, error) {
+	if !useV2 && projectID == "" && ResolveProject(project) == "" {
+		return "", nil
+	}
+	return resolveSessionID(ctx, c, project, projectID, "trace get")
 }
 
 func newTraceExportCmd() *cobra.Command {

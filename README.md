@@ -221,7 +221,7 @@ langsmith runs get <run-id> --full
 langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`, which requires a project. On v1, `trace get` can omit `--project` / `--project-id` and look the trace up by ID in the current workspace. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 
