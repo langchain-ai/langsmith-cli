@@ -8,6 +8,43 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/mocktest"
 )
 
+func TestDatasetsClone(t *testing.T) {
+	t.Skip("Mock server tests are disabled")
+	t.Run("regular flags", func(t *testing.T) {
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"datasets", "clone",
+			"--source-dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--target-dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--as-of", "'2019-12-27T18:11:19.117Z'",
+			"--example", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--split", "string",
+			"--tag-value-id", "[182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e]",
+		)
+	})
+
+	t.Run("piping data", func(t *testing.T) {
+		// Test piping YAML data over stdin
+		pipeData := []byte("" +
+			"source_dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
+			"target_dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
+			"as_of: '2019-12-27T18:11:19.117Z'\n" +
+			"examples:\n" +
+			"  - 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
+			"split: string\n" +
+			"tag_value_ids:\n" +
+			"  - 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n")
+		mocktest.TestRunMockTestWithPipeAndFlags(
+			t, pipeData,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"datasets", "clone",
+		)
+	})
+}
+
 func TestDatasetsRetrieveVersion(t *testing.T) {
 	t.Skip("Mock server tests are disabled")
 	t.Run("regular flags", func(t *testing.T) {

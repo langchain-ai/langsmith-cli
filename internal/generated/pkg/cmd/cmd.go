@@ -160,6 +160,7 @@ func init() {
 				Category: "API RESOURCE",
 				Suggest:  true,
 				Commands: []*cli.Command{
+					&datasetsClone,
 					&datasetsRetrieveVersion,
 					&datasetsUpdateTags,
 				},
