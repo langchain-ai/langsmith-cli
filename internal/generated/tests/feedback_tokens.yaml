@@ -1,0 +1,155 @@
+# Tests for `langsmith feedback tokens`. Contract cases run against a fake API.
+# update submits feedback with a token.
+resource: feedback:tokens
+
+contract:
+  - name: create with every field
+    op: create
+    args:
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --feedback-key
+      - correctness
+      - --expires-in.days
+      - "1"
+      - --expires-in.hours
+      - "2"
+      - --expires-in.minutes
+      - "30"
+      - --feedback-config.type
+      - continuous
+      - --feedback-config.min
+      - "-1"
+      - --feedback-config.max
+      - "1"
+    response:
+      body: &token
+        id: 33333333-3333-3333-3333-333333333333
+        url: https://example.com/api/v1/feedback/tokens/33333333-3333-3333-3333-333333333333
+        expires_at: "2030-01-01T00:00:00Z"
+        feedback_key: correctness
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens
+      body:
+        run_id: 22222222-2222-2222-2222-222222222222
+        feedback_key: correctness
+        expires_in: {days: 1, hours: 2, minutes: 30}
+        feedback_config: {type: continuous, min: -1, max: 1}
+      stdout: 33333333-3333-3333-3333-333333333333
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: create with an expiry time
+    op: create
+    args:
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --feedback-key
+      - correctness
+      - --expires-at
+      - "2030-01-01T00:00:00Z"
+    response:
+      body: *token
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens
+      body:
+        run_id: 22222222-2222-2222-2222-222222222222
+        feedback_key: correctness
+        expires_at: "2030-01-01T00:00:00Z"
+
+  - name: create several tokens
+    op: create
+    args:
+      - --body
+      - '{run_id: 22222222-2222-2222-2222-222222222222, feedback_key: correctness, expires_in: {days: 1}}'
+      - --body
+      - '{run_id: 22222222-2222-2222-2222-222222222222, feedback_key: helpfulness, expires_in: {days: 1}}'
+    response:
+      body: [*token]
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens
+      body:
+        - {run_id: 22222222-2222-2222-2222-222222222222, feedback_key: correctness, expires_in: {days: 1}}
+        - {run_id: 22222222-2222-2222-2222-222222222222, feedback_key: helpfulness, expires_in: {days: 1}}
+
+  - name: create in a workspace
+    op: create
+    args: [--run-id, 22222222-2222-2222-2222-222222222222, --feedback-key, correctness, --expires-in.days, "1", --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *token
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {run_id: 22222222-2222-2222-2222-222222222222, feedback_key: correctness, expires_in: {days: 1}}
+
+  # The API requires one of --expires-at or --expires-in.* and returns 400 without either.
+  - name: create without an expiry reports the API error
+    op: create
+    args: [--run-id, 22222222-2222-2222-2222-222222222222, --feedback-key, correctness]
+    response:
+      status: 400
+      body: {detail: One of expires_at and expires_in must be set}
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens
+      body: {run_id: 22222222-2222-2222-2222-222222222222, feedback_key: correctness}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  - name: update submits feedback with every field
+    op: update
+    args:
+      - --token
+      - 33333333-3333-3333-3333-333333333333
+      - --score
+      - "0.5"
+      - --value
+      - partial
+      - --comment
+      - Mostly right
+      - --correction
+      - '{answer: 42}'
+      - --metadata
+      - '{source: cli}'
+      - --extend-trace-retention=false
+    # The API returns null on success.
+    response:
+      body: null
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens/33333333-3333-3333-3333-333333333333
+      body:
+        score: 0.5
+        value: partial
+        comment: Mostly right
+        correction: {answer: 42}
+        metadata: {source: cli}
+        extend_trace_retention: false
+
+  - name: update with a score only
+    op: update
+    args: [--token, 33333333-3333-3333-3333-333333333333, --score, "true"]
+    response:
+      body: null
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens/33333333-3333-3333-3333-333333333333
+      body: {score: true}
+
+  - name: update reports API errors
+    op: update
+    args: [--token, 33333333-3333-3333-3333-333333333333, --score, "1"]
+    response:
+      status: 404
+      body: {detail: Token not found or expired}
+    want:
+      method: POST
+      path: /api/v1/feedback/tokens/33333333-3333-3333-3333-333333333333
+      body: {score: 1}
+      exit_code: 1
+      stderr: 404 Not Found
+
+lifecycle_skip: "Tokens are created for an existing run, and the CLI cannot create a run; runs are ingested through the SDKs."

@@ -1,0 +1,51 @@
+# Tests for `langsmith feedback configs`. Contract cases run against a fake API.
+resource: feedback:configs
+
+contract:
+  - name: delete one config by id
+    op: delete
+    args: [--id, 11111111-1111-1111-1111-111111111111]
+    stdin: "y\n"
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v1/feedback-configs
+      query: {id: 11111111-1111-1111-1111-111111111111}
+      stderr: This permanently deletes
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: delete every config of a key
+    op: delete
+    args: [--feedback-key, correctness, --yes, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      status: 204
+    want:
+      method: DELETE
+      path: /api/v1/feedback-configs
+      query: {feedback_key: correctness}
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+
+  - name: delete without confirmation sends nothing
+    op: delete
+    args: [--feedback-key, correctness]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  # Only --id returns 404 for no match; --feedback-key with no match returns 204.
+  - name: delete reports API errors
+    op: delete
+    args: [--id, 55555555-5555-5555-5555-555555555555, --yes]
+    response:
+      status: 404
+      body: {detail: Feedback config not found}
+    want:
+      method: DELETE
+      path: /api/v1/feedback-configs
+      query: {id: 55555555-5555-5555-5555-555555555555}
+      exit_code: 1
+      stderr: 404 Not Found
+
+lifecycle_skip: "The CLI cannot create a feedback config, so a live delete would remove one the test did not create."

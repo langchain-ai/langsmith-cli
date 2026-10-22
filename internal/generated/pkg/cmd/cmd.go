@@ -238,6 +238,33 @@ func init() {
 				},
 			},
 			{
+				Name:     "feedback",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&feedbackRetrieve,
+					&feedbackUpdate,
+					&feedbackDelete,
+				},
+			},
+			{
+				Name:     "feedback:tokens",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&feedbackTokensCreate,
+					&feedbackTokensUpdate,
+				},
+			},
+			{
+				Name:     "feedback:configs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&feedbackConfigsDelete,
+				},
+			},
+			{
 				Name:     "public:runs",
 				Category: "API RESOURCE",
 				Suggest:  true,

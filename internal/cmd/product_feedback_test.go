@@ -28,20 +28,18 @@ func TestProductFeedbackCommandMetadata(t *testing.T) {
 	}
 }
 
-func TestDeprecatedFeedbackCommandStillWorks(t *testing.T) {
+// feedback is the run feedback API resource, not the old alias of report.
+func TestFeedbackIsTheRunFeedbackResource(t *testing.T) {
 	root := NewRootCmd("1.2.3", "1.2.3")
-	var stderr bytes.Buffer
-	root.SetOut(&stderr)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"feedback", "  "})
-	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
-		t.Fatalf("feedback error = %v, want the report validation error", err)
+	c, _, err := root.Find([]string{"feedback"})
+	if err != nil || c.Name() != "feedback" {
+		t.Fatalf("find feedback = %v, %v", c, err)
 	}
-	if !strings.Contains(stderr.String(), `use "langsmith report" instead`) {
-		t.Errorf("stderr = %q, want a deprecation notice", stderr.String())
+	if c.Deprecated != "" || !c.IsAvailableCommand() {
+		t.Errorf("feedback should be a visible command, deprecated=%q", c.Deprecated)
 	}
-	if c, _, _ := root.Find([]string{"feedback"}); c.IsAvailableCommand() {
-		t.Error("feedback should be hidden from help")
+	if strings.Contains(c.Short, "LangSmith CLI") {
+		t.Errorf("feedback help still describes product feedback: %q", c.Short)
 	}
 }
 

@@ -79,7 +79,6 @@ Quick start:
 
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
-	rootCmd.AddCommand(newDeprecatedFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newRunCmd())
