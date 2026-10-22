@@ -136,6 +136,15 @@ func init() {
 				},
 			},
 			{
+				Name:     "datasets:splits",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsSplitsCreate,
+					&datasetsSplitsRetrieve,
+				},
+			},
+			{
 				Name:     "runs",
 				Category: "API RESOURCE",
 				Suggest:  true,
