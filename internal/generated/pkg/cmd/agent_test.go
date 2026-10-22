@@ -66,6 +66,7 @@ func TestAgentsUpdate(t *testing.T) {
 			"--agent-id", "agent_id",
 			"--agent-type", "CUSTOM",
 			"--name", "name",
+			"--owner-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--source-type", "LSD",
 		)
 	})
@@ -75,6 +76,7 @@ func TestAgentsUpdate(t *testing.T) {
 		pipeData := []byte("" +
 			"agent_type: CUSTOM\n" +
 			"name: name\n" +
+			"owner_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
 			"source_type: LSD\n")
 		mocktest.TestRunMockTestWithPipeAndFlags(
 			t, pipeData,
