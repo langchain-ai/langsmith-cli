@@ -137,6 +137,25 @@ func init() {
 				},
 			},
 			{
+				Name:     "examples",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&examplesRetrieve,
+					&examplesUpdate,
+					&examplesDeleteAll,
+					&examplesRetrieveCount,
+				},
+			},
+			{
+				Name:     "examples:bulk",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&examplesBulkCreate,
+				},
+			},
+			{
 				Name:     "datasets",
 				Category: "API RESOURCE",
 				Suggest:  true,
