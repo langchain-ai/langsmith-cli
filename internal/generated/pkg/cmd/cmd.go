@@ -89,6 +89,14 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "product-feedback",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&productFeedbackRetrieve,
+				},
+			},
+			{
 				Name:     "agents",
 				Category: "API RESOURCE",
 				Suggest:  true,
