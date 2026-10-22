@@ -205,6 +205,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "settings",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&settingsList,
+				},
+			},
+			{
 				Name:            "@manpages",
 				Usage:           "Generate documentation for 'man'",
 				UsageText:       "langsmith @manpages [-o langsmith.1] [--gzip]",
