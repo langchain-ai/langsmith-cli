@@ -192,6 +192,15 @@ func init() {
 				},
 			},
 			{
+				Name:     "public:runs",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&publicRunsRetrieve,
+					&publicRunsQuery,
+				},
+			},
+			{
 				Name:     "prompt-webhooks",
 				Category: "API RESOURCE",
 				Suggest:  true,

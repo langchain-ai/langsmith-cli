@@ -1,0 +1,118 @@
+# Tests for `langsmith public runs`. Contract cases run against a fake API.
+resource: public:runs
+
+contract:
+  - name: retrieve one run of a shared trace
+    op: retrieve
+    args:
+      - --share-token
+      - 11111111-1111-1111-1111-111111111111
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --start-time
+      - "2026-10-01T00:00:00Z"
+      - --select
+      - NAME
+    response:
+      body:
+        run:
+          id: 22222222-2222-2222-2222-222222222222
+          name: shared-chain
+    want:
+      method: GET
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/run/22222222-2222-2222-2222-222222222222
+      query: {start_time: "2026-10-01T00:00:00Z", selects: NAME}
+      stdout: shared-chain
+
+  - name: retrieve requires a start time and selects
+    op: retrieve
+    args: [--share-token, 11111111-1111-1111-1111-111111111111, --run-id, 22222222-2222-2222-2222-222222222222]
+    want:
+      requests: 0
+      exit_code: 1
+      stderr: start-time
+
+  - name: retrieve reports API errors
+    op: retrieve
+    args:
+      - --share-token
+      - 11111111-1111-1111-1111-111111111111
+      - --run-id
+      - 22222222-2222-2222-2222-222222222222
+      - --start-time
+      - "2026-10-01T00:00:00Z"
+      - --select
+      - NAME
+    response:
+      status: 404
+      body: {detail: Run not found}
+    want:
+      method: GET
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/run/22222222-2222-2222-2222-222222222222
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: query with several selects
+    op: query
+    args:
+      - --share-token
+      - 11111111-1111-1111-1111-111111111111
+      - --select
+      - ID
+      - --select
+      - NAME
+      - --select
+      - START_TIME
+      - --select
+      - INPUTS_PREVIEW
+    response:
+      body:
+        runs:
+          - id: 22222222-2222-2222-2222-222222222222
+            name: shared-chain
+            start_time: "2026-10-01T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/runs/query
+      body: {selects: [ID, NAME, START_TIME, INPUTS_PREVIEW]}
+      stdout: shared-chain
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: query with one select
+    op: query
+    args: [--share-token, 11111111-1111-1111-1111-111111111111, --select, STATUS]
+    response:
+      body: {runs: []}
+    want:
+      method: POST
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/runs/query
+      body: {selects: [STATUS]}
+
+  # The API requires at least one --select and returns 400 without it.
+  - name: query without selects reports the API error
+    op: query
+    args: [--share-token, 11111111-1111-1111-1111-111111111111]
+    response:
+      status: 400
+      body: {detail: selects is required}
+    want:
+      method: POST
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/runs/query
+      body: {}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+  - name: query reports API errors
+    op: query
+    args: [--share-token, 11111111-1111-1111-1111-111111111111, --select, NAME]
+    response:
+      status: 404
+      body: {detail: Trace not found}
+    want:
+      method: POST
+      path: /api/v2/public/11111111-1111-1111-1111-111111111111/runs/query
+      body: {selects: [NAME]}
+      exit_code: 1
+      stderr: 404 Not Found
+
+lifecycle_skip: "Needs a share token, which comes from sharing a run; the CLI cannot create a run to share, since runs are ingested through the SDKs."
