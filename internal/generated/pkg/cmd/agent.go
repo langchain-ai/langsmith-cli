@@ -16,7 +16,7 @@ import (
 
 var agentsCreate = cli.Command{
 	Name:    "create",
-	Usage:   "Creates an Agent with a caller-assigned ID. Returns 409 if the ID already\nexists. Creates all four environments unless production_only is set for a FLEET\nagent. agent_type defaults to CUSTOM. Requires permission to create projects.\nThe response does not include runtime bindings.",
+	Usage:   "Creates an Agent with a caller-assigned ID. Returns 409 if the ID already\nexists. Creates all four environments unless production_only is set for a FLEET\nagent. agent_type defaults to CUSTOM. The authenticated user becomes the owner\nwhen available. Requires permission to create projects. The response does not\ninclude runtime bindings.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
@@ -73,7 +73,7 @@ var agentsRetrieve = cli.Command{
 
 var agentsUpdate = cli.Command{
 	Name:    "update",
-	Usage:   "Updates an Agent's name, source_type, or agent_type. Omitted fields keep their\nvalues. Changing agent_type requires workspaces:manage in addition to project\nupdate access; repeating the current type is a no-op. Source type can change\nonly for an EXTERNAL Agent without runtime bindings. The id is immutable and is\nrejected when present. Requires update permission on every environment project.",
+	Usage:   "Updates an Agent's name, source_type, agent_type, or owner_id. Omitted fields\nkeep their values. Changing or clearing owner_id additionally requires\nworkspaces:manage; assigning an owner also requires workspaces:read and active\nworkspace membership. Fleet ownership cannot be changed through this endpoint.\nChanging agent_type requires workspaces:manage in addition to project update\naccess; repeating the current type is a no-op. Source type can change only for\nan EXTERNAL Agent without runtime bindings. The id is immutable and is rejected\nwhen present. Requires update permission on every environment project.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
@@ -90,6 +90,11 @@ var agentsUpdate = cli.Command{
 			Name:     "name",
 			Usage:    "New display name. Omit to keep the current name.",
 			BodyPath: "name",
+		},
+		&requestflag.Flag[*string]{
+			Name:     "owner-id",
+			Usage:    "Omit to leave the owner unchanged; null clears it.",
+			BodyPath: "owner_id",
 		},
 		&requestflag.Flag[string]{
 			Name:     "source-type",
