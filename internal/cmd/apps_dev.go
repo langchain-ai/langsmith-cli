@@ -272,7 +272,7 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 			_, _ = w.Write([]byte(devWaitingHTML(fmt.Sprintf("entrypoint %q does not exist yet in %s — waiting for the initial build to finish", entrypoint, dir))))
 			return
 		}
-		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, token, workspaceID, webOrigin)))
+		_, _ = w.Write([]byte(renderDevHostHTML(files, entrypoint, workspaceID, webOrigin)))
 	})
 
 	mux.HandleFunc("/__ls_dev/mtime", func(w http.ResponseWriter, r *http.Request) {
@@ -294,8 +294,40 @@ func prepareAppsDevServer(c *client.Client, dir, entrypoint string) (srv *http.S
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("starting local server: %w", err)
 	}
-	return &http.Server{Handler: mux}, ln, "http://" + ln.Addr().String() + "/", nil
+	origin := "http://" + ln.Addr().String()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Frame-Options", "DENY")
+		if r.Host != ln.Addr().String() || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != origin) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if r.URL.Path == "/__ls_dev/bootstrap" && r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(devBootstrapHTML))
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-LS-Dev-Token")), []byte(token)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	return &http.Server{Handler: handler}, ln, origin + "/__ls_dev/bootstrap#" + token, nil
 }
+
+const devBootstrapHTML = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Local sandboxed preview</title></head>
+<body><script>
+fetch('/', { headers: { 'X-LS-Dev-Token': location.hash.slice(1) }, cache: 'no-store' })
+  .then(function(r) {
+    if (!r.ok) throw new Error('Preview authorization failed. Reopen the URL printed by langsmith apps dev.');
+    return r.text();
+  })
+  .then(function(page) { document.open(); document.write(page); document.close(); })
+  .catch(function(err) { document.body.textContent = err.message; });
+</script></body></html>`
 
 var allowedProxyMethods = map[string]bool{
 	"GET": true, "POST": true, "PATCH": true, "PUT": true, "DELETE": true,
@@ -546,7 +578,7 @@ func devWaitingHTML(message string) string {
 // build produces it — no need to track changes, any existing bundle is an
 // improvement over this page.
 setInterval(function() {
-  fetch('/__ls_dev/mtime', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+  fetch('/__ls_dev/mtime', { cache: 'no-store', headers: { 'X-LS-Dev-Token': location.hash.slice(1) } }).then(function(r){ return r.json(); }).then(function(j){
     if (j.exists) { location.reload(); }
   }).catch(function(){});
 }, 500);
@@ -556,7 +588,7 @@ setInterval(function() {
 
 // renderDevHostHTML builds the top-level host page: the sandboxed iframe
 // plus the postMessage bridge and a Light/Dark mode toolbar.
-func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, webOrigin string) string {
+func renderDevHostHTML(files map[string]string, entrypoint, workspaceID, webOrigin string) string {
 	filesJSON, _ := json.Marshal(files)
 	entrypointJSON, _ := json.Marshal(entrypoint)
 	workspaceIDJSON, _ := json.Marshal(workspaceID)
@@ -569,7 +601,6 @@ func renderDevHostHTML(files map[string]string, entrypoint, token, workspaceID, 
 
 	return strings.NewReplacer(
 		"__SANDBOX_SRCDOC__", html.EscapeString(inner),
-		"__LS_DEV_TOKEN__", token,
 		"__LS_WORKSPACE_ID_JSON__", escapeForScript(workspaceIDJSON),
 		"__LS_WEB_ORIGIN_JSON__", escapeForScript(webOriginJSON),
 	).Replace(devHostHTMLTemplate)
@@ -758,7 +789,7 @@ const devHostHTMLTemplate = `<!doctype html>
     if (msg.type === 'LS_LOG') {
       fetch('/__ls_dev/log', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': '__LS_DEV_TOKEN__' },
+        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': location.hash.slice(1) },
         body: JSON.stringify({ level: msg.level, message: msg.message }),
       }).catch(function() {});
     }
@@ -766,7 +797,7 @@ const devHostHTMLTemplate = `<!doctype html>
     if (msg.type === 'LS_API') {
       fetch('/__ls_dev/call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': '__LS_DEV_TOKEN__' },
+        headers: { 'Content-Type': 'application/json', 'X-LS-Dev-Token': location.hash.slice(1) },
         body: JSON.stringify({ operation: msg.operation, args: msg.args || {} }),
       })
         .then(function(r) {
@@ -794,7 +825,7 @@ const devHostHTMLTemplate = `<!doctype html>
   // newer mtime than the last one we saw it have.
   var lastMtime = null;
   setInterval(function() {
-    fetch('/__ls_dev/mtime', { cache: 'no-store' })
+    fetch('/__ls_dev/mtime', { cache: 'no-store', headers: { 'X-LS-Dev-Token': location.hash.slice(1) } })
       .then(function(r) { return r.json(); })
       .then(function(j) {
         if (!j.exists) return;

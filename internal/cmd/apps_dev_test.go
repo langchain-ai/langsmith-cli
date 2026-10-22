@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,6 +47,115 @@ func seedDevApp(t *testing.T, dir, entrypointContent string) string {
 	return entrypointAbs
 }
 
+func getDevPage(t *testing.T, previewURL, path string) (*http.Response, error) {
+	t.Helper()
+	u, err := url.Parse(previewURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := u.Fragment
+	u.Fragment = ""
+	u.Path = path
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-LS-Dev-Token", token)
+	return http.DefaultClient.Do(req)
+}
+
+func TestPrepareAppsDevServer_ProtectsPreviewRoutes(t *testing.T) {
+	dir := t.TempDir()
+	seedDevApp(t, dir, "module.exports = { render: function(){} }; 'PRIVATE_PROJECT_DATA'")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	u, err := url.Parse(previewURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := u.Fragment
+	base := u.Scheme + "://" + u.Host
+	for _, path := range []string{"/", "/__ls_dev/mtime", "/__ls_dev/call", "/__ls_dev/log", "/unknown"} {
+		for _, supplied := range []string{"", "wrong-token"} {
+			method := http.MethodGet
+			if path == "/__ls_dev/call" || path == "/__ls_dev/log" {
+				method = http.MethodPost
+			}
+			req, err := http.NewRequest(method, base+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-LS-Dev-Token", supplied)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s with token %q: got %d, want 403", path, supplied, resp.StatusCode)
+			}
+		}
+	}
+	for _, path := range []string{"/", "/__ls_dev/mtime", "/__ls_dev/bootstrap"} {
+		resp, err := getDevPage(t, previewURL, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("authenticated %s: got %d, want 200", path, resp.StatusCode)
+		}
+		if strings.Contains(string(body), token) {
+			t.Errorf("%s leaked the dev token", path)
+		}
+		if resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("Referrer-Policy") != "no-referrer" || resp.Header.Get("X-Frame-Options") != "DENY" {
+			t.Errorf("%s missing security headers", path)
+		}
+	}
+	resp, err := http.Get(base + "/__ls_dev/bootstrap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || string(body) != devBootstrapHTML || strings.Contains(string(body), "PRIVATE_PROJECT_DATA") {
+		t.Fatal("public bootstrap must serve only the static, token-free loader")
+	}
+	for _, path := range []string{"/", "/__ls_dev/bootstrap"} {
+		for _, header := range []string{"Host", "Origin"} {
+			req, err := http.NewRequest(http.MethodGet, base+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("X-LS-Dev-Token", token)
+			if header == "Host" {
+				req.Host = "attacker.example"
+			} else {
+				req.Header.Set(header, "https://attacker.example")
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s with hostile %s: got %d, want 403", path, header, resp.StatusCode)
+			}
+		}
+	}
+}
+
 func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	dir := t.TempDir()
 	entrypointAbs := seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'v1'; } }")
@@ -60,7 +170,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	resp, err := http.Get(previewURL)
+	resp, err := getDevPage(t, previewURL, "/")
 	if err != nil {
 		t.Fatalf("GET %s: %v", previewURL, err)
 	}
@@ -89,7 +199,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 	if err := os.WriteFile(entrypointAbs, []byte("module.exports = { render: function(d, r) { r.textContent = 'v2'; } }"), 0o644); err != nil {
 		t.Fatalf("rewrite bundle.js: %v", err)
 	}
-	resp2, err := http.Get(previewURL)
+	resp2, err := getDevPage(t, previewURL, "/")
 	if err != nil {
 		t.Fatalf("GET %s (2nd): %v", previewURL, err)
 	}
@@ -113,7 +223,7 @@ func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	resp, err := http.Get(previewURL)
+	resp, err := getDevPage(t, previewURL, "/")
 	if err != nil {
 		t.Fatalf("GET %s: %v", previewURL, err)
 	}
@@ -141,7 +251,7 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	resp, err := http.Get(previewURL)
+	resp, err := getDevPage(t, previewURL, "/")
 	if err != nil {
 		t.Fatalf("GET %s: %v", previewURL, err)
 	}
@@ -191,7 +301,7 @@ func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	resp, err := http.Get(previewURL)
+	resp, err := getDevPage(t, previewURL, "/")
 	if err != nil {
 		t.Fatalf("GET %s: %v", previewURL, err)
 	}
@@ -214,9 +324,9 @@ func TestPrepareAppsDevServer_MtimeReflectsFileState(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	mtimeURL := strings.TrimSuffix(previewURL, "/") + "/__ls_dev/mtime"
+	mtimeURL := "/__ls_dev/mtime"
 	get := func() (bool, int64) {
-		resp, err := http.Get(mtimeURL)
+		resp, err := getDevPage(t, previewURL, mtimeURL)
 		if err != nil {
 			t.Fatalf("GET %s: %v", mtimeURL, err)
 		}
