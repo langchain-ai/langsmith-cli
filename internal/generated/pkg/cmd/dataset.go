@@ -14,6 +14,68 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+var datasetsUpdate = cli.Command{
+	Name:    "update",
+	Usage:   "Update a dataset.",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:      "dataset-id",
+			Required:  true,
+			PathParam: "dataset_id",
+		},
+		&requestflag.Flag[any]{
+			Name:     "baseline-experiment-id",
+			Usage:    "ID of the experiment used as the baseline when comparing experiments on this dataset. Must be an experiment run on this dataset, otherwise returns 400. Null clears it. Omit to keep the current baseline.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "baseline_experiment_id",
+		},
+		&requestflag.Flag[any]{
+			Name:     "description",
+			Usage:    "New dataset description. Null clears it. Omit to keep the current description.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "description",
+		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "inputs-schema-definition",
+			Usage:    "JSON Schema that example inputs must match. Replaces the current inputs schema as a whole; null removes it, which returns 400 while transformations still point into inputs. Only key-value datasets support schemas. Every existing example must match the new schema, otherwise the request returns 400 with the IDs of the examples that do not, and nothing is changed. Omit to keep the current schema.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "inputs_schema_definition",
+		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "metadata",
+			Usage:    "Dataset metadata as a JSON object. Replaces the current metadata as a whole; keys are not merged. Send an empty object to clear it. Omit to keep the current metadata.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "metadata",
+		},
+		&requestflag.Flag[any]{
+			Name:     "name",
+			Usage:    "New dataset name. Must be unique in the workspace; a name already used by another dataset returns 409. Null returns 400. Omit to keep the current name.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "name",
+		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "outputs-schema-definition",
+			Usage:    "JSON Schema that example outputs must match. Replaces the current outputs schema as a whole; null removes it, which returns 400 while transformations still point into outputs. Only key-value datasets support schemas. Every existing example must match the new schema, otherwise the request returns 400 with the IDs of the examples that do not, and nothing is changed. Omit to keep the current schema.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "outputs_schema_definition",
+		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "patch-examples",
+			Usage:    "Example updates keyed by example ID, applied in the same transaction so existing examples can be fixed to match a new schema. Only used when the request also sets inputs_schema_definition, outputs_schema_definition, or transformations and the dataset ends up with at least one schema; otherwise it is ignored. Each update replaces the inputs, outputs, metadata, or split it sets and keeps the rest; attachment operations are ignored. An ID that is not an example in this dataset returns 404.",
+			BodyPath: "patch_examples",
+		},
+		&requestflag.Flag[any]{
+			Name:     "transformations",
+			Usage:    "Transformations applied to new examples, each a path into inputs or outputs and a transformation type. Replaces the whole current list; null or an empty list removes all of them. Existing examples are not transformed. Requires a schema on the inputs or outputs the path points into, otherwise returns 400. Omit to keep the current list.",
+			Default:  map[string]interface{}{"__missing__": "__missing__"},
+			BodyPath: "transformations",
+		},
+	},
+	Action:          handleDatasetsUpdate,
+	HideHelpCommand: true,
+}
+
 var datasetsClone = cli.Command{
 	Name:    "clone",
 	Usage:   "Copy examples from a source dataset into an existing target dataset.",
@@ -105,6 +167,55 @@ var datasetsUpdateTags = cli.Command{
 	},
 	Action:          handleDatasetsUpdateTags,
 	HideHelpCommand: true,
+}
+
+func handleDatasetsUpdate(ctx context.Context, cmd *cli.Command) error {
+	client := langsmith.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("dataset-id") && len(unusedArgs) > 0 {
+		cmd.Set("dataset-id", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatRepeat,
+		ApplicationJSON,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	params := langsmith.DatasetUpdateParams{}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Datasets.Update(
+		ctx,
+		cmd.Value("dataset-id").(string),
+		params,
+		options...,
+	)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	explicitFormat := cmd.Root().IsSet("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(obj, ShowJSONOpts{
+		ExplicitFormat: explicitFormat,
+		Format:         format,
+		RawOutput:      cmd.Root().Bool("raw-output"),
+		Title:          "datasets update",
+		Transform:      transform,
+	})
 }
 
 func handleDatasetsClone(ctx context.Context, cmd *cli.Command) error {

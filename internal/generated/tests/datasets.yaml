@@ -45,6 +45,80 @@ contract:
       exit_code: 1
       stderr: "yes"
 
+  - name: update with every field
+    op: update
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - support questions
+      - --description
+      - questions from the support queue
+      - --inputs-schema-definition
+      - "{type: object, properties: {messages: {type: array}}}"
+      - --outputs-schema-definition
+      - "{type: object, properties: {answer: {type: string}}}"
+      # Nullable list and map flags take a YAML literal.
+      - --transformations
+      - "[{path: [inputs, messages], transformation_type: convert_to_openai_message}]"
+      - --metadata
+      - "{team: support, version: 2}"
+      - --baseline-experiment-id
+      - 22222222-2222-2222-2222-222222222222
+      - --patch-examples
+      - "{33333333-3333-3333-3333-333333333333: {outputs: {answer: fixed}}}"
+    response:
+      body: &dataset
+        id: 11111111-1111-1111-1111-111111111111
+        name: support questions
+        tenant_id: 55555555-5555-5555-5555-555555555555
+        created_at: "2026-10-01T00:00:00Z"
+        modified_at: "2026-10-02T00:00:00Z"
+    want:
+      method: PATCH
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111
+      body:
+        name: support questions
+        description: questions from the support queue
+        inputs_schema_definition: {type: object, properties: {messages: {type: array}}}
+        outputs_schema_definition: {type: object, properties: {answer: {type: string}}}
+        transformations: [{path: [inputs, messages], transformation_type: convert_to_openai_message}]
+        metadata: {team: support, version: 2}
+        baseline_experiment_id: 22222222-2222-2222-2222-222222222222
+        patch_examples: {33333333-3333-3333-3333-333333333333: {outputs: {answer: fixed}}}
+      stdout: support questions
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: update sends only the flags given
+    op: update
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --name
+      - support questions v2
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: *dataset
+    want:
+      method: PATCH
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {name: support questions v2}
+
+  - name: update reports API errors
+    op: update
+    args: [--dataset-id, 11111111-1111-1111-1111-111111111111, --name, renamed]
+    response:
+      status: 404
+      body: {detail: Dataset not found}
+    want:
+      method: PATCH
+      path: /api/v1/datasets/11111111-1111-1111-1111-111111111111
+      body: {name: renamed}
+      exit_code: 1
+      stderr: 404 Not Found
+
   - name: clone with every field
     op: clone
     args:
@@ -183,4 +257,4 @@ contract:
       exit_code: 1
       stderr: 400 Bad Request
 
-lifecycle_skip: "Reads, tags and copies versions of existing datasets, which these generated commands cannot create."
+lifecycle_skip: "Reads, updates, tags and copies versions of existing datasets, which these generated commands cannot create."

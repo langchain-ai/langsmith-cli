@@ -8,6 +8,69 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/mocktest"
 )
 
+func TestDatasetsUpdate(t *testing.T) {
+	t.Skip("Mock server tests are disabled")
+	t.Run("regular flags", func(t *testing.T) {
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"datasets", "update",
+			"--dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--baseline-experiment-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--description", "string",
+			"--inputs-schema-definition", "{foo: bar}",
+			"--metadata", "{foo: bar}",
+			"--name", "string",
+			"--outputs-schema-definition", "{foo: bar}",
+			"--patch-examples", "{foo: {attachments_operations: {rename: {foo: string}, retain: [string]}, dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, inputs: {foo: bar}, metadata: {foo: bar}, outputs: {foo: bar}, overwrite: true, split: [string]}}",
+			"--transformations", "[{path: [string], transformation_type: convert_to_openai_message}]",
+		)
+	})
+
+	t.Run("piping data", func(t *testing.T) {
+		// Test piping YAML data over stdin
+		pipeData := []byte("" +
+			"baseline_experiment_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
+			"description: string\n" +
+			"inputs_schema_definition:\n" +
+			"  foo: bar\n" +
+			"metadata:\n" +
+			"  foo: bar\n" +
+			"name: string\n" +
+			"outputs_schema_definition:\n" +
+			"  foo: bar\n" +
+			"patch_examples:\n" +
+			"  foo:\n" +
+			"    attachments_operations:\n" +
+			"      rename:\n" +
+			"        foo: string\n" +
+			"      retain:\n" +
+			"        - string\n" +
+			"    dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
+			"    inputs:\n" +
+			"      foo: bar\n" +
+			"    metadata:\n" +
+			"      foo: bar\n" +
+			"    outputs:\n" +
+			"      foo: bar\n" +
+			"    overwrite: true\n" +
+			"    split:\n" +
+			"      - string\n" +
+			"transformations:\n" +
+			"  - path:\n" +
+			"      - string\n" +
+			"    transformation_type: convert_to_openai_message\n")
+		mocktest.TestRunMockTestWithPipeAndFlags(
+			t, pipeData,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"datasets", "update",
+			"--dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+		)
+	})
+}
+
 func TestDatasetsClone(t *testing.T) {
 	t.Skip("Mock server tests are disabled")
 	t.Run("regular flags", func(t *testing.T) {
