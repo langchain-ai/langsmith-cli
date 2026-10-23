@@ -335,6 +335,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "info",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&infoList,
+				},
+			},
+			{
 				Name:     "workspaces",
 				Category: "API RESOURCE",
 				Suggest:  true,

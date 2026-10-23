@@ -1,0 +1,65 @@
+# Tests for `langsmith info`. Contract cases run against a fake API.
+resource: info
+
+contract:
+  - name: list
+    op: list
+    response:
+      body: &info
+        version: 0.12.40
+        git_sha: 0123456789abcdef
+        engine_github_web_base_url: https://github.com
+        instance_flags: {search_enabled: true, org_creation_disabled: false}
+        batch_ingest_config:
+          use_multipart_endpoint: true
+          scale_up_qsize_trigger: 1000
+          scale_up_nthreads_limit: 16
+          scale_down_nempty_trigger: 4
+          size_limit: 100
+          size_limit_bytes: 20971520
+        sdk_versions:
+          max_python_sdk_version: 0.14.11
+          max_js_sdk_version: 0.11.0
+          max_go_sdk_version: 0.28.3
+          max_java_sdk_version: 0.1.0-beta.27
+    want:
+      method: GET
+      path: /api/v1/info
+      stdout: 0.12.40
+
+  # The response is instance-wide; the header is sent but does not change it.
+  - name: list sends the workspace header
+    op: list
+    args: [--workspace, 11111111-1111-1111-1111-111111111111]
+    response:
+      body: *info
+    want:
+      method: GET
+      path: /api/v1/info
+      headers: {X-Tenant-Id: 11111111-1111-1111-1111-111111111111}
+      stdout: search_enabled
+
+  # The CLI always sends the profile's credentials. The server ignores them by
+  # default, but a deployment that requires auth for this endpoint answers 403
+  # to an API key that fails validation.
+  - name: list reports API errors
+    op: list
+    response:
+      status: 403
+      body: {error: Forbidden}
+    want:
+      method: GET
+      path: /api/v1/info
+      exit_code: 1
+      stderr: 403 Forbidden
+
+# Read-only: nothing is created, so there is nothing to clean up.
+lifecycle:
+  steps:
+    - name: list
+      args: [list]
+      # These keys are always present, so check the values are not empty.
+      exists:
+        - '[version].#(!="")'
+        - '[sdk_versions.max_python_sdk_version].#(!="")'
+        - instance_flags
