@@ -36,6 +36,7 @@ var authCommand = structured.Parent{
 	Short: "Manage authentication",
 	Children: []func() *cobra.Command{
 		newLoginCmd,
+		newSignupCmd,
 		authInfoCommand.Cobra,
 		authTokenCommand.Cobra,
 	},

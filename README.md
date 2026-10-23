@@ -50,6 +50,7 @@ Or save the credentials in a profile:
 
 ```bash
 langsmith auth login                    # OAuth
+langsmith auth signup                   # Create an account in the browser, then log in to it
 langsmith profiles create prod           # API key, taken from $LANGSMITH_API_KEY
 ```
 

@@ -147,6 +147,22 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 }
 
 func TestLoginOpensVerificationURIComplete(t *testing.T) {
+	for _, tc := range []struct {
+		command     string
+		query       string
+		instruction string
+	}{
+		{"login", "?signupSource=cli&user_code=ABCD-EFGH", "No LangSmith account yet? You can sign up on that page."},
+		{"signup", "?mode=sign_up&signupSource=cli&user_code=ABCD-EFGH", "Open this URL to create your LangSmith account and authorize the CLI:"},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			testDeviceAuthOpensVerificationURIComplete(t, tc.command, tc.query, tc.instruction)
+		})
+	}
+}
+
+func testDeviceAuthOpensVerificationURIComplete(t *testing.T, command, query, instruction string) {
+	t.Helper()
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -174,16 +190,16 @@ func TestLoginOpensVerificationURIComplete(t *testing.T) {
 	t.Setenv("LANGSMITH_PROFILE", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")
 
-	var completeURL string
+	var activateURL string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/device/code":
-			completeURL = tsActivateURL(r) + "?user_code=ABCD-EFGH"
+			activateURL = tsActivateURL(r)
 			_ = json.NewEncoder(w).Encode(deviceCodeResponse{
 				DeviceCode:              "device-code",
 				UserCode:                "ABCD-EFGH",
 				VerificationURI:         tsActivateURL(r),
-				VerificationURIComplete: completeURL,
+				VerificationURIComplete: activateURL + "?user_code=ABCD-EFGH",
 				ExpiresIn:               60,
 			})
 		case "/oauth/token":
@@ -202,16 +218,20 @@ func TestLoginOpensVerificationURIComplete(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"--format=json", "auth", "login", "--api-url", ts.URL + "/api/v1", "--workspace-id", "00000000-0000-0000-0000-000000000123"})
+	root.SetArgs([]string{"--format=json", "auth", command, "--api-url", ts.URL + "/api/v1", "--workspace-id", "00000000-0000-0000-0000-000000000123"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("login returned error: %v\nstderr: %s", err, stderr.String())
 	}
+	completeURL := activateURL + query
 	if len(opened) != 1 || opened[0] != completeURL {
 		t.Fatalf("expected the browser to open %q, opened %v", completeURL, opened)
 	}
 	if !strings.Contains(stderr.String(), completeURL) {
 		t.Fatalf("expected login instructions to include %q, got %q", completeURL, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), instruction) {
+		t.Fatalf("expected login instructions to include %q, got %q", instruction, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "Check that the page shows this code, or enter it: ABCD-EFGH") {
 		t.Fatalf("expected login instructions to ask to check the code, got %q", stderr.String())

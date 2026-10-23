@@ -69,7 +69,37 @@ func (e *oauthErrorResponse) Error() string {
 	return e.Code + ": " + e.ErrorDescription
 }
 
+// activationURL tags the activation page with signupSource=cli, so an account
+// created there is attributed to the CLI. Current servers already tag the
+// CLI's link; this covers older ones and the plain verification_uri. Signup
+// also opens the page on its create-account form; a person already logged in
+// goes straight to authorizing.
+func activationURL(rawURL string, signup bool) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := u.Query()
+	q.Set("signupSource", "cli")
+	if signup {
+		q.Set("mode", "sign_up")
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func newLoginCmd() *cobra.Command {
+	return newDeviceAuthCmd(false)
+}
+
+func newSignupCmd() *cobra.Command {
+	return newDeviceAuthCmd(true)
+}
+
+// newDeviceAuthCmd builds login and signup. Both run the same device-code
+// flow; signup opens the page on the create-account form, and the new account
+// is authorized for the CLI when the person finishes there.
+func newDeviceAuthCmd(signup bool) *cobra.Command {
 	var (
 		noBrowser       bool
 		timeout         time.Duration
@@ -84,8 +114,17 @@ func newLoginCmd() *cobra.Command {
 The command stores OAuth tokens in ~/.langsmith/config.json under the selected
 profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd, noBrowser, timeout, flagWorkspaceID, promptWorkspace)
+			return runLogin(cmd, noBrowser, timeout, flagWorkspaceID, promptWorkspace, signup)
 		},
+	}
+	if signup {
+		cmd.Use = "signup"
+		cmd.Short = "Create a LangSmith account and log the CLI in to it"
+		cmd.Long = `Create a LangSmith account in the browser and log the CLI in to it.
+
+The browser opens on the sign-up form. After the account is created, the CLI is
+authorized for it, and OAuth tokens are stored in ~/.langsmith/config.json under
+the selected profile, as with "langsmith auth login".`
 	}
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Do not open a browser automatically")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait for authorization (default: device-code expiry)")
@@ -93,7 +132,7 @@ profile. Select a profile with --profile or LANGSMITH_PROFILE.`,
 	return cmd
 }
 
-func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string, promptWorkspace bool) error {
+func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspaceID string, promptWorkspace bool, signup bool) error {
 	cfg, err := lsconfig.Load()
 	if err != nil {
 		return err
@@ -128,7 +167,12 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 
 	errOut := cmd.ErrOrStderr()
 	verificationURL, codeHint := device.instructions()
-	fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\n%s: %s\n\n", verificationURL, codeHint, device.UserCode)
+	verificationURL = activationURL(verificationURL, signup)
+	if signup {
+		fmt.Fprintf(errOut, "Open this URL to create your LangSmith account and authorize the CLI:\n%s\n\n%s: %s\n\n", verificationURL, codeHint, device.UserCode)
+	} else {
+		fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\n%s: %s\n\nNo LangSmith account yet? You can sign up on that page.\n\n", verificationURL, codeHint, device.UserCode)
+	}
 	if !noBrowser {
 		if err := openBrowser(verificationURL); err != nil {
 			fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
