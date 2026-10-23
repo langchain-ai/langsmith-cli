@@ -66,6 +66,46 @@ var sandboxesRegistriesRetrieve = cli.Command{
 	HideHelpCommand: true,
 }
 
+var sandboxesRegistriesUpdate = cli.Command{
+	Name:    "update",
+	Usage:   "Update a sandbox registry's name and/or credentials.",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[string]{
+			Name:      "name",
+			Required:  true,
+			PathParam: "name",
+		},
+		&requestflag.Flag[string]{
+			Name:     "auth-type",
+			Usage:    `Allowed values: "DOCKER_CONFIG", "AWS_ROLE".`,
+			BodyPath: "auth_type",
+		},
+		&requestflag.Flag[string]{
+			Name:     "aws-role-arn",
+			BodyPath: "aws_role_arn",
+		},
+		&requestflag.Flag[string]{
+			Name:     "new-name",
+			BodyPath: "name",
+		},
+		&requestflag.Flag[string]{
+			Name:     "password",
+			BodyPath: "password",
+		},
+		&requestflag.Flag[string]{
+			Name:     "url",
+			BodyPath: "url",
+		},
+		&requestflag.Flag[string]{
+			Name:     "username",
+			BodyPath: "username",
+		},
+	},
+	Action:          handleSandboxesRegistriesUpdate,
+	HideHelpCommand: true,
+}
+
 var sandboxesRegistriesList = cli.Command{
 	Name:    "list",
 	Usage:   "List sandbox registries for pulling private images. Page with page_size and\ncursor, replaying next_cursor until it is null. Results are ordered newest\nfirst, with stable ordering for equal creation times. Keep filters unchanged\nbetween pages. Requests without page_size or cursor retain the legacy default of\n50 results. Cursor requests default to 20 results, with a maximum of 100.",
@@ -196,6 +236,55 @@ func handleSandboxesRegistriesRetrieve(ctx context.Context, cmd *cli.Command) er
 		Format:         format,
 		RawOutput:      cmd.Root().Bool("raw-output"),
 		Title:          "sandboxes:registries retrieve",
+		Transform:      transform,
+	})
+}
+
+func handleSandboxesRegistriesUpdate(ctx context.Context, cmd *cli.Command) error {
+	client := langsmith.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+	if !cmd.IsSet("name") && len(unusedArgs) > 0 {
+		cmd.Set("name", unusedArgs[0])
+		unusedArgs = unusedArgs[1:]
+	}
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatRepeat,
+		ApplicationJSON,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	params := langsmith.SandboxRegistryUpdateParams{}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.Sandboxes.Registries.Update(
+		ctx,
+		cmd.Value("name").(string),
+		params,
+		options...,
+	)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	explicitFormat := cmd.Root().IsSet("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(obj, ShowJSONOpts{
+		ExplicitFormat: explicitFormat,
+		Format:         format,
+		RawOutput:      cmd.Root().Bool("raw-output"),
+		Title:          "sandboxes:registries update",
 		Transform:      transform,
 	})
 }

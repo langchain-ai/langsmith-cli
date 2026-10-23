@@ -2,6 +2,51 @@
 resource: sandboxes:browsers:attachments
 
 contract:
+  # The browser is --name; the window's label in the body is --window-name.
+  - name: create attaches a sandbox with every field
+    op: create
+    args: [--name, research-browser, --sandbox, my-box, --window-name, research, --width, "1280", --height, "800", --share-localhost]
+    response:
+      status: 201
+      body: &created
+        id: att-1
+        name: research
+        sandbox: my-box
+        controller: agent
+        cdp_url: ws://example/devtools
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments
+      body: {sandbox: my-box, name: research, width: 1280, height: 800, share_localhost: true}
+      stdout: att-1
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  # --controller applies only to a window opened with no sandbox.
+  - name: create opens an agent-driven window in a workspace
+    op: create
+    args: [--name, research-browser, --controller, agent, --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      status: 201
+      body: *created
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/research-browser/attachments
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {controller: agent}
+
+  - name: create reports API errors
+    op: create
+    args: [--name, missing-browser, --sandbox, my-box]
+    response:
+      status: 404
+      body: {detail: browser not found}
+    want:
+      method: POST
+      path: /api/v2/sandboxes/browsers/missing-browser/attachments
+      body: {sandbox: my-box}
+      exit_code: 1
+      stderr: 404 Not Found
+
   - name: update resizes the window
     op: update
     args: [--name, research-browser, --attachment-id, att-1, --width, "1440", --height, "900"]

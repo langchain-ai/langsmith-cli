@@ -382,6 +382,7 @@ func init() {
 				Commands: []*cli.Command{
 					&sandboxesRegistriesCreate,
 					&sandboxesRegistriesRetrieve,
+					&sandboxesRegistriesUpdate,
 					&sandboxesRegistriesList,
 					&sandboxesRegistriesDelete,
 				},
@@ -409,6 +410,7 @@ func init() {
 				Category: "API RESOURCE",
 				Suggest:  true,
 				Commands: []*cli.Command{
+					&sandboxesBrowsersAttachmentsCreate,
 					&sandboxesBrowsersAttachmentsUpdate,
 					&sandboxesBrowsersAttachmentsDelete,
 					&sandboxesBrowsersAttachmentsSetController,

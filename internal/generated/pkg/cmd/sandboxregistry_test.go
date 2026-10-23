@@ -56,6 +56,43 @@ func TestSandboxesRegistriesRetrieve(t *testing.T) {
 	})
 }
 
+func TestSandboxesRegistriesUpdate(t *testing.T) {
+	t.Skip("Mock server tests are disabled")
+	t.Run("regular flags", func(t *testing.T) {
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"sandboxes:registries", "update",
+			"--name", "name",
+			"--auth-type", "DOCKER_CONFIG",
+			"--aws-role-arn", "aws_role_arn",
+			"--new-name", "name",
+			"--password", "password",
+			"--url", "url",
+			"--username", "username",
+		)
+	})
+
+	t.Run("piping data", func(t *testing.T) {
+		// Test piping YAML data over stdin
+		pipeData := []byte("" +
+			"auth_type: DOCKER_CONFIG\n" +
+			"aws_role_arn: aws_role_arn\n" +
+			"name: name\n" +
+			"password: password\n" +
+			"url: url\n" +
+			"username: username\n")
+		mocktest.TestRunMockTestWithPipeAndFlags(
+			t, pipeData,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"sandboxes:registries", "update",
+			"--name", "name",
+		)
+	})
+}
+
 func TestSandboxesRegistriesList(t *testing.T) {
 	t.Skip("Mock server tests are disabled")
 	t.Run("regular flags", func(t *testing.T) {

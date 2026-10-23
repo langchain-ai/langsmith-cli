@@ -64,6 +64,43 @@ contract:
       path: /api/v2/sandboxes/registries/private-images
       stdout: registry.example.com
 
+  # The registry is --name; its new name in the body is --new-name.
+  - name: update with every field
+    op: update
+    args: [--name, private-images, --new-name, team-images, --url, registry2.example.com, --auth-type, DOCKER_CONFIG, --username, robot2, --password, new-password]
+    response:
+      body: *registry
+    want:
+      method: PATCH
+      path: /api/v2/sandboxes/registries/private-images
+      body: {name: team-images, url: registry2.example.com, auth_type: DOCKER_CONFIG, username: robot2, password: new-password}
+      stdout: 11111111-1111-1111-1111-111111111111
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: update sends only the flags given
+    op: update
+    args: [--name, ecr-images, --aws-role-arn, "arn:aws:iam::123456789012:role/other", --workspace, 44444444-4444-4444-4444-444444444444]
+    response:
+      body: *registry
+    want:
+      method: PATCH
+      path: /api/v2/sandboxes/registries/ecr-images
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body: {aws_role_arn: "arn:aws:iam::123456789012:role/other"}
+
+  - name: update reports API errors
+    op: update
+    args: [--name, missing, --new-name, other]
+    response:
+      status: 404
+      body: {detail: registry not found}
+    want:
+      method: PATCH
+      path: /api/v2/sandboxes/registries/missing
+      body: {name: other}
+      exit_code: 1
+      stderr: 404 Not Found
+
   - name: delete after confirmation
     op: delete
     args: [--name, private-images]
