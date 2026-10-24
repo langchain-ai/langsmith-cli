@@ -384,6 +384,29 @@ func TestSandboxCreateParams_IncludesSnapshotIDWhenSet(t *testing.T) {
 	assert.Equal(t, "snap-123", body["snapshot_id"])
 }
 
+func TestSandboxCreateParams_ProxyConfigMatchHeaders(t *testing.T) {
+	params, err := sandboxCreateParams("my-vm", &sandboxCreateInput{
+		ProxyConfig: `{"rules":[{"name":"github-b","match_hosts":["api.github.com"],` +
+			`"match_headers":["authorization: Bearer account-b"],` +
+			`"headers":[{"name":"Authorization","type":"workspace_secret","value":"Bearer {GITHUB_TOKEN_B}"}]}]}`,
+	})
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(params)
+	require.NoError(t, err)
+	var body struct {
+		ProxyConfig struct {
+			Rules []struct {
+				MatchHeaders []string `json:"match_headers"`
+			} `json:"rules"`
+		} `json:"proxy_config"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &body))
+
+	require.Len(t, body.ProxyConfig.Rules, 1)
+	assert.Equal(t, []string{"authorization: Bearer account-b"}, body.ProxyConfig.Rules[0].MatchHeaders)
+}
+
 func TestSandboxCreateParams_AccessDelegation(t *testing.T) {
 	tests := []struct {
 		name  string
