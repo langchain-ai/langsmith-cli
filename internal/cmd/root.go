@@ -91,6 +91,7 @@ Quick start:
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newHubCmd())
+	rootCmd.AddCommand(newGatewayCmd())
 	rootCmd.AddCommand(newAppsCmd())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(authCommand.Cobra())
