@@ -89,6 +89,8 @@ Quick start:
 	rootCmd.AddCommand(newEvaluatorCmd())
 	rootCmd.AddCommand(newExperimentCmd())
 	rootCmd.AddCommand(newSandboxCmd())
+	rootCmd.AddCommand(newTunnelCmd())
+	rootCmd.AddCommand(newRelayCmd())
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newAppsCmd())

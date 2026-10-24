@@ -427,6 +427,23 @@ Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's
 
 Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
 
+### `tunnel` and `relay` — Serve private network connections
+
+A private network connection lets LangSmith reach a network it can't reach directly, through a connector running inside that network. These commands run the connector until interrupted. Create the connection in LangSmith first and pass its ID.
+
+```bash
+# Tunnel: LangSmith reaches the named targets through this machine.
+# An http(s):// target also gets a tunnel URL; host:port is raw TCP.
+langsmith tunnel connect <connection-id> --target app=http://localhost:8080 --target db=10.0.0.5:5432
+
+# Relay: sandbox traffic matching a relay rule leaves through this machine
+langsmith relay connect <relay-id> --allow 10.0.0.0/8 --deny 10.0.9.0/24
+```
+
+A relay reaches public addresses on ports 80 and 443 by default. `--allow` widens that and `--deny` narrows it; each rule is a CIDR, an IP address, a hostname, or a `*.` wildcard, optionally followed by `:PORT`. Cloud metadata addresses are always refused.
+
+The connector authenticates with an API key (`LANGSMITH_API_KEY` or a profile with an API key); OAuth logins are not accepted. The same connector code also ships as the `langchain/langsmith-connector` container image for long-running deployments.
+
 ### `self-update` — Update langsmith to the latest version
 
 ```bash

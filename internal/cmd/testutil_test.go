@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -108,6 +109,12 @@ func setupTestEnv(t *testing.T, serverURL string) func() {
 // and returns captured stdout and any error.
 func executeCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return executeCommandContext(t, context.Background(), args...)
+}
+
+// executeCommandContext is executeCommand with a context the command runs under.
+func executeCommandContext(t *testing.T, ctx context.Context, args ...string) (string, error) {
+	t.Helper()
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -126,6 +133,6 @@ func executeCommand(t *testing.T, args ...string) (string, error) {
 	cmd.SetOut(&outBuf)
 	cmd.SetErr(&outBuf)
 	cmd.SetArgs(args)
-	err := cmd.Execute()
+	err := cmd.ExecuteContext(ctx)
 	return outBuf.String(), err
 }
