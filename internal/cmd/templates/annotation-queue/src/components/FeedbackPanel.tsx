@@ -318,7 +318,6 @@ function RubricCard({
             <div className="flex gap-2">
               <Textarea
                 size="sm"
-                debounceMs={0}
                 aria-label={item.feedback_key}
                 value={comment}
                 onChange={(value) => setComment(value)}
