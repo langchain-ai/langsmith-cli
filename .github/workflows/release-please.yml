@@ -1,0 +1,88 @@
+name: Release Please
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release-please:
+    if: github.repository == 'langchain-ai/langsmith-cli'
+    runs-on: ubuntu-latest
+    steps:
+      # release-please creates a release only for a merged release PR it has
+      # not tagged yet, and it tags that PR's merge commit.
+      - name: Find an untagged release
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr list --state merged --base main --label "autorelease: pending" \
+            --json number,mergeCommit \
+            --jq 'first // empty | "number=\(.number)\nsha=\(.mergeCommit.oid)"' >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.pending.outputs.sha != ''
+        with:
+          ref: ${{ steps.pending.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.pending.outputs.sha != ''
+        with:
+          go-version-file: go.mod
+
+      # A release must use a released langsmith-go. Generated commands can be
+      # merged while go.mod points at an unreleased commit (a pseudo-version)
+      # or a replace, and releasing then would ship SDK code that has no SDK
+      # release. The commit release-please would tag is fixed, so a later fix
+      # to go.mod cannot make it releasable.
+      - name: Check the release commit requires a released langsmith-go
+        id: sdk
+        if: steps.pending.outputs.sha != ''
+        env:
+          RELEASE_PR: ${{ steps.pending.outputs.number }}
+        run: |
+          module=github.com/langchain-ai/langsmith-go
+          blocked() {
+            echo "::error::Release PR #$RELEASE_PR was merged while $1, so its commit cannot be released. Release langsmith-go and update go.mod in langchainplus, then revert #$RELEASE_PR on main and remove its 'autorelease: pending' label; release-please then opens a new release PR."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          }
+          # go list fails when go.mod does not require the module; report that
+          # with its own error. Any later go list failure fails the step.
+          version=$(go list -m -f '{{.Version}}' "$module" 2>/dev/null || true)
+          if [[ -z "$version" ]]; then
+            echo "::error::go list found no $module requirement. Check that go.mod requires it, or update this check if the module path changed."
+            exit 1
+          fi
+          replace=$(go list -m -f '{{with .Replace}}{{.Path}} {{.Version}}{{end}}' "$module")
+          if [[ -n "$replace" ]]; then
+            blocked "go.mod replaced langsmith-go with $replace"
+          elif [[ "$version" =~ [0-9]{14}-[0-9a-f]{12}$ ]]; then
+            blocked "go.mod used langsmith-go $version, an unreleased commit"
+          else
+            echo "langsmith-go $version"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: ${{ steps.sdk.outputs.released == 'false' }}
+
+      - name: Dispatch publisher for the new release
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run publish-binaries.yml --ref "$RELEASE_TAG"
+
+      - name: Fail while the release is blocked
+        if: steps.sdk.outputs.released == 'false'
+        run: exit 1

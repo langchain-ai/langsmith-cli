@@ -1,48 +1,46 @@
-name: Release
-
+name: Publish Binaries
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+# One group per tag, so a second release's publish never replaces a queued one.
+concurrency:
+  group: publish-binaries-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  release:
+  # release-please dispatches this workflow at the new tag. GoReleaser builds
+  # the binaries and attaches them to the release release-please created,
+  # keeping its notes.
+  goreleaser:
+    if: github.repository == 'langchain-ai/langsmith-cli' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Validate the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a vX.Y.Z tag" >&2
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease \
+            --jq 'select(.isDraft == false and .isPrerelease == false)' | grep -q .
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-
-      # A release must use a released langsmith-go. Generated commands can be
-      # merged while go.mod points at an unreleased commit (a pseudo-version)
-      # or a replace; releasing then would ship SDK code that has no SDK release.
-      - name: Require a released langsmith-go
-        run: |
-          module=github.com/langchain-ai/langsmith-go
-          # go list fails when go.mod does not require the module; report that
-          # with its own error. Any later go list failure fails the step.
-          version=$(go list -m -f '{{.Version}}' "$module" 2>/dev/null || true)
-          if [[ -z "$version" ]]; then
-            echo "::error::go list found no $module requirement. Check that go.mod requires it, or update this check if the module path changed."
-            exit 1
-          fi
-          replace=$(go list -m -f '{{with .Replace}}{{.Path}} {{.Version}}{{end}}' "$module")
-          if [[ -n "$replace" ]]; then
-            echo "::error::go.mod replaces langsmith-go with $replace. Remove the replace and require a released tag, then tag the CLI again."
-            exit 1
-          fi
-          if [[ "$version" =~ [0-9]{14}-[0-9a-f]{12}$ ]]; then
-            echo "::error::go.mod uses langsmith-go $version, an unreleased commit. Release langsmith-go, update go.mod to that tag, then tag the CLI again."
-            exit 1
-          fi
-          echo "langsmith-go $version"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
@@ -54,7 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   bump-tap:
-    needs: release
+    needs: goreleaser
     runs-on: ubuntu-latest
     permissions: {}
     env:

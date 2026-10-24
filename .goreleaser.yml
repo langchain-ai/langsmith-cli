@@ -32,10 +32,10 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# release-please creates the GitHub Release and writes its notes; GoReleaser
+# attaches the archives and checksums to it.
+release:
+  mode: keep-existing
+
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
+  disable: true

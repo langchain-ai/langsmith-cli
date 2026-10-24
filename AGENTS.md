@@ -49,4 +49,4 @@ If an endpoint is missing from the Go SDK, expose and configure it through the p
 
 ## Releasing
 
-Releases are tag-driven: pushing a `v*` tag builds and publishes the GitHub Release, so there is no version file or changelog to edit. See [Releasing](README.md#releasing) for the full procedure.
+release-please keeps a release PR open on langsmith-cli; merging it tags the release and publishes the binaries. There is no version file to edit, and the changelog comes from conventional commit titles. See [Releasing](README.md#releasing).

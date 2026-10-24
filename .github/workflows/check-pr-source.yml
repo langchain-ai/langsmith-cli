@@ -1,10 +1,11 @@
 name: Check PR source
 
 # Production main receives CLI changes when Copybara pushes cli/ from
-# langchainplus. A pull request is allowed only from `copybara/export-cli`.
+# langchainplus, and the release PR that release-please opens. A pull request
+# is allowed only from `copybara/export-cli` or the release-please branch.
 # Anything merged to production main by another route is not in langchainplus,
 # so the next export reverts it. Dependency bumps included: they land in cli/
-# and ride the export like everything else. This repo has no release-please.
+# and ride the export like everything else.
 #
 # Escape hatch for an urgent production fix: add the `skip-pr-source-check`
 # label. Afterwards make the same change in cli/ in langchainplus before the
@@ -37,7 +38,7 @@ jobs:
           fi
           if [ "$SAME_REPO" = "true" ]; then
             case "$HEAD" in
-              copybara/export-cli) exit 0 ;;
+              copybara/export-cli|release-please--branches--main) exit 0 ;;
             esac
           fi
           echo "::error::PRs to main must come from copybara/export-cli. Change cli/ in langchainplus instead, or add the skip-pr-source-check label for an urgent production fix."
