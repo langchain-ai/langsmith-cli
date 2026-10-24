@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.6](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.5...v0.3.6) (2026-10-24)
+
+
+### Features
+
+* **cli:** run the connector image from the langsmith CLI ([b9a474c](https://github.com/langchain-ai/langsmith-cli/commit/b9a474c78089e88e865c2cdfe272dd0508cb809f))
+* **sandboxes:** accept proxy_config when creating a browser ([2760b75](https://github.com/langchain-ai/langsmith-cli/commit/2760b75a74cdde890444cc3d6daea6efdb4bdc8e))
+
 ## [0.3.5](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.4...v0.3.5) (2026-10-24)
 
 
