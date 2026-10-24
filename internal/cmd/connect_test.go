@@ -17,6 +17,11 @@ const testConnectionID = "0b6e8a54-7d2c-4f43-9a51-3c1e2f6d8a90"
 
 func isolateConnectorConfig(t *testing.T) {
 	t.Helper()
+	// A flag error writes the feedback-hint marker under the home directory,
+	// which is USERPROFILE on Windows.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("LANGSMITH_API_KEY", "")
 	t.Setenv("LANGSMITH_ENDPOINT", "")

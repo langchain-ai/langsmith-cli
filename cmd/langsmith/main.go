@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,7 +17,10 @@ var (
 func main() {
 	rootCmd := cmd.NewRootCmd(version, fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date))
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err.Error())
+		var reported cmd.ReportedError
+		if !errors.As(err, &reported) {
+			fmt.Println(err.Error())
+		}
 		os.Exit(1)
 	}
 }

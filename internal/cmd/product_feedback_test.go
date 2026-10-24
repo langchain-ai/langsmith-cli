@@ -145,7 +145,10 @@ func TestProductFeedbackUnavailable(t *testing.T) {
 }
 
 func TestFeedbackHint(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	// The home directory is USERPROFILE on Windows.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	oldFormat := flagOutputFormat
 	t.Cleanup(func() { flagOutputFormat = oldFormat })
 	root := &cobra.Command{Use: "langsmith"}

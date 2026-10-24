@@ -91,6 +91,7 @@ Quick start:
 	rootCmd.AddCommand(newSandboxCmd())
 	rootCmd.AddCommand(newTunnelCmd())
 	rootCmd.AddCommand(newRelayCmd())
+	rootCmd.AddCommand(newConnectorCmd(rawVersion, displayVersion))
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newAppsCmd())

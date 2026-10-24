@@ -442,7 +442,9 @@ langsmith relay connect <relay-id> --allow 10.0.0.0/8 --deny 10.0.9.0/24
 
 A relay reaches public addresses on ports 80 and 443 by default. `--allow` widens that and `--deny` narrows it; each rule is a CIDR, an IP address, a hostname, or a `*.` wildcard, optionally followed by `:PORT`. Cloud metadata addresses are always refused.
 
-The connector authenticates with an API key (`LANGSMITH_API_KEY` or a profile with an API key); OAuth logins are not accepted. The same connector code also ships as the `langchain/langsmith-connector` container image for long-running deployments.
+The connector authenticates with an API key (`LANGSMITH_API_KEY` or a profile with an API key); OAuth logins are not accepted.
+
+For a long-running deployment, `langsmith connector run` takes the same settings from environment variables (`LANGSMITH_CONNECTION_ID`, `LANGSMITH_CONNECTOR_TARGETS`, `LANGSMITH_CONNECTOR_RELAY_MODE`, `LANGSMITH_API_KEY` or `LANGSMITH_API_KEY_FILE`, and the rest listed in `langsmith connector run --help`) or a YAML file, and logs JSON. The `langchain/langsmith-connector` container image runs it.
 
 ### `self-update` — Update langsmith to the latest version
 
