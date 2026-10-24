@@ -14,7 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var sandboxesBrowsersCreate = cli.Command{
+var sandboxesBrowsersCreate = requestflag.WithInnerFlags(cli.Command{
 	Name:    "create",
 	Usage:   "Beta: create a browser sandbox, which runs one persistent Chrome that other\nsandboxes attach to. Logins made in it persist across restarts. It keeps its\nmemory when it stops and is never deleted automatically.",
 	Suggest: true,
@@ -38,6 +38,10 @@ var sandboxesBrowsersCreate = cli.Command{
 			Usage:    "Name of the browser sandbox. Generated when omitted, as \"browser-\"\nfollowed by the browser's ID.",
 			BodyPath: "name",
 		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "proxy-config",
+			BodyPath: "proxy_config",
+		},
 		&requestflag.Flag[int64]{
 			Name:     "vcpus",
 			Usage:    "VCPUs and MemBytes size the browser sandbox, as for any sandbox. With\nneither set, a browser gets 2 vCPUs and 8 GiB.",
@@ -46,7 +50,31 @@ var sandboxesBrowsersCreate = cli.Command{
 	},
 	Action:          handleSandboxesBrowsersCreate,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"proxy-config": {
+		&requestflag.InnerFlag[map[string]any]{
+			Name:       "proxy-config.access-control",
+			InnerField: "access_control",
+		},
+		&requestflag.InnerFlag[[]map[string]any]{
+			Name:       "proxy-config.callbacks",
+			InnerField: "callbacks",
+		},
+		&requestflag.InnerFlag[string]{
+			Name:       "proxy-config.description",
+			Usage:      "Description says what this configuration as a whole lets the sandbox reach, complementing the per-rule descriptions. At most 1024 characters.",
+			InnerField: "description",
+		},
+		&requestflag.InnerFlag[[]string]{
+			Name:       "proxy-config.no-proxy",
+			InnerField: "no_proxy",
+		},
+		&requestflag.InnerFlag[[]map[string]any]{
+			Name:       "proxy-config.rules",
+			InnerField: "rules",
+		},
+	},
+})
 
 var sandboxesBrowsersRetrieve = cli.Command{
 	Name:    "retrieve",
