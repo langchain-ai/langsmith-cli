@@ -283,7 +283,8 @@ X-Langsmith-Sandbox-Service-Token header, or open the browser URL directly.
 --access switches to LangSmith login instead, so the URL carries no token and
 does not expire:
 
-  restricted  anyone with sandboxes:read on this sandbox
+  restricted  the sandbox's creator, or anyone with sandboxes:exec on it
+              (workspace admins by default)
   workspace   any member of the owning workspace
 
 A login grant is durable, so token mode is refused while one is in place, and
