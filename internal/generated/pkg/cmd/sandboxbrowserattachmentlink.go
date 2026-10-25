@@ -16,7 +16,7 @@ import (
 
 var sandboxesBrowsersAttachmentsLinksCreate = cli.Command{
 	Name:    "create",
-	Usage:   "Beta: mint a view link and an act link for one window, as every attachment\nresponse does, with a chosen lifetime and the origins allowed to embed the\nwindow's pages in an iframe. Without embed_origins no page may frame them. An\nembedded page sends its parent window messages when control changes and when it\nconnects or disconnects (see the browser guide). Either link opens the window to\nanyone who holds it until it expires; detaching the window ends it early. A\nstopped browser starts when links are minted and when a link is opened, and\nresumes with its windows. Minting takes being the browser's creator or a role\nwith sandboxes:exec.",
+	Usage:   "Beta: mint a view link and an act link for one window, as every attachment\nresponse does, with a chosen lifetime and the origins allowed to embed the\nwindow's pages in an iframe. Without embed_origins no page may frame them.\nview_embed_url and act_embed_url carry the same tokens in the URL fragment, for\nan iframe, so no server sees them. An embedded page sends its parent window\nmessages when control changes and when it connects or disconnects (see the\nbrowser guide). Either link opens the window to anyone who holds it until it\nexpires; detaching the window ends it early. A stopped browser starts when links\nare minted and when a link is opened, and resumes with its windows. Minting\ntakes being the browser's creator or a role with sandboxes:exec.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
