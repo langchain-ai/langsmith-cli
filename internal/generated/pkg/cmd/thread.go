@@ -68,7 +68,7 @@ var threadsAggregateStats = cli.Command{
 
 var threadsQuery = cli.Command{
 	Name:    "query",
-	Usage:   "Query threads within a project (session), with cursor-based pagination. Returns\nthreads matching the given time range and optional filters.",
+	Usage:   "GET with body payload — no resources created. Returns the threads in a tracing\nproject matching the query passed as the request payload. Results are filtered\nby the given time range and optional filters, with cursor-based pagination.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
