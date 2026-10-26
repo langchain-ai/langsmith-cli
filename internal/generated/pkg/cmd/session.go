@@ -133,7 +133,7 @@ var sessionsDashboard = requestflag.WithInnerFlags(cli.Command{
 
 var sessionsResolve = cli.Command{
 	Name:    "resolve",
-	Usage:   "**Beta:** This endpoint is in active development and may change without notice.\nReturns the tracing project (session) an address names. An address is an AGENT\n(`id` and `environment`), an EXPERIMENT (`id`), or an EVALUATOR (no `id`:\nevaluator traces share one project per workspace). Send `kind` and `environment`\nin upper case, as listed; they are matched case-insensitively, while the Agent\n`id` is case-sensitive. An address that does not exist, or whose project you\ncannot read, is a 404. Pass the returned `session_id` to any endpoint that takes\na project (session) ID. This is not supported on a BYOC data plane yet, and is a\n501 there.",
+	Usage:   "Returns the tracing project (session) an address names. An address is an AGENT\n(`id` and `environment`), an EXPERIMENT (`id`), or an EVALUATOR (no `id`:\nevaluator traces share one project per workspace). Send `kind` and `environment`\nin upper case, as listed; they are matched case-insensitively, while the Agent\n`id` is case-sensitive. An address that does not exist, or whose project you\ncannot read, is a 404. Pass the returned `session_id` to any endpoint that takes\na project (session) ID. This is not supported on a BYOC data plane yet, and is a\n501 there. Self-hosted deployments need LangSmith v0.18 or later.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{

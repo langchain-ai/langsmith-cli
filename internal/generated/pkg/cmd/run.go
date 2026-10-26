@@ -25,7 +25,7 @@ var runsCreate = cli.Command{
 		},
 		&requestflag.Flag[string]{
 			Name:     "address",
-			Usage:    "Beta. Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Only workspaces enabled for Agent addressing accept it;\nothers get a 403.",
+			Usage:    "Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Self-hosted deployments need LangSmith v0.18 or later.",
 			BodyPath: "address",
 		},
 		&requestflag.Flag[string]{
@@ -170,7 +170,7 @@ var runsIngestBatch = requestflag.WithInnerFlags(cli.Command{
 		},
 		&requestflag.InnerFlag[string]{
 			Name:       "patch.address",
-			Usage:      "Beta. Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Only workspaces enabled for Agent addressing accept it;\nothers get a 403.",
+			Usage:      "Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Self-hosted deployments need LangSmith v0.18 or later.",
 			InnerField: "address",
 		},
 		&requestflag.InnerFlag[string]{
@@ -262,7 +262,7 @@ var runsIngestBatch = requestflag.WithInnerFlags(cli.Command{
 		},
 		&requestflag.InnerFlag[string]{
 			Name:       "post.address",
-			Usage:      "Beta. Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Only workspaces enabled for Agent addressing accept it;\nothers get a 403.",
+			Usage:      "Addresses the run to an Agent environment in place of session_id or\nsession_name, as lrn:agents/{id}/environments/{environment}. The environment is\ncase-insensitive. Self-hosted deployments need LangSmith v0.18 or later.",
 			InnerField: "address",
 		},
 		&requestflag.InnerFlag[string]{
