@@ -283,16 +283,23 @@ func firstPositional(args []string, valueFlags map[string]bool) (string, bool) {
 // so an unrecognized flag can never skip the confirmation.
 func isDeleteInvocation(resource *cli.Command, args []string, valueFlags map[string]bool) bool {
 	if op := operationName(resource, args, valueFlags); op != "" {
-		return strings.HasPrefix(op, "delete")
+		return isDeleteOperation(op)
 	}
 	for _, arg := range args {
 		for _, op := range resource.Commands {
-			if arg == op.Name && strings.HasPrefix(op.Name, "delete") {
+			if arg == op.Name && isDeleteOperation(op.Name) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// isDeleteOperation reports whether "delete" is a word of the operation name,
+// as in delete, delete-all and bulk-delete. Generation fails for a DELETE, or a
+// POST to .../delete, whose command name lacks it, so every one is confirmed.
+func isDeleteOperation(name string) bool {
+	return slices.Contains(strings.Split(name, "-"), "delete")
 }
 
 func hasHelpFlag(args []string) bool {

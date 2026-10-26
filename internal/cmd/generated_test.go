@@ -242,6 +242,36 @@ func TestOperationName(t *testing.T) {
 	}
 }
 
+func TestIsDeleteOperation(t *testing.T) {
+	for name, want := range map[string]bool{
+		"delete":      true,
+		"delete-all":  true,
+		"bulk-delete": true,
+		"list":        false,
+		"undelete":    false,
+		"deleted-at":  false,
+	} {
+		if got := isDeleteOperation(name); got != want {
+			t.Errorf("isDeleteOperation(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestIsDeleteInvocationConfirmsBulkDelete(t *testing.T) {
+	resource := &cli.Command{Commands: []*cli.Command{{Name: "bulk-delete"}, {Name: "list"}}}
+	valueFlags := generatedValueFlags()
+	if !isDeleteInvocation(resource, []string{"bulk-delete", "--evaluator-id", "1"}, valueFlags) {
+		t.Error("bulk-delete runs without confirmation")
+	}
+	// An unrecognized flag hides the operation, so any delete operation named counts.
+	if !isDeleteInvocation(resource, []string{"--unknown", "x", "bulk-delete"}, valueFlags) {
+		t.Error("bulk-delete after an unknown flag runs without confirmation")
+	}
+	if isDeleteInvocation(resource, []string{"list"}, valueFlags) {
+		t.Error("list asks for confirmation")
+	}
+}
+
 // generatedRequest is a request a generated command sent to a fake API.
 type generatedRequest struct {
 	host, method, path, apiKey, tenant, authorization string

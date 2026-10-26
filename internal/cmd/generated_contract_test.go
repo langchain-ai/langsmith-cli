@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -48,10 +49,10 @@ type generatedContractCase struct {
 		Body any `yaml:"body"`
 	} `yaml:"response"`
 	Want struct {
-		Method  string            `yaml:"method"`
-		Path    string            `yaml:"path"`
-		Query   map[string]string `yaml:"query"`
-		Headers map[string]string `yaml:"headers"`
+		Method  string                 `yaml:"method"`
+		Path    string                 `yaml:"path"`
+		Query   map[string]queryValues `yaml:"query"`
+		Headers map[string]string      `yaml:"headers"`
 		// Body is the exact JSON request body; omitted means no body.
 		Body any `yaml:"body"`
 		// Requests is the number of requests sent; it defaults to 1.
@@ -65,6 +66,24 @@ type generatedContractCase struct {
 		Stdout string `yaml:"stdout"`
 		Stderr string `yaml:"stderr"`
 	} `yaml:"want"`
+}
+
+// queryValues are the values of one query parameter: a single value, or a list
+// for a parameter sent once per value (?id=1&id=2).
+type queryValues []string
+
+func (q *queryValues) UnmarshalYAML(unmarshal func(any) error) error {
+	var list []string
+	if err := unmarshal(&list); err == nil {
+		*q = list
+		return nil
+	}
+	var value string
+	if err := unmarshal(&value); err != nil {
+		return err
+	}
+	*q = queryValues{value}
+	return nil
 }
 
 // generatedLifecycle runs every operation of a resource against a live API
@@ -288,9 +307,9 @@ func runGeneratedContractCase(t *testing.T, resource string, c generatedContract
 			t.Errorf("header %s = %q, want %q", name, gotValue, value)
 		}
 	}
-	for key, value := range want.Query {
-		if values := got.query[key]; len(values) != 1 || values[0] != value {
-			t.Errorf("query %s = %q, want %q", key, values, value)
+	for key, want := range want.Query {
+		if values := got.query[key]; !slices.Equal(values, want) {
+			t.Errorf("query %s = %q, want %q", key, values, want)
 		}
 	}
 	assertJSONBody(t, got.body, want.Body)
