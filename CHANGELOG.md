@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.6](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.5...v0.3.6) (2026-10-26)
+
+
+### Features
+
+* **cli:** run the connector image from the langsmith CLI ([b9a474c](https://github.com/langchain-ai/langsmith-cli/commit/b9a474c78089e88e865c2cdfe272dd0508cb809f))
+* **sandboxes:** accept proxy_config when creating a browser ([2760b75](https://github.com/langchain-ai/langsmith-cli/commit/2760b75a74cdde890444cc3d6daea6efdb4bdc8e))
+* **sandboxes:** embed token-mode service URLs and browser windows with the token kept out of server-visible URLs ([5e69fde](https://github.com/langchain-ai/langsmith-cli/commit/5e69fde0f27343a524aed291c217c2bc234dc891))
+
+
+### Bug Fixes
+
+* **cli:** pick up langsmith-go v0.29.1's Windows OAuth refresh fixes ([22430ce](https://github.com/langchain-ai/langsmith-cli/commit/22430ce0258a8c69ec69bba23784b2daefcaab1e))
+
+
+### Documentation
+
+* remove the beta label from agent addressing ([0cd9984](https://github.com/langchain-ai/langsmith-cli/commit/0cd9984ba4f451cab5d2ee1a89b3b42f0e4a3295))
+* **threads:** bring POST /api/v2/threads/query into API standards compliance ([b08f274](https://github.com/langchain-ai/langsmith-cli/commit/b08f274486983354cf953354c403db21e2645612))
+
 ## [0.3.5](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.4...v0.3.5) (2026-10-24)
 
 
