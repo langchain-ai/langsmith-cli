@@ -96,7 +96,6 @@ export function ReviewerNotes({ runId, traceId, sessionId, startTime }: Props) {
       <div className="flex flex-col gap-2">
         <Textarea
           size="sm"
-          debounceMs={0}
           className="min-w-0 flex-1"
           aria-label="Reviewer note"
           rows={3}
