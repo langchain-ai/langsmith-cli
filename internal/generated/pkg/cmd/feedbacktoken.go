@@ -108,11 +108,12 @@ var feedbackTokensCreate = requestflag.WithInnerFlags(cli.Command{
 
 var feedbackTokensUpdate = cli.Command{
 	Name:    "update",
-	Usage:   "Create a new feedback with a token.",
+	Usage:   "Submit feedback for the token's run and key. The token is the credential, so\nanyone with it can submit feedback.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:      "token",
+			Usage:     "Feedback ingest token. It's a credential: anyone who has it can submit feedback.",
 			Required:  true,
 			PathParam: "token",
 		},

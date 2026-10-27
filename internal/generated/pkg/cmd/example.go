@@ -55,27 +55,33 @@ var examplesUpdate = requestflag.WithInnerFlags(cli.Command{
 		},
 		&requestflag.Flag[*string]{
 			Name:     "dataset-id",
+			Usage:    "The example's current dataset. An example can't move to another dataset.",
 			BodyPath: "dataset_id",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "inputs",
+			Usage:    "New inputs. Replaces the existing inputs; omit to keep them.",
 			BodyPath: "inputs",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "metadata",
+			Usage:    "New metadata. Replaces the existing metadata; omit to keep it.",
 			BodyPath: "metadata",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "outputs",
+			Usage:    "New outputs. Replaces the existing outputs; omit to keep them.",
 			BodyPath: "outputs",
 		},
 		&requestflag.Flag[bool]{
 			Name:     "overwrite",
+			Usage:    "Not used.",
 			Default:  false,
 			BodyPath: "overwrite",
 		},
 		&requestflag.Flag[any]{
 			Name:     "split",
+			Usage:    "Split or splits to put the example in. Replaces its current splits.",
 			BodyPath: "split",
 		},
 	},
@@ -113,11 +119,12 @@ var examplesDeleteAll = cli.Command{
 
 var examplesRetrieveCount = cli.Command{
 	Name:    "retrieve-count",
-	Usage:   "Count all examples by query params",
+	Usage:   "Count the examples that match the filters.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[any]{
 			Name:      "id",
+			Usage:     "Only count examples with these IDs.",
 			QueryPath: "id",
 		},
 		&requestflag.Flag[any]{
@@ -128,22 +135,27 @@ var examplesRetrieveCount = cli.Command{
 		},
 		&requestflag.Flag[*string]{
 			Name:      "dataset",
+			Usage:     "Only count examples in this dataset.",
 			QueryPath: "dataset",
 		},
 		&requestflag.Flag[*string]{
 			Name:      "filter",
+			Usage:     "Filter expression the examples must match.",
 			QueryPath: "filter",
 		},
 		&requestflag.Flag[any]{
 			Name:      "full-text-contain",
+			Usage:     "Only count examples whose inputs or outputs contain every one of these terms, ignoring case.",
 			QueryPath: "full_text_contains",
 		},
 		&requestflag.Flag[*string]{
 			Name:      "metadata",
+			Usage:     "JSON object. Only count examples whose metadata contains it.",
 			QueryPath: "metadata",
 		},
 		&requestflag.Flag[any]{
 			Name:      "split",
+			Usage:     "Only count examples in any of these splits.",
 			QueryPath: "splits",
 		},
 	},

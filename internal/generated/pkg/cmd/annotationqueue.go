@@ -21,6 +21,7 @@ var annotationQueuesRetrieve = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:      "queue-id",
+			Usage:     "ID of the annotation queue.",
 			Required:  true,
 			PathParam: "queue_id",
 		},
@@ -36,52 +37,62 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:      "queue-id",
+			Usage:     "ID of the annotation queue.",
 			Required:  true,
 			PathParam: "queue_id",
 		},
 		&requestflag.Flag[*string]{
 			Name:     "default-dataset",
+			Usage:    "Dataset that reviewed runs are added to by default.",
 			BodyPath: "default_dataset",
 		},
 		&requestflag.Flag[*string]{
 			Name:     "description",
+			Usage:    "New description.",
 			BodyPath: "description",
 		},
 		&requestflag.Flag[any]{
 			Name:     "enable-reservations",
+			Usage:    "Whether a reviewer reserves a run while reviewing it, so others skip it.",
 			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "enable_reservations",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "metadata",
+			Usage:    "Metadata to store on the queue. Replaces the existing metadata.",
 			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "metadata",
 		},
 		&requestflag.Flag[*string]{
 			Name:     "name",
+			Usage:    "New name for the queue.",
 			BodyPath: "name",
 		},
 		&requestflag.Flag[any]{
 			Name:     "num-reviewers-per-item",
+			Usage:    "How many reviewers must review each run.",
 			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "num_reviewers_per_item",
 		},
 		&requestflag.Flag[any]{
 			Name:     "reservation-minutes",
+			Usage:    "How long a reservation lasts, in minutes.",
 			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "reservation_minutes",
 		},
 		&requestflag.Flag[*string]{
 			Name:     "reviewer-access-mode",
-			Usage:    `Allowed values: "any", "assigned".`,
+			Usage:    "Who completes a run: any (one reviewer is enough) or assigned (every assigned reviewer must submit).",
 			BodyPath: "reviewer_access_mode",
 		},
 		&requestflag.Flag[*string]{
 			Name:     "rubric-instructions",
+			Usage:    "Instructions shown to reviewers.",
 			BodyPath: "rubric_instructions",
 		},
 		&requestflag.Flag[any]{
 			Name:     "rubric-item",
+			Usage:    "Feedback keys reviewers fill in for each run.",
 			BodyPath: "rubric_items",
 		},
 	},
@@ -144,6 +155,7 @@ var annotationQueuesDelete = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:      "queue-id",
+			Usage:     "ID of the annotation queue.",
 			Required:  true,
 			PathParam: "queue_id",
 		},
@@ -159,16 +171,19 @@ var annotationQueuesPopulate = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "queue-id",
+			Usage:    "ID of the annotation queue to add runs to.",
 			Required: true,
 			BodyPath: "queue_id",
 		},
 		&requestflag.Flag[[]string]{
 			Name:     "session-id",
+			Usage:    "Experiments whose runs are added to the queue. Each must be an experiment on a dataset.",
 			Required: true,
 			BodyPath: "session_ids",
 		},
 		&requestflag.Flag[bool]{
 			Name:     "extend-trace-retention",
+			Usage:    "Upgrade the added traces from short-lived to extended retention.",
 			Default:  false,
 			BodyPath: "extend_trace_retention",
 		},
@@ -184,6 +199,7 @@ var annotationQueuesRetrieveQueues = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:      "run-id",
+			Usage:     "ID of the run.",
 			Required:  true,
 			PathParam: "run_id",
 		},
