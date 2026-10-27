@@ -193,12 +193,13 @@ func TestEveryGeneratedOperationHasAContractCase(t *testing.T) {
 	for _, resource := range generatedResources() {
 		generatedNames[resource.Name] = true
 		covered := map[string]bool{}
+		// Test files name operations as generated; a root renames them in place.
 		for _, c := range tests[resource.Name].Contract {
-			covered[c.Op] = true
+			covered[operationCommandName(resource.Name, c.Op)] = true
 		}
 		for _, op := range resource.Commands {
 			// urfave/cli adds a help subcommand to every resource.
-			if op.Name != "help" && !covered[op.Name] {
+			if op.Name != "help" && !covered[operationCommandName(resource.Name, op.Name)] {
 				t.Errorf("'langsmith %s %s' has no contract case", resource.Name, op.Name)
 			}
 		}
@@ -257,7 +258,7 @@ func runGeneratedContractCase(t *testing.T, resource string, c generatedContract
 
 	// A subresource like threads:share is mounted as `threads share`.
 	args := append([]string{"--api-url", ts.URL, "--api-key", "test-key"}, strings.Split(resource, ":")...)
-	args = append(append(args, c.Op), c.Args...)
+	args = append(append(args, operationCommandName(resource, c.Op)), c.Args...)
 	args = append(args, "--format", "json")
 	root := NewRootCmd("dev", "dev")
 	var stderr bytes.Buffer

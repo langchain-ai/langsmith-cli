@@ -36,11 +36,38 @@ func generatedResources() []*cli.Command {
 // generatedAnnotation holds the name of the generated resource a command runs.
 const generatedAnnotation = "langsmith/generated-resource"
 
+// generatedOperationNames gives a command name to generated operations named
+// after an SDK method that reads badly as a command, keyed by
+// "<resource> <operation>". The SDK method keeps its name.
+var generatedOperationNames = map[string]string{
+	"annotation-queues annotation-queues":          "create",
+	"annotation-queues retrieve-annotation-queues": "list",
+}
+
+// operationCommandName returns the command name of a generated operation.
+func operationCommandName(resource, op string) string {
+	if name, ok := generatedOperationNames[resource+" "+op]; ok {
+		return name
+	}
+	return op
+}
+
+// renameGeneratedOperations renames operations in the generated tree itself,
+// so its help, errors and dispatch all use the command name.
+func renameGeneratedOperations(resources []*cli.Command) {
+	for _, r := range resources {
+		for _, op := range r.Commands {
+			op.Name = operationCommandName(r.Name, op.Name)
+		}
+	}
+}
+
 func addGeneratedCommands(root *cobra.Command) {
 	// The generated root validates every subcommand's flags on each run, so
 	// drop its helpers (@manpages, __complete), which langsmith covers itself.
 	resources := generatedResources()
 	generated.Command.Commands = resources
+	renameGeneratedOperations(resources)
 	mountGeneratedResources(root, resources)
 }
 

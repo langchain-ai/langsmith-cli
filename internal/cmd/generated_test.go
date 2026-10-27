@@ -126,6 +126,27 @@ func TestMountGeneratedKeepsOperationAliases(t *testing.T) {
 	}
 }
 
+func TestMountGeneratedRenamesOperations(t *testing.T) {
+	root := &cobra.Command{Use: "langsmith"}
+	queues := []*cli.Command{
+		resource("annotation-queues", "annotation-queues", "retrieve-annotation-queues", "update"),
+		resource("annotation-queues:items", "list"),
+	}
+	renameGeneratedOperations(queues)
+	mountGeneratedResources(root, queues)
+	for _, name := range []string{"create", "list", "update"} {
+		if path, r := commandPath(t, root, "annotation-queues", name); path != "langsmith annotation-queues "+name || r != "annotation-queues" {
+			t.Errorf("annotation-queues %s = %q (%q)", name, path, r)
+		}
+	}
+	group := subcommand(root, "annotation-queues")
+	for _, generatedName := range []string{"annotation-queues", "retrieve-annotation-queues"} {
+		if subcommand(group, generatedName) != nil {
+			t.Errorf("annotation-queues %s is mounted under its generated name", generatedName)
+		}
+	}
+}
+
 func TestMountGeneratedPanicsOnGeneratedClash(t *testing.T) {
 	queues, items := resource("queues", "items"), resource("queues:items", "list")
 	for _, order := range [][]*cli.Command{{queues, items}, {items, queues}} {
