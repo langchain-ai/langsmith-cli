@@ -260,11 +260,93 @@ contract:
       exit_code: 1
       stderr: period-start
 
-# Runs against a live API with -tags=integration. The command has no delete
-# (`langsmith evaluator delete` covers it), so a live create here would leave an
-# evaluator behind; the lifecycle only reads spend.
+  - name: bulk-delete after confirmation
+    op: bulk-delete
+    args:
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+      - --evaluator-id
+      - 22222222-2222-2222-2222-222222222222
+      - --delete-run-rules
+    stdin: "y\n"
+    response:
+      body: &bulk_deleted
+        succeeded: [11111111-1111-1111-1111-111111111111]
+        failed: [{id: 22222222-2222-2222-2222-222222222222, error: Evaluator not found}]
+    want:
+      method: DELETE
+      path: /api/v1/platform/evaluators
+      query:
+        evaluator_ids: [11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222]
+        delete_run_rules: "true"
+      stdout: Evaluator not found
+      stderr: This permanently deletes
+
+  - name: bulk-delete without confirmation sends nothing
+    op: bulk-delete
+    args: [--evaluator-id, 11111111-1111-1111-1111-111111111111]
+    stdin: "n\n"
+    want:
+      requests: 0
+      error: not confirmed
+
+  # Runs after the first bulk-delete, so it also shows --delete-run-rules does not carry over.
+  - name: bulk-delete with --yes in a workspace
+    op: bulk-delete
+    args:
+      - --evaluator-id
+      - 11111111-1111-1111-1111-111111111111
+      - --yes
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body: *bulk_deleted
+    want:
+      method: DELETE
+      path: /api/v1/platform/evaluators
+      query: {evaluator_ids: 11111111-1111-1111-1111-111111111111}
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+
+  - name: bulk-delete reports API errors
+    op: bulk-delete
+    args: [--evaluator-id, not-a-uuid, --yes]
+    response:
+      status: 400
+      body: {detail: "invalid evaluator_id \"not-a-uuid\""}
+    want:
+      method: DELETE
+      path: /api/v1/platform/evaluators
+      query: {evaluator_ids: not-a-uuid}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+# Runs against a live API with -tags=integration. The evaluator has no run
+# rules, so it never runs or spends.
 lifecycle:
   steps:
+    - name: create
+      args:
+        - create
+        - --name
+        - cli-it-{{run}}
+        - --type
+        - code
+        - --code-evaluator.code
+        - "def perform_eval(run, example): return {'score': 1}"
+      capture: {id: evaluator.id}
+    - name: update
+      args: [update, --evaluator-id, "{{id}}", --name, "cli-it-{{run}}-v2"]
+      expect: {evaluator.name: "cli-it-{{run}}-v2"}
     - name: spend grouped by evaluator
       args: [spend, --period-start, "2026-09-01", --group-by, evaluator]
       exists: [period_start]
+    - name: bulk-delete
+      args: [bulk-delete, --evaluator-id, "{{id}}", --yes]
+      exists: ['succeeded.#(=="{{id}}")']
+      forget: [id]
+    - name: bulk-delete again reports it gone
+      args: [bulk-delete, --evaluator-id, "{{id}}", --yes]
+      exists: ['failed.#(id=="{{id}}")']
+  cleanup:
+    - args: [bulk-delete, --evaluator-id, "{{id}}", --yes]
+      needs: [id]

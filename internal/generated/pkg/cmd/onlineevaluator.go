@@ -196,6 +196,27 @@ var onlineEvaluatorsUpdate = requestflag.WithInnerFlags(cli.Command{
 	},
 })
 
+var onlineEvaluatorsBulkDelete = cli.Command{
+	Name:    "bulk-delete",
+	Usage:   "Delete multiple evaluators by their IDs. Returns per-item success/failure.",
+	Suggest: true,
+	Flags: []cli.Flag{
+		&requestflag.Flag[[]string]{
+			Name:      "evaluator-id",
+			Usage:     "Evaluator IDs to delete",
+			Required:  true,
+			QueryPath: "evaluator_ids",
+		},
+		&requestflag.Flag[bool]{
+			Name:      "delete-run-rules",
+			Usage:     "When true, delete all run rules for this evaluator before deleting the evaluator",
+			QueryPath: "delete_run_rules",
+		},
+	},
+	Action:          handleOnlineEvaluatorsBulkDelete,
+	HideHelpCommand: true,
+}
+
 var onlineEvaluatorsSpend = cli.Command{
 	Name:    "spend",
 	Usage:   "Returns per-day LLM evaluator spend for the requested 7-day period, grouped by\nevaluator, resource, or run rule. Exactly one of group_by, evaluator_id,\nsession_id, or dataset_id is required. resource_id, type, feedback_key,\ntag_value_id, and agent_id may be supplied with group_by to narrow listing\naggregations.",
@@ -343,6 +364,47 @@ func handleOnlineEvaluatorsUpdate(ctx context.Context, cmd *cli.Command) error {
 		Format:         format,
 		RawOutput:      cmd.Root().Bool("raw-output"),
 		Title:          "online-evaluators update",
+		Transform:      transform,
+	})
+}
+
+func handleOnlineEvaluatorsBulkDelete(ctx context.Context, cmd *cli.Command) error {
+	client := langsmith.NewClient(getDefaultRequestOptions(cmd)...)
+	unusedArgs := cmd.Args().Slice()
+
+	if len(unusedArgs) > 0 {
+		return fmt.Errorf("Unexpected extra arguments: %v", unusedArgs)
+	}
+
+	options, err := flagOptions(
+		cmd,
+		apiquery.NestedQueryFormatBrackets,
+		apiquery.ArrayQueryFormatRepeat,
+		EmptyBody,
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	params := langsmith.OnlineEvaluatorBulkDeleteParams{}
+
+	var res []byte
+	options = append(options, option.WithResponseBodyInto(&res))
+	_, err = client.OnlineEvaluators.BulkDelete(ctx, params, options...)
+	if err != nil {
+		return err
+	}
+
+	obj := gjson.ParseBytes(res)
+	format := cmd.Root().String("format")
+	explicitFormat := cmd.Root().IsSet("format")
+	transform := cmd.Root().String("transform")
+	return ShowJSON(obj, ShowJSONOpts{
+		ExplicitFormat: explicitFormat,
+		Format:         format,
+		RawOutput:      cmd.Root().Bool("raw-output"),
+		Title:          "online-evaluators bulk-delete",
 		Transform:      transform,
 	})
 }

@@ -163,6 +163,20 @@ func TestOnlineEvaluatorsUpdate(t *testing.T) {
 	})
 }
 
+func TestOnlineEvaluatorsBulkDelete(t *testing.T) {
+	t.Skip("Mock server tests are disabled")
+	t.Run("regular flags", func(t *testing.T) {
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"online-evaluators", "bulk-delete",
+			"--evaluator-id", "string",
+			"--delete-run-rules=true",
+		)
+	})
+}
+
 func TestOnlineEvaluatorsSpend(t *testing.T) {
 	t.Skip("Mock server tests are disabled")
 	t.Run("regular flags", func(t *testing.T) {

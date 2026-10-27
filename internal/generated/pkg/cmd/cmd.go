@@ -256,6 +256,7 @@ func init() {
 				Commands: []*cli.Command{
 					&onlineEvaluatorsCreate,
 					&onlineEvaluatorsUpdate,
+					&onlineEvaluatorsBulkDelete,
 					&onlineEvaluatorsSpend,
 				},
 			},
