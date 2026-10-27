@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.7](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.6...v0.3.7) (2026-10-27)
+
+
+### Features
+
+* **cli:** expose online-evaluators bulk-delete to the CLI ([cc038c4](https://github.com/langchain-ai/langsmith-cli/commit/cc038c4d25c2332369004ed75b3ef8501d57239a))
+* **cli:** expose workspaces retrieve, update and delete to the CLI ([dfbc670](https://github.com/langchain-ai/langsmith-cli/commit/dfbc670bcacefc6b2b600a93bd48d7bb2e30e1a6))
+* **cli:** mount generated operations under readable command names ([6b2ff85](https://github.com/langchain-ai/langsmith-cli/commit/6b2ff851d245676c9378b1781194b62aa10d1309))
+* **sdks:** stream v2 run, trace and thread queries ([90d3920](https://github.com/langchain-ai/langsmith-cli/commit/90d3920cee0d10ef0216f35a8c7292a6776fa5e3))
+
+
+### Bug Fixes
+
+* **cli:** confirm every generated command that deletes ([dab7065](https://github.com/langchain-ai/langsmith-cli/commit/dab7065cf1334cca57275f2074c883bff7af1090))
+
 ## [0.3.6](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.5...v0.3.6) (2026-10-26)
 
 
