@@ -45,8 +45,12 @@ type generatedContractCase struct {
 	Response struct {
 		// Status defaults to 200.
 		Status int `yaml:"status"`
-		// Body is returned as JSON; it defaults to {}.
+		// Body is returned as JSON; it defaults to {}. A string is sent as is,
+		// for example SSE frames.
 		Body any `yaml:"body"`
+		// Headers override the response headers; Content-Type defaults to
+		// application/json.
+		Headers map[string]string `yaml:"headers"`
 	} `yaml:"response"`
 	Want struct {
 		Method  string                 `yaml:"method"`
@@ -246,6 +250,9 @@ func runGeneratedContractCase(t *testing.T, resource string, c generatedContract
 			query: r.URL.Query(), body: body,
 		})
 		w.Header().Set("Content-Type", "application/json")
+		for name, value := range c.Response.Headers {
+			w.Header().Set(name, value)
+		}
 		w.WriteHeader(status)
 		_, _ = w.Write(response)
 	}))
