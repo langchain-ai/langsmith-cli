@@ -80,10 +80,6 @@ var tracesQuery = cli.Command{
 			Usage:    "`tree_filter` narrows results to traces containing at least one run anywhere in the run tree (root or descendant) that matches this LangSmith filter expression.",
 			BodyPath: "tree_filter",
 		},
-		&requestflag.Flag[string]{
-			Name:       "accept",
-			HeaderPath: "Accept",
-		},
 		&requestflag.Flag[int64]{
 			Name:  "max-items",
 			Usage: "The maximum number of items to return (use -1 for unlimited).",

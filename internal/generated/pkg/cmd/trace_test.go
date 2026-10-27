@@ -35,7 +35,6 @@ func TestTracesQuery(t *testing.T) {
 			"--trace-filter", `eq(status, "error")`,
 			"--trace-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--tree-filter", `has(tags, "production")`,
-			"--accept", "Accept",
 		)
 	})
 
@@ -68,7 +67,6 @@ func TestTracesQuery(t *testing.T) {
 			"--tenant-id", "string",
 			"traces", "query",
 			"--max-items", "10",
-			"--accept", "Accept",
 		)
 	})
 }

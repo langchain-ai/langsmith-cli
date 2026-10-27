@@ -73,7 +73,6 @@ func TestThreadsQuery(t *testing.T) {
 			"--thread-filter", "gte(turn_count, 3)",
 			"--trace-filter", `eq(status, "error")`,
 			"--tree-filter", `has(tags, "production")`,
-			"--accept", "Accept",
 		)
 	})
 
@@ -96,7 +95,6 @@ func TestThreadsQuery(t *testing.T) {
 			"--tenant-id", "string",
 			"threads", "query",
 			"--max-items", "10",
-			"--accept", "Accept",
 		)
 	})
 }

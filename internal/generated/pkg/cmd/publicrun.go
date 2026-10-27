@@ -41,10 +41,6 @@ var publicRunsRetrieve = cli.Command{
 			Required:  true,
 			QueryPath: "start_time",
 		},
-		&requestflag.Flag[string]{
-			Name:       "accept",
-			HeaderPath: "Accept",
-		},
 	},
 	Action:          handlePublicRunsRetrieve,
 	HideHelpCommand: true,
@@ -64,10 +60,6 @@ var publicRunsQuery = cli.Command{
 			Name:     "select",
 			Usage:    "`selects` lists which public run properties to include on each returned run.",
 			BodyPath: "selects",
-		},
-		&requestflag.Flag[string]{
-			Name:       "accept",
-			HeaderPath: "Accept",
 		},
 	},
 	Action:          handlePublicRunsQuery,

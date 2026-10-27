@@ -122,10 +122,6 @@ var threadsQuery = cli.Command{
 			Usage:    "`tree_filter` narrows results to threads containing at least one trace with a matching run anywhere in its run tree.\nSelf-hosted deployments require LangSmith v0.17 or later; unsupported deployments return 501.\nSee https://docs.langchain.com/langsmith/trace-query-syntax#filter-query-language for syntax.",
 			BodyPath: "tree_filter",
 		},
-		&requestflag.Flag[string]{
-			Name:       "accept",
-			HeaderPath: "Accept",
-		},
 		&requestflag.Flag[int64]{
 			Name:  "max-items",
 			Usage: "The maximum number of items to return (use -1 for unlimited).",
