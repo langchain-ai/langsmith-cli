@@ -239,7 +239,10 @@ Examples:
 				return
 			}
 
-			const maxPageSize = 10
+			// 20 is the server's page_size maximum. SmithDB builds from before
+			// April 2026 cap the trace-id IN list at 10 and reject a larger page
+			// with a 400, so the rest of the call drops to 10 after one.
+			maxPageSize := 20
 			remaining := ff.Limit
 			var allTraces []any
 
@@ -251,7 +254,12 @@ Examples:
 				body["page_size"] = pageSize
 
 				var result map[string]any
-				if err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result); err != nil {
+				err := c.RawPostWithRetries(ctx, "/api/v2/traces/messages", body, &result)
+				if err != nil && pageSize > 10 && client.IsBadRequest(err) {
+					maxPageSize = 10
+					continue
+				}
+				if err != nil {
 					ExitErrorf("%v", err)
 				}
 
