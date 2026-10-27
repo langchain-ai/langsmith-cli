@@ -319,10 +319,10 @@ func TestTraceMessages_Pagination(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			pageCount++
 
-			// Verify page size is <= 20, the server's maximum
+			// Verify page size is <= 10
 			pageSize, _ := body["page_size"].(float64)
-			if int(pageSize) > 20 {
-				t.Errorf("page %d: page_size sent to API was %d, expected <= 20", pageCount, int(pageSize))
+			if int(pageSize) > 10 {
+				t.Errorf("page %d: page_size sent to API was %d, expected <= 10", pageCount, int(pageSize))
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -387,79 +387,6 @@ func TestTraceMessages_Pagination(t *testing.T) {
 	}
 	if pageCount != 2 {
 		t.Errorf("expected 2 API calls, got %d", pageCount)
-	}
-}
-
-// Twenty traces come back in one page of 20, the server's maximum. A server
-// whose SmithDB caps the id IN list at 10 rejects that page with a 400, and the
-// CLI then fetches the same traces in pages of 10.
-func TestTraceMessages_PagesOf20FallBackTo10(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		maxIDs    int
-		wantSizes []int
-	}{
-		{"current server", 20, []int{20}},
-		{"IN list capped at 10", 10, []int{20, 10, 10}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var sizes []int
-			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/api/v1/sessions":
-					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "sess-20", "name": "p20"}})
-				case "/api/v2/traces/messages":
-					var body map[string]any
-					_ = json.NewDecoder(r.Body).Decode(&body)
-					pageSize, _ := body["page_size"].(float64)
-					sizes = append(sizes, int(pageSize))
-					if int(pageSize) > tc.maxIDs {
-						http.Error(w, `{"detail":"IN list exceeds maximum length (10)"}`, http.StatusBadRequest)
-						return
-					}
-					start := 0
-					if body["cursor"] == "page2" {
-						start = 10
-					}
-					items := make([]map[string]any, int(pageSize))
-					for i := range items {
-						items[i] = map[string]any{"trace_id": fmt.Sprintf("trace-%d", start+i+1), "groups": []any{}}
-					}
-					resp := map[string]any{"items": items}
-					if start+len(items) < 20 {
-						resp["next_cursor"] = "page2"
-					}
-					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(resp)
-				case "/api/v2/runs/query":
-					w.Header().Set("Content-Type", "application/json")
-					_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
-				}
-			})
-			cleanup := setupTestEnv(t, ts.URL)
-			defer cleanup()
-			flagOutputFormat = "json"
-
-			out := captureStdout(t, func() {
-				cmd := newTraceMessagesCmd()
-				cmd.SetArgs([]string{"--project", "p20", "--limit", "100", "--since", "2024-01-01T00:00:00Z"})
-				if err := cmd.Execute(); err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			})
-
-			var result map[string]any
-			if err := json.Unmarshal([]byte(out), &result); err != nil {
-				t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
-			}
-			if traces, _ := result["traces"].([]any); len(traces) != 20 {
-				t.Errorf("expected 20 traces, got %d", len(traces))
-			}
-			if fmt.Sprint(sizes) != fmt.Sprint(tc.wantSizes) {
-				t.Errorf("page sizes sent: %v, want %v", sizes, tc.wantSizes)
-			}
-		})
 	}
 }
 

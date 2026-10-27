@@ -92,10 +92,6 @@ var sessionsDashboard = requestflag.WithInnerFlags(cli.Command{
 			Default:  "UTC",
 			BodyPath: "timezone",
 		},
-		&requestflag.Flag[string]{
-			Name:       "accept",
-			HeaderPath: "accept",
-		},
 	},
 	Action:          handleSessionsDashboard,
 	HideHelpCommand: true,

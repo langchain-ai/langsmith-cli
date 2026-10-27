@@ -62,7 +62,6 @@ func TestSessionsDashboard(t *testing.T) {
 			"--start-time", "'2019-12-27T18:11:19.117Z'",
 			"--stride", "{days: 0, hours: 0, minutes: 0}",
 			"--timezone", "timezone",
-			"--accept", "accept",
 		)
 	})
 
@@ -87,7 +86,6 @@ func TestSessionsDashboard(t *testing.T) {
 			"--stride.hours", "0",
 			"--stride.minutes", "0",
 			"--timezone", "timezone",
-			"--accept", "accept",
 		)
 	})
 
@@ -112,7 +110,6 @@ func TestSessionsDashboard(t *testing.T) {
 			"--tenant-id", "string",
 			"sessions", "dashboard",
 			"--session-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
-			"--accept", "accept",
 		)
 	})
 }
