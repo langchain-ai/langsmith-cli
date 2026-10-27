@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.7...v0.3.8) (2026-10-27)
+
+
+### Performance Improvements
+
+* **cli:** match the API's max page size for trace messages ([b127e53](https://github.com/langchain-ai/langsmith-cli/commit/b127e53cae967bcced3292b1b3375838b755e2cd))
+
 ## [0.3.7](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.6...v0.3.7) (2026-10-27)
 
 
