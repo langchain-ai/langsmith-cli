@@ -249,6 +249,18 @@ langsmith threads list --project my-chatbot --last-n-minutes 120
 langsmith threads get <thread-id> --project my-chatbot --full
 ```
 
+### `streaming` — Search runs, threads and traces with AI search
+
+`--ai-search` takes a natural-language query and only works on the streaming
+commands. Each SSE event prints as a JSON patch, and `--max-items` counts
+events. These commands take `--project-id` only.
+
+```bash
+langsmith threads streaming query --project-id <project-id> --ai-search "user asks for a refund"
+langsmith traces streaming query --project-id <project-id> --ai-search "tool call failed"
+langsmith runs streaming query-v2 --project-id <project-id> --ai-search "slow LLM calls" --max-items 20
+```
+
 ### `insights` — Create and query insight reports
 
 Insight reports analyze traces in a project to identify usage patterns, common

@@ -213,6 +213,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "runs:streaming",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&runsStreamingQueryV2,
+				},
+			},
+			{
 				Name:     "runs:share",
 				Category: "API RESOURCE",
 				Suggest:  true,
@@ -232,6 +240,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "threads:streaming",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&threadsStreamingQuery,
+				},
+			},
+			{
 				Name:     "threads:share",
 				Category: "API RESOURCE",
 				Suggest:  true,
@@ -247,6 +263,14 @@ func init() {
 				Suggest:  true,
 				Commands: []*cli.Command{
 					&tracesQuery,
+				},
+			},
+			{
+				Name:     "traces:streaming",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&tracesStreamingQuery,
 				},
 			},
 			{
