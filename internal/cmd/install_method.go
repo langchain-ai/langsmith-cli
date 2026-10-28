@@ -19,7 +19,9 @@ const (
 	methodScoop
 	// methodGo means the binary was installed via `go install`.
 	methodGo
-	// methodDev means a local/development build with no release version.
+	// methodDev means a local/development build with no release version, or an
+	// internal build from the monorepo (<release>-internal-<sha>) that ships
+	// inside an image, such as the sandbox rootfs, and is updated with it.
 	methodDev
 )
 
@@ -65,7 +67,7 @@ func detectInstallMethod(execPath, version, goos, gobin, gopath, home string) in
 		}
 	}
 
-	if version == "dev" {
+	if version == "dev" || strings.Contains(version, "-internal-") || strings.HasPrefix(version, "internal-") {
 		return methodDev
 	}
 	return methodManaged

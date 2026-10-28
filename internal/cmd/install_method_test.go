@@ -116,6 +116,22 @@ func TestDetectInstallMethod(t *testing.T) {
 			want:     methodDev,
 		},
 		{
+			name:     "internal monorepo build",
+			execPath: "/usr/local/bin/langsmith.bin",
+			version:  "0.3.8-internal-98bf7a0e5e",
+			goos:     "linux",
+			home:     "/root",
+			want:     methodDev,
+		},
+		{
+			name:     "internal monorepo build without a release",
+			execPath: "/usr/local/bin/langsmith.bin",
+			version:  "internal-98bf7a0e5e",
+			goos:     "linux",
+			home:     "/root",
+			want:     methodDev,
+		},
+		{
 			name:     "GOBIN takes precedence over GOPATH",
 			execPath: "/Users/me/gopath/bin/langsmith",
 			version:  "0.2.38",
