@@ -747,3 +747,82 @@ func TestListCommands_SendFeedbackWindowToV2Query(t *testing.T) {
 		})
 	}
 }
+
+func TestQueryRunsV2_HintsOnTimeoutAndRateLimit(t *testing.T) {
+	tests := []struct {
+		status int
+		want   string
+	}{
+		{status: http.StatusGatewayTimeout, want: "shorter time window"},
+		{status: http.StatusTooManyRequests, want: "wait before retrying"},
+		{status: http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(`{"detail":"nope"}`))
+			})
+			cleanup := setupTestEnv(t, ts.URL)
+			defer cleanup()
+
+			_, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 10, 0)
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if hasHint := strings.Contains(err.Error(), "hint:"); hasHint != (tt.want != "") {
+				t.Fatalf("error = %q, want hint %v", err, tt.want != "")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRetryAfterAdvice(t *testing.T) {
+	header := func(v string) *http.Response {
+		return &http.Response{Header: http.Header{"Retry-After": []string{v}}}
+	}
+	if got := retryAfterAdvice(header("3600")); got != "wait 3600s before retrying" {
+		t.Errorf("seconds: got %q", got)
+	}
+	if got := retryAfterAdvice(header(time.Now().Add(90 * time.Second).UTC().Format(http.TimeFormat))); !strings.HasPrefix(got, "wait 1m") {
+		t.Errorf("HTTP date: got %q", got)
+	}
+	if got := retryAfterAdvice(nil); got != "wait before retrying" {
+		t.Errorf("no response: got %q", got)
+	}
+}
+
+func TestQueryRuns_HintsOnV1Timeout(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGatewayTimeout)
+		_, _ = w.Write([]byte(`{"detail":"timeout"}`))
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	_, err := queryRuns(context.Background(), MustGetClient(), langsmith.RunQueryParams{}, "", 10, 0)
+	if err == nil || !strings.Contains(err.Error(), "shorter time window") {
+		t.Fatalf("error = %v, want the timeout hint", err)
+	}
+}
+
+func TestQueryRuns_LookupTimeoutHint(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGatewayTimeout)
+		_, _ = w.Write([]byte(`{"detail":"timeout"}`))
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	_, err := queryRuns(context.Background(), MustGetClient(), langsmith.RunQueryParams{ID: langsmith.F([]string{"run-1"})}, "", 1, 0)
+	if err == nil || !strings.Contains(err.Error(), "lookup timed out") || strings.Contains(err.Error(), "filter") {
+		t.Fatalf("error = %v, want the lookup hint without filter advice", err)
+	}
+}

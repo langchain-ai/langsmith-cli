@@ -3,7 +3,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +63,7 @@ func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryP
 	for {
 		resp, err := c.SDK.Runs.Query(ctx, params)
 		if err != nil {
-			return nil, fmt.Errorf("querying runs: %w", err)
+			return nil, withQueryHint(fmt.Errorf("querying runs: %w", err), len(params.ID.Value) > 0 || params.Trace.Present)
 		}
 
 		for _, run := range resp.Runs {
@@ -108,10 +111,48 @@ func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQuer
 		allRuns = append(allRuns, run)
 	}
 	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("querying runs (v2): %w", err)
+		return nil, withQueryHint(fmt.Errorf("querying runs (v2): %w", err), len(params.IDs.Value) > 0)
 	}
 
 	return allRuns, nil
+}
+
+// withQueryHint tells the agent how to recover from a query the API timed out
+// or rate-limited, instead of leaving it to retry the same request.
+// lookup is true for a query by run or trace ID, which a filter or a shorter
+// window can't speed up without risking excluding the item.
+func withQueryHint(err error, lookup bool) error {
+	var apiErr *langsmith.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	switch apiErr.StatusCode {
+	case http.StatusGatewayTimeout:
+		if lookup {
+			return fmt.Errorf("%w\nhint: the lookup timed out on the server; retry, and if you know when it started, use --since just before that time (remove --last-n-minutes if set)", err)
+		}
+		return fmt.Errorf("%w\nhint: the query timed out on the server; narrow it with a shorter time window or a filter (see --help for this command's flags)", err)
+	case http.StatusTooManyRequests:
+		return fmt.Errorf("%w\nhint: rate limited by the API; %s, and avoid running many queries in parallel", err, retryAfterAdvice(apiErr.Response))
+	}
+	return err
+}
+
+// retryAfterAdvice reads the wait from a 429's Retry-After header, in seconds
+// or as an HTTP date.
+func retryAfterAdvice(res *http.Response) string {
+	if res != nil {
+		v := res.Header.Get("Retry-After")
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			return fmt.Sprintf("wait %ds before retrying", secs)
+		}
+		if t, err := http.ParseTime(v); err == nil {
+			if d := time.Until(t).Round(time.Second); d > 0 {
+				return fmt.Sprintf("wait %s before retrying", d)
+			}
+		}
+	}
+	return "wait before retrying"
 }
 
 // requireV2Feature exits with a clear error when the deployment lacks the v2

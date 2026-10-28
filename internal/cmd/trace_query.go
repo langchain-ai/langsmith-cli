@@ -72,7 +72,7 @@ func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQu
 		runs = append(runs, withTraceAggregates(runV2ToSchema(trace.RootRun), trace.TraceAggregates))
 	}
 	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("querying traces (v2): %w", err)
+		return nil, withQueryHint(fmt.Errorf("querying traces (v2): %w", err), len(query.TraceIDs.Value) > 0)
 	}
 	return runs, nil
 }
