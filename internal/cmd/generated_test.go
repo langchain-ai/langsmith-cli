@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -490,5 +492,43 @@ func TestGeneratedDeletePromptRedactsAPIKey(t *testing.T) {
 				t.Errorf("prompt output leaks the API key: %q", stderr)
 			}
 		})
+	}
+}
+
+func TestGeneratedSandboxUsageRawOutput(t *testing.T) {
+	isolateGeneratedAuth(t)
+	const body = `{"items":[],"next_cursor":"next-page","totals":{"vcpu_hours":"1.25"},"daily":{"entries":[{"period_start":"2026-10-01T00:00:00Z","is_other":true,"vcpu_hours":"1.25"}]}}`
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests > 1 {
+			http.Error(w, "raw output must stop after one page", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer ts.Close()
+	previousExit := exitGenerated
+	exitGenerated = func(code int) { t.Errorf("unexpected CLI exit: %d", code) }
+	t.Cleanup(func() { exitGenerated = previousExit })
+	root := NewRootCmd("dev", "dev")
+	root.SetArgs([]string{"--api-url", ts.URL, "--api-key", "test-key", "sandboxes", "list-usage-costs",
+		"--start-time", "2026-10-01T00:00:00Z", "--end-time", "2026-10-02T00:00:00Z",
+		"--granularity", "RESOURCE", "--include-totals", "--include-daily", "--format", "raw"})
+	stdout := captureStdout(t, func() {
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var got, want any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	if err := json.Unmarshal([]byte(body), &want); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || !reflect.DeepEqual(got, want) {
+		t.Fatalf("raw output = %s after %d requests; want the complete single-page response", stdout, requests)
 	}
 }

@@ -16,6 +16,7 @@ contract:
       - --granularity
       - RESOURCE
       - --include-totals
+      - --include-daily
       - --page-size
       - "50"
       - --cursor
@@ -43,6 +44,7 @@ contract:
         resource_ids: 11111111-1111-1111-1111-111111111111
         granularity: RESOURCE
         include_totals: "true"
+        include_daily: "true"
         page_size: "50"
         cursor: opaque-cursor
       stdout: "1.25"

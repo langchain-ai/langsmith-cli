@@ -21,6 +21,7 @@ func TestSandboxesListUsageCosts(t *testing.T) {
 			"--start-time", "'2019-12-27T18:11:19.117Z'",
 			"--cursor", "cursor",
 			"--granularity", "HOUR",
+			"--include-daily=true",
 			"--include-totals=true",
 			"--page-size", "1",
 			"--resource-id", "string",

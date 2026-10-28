@@ -43,8 +43,14 @@ var sandboxesListUsageCosts = cli.Command{
 			QueryPath: "granularity",
 		},
 		&requestflag.Flag[bool]{
+			Name:      "include-daily",
+			Usage:     "Include bounded daily physical usage for the top 10 resources per metric and Other. Requires RESOURCE and include_totals. Omitted when unrestricted access or service support is unavailable. CLI: use --format raw to show this summary.",
+			Default:   false,
+			QueryPath: "include_daily",
+		},
+		&requestflag.Flag[bool]{
 			Name:      "include-totals",
-			Usage:     "Include usage totals across the filtered interval (RESOURCE only). Omitted when unrestricted resource access cannot be verified or the service does not support totals.",
+			Usage:     "Include usage totals across the filtered interval (RESOURCE only). Omitted when unrestricted resource access cannot be verified or the service does not support totals. CLI: use --format raw to show this summary.",
 			Default:   false,
 			QueryPath: "include_totals",
 		},
