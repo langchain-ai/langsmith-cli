@@ -21,7 +21,7 @@ func TestFeedbackTokensCreate(t *testing.T) {
 			"--run-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--expires-at", "'2019-12-27T18:11:19.117Z'",
 			"--expires-in", "{days: 0, hours: 0, minutes: 0}",
-			"--feedback-config", "{type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}",
+			"--feedback-config", "{type: continuous, allows_multiple_categories: true, categories: [{value: 0, label: x}], max: 0, min: 0}",
 		)
 	})
 
@@ -42,6 +42,7 @@ func TestFeedbackTokensCreate(t *testing.T) {
 			"--expires-in.hours", "0",
 			"--expires-in.minutes", "0",
 			"--feedback-config.type", "continuous",
+			"--feedback-config.allows-multiple-categories=true",
 			"--feedback-config.categories", "[{value: 0, label: x}]",
 			"--feedback-config.max", "0",
 			"--feedback-config.min", "0",
@@ -60,6 +61,7 @@ func TestFeedbackTokensCreate(t *testing.T) {
 			"  minutes: 0\n" +
 			"feedback_config:\n" +
 			"  type: continuous\n" +
+			"  allows_multiple_categories: true\n" +
 			"  categories:\n" +
 			"    - value: 0\n" +
 			"      label: x\n" +

@@ -73,6 +73,11 @@ var feedbackUpdate = requestflag.WithInnerFlags(cli.Command{
 			Usage:      "Enum for feedback types.",
 			InnerField: "type",
 		},
+		&requestflag.InnerFlag[bool]{
+			Name:       "feedback-config.allows-multiple-categories",
+			Usage:      "Whether a reviewer can pick several categories. Categorical feedback only.",
+			InnerField: "allows_multiple_categories",
+		},
 		&requestflag.InnerFlag[any]{
 			Name:       "feedback-config.categories",
 			InnerField: "categories",

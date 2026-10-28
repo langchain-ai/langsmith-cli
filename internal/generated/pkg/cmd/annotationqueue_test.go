@@ -40,7 +40,7 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"--reservation-minutes", "0",
 			"--reviewer-access-mode", "any",
 			"--rubric-instructions", "rubric_instructions",
-			"--rubric-item", "[{feedback_key: feedback_key, description: description, feedback_config: {id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}, feedback_config_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_assertion: true, is_required: true, regex_validator: string, required_if: {join: all, rules: [{key: key, op: is, values: [0]}]}, score_descriptions: {foo: string}, value_descriptions: {foo: string}, visible_if: {join: all, rules: [{key: key, op: is, values: [0]}]}}]",
+			"--rubric-item", "[{feedback_key: feedback_key, description: description, feedback_config: {id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, allows_multiple_categories: true, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}, feedback_config_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_assertion: true, is_required: true, regex_validator: string, required_if: {join: all, rules: [{key: key, op: is, values: [0]}]}, score_descriptions: {foo: string}, value_descriptions: {foo: string}, visible_if: {join: all, rules: [{key: key, op: is, values: [0]}]}}]",
 		)
 	})
 
@@ -66,7 +66,7 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"--rubric-instructions", "rubric_instructions",
 			"--rubric-item.feedback-key", "feedback_key",
 			"--rubric-item.description", "description",
-			"--rubric-item.feedback-config", "{id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}",
+			"--rubric-item.feedback-config", "{id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, allows_multiple_categories: true, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}",
 			"--rubric-item.feedback-config-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--rubric-item.is-assertion=true",
 			"--rubric-item.is-required=true",
@@ -98,6 +98,7 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"      id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
 			"      feedback_config:\n" +
 			"        type: continuous\n" +
+			"        allows_multiple_categories: true\n" +
 			"        categories:\n" +
 			"          - value: 0\n" +
 			"            label: x\n" +

@@ -34,7 +34,7 @@ func TestFeedbackUpdate(t *testing.T) {
 			"--feedback-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--comment", "comment",
 			"--correction", "{foo: bar}",
-			"--feedback-config", "{type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}",
+			"--feedback-config", "{type: continuous, allows_multiple_categories: true, categories: [{value: 0, label: x}], max: 0, min: 0}",
 			"--score", "0",
 			"--value", "0",
 		)
@@ -54,6 +54,7 @@ func TestFeedbackUpdate(t *testing.T) {
 			"--comment", "comment",
 			"--correction", "{foo: bar}",
 			"--feedback-config.type", "continuous",
+			"--feedback-config.allows-multiple-categories=true",
 			"--feedback-config.categories", "[{value: 0, label: x}]",
 			"--feedback-config.max", "0",
 			"--feedback-config.min", "0",
@@ -70,6 +71,7 @@ func TestFeedbackUpdate(t *testing.T) {
 			"  foo: bar\n" +
 			"feedback_config:\n" +
 			"  type: continuous\n" +
+			"  allows_multiple_categories: true\n" +
 			"  categories:\n" +
 			"    - value: 0\n" +
 			"      label: x\n" +
