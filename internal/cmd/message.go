@@ -153,7 +153,8 @@ Examples:
 			}
 
 			startTime := resolveStartTime(ff.Since, ff.LastNMinutes)
-			body["min_start_time"] = startTime.Format("2006-01-02T15:04:05Z07:00")
+			checkFilterFlags(&ff, startTime)
+			body["min_start_time"] = startTime.Format(time.RFC3339Nano)
 
 			if ff.Before != "" {
 				body["max_start_time"] = ff.Before

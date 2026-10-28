@@ -84,6 +84,9 @@ func newThreadListCmd() *cobra.Command {
 				Limit:     langsmith.F(int64(100)),
 				StartTime: langsmith.F(startTime),
 			}
+			if err := validateRawFilter(rawFilter); err != nil {
+				ExitErrorf("%v", err)
+			}
 			if rawFilter != "" {
 				params.Filter = langsmith.F(rawFilter)
 			}
@@ -180,7 +183,7 @@ func newThreadListCmd() *cobra.Command {
 
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Maximum number of threads to return")
-	cmd.Flags().StringVar(&rawFilter, "filter", "", "Raw LangSmith filter DSL string")
+	cmd.Flags().StringVar(&rawFilter, "filter", "", filterFlagUsage)
 	cmd.Flags().IntVar(&lastNMinutes, "last-n-minutes", 0, "Only include threads active in last N minutes")
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 

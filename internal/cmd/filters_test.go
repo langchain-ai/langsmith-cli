@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -439,5 +440,37 @@ func TestBuildRunQueryParams_SinceWithoutTimezone(t *testing.T) {
 	expected := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
 	if !params.StartTime.Value.Equal(expected) {
 		t.Errorf("expected %v, got %v", expected, params.StartTime.Value)
+	}
+}
+
+func TestValidateRawFilter(t *testing.T) {
+	tests := []struct {
+		filter string
+		want   string
+	}{
+		{filter: `eq(metadata.user_id, "u1")`, want: "--metadata key=value"},
+		{filter: `and(eq(run_type, "llm"), eq(extra.metadata.user_id, "u1"))`, want: "extra.<key>"},
+		{filter: `eq(inputs.question, "hi")`, want: `eq(input_key, "key")`},
+		{filter: `eq(outputs.answer, "no")`, want: `eq(output_key, "key")`},
+		{filter: `eq(name, 'metadata.user_id')`},
+		{filter: `search('it\'s inputs.question')`},
+		{filter: `and(eq(metadata_key, "user_id"), eq(metadata_value, "u1"))`},
+		{filter: `eq(name, "metadata.user_id")`},
+		{filter: `search("inputs.question")`},
+		{filter: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.filter, func(t *testing.T) {
+			err := validateRawFilter(tt.filter)
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want it to contain %q", err, tt.want)
+			}
+		})
 	}
 }

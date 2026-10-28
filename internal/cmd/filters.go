@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -66,7 +67,7 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().IntVar(&f.MinTokens, "min-tokens", 0, "Minimum total tokens")
 	cmd.Flags().StringVar(&f.Tags, "tags", "", "Comma-separated tags (OR logic)")
 	cmd.Flags().StringVar(&f.Metadata, "metadata", "", "Filter by metadata key=value (e.g. revision_id=abc123)")
-	cmd.Flags().StringVar(&f.RawFilter, "filter", "", "Raw LangSmith filter DSL string")
+	cmd.Flags().StringVar(&f.RawFilter, "filter", "", filterFlagUsage)
 
 	if includeRunType {
 		cmd.Flags().StringVar(&f.RunType, "run-type", "", "Filter by run type (llm, chain, tool, retriever, prompt, parser)")
@@ -140,14 +141,7 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 
 	// End time (--before flag for forward pagination)
 	if f.Before != "" {
-		t, err := time.Parse(time.RFC3339, f.Before)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05", f.Before)
-			if err != nil {
-				ExitErrorf("invalid --before timestamp: %s", f.Before)
-			}
-		}
-		params.EndTime = langsmith.F(t)
+		params.EndTime = langsmith.F(parseBefore(f.Before))
 	}
 
 	// Run type
@@ -169,6 +163,8 @@ func BuildRunQueryParams(f *FilterFlags, isRoot bool, defaultLimit int) langsmit
 			params.Trace = langsmith.F(ids[0])
 		}
 	}
+
+	checkFilterFlags(f, params.StartTime.Value)
 
 	// Build filter DSL
 	filterStr := buildFilterDSL(f)
@@ -252,6 +248,53 @@ func buildFilterDSL(f *FilterFlags) string {
 	default:
 		return fmt.Sprintf("and(%s)", strings.Join(parts, ", "))
 	}
+}
+
+// filterFlagUsage is the --filter help shared by every command that takes one.
+const filterFlagUsage = `LangSmith filter DSL, e.g. 'and(eq(run_type, "llm"), gte(latency, 5))'. Match metadata with 'and(eq(metadata_key, "user_id"), eq(metadata_value, "u1"))', and inputs or outputs with input_key/input_value or output_key/output_value; metadata.x and inputs.x paths are not supported`
+
+// parseBefore parses --before as RFC 3339, with or without a zone.
+func parseBefore(before string) time.Time {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05"} {
+		if t, err := time.Parse(layout, before); err == nil {
+			return t
+		}
+	}
+	ExitErrorf("invalid --before timestamp: %s", before)
+	return time.Time{}
+}
+
+// checkFilterFlags rejects filter flags the server would reject, with the fix.
+// Every command that sends the shared filter flags calls it.
+func checkFilterFlags(f *FilterFlags, start time.Time) {
+	if f.Before != "" {
+		if end := parseBefore(f.Before); !end.After(start) {
+			ExitErrorf("--before (%s) must be later than the start of the window (%s); set --since or --last-n-minutes to an earlier time",
+				end.Format(time.RFC3339), start.Format(time.RFC3339))
+		}
+	}
+	if err := validateRawFilter(f.RawFilter); err != nil {
+		ExitErrorf("%v", err)
+	}
+}
+
+var (
+	quotedString = regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'`)
+	nestedPath   = regexp.MustCompile(`\b(metadata|inputs|outputs|extra)\.[A-Za-z_]`)
+)
+
+// validateRawFilter catches the filter mistakes agents make most, which the
+// server rejects with a parse error: nested paths such as metadata.user_id.
+func validateRawFilter(filter string) error {
+	m := nestedPath.FindStringSubmatch(quotedString.ReplaceAllString(filter, `""`))
+	if m == nil {
+		return nil
+	}
+	if m[1] == "metadata" || m[1] == "extra" {
+		return fmt.Errorf(`--filter can't read %s.<key>; use and(eq(metadata_key, "key"), eq(metadata_value, "value")) (or --metadata key=value on run and trace lists)`, m[1])
+	}
+	attr := strings.TrimSuffix(m[1], "s")
+	return fmt.Errorf(`--filter can't read %s.<key>; use and(eq(%s_key, "key"), eq(%s_value, "value")), or search("text") for a full-text match`, m[1], attr, attr)
 }
 
 // ResolveProject resolves the project name from flag → env.

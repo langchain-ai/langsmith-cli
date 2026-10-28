@@ -800,3 +800,36 @@ func TestTraceMessages_EmptyResult(t *testing.T) {
 		t.Errorf("expected 0 traces, got %d", len(traces))
 	}
 }
+
+func TestTraceMessages_KeepsFractionalWindow(t *testing.T) {
+	var receivedBody map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "sess-456", "name": "test-proj"}})
+		case "/api/v2/traces/messages":
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+		}
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+
+	captureStdout(t, func() {
+		cmd := newTraceMessagesCmd()
+		cmd.SetArgs([]string{
+			"--project", "test-proj",
+			"--since", "2024-01-01T00:00:00.500Z",
+			"--before", "2024-01-01T00:00:00.900Z",
+		})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if receivedBody["min_start_time"] != "2024-01-01T00:00:00.5Z" {
+		t.Errorf("min_start_time = %v, want the fractional --since", receivedBody["min_start_time"])
+	}
+}
