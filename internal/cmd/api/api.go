@@ -33,7 +33,7 @@ Browse endpoints:
 
 Make requests:
   langsmith api sessions?limit=5
-  langsmith api runs/query -F 'session[]=abc' -F limit=10
+  langsmith api orgs/current/members
   langsmith api sessions/abc-123 -X DELETE
   langsmith api datasets --input body.json
   echo '{"name":"x"}' | langsmith api sessions --input -
@@ -66,6 +66,9 @@ Make requests:
 			}
 			if err := blockRawDelete(c.APIURL(), method, path); err != nil {
 				return err
+			}
+			if hint := commandHint(c.APIURL(), method, path); hint != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", hint)
 			}
 
 			w := cmd.OutOrStdout()

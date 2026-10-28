@@ -238,3 +238,30 @@ func TestNewCmd_RetriesRetryableStatus(t *testing.T) {
 		t.Fatalf("retry result missing from output:\n%s", out.String())
 	}
 }
+
+func TestNewCmd_RunQueryHintGoesToStderr(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"runs":[]}`))
+	}))
+	defer ts.Close()
+
+	root := newTestRoot()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"api", "--api-key", "test-key", "--api-url", ts.URL, "runs/query", "-F", "limit=10"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "langsmith runs list") {
+		t.Errorf("stderr = %q, want the runs list hint", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "hint:") || !strings.Contains(stdout.String(), `"runs"`) {
+		t.Errorf("stdout = %q, want only the response body", stdout.String())
+	}
+}

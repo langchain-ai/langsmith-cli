@@ -24,22 +24,7 @@ func blockRawDelete(apiURL, method, path string) error {
 		return nil
 	}
 
-	fullURL := resolveEndpoint(apiURL, path)
-	if !isSameHost(fullURL, apiURL) {
-		return nil
-	}
-	u, err := url.Parse(fullURL)
-	if err != nil {
-		return nil
-	}
-
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	for i := 0; i+1 < len(parts); i++ {
-		if parts[i] == "api" && parts[i+1] == "v1" {
-			parts = parts[i+2:]
-			break
-		}
-	}
+	parts := apiRoute(apiURL, path)
 	if len(parts) < 1 || len(parts) > 2 {
 		return nil
 	}
@@ -49,4 +34,24 @@ func blockRawDelete(apiURL, method, path string) error {
 		return nil
 	}
 	return fmt.Errorf("raw API deletion of %s is blocked; use %s instead", block.resource, block.replacement)
+}
+
+// apiRoute returns the path segments after /api/v1 or /api/v2 for a request
+// to the configured API host, or nil for another host.
+func apiRoute(apiURL, path string) []string {
+	fullURL := resolveEndpoint(apiURL, path)
+	if !isSameHost(fullURL, apiURL) {
+		return nil
+	}
+	u, err := url.Parse(fullURL)
+	if err != nil {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "api" && (parts[i+1] == "v1" || parts[i+1] == "v2") {
+			return parts[i+2:]
+		}
+	}
+	return parts
 }

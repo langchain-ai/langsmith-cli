@@ -21,7 +21,7 @@ request body schema, and response schema.
 Examples:
   langsmith api info GET /api/v1/sessions
   langsmith api info GET sessions
-  langsmith api info POST runs/query`,
+  langsmith api info POST runs/stats`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			method := args[0]
