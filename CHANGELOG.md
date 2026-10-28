@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.9](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.8...v0.3.9) (2026-10-28)
+
+
+### Features
+
+* **annotation-queues:** rubric item required_if and visible_if conditions ([bffc0da](https://github.com/langchain-ai/langsmith-cli/commit/bffc0dafc90c1d50715eb76a7b271d360a1fcebd))
+* **cli:** add the v2 query streaming commands ([d3359d8](https://github.com/langchain-ai/langsmith-cli/commit/d3359d8a714c1f93849112ef5b6457c543384903))
+* **cli:** let profiles read the API key from an env var or command ([69fbeca](https://github.com/langchain-ai/langsmith-cli/commit/69fbeca3c195d87167a43cf848a36e9ebf4aae45))
+* **cli:** point raw run queries at runs list ([e2856ba](https://github.com/langchain-ai/langsmith-cli/commit/e2856bacd9ea1a50b9f0b2ad0dc73c802642bf2a))
+* **feedback:** add allows_multiple_categories flag to categorical feedback configs ([0d80907](https://github.com/langchain-ai/langsmith-cli/commit/0d80907f90d5b39533689b6b5116c86f77eebd45))
+* **sandboxes:** show granular usage instead of dollar estimates ([a2318b2](https://github.com/langchain-ai/langsmith-cli/commit/a2318b2ab1281a89a8f417299f6e0ca421e4aa40))
+
+
+### Bug Fixes
+
+* **cli:** cap the v2 run query page size at 1000 ([04ef61e](https://github.com/langchain-ai/langsmith-cli/commit/04ef61edc813e3c7edd786560eb1a2338abeea4a))
+* **cli:** catch the filter mistakes that make trace list fail ([382b2b3](https://github.com/langchain-ai/langsmith-cli/commit/382b2b3fd4ac376d8ea692aec8e5cbeb6e0ebf51))
+* **cli:** drop --accept from every generated command ([d7dcf00](https://github.com/langchain-ai/langsmith-cli/commit/d7dcf001e654d74c156803efb342fadf186a4c59))
+* **cli:** drop --accept from sessions dashboard ([4a6af0d](https://github.com/langchain-ai/langsmith-cli/commit/4a6af0d1ebf66878762d98ee8ab50f951c68cc44))
+* **cli:** explain rejected credentials once instead of failing silently ([9bd3675](https://github.com/langchain-ai/langsmith-cli/commit/9bd367521bafeb98a920b138269e6f23acd5ade6))
+* **cli:** tell agents how to recover from query timeouts and rate limits ([13ddf6f](https://github.com/langchain-ai/langsmith-cli/commit/13ddf6f944c6be49cdb949ce783ed5887aa275b5))
+
+
+### Documentation
+
+* **api:** describe the annotation queue, example and feedback token CLI flags ([90b3655](https://github.com/langchain-ai/langsmith-cli/commit/90b365510ed8e0600f4b1551a08930e8dc5b754f))
+
+
+### Build System
+
+* **sandboxes:** build the langsmith CLI from cli/ instead of a pinned release ([9edc33d](https://github.com/langchain-ai/langsmith-cli/commit/9edc33d7e50cd5bc4878ad4911540cd0e8f95687))
+
 ## [0.3.8](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.7...v0.3.8) (2026-10-27)
 
 
