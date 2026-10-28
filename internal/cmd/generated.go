@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/client"
 	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
 	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	"github.com/langchain-ai/langsmith-go"
@@ -388,6 +389,7 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 	argv = append(argv, rest...)
 
 	defer usage.WrapDefaultTransport()()
+	defer client.WrapDefaultTransportWithAuthHint()()
 
 	generated.CommandErrorBuffer.Reset()
 	if err := generated.Command.Run(cmd.Context(), argv); err != nil {

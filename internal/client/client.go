@@ -101,7 +101,7 @@ func NewWithOptions(options Options) *Client {
 		opts = append(opts, option.WithTenantID(options.WorkspaceID))
 	}
 
-	opts = append(opts, usage.Option())
+	opts = append(opts, usage.Option(), processAuthHint.option())
 
 	return &Client{
 		SDK:              langsmith.NewClient(opts...),
