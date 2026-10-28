@@ -40,7 +40,7 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"--reservation-minutes", "0",
 			"--reviewer-access-mode", "any",
 			"--rubric-instructions", "rubric_instructions",
-			"--rubric-item", "[{feedback_key: feedback_key, description: description, feedback_config: {id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}, feedback_config_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_assertion: true, is_required: true, regex_validator: string, score_descriptions: {foo: string}, value_descriptions: {foo: string}}]",
+			"--rubric-item", "[{feedback_key: feedback_key, description: description, feedback_config: {id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, feedback_config: {type: continuous, categories: [{value: 0, label: x}], max: 0, min: 0}, feedback_key: feedback_key, modified_at: '2019-12-27T18:11:19.117Z', tenant_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_deleted: true, is_enforced: true, is_first: true, is_lower_score_better: true}, feedback_config_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, is_assertion: true, is_required: true, regex_validator: string, required_if: {join: all, rules: [{key: key, op: is, values: [0]}]}, score_descriptions: {foo: string}, value_descriptions: {foo: string}, visible_if: {join: all, rules: [{key: key, op: is, values: [0]}]}}]",
 		)
 	})
 
@@ -71,8 +71,10 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"--rubric-item.is-assertion=true",
 			"--rubric-item.is-required=true",
 			"--rubric-item.regex-validator", "string",
+			"--rubric-item.required-if", "{join: all, rules: [{key: key, op: is, values: [0]}]}",
 			"--rubric-item.score-descriptions", "{foo: string}",
 			"--rubric-item.value-descriptions", "{foo: string}",
+			"--rubric-item.visible-if", "{join: all, rules: [{key: key, op: is, values: [0]}]}",
 		)
 	})
 
@@ -112,10 +114,24 @@ func TestAnnotationQueuesUpdate(t *testing.T) {
 			"    is_assertion: true\n" +
 			"    is_required: true\n" +
 			"    regex_validator: string\n" +
+			"    required_if:\n" +
+			"      join: all\n" +
+			"      rules:\n" +
+			"        - key: key\n" +
+			"          op: is\n" +
+			"          values:\n" +
+			"            - 0\n" +
 			"    score_descriptions:\n" +
 			"      foo: string\n" +
 			"    value_descriptions:\n" +
-			"      foo: string\n")
+			"      foo: string\n" +
+			"    visible_if:\n" +
+			"      join: all\n" +
+			"      rules:\n" +
+			"        - key: key\n" +
+			"          op: is\n" +
+			"          values:\n" +
+			"            - 0\n")
 		mocktest.TestRunMockTestWithPipeAndFlags(
 			t, pipeData,
 			"--api-key", "string",

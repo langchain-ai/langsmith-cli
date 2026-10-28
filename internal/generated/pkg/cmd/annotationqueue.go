@@ -136,6 +136,11 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 			OuterIsArrayOfObjects: true,
 		},
 		&requestflag.InnerFlag[map[string]any]{
+			Name:                  "rubric-item.required-if",
+			InnerField:            "required_if",
+			OuterIsArrayOfObjects: true,
+		},
+		&requestflag.InnerFlag[map[string]any]{
 			Name:                  "rubric-item.score-descriptions",
 			InnerField:            "score_descriptions",
 			OuterIsArrayOfObjects: true,
@@ -143,6 +148,11 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 		&requestflag.InnerFlag[map[string]any]{
 			Name:                  "rubric-item.value-descriptions",
 			InnerField:            "value_descriptions",
+			OuterIsArrayOfObjects: true,
+		},
+		&requestflag.InnerFlag[map[string]any]{
+			Name:                  "rubric-item.visible-if",
+			InnerField:            "visible_if",
 			OuterIsArrayOfObjects: true,
 		},
 	},
