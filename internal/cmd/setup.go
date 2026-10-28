@@ -196,6 +196,14 @@ func normalizeTraceURL(raw string) string {
 // resolveSetupOptions resolves the API key, URL, and project for a setup run —
 // from positional args (KEY URL PROJECT) or flags/env/profile — and requires a key.
 func resolveSetupOptions(args []string, project *string) (client.Options, error) {
+	// Setup writes the key into the agent's own config, which would undo a
+	// profile that keeps its key out of files, so such a profile needs the key
+	// passed explicitly. This is checked before the profile's command runs.
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		if profile, ok := apiKeyRefProfile(); ok {
+			return client.Options{}, fmt.Errorf("profile %q does not store its API key, and tracing setup would write it into the agent's config; pass the key as the first positional argument, via --api-key, or $LANGSMITH_API_KEY", profile)
+		}
+	}
 	// A config-load error (e.g. a corrupt ~/.langsmith/config.json) is deferred:
 	// a positional API key applied below is a valid first-class input and must
 	// not be blocked by an unusable saved config.

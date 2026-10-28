@@ -112,6 +112,24 @@ func GetAPIKey() string {
 	return opts.APIKey
 }
 
+// apiKeyRefProfile returns the selected profile's name when the active
+// credentials are its api_key_env or api_key_cmd, so a caller can hand the
+// profile on rather than the resolved key.
+func apiKeyRefProfile() (string, bool) {
+	if flagAPIKey != "" || os.Getenv("LANGSMITH_API_KEY") != "" {
+		return "", false
+	}
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return "", false
+	}
+	name, p, ok := cfg.ResolveProfile(flagProfile, profileEnvName())
+	if !ok || p.AccessToken() != "" || p.OAuth.RefreshToken != "" || p.APIKey != "" {
+		return "", false
+	}
+	return name, p.APIKeyEnv != "" || p.APIKeyCmd != ""
+}
+
 // GetAPIURL resolves the API URL from flag → env → profile → default.
 func GetAPIURL() string {
 	opts, _ := resolveClientOptions()
@@ -257,8 +275,12 @@ func resolveClientOptionsFor(flags globalFlags) (client.Options, error) {
 		// The SDK refreshes the profile's OAuth token on each request, under a
 		// lock shared by every process using this config.
 		opts.ProfileName = profileName
-	case hasProfile && profile.APIKey != "":
-		opts.APIKey = profile.APIKey
+	case hasProfile && profile.HasAPIKey():
+		key, err := profile.ResolveAPIKey()
+		if err != nil {
+			return opts, fmt.Errorf("profile %q: %w", profileName, err)
+		}
+		opts.APIKey = key
 		// Route the resolved profile through the SDK (WithProfile) so an explicit
 		// selection replaces the config's current_profile instead of inheriting
 		// its tenant/base URL. APIKey is kept for the raw-HTTP helpers.

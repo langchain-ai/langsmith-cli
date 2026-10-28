@@ -148,8 +148,12 @@ func ResolveClientOptions(cmd *cobra.Command) (client.Options, error) {
 		// The SDK refreshes the profile's OAuth token on each request, under a
 		// lock shared by every process using this config.
 		opts.ProfileName = profileName
-	case hasProfile && profile.APIKey != "":
-		opts.APIKey = profile.APIKey
+	case hasProfile && profile.HasAPIKey():
+		key, err := profile.ResolveAPIKey()
+		if err != nil {
+			return opts, fmt.Errorf("profile %q: %w", profileName, err)
+		}
+		opts.APIKey = key
 		// Route the resolved profile through the SDK (WithProfile) so an explicit
 		// selection replaces the config's current_profile instead of inheriting
 		// its tenant/base URL. APIKey is kept for the raw-HTTP helpers.

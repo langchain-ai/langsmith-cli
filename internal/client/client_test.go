@@ -863,3 +863,42 @@ func TestUseV2API(t *testing.T) {
 		}
 	}
 }
+
+func TestNewWithOptions_APIKeyRefProfileSendsResolvedKey(t *testing.T) {
+	var gotAPIKey string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIKey = r.Header.Get("X-API-Key")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "test"})
+	}))
+	defer ts.Close()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{
+  "profiles": {
+    "prod": {
+      "api_key_env": "PROD_LANGSMITH_KEY_UNSET"
+    }
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The CLI resolves api_key_env/api_key_cmd itself; the SDK must send that
+	// key rather than clearing it or resolving the reference again.
+	c := NewWithOptions(Options{
+		APIKey:      "resolved-key",
+		ProfileName: "prod",
+		APIURL:      ts.URL,
+	})
+	if _, err := c.SDK.Info.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotAPIKey != "resolved-key" {
+		t.Fatalf("expected the CLI-resolved key, got %q", gotAPIKey)
+	}
+}

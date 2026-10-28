@@ -622,3 +622,90 @@ func TestProfileListDoesNotExposeSecrets(t *testing.T) {
 		t.Fatalf("unexpected second profile: %+v", result[1])
 	}
 }
+
+func TestProfileCreateWithAPIKeyReference(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "ambient-env-key")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+
+	stdout, err := executeCommand(t, "--format=json", "profile", "create", "prod", "--api-key-env", "PROD_LANGSMITH_API_KEY")
+	if err != nil {
+		t.Fatalf("profile create returned error: %v\nstdout: %s", err, stdout)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "ambient-env-key") {
+		t.Fatalf("config saved LANGSMITH_API_KEY although --api-key-env was given: %s", raw)
+	}
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Profiles["prod"]; got.APIKeyEnv != "PROD_LANGSMITH_API_KEY" || got.APIKey != "" {
+		t.Fatalf("unexpected profile: %+v", got)
+	}
+
+	stdout, err = executeCommand(t, "--format=json", "profile", "show", "prod")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v", err)
+	}
+	var shown profileShowItem
+	if err := json.Unmarshal([]byte(stdout), &shown); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if shown.Auth != "api_key" || shown.APIKeyEnv != "PROD_LANGSMITH_API_KEY" {
+		t.Fatalf("unexpected profile show: %+v", shown)
+	}
+}
+
+func TestProfileCreateRejectsMultipleAPIKeySources(t *testing.T) {
+	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+
+	for _, args := range [][]string{
+		{"--api-key", "saved-key", "--api-key-env", "PROD_KEY"},
+		{"--api-key-env", "PROD_KEY", "--api-key-cmd", "echo key"},
+	} {
+		_, err := executeCommand(t, append([]string{"profile", "create", "prod"}, args...)...)
+		if err == nil {
+			t.Fatalf("expected %v to be rejected", args)
+		}
+	}
+}
+
+func TestSSHProxyCommandPassesAPIKeyRefProfileByName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("PROD_LANGSMITH_API_KEY", "prod-env-api-key-secret")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {
+    "prod": {"api_key_env": "PROD_LANGSMITH_API_KEY"},
+    "saved": {"api_key": "saved-api-key-secret"}
+  }
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldProfile := flagProfile
+	t.Cleanup(func() { flagProfile = oldProfile })
+
+	flagProfile = ""
+	got := sshProxyCommand("box")
+	if strings.Contains(got, "prod-env-api-key-secret") || !strings.Contains(got, "--profile 'prod'") {
+		t.Fatalf("expected the profile name instead of its key, got %q", got)
+	}
+
+	flagProfile = "saved"
+	if got := sshProxyCommand("box"); !strings.Contains(got, "--api-key 'saved-api-key-secret'") {
+		t.Fatalf("expected a stored-key profile to keep passing its key, got %q", got)
+	}
+}

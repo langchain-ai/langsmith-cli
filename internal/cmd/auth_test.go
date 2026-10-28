@@ -315,3 +315,46 @@ func TestAuthTokenFollowsAPIKeyPrecedence(t *testing.T) {
 		t.Fatalf("expected API key precedence error, got %v (stdout %q)", err, stdout)
 	}
 }
+
+func TestAuthInfoResolvesProfileAPIKeyReference(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(path, []byte(`{
+  "current_profile": "prod",
+  "profiles": {"prod": {"api_key_env": "PROD_LANGSMITH_API_KEY"}}
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	authInfo := func() authInfoResult {
+		t.Helper()
+		stdout, err := executeCommand(t, "--format=json", "auth", "info")
+		if err != nil {
+			t.Fatalf("auth info returned error: %v", err)
+		}
+		var result authInfoResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+		}
+		return result
+	}
+
+	t.Setenv("PROD_LANGSMITH_API_KEY", "prod-env-api-key-secret")
+	result := authInfo()
+	if !result.Authenticated || result.Auth != "api_key" || result.AuthSource != "profile" {
+		t.Fatalf("unexpected auth info: %+v", result)
+	}
+	if result.AuthNote != "API key read from $PROD_LANGSMITH_API_KEY." || result.APIKey != "prod-env...cret" {
+		t.Fatalf("unexpected auth info: %+v", result)
+	}
+
+	t.Setenv("PROD_LANGSMITH_API_KEY", "")
+	result = authInfo()
+	if result.Authenticated || !strings.Contains(result.AuthNote, "which is not set") {
+		t.Fatalf("expected unauthenticated with unset variable note, got %+v", result)
+	}
+}

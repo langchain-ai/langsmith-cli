@@ -164,10 +164,18 @@ func resolveAuthInfo() (authInfoResult, error) {
 			expired := !expiresAt.After(time.Now())
 			result.OAuthExpired = &expired
 		}
-	case hasProfile && profile.APIKey != "":
-		result.Auth = "api_key"
+	case hasProfile && profile.HasAPIKey():
 		result.AuthSource = "profile"
-		result.APIKey = lsconfig.MaskSecret(profile.APIKey)
+		if source := profile.APIKeySource(); source != "config" {
+			result.AuthNote = "API key read from " + source + "."
+		}
+		key, err := profile.ResolveAPIKey()
+		if err != nil {
+			result.AuthNote = err.Error()
+			break
+		}
+		result.Auth = "api_key"
+		result.APIKey = lsconfig.MaskSecret(key)
 	}
 	result.Authenticated = result.Auth != "none"
 

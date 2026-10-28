@@ -2,23 +2,36 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/term"
 )
 
 const (
 	ConfigFileEnv = "LANGSMITH_CONFIG_FILE"
 	DefaultAPIURL = "https://api.smith.langchain.com"
+
+	apiKeyCmdTimeout = 2 * time.Minute
 )
 
 // Profile represents one named LangSmith CLI profile.
+//
+// Instead of storing the API key, a profile can name where it lives:
+// APIKeyEnv is an environment variable and APIKeyCmd a shell command that
+// prints the key. APIKey wins over APIKeyEnv, which wins over APIKeyCmd.
 type Profile struct {
 	APIKey      string `json:"api_key,omitempty"`
+	APIKeyEnv   string `json:"api_key_env,omitempty"`
+	APIKeyCmd   string `json:"api_key_cmd,omitempty"`
 	APIURL      string `json:"api_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	OAuth       OAuth  `json:"oauth,omitempty"`
@@ -197,6 +210,93 @@ func (c *Config) ResolveProfile(flagProfile, envProfile string) (string, Profile
 // AccessToken returns the OAuth access token to use for bearer auth.
 func (p Profile) AccessToken() string {
 	return p.OAuth.AccessToken
+}
+
+// HasAPIKey reports whether the profile stores an API key or names where one
+// lives.
+func (p Profile) HasAPIKey() bool {
+	return p.APIKey != "" || p.APIKeyEnv != "" || p.APIKeyCmd != ""
+}
+
+// APIKeySource describes where the profile's API key comes from, for display:
+// "config", "$NAME" for an environment variable, or "$(command)".
+func (p Profile) APIKeySource() string {
+	switch {
+	case p.APIKey != "":
+		return "config"
+	case p.APIKeyEnv != "":
+		return "$" + p.APIKeyEnv
+	case p.APIKeyCmd != "":
+		return "$(" + p.APIKeyCmd + ")"
+	default:
+		return ""
+	}
+}
+
+// ResolveAPIKey returns the profile's API key, reading api_key_env or running
+// api_key_cmd when the key is not stored in the config.
+func (p Profile) ResolveAPIKey() (string, error) {
+	switch {
+	case p.APIKey != "":
+		return p.APIKey, nil
+	case p.APIKeyEnv != "":
+		if key := strings.TrimSpace(os.Getenv(p.APIKeyEnv)); key != "" {
+			return key, nil
+		}
+		return "", fmt.Errorf("profile reads its API key from $%s, which is not set", p.APIKeyEnv)
+	case p.APIKeyCmd != "":
+		return runAPIKeyCmd(p.APIKeyCmd)
+	default:
+		return "", nil
+	}
+}
+
+type apiKeyCmdResult struct {
+	key string
+	err error
+}
+
+// apiKeyCmdResults caches each api_key_cmd's outcome for the process, so a
+// command such as a password manager lookup runs, and prompts, at most once
+// per CLI invocation even though auth is resolved several times.
+var apiKeyCmdResults sync.Map
+
+func runAPIKeyCmd(command string) (string, error) {
+	if r, ok := apiKeyCmdResults.Load(command); ok {
+		res := r.(apiKeyCmdResult)
+		return res.key, res.err
+	}
+	key, err := execAPIKeyCmd(command)
+	apiKeyCmdResults.Store(command, apiKeyCmdResult{key: key, err: err})
+	return key, err
+}
+
+func execAPIKeyCmd(command string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), apiKeyCmdTimeout)
+	defer cancel()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	}
+	// The command may prompt, for example to unlock a password manager, so it
+	// shares the terminal. Stdin is passed only when it is a terminal: under
+	// `sandboxes tunnel --stdio` it carries the SSH stream. Only stdout is
+	// captured.
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		cmd.Stdin = os.Stdin
+	}
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("running api_key_cmd: %w", err)
+	}
+	key := strings.TrimSpace(string(out))
+	if key == "" {
+		return "", fmt.Errorf("api_key_cmd printed no API key")
+	}
+	return key, nil
 }
 
 // TokenExpiresAtTime parses oauth.expires_at.

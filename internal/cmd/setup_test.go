@@ -718,3 +718,29 @@ func TestSetupRootCommandRemoved(t *testing.T) {
 		t.Fatal("removed setup command must not write settings.json")
 	}
 }
+
+func TestSetupRefusesAPIKeyRefProfile(t *testing.T) {
+	claudeDir, _ := hermeticSetupEnv(t)
+	stubRunSetupCommand(t)
+	t.Setenv("PROD_LANGSMITH_API_KEY", "prod-env-api-key-secret")
+	if err := os.WriteFile(os.Getenv("LANGSMITH_CONFIG_FILE"), []byte(`{
+  "current_profile": "prod",
+  "profiles": {"prod": {"api_key_env": "PROD_LANGSMITH_API_KEY"}}
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := executeCommand(t, "trace", "setup", "claude", "--yes")
+	if err == nil || !strings.Contains(err.Error(), `profile "prod" does not store its API key`) {
+		t.Fatalf("expected setup to refuse a key-reference profile, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(claudeDir, "settings.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no settings written, stat err: %v", statErr)
+	}
+
+	// An explicit key still works with the same profile selected.
+	if _, err := executeCommand(t, "trace", "setup", "claude", "explicit-key", "--yes"); err != nil {
+		t.Fatalf("setup with explicit key: %v", err)
+	}
+}

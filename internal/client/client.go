@@ -82,6 +82,12 @@ func NewWithOptions(options Options) *Client {
 	switch {
 	case options.ProfileName != "":
 		opts = append(opts, langsmith.WithProfile(options.ProfileName))
+		// The CLI has already resolved the profile's key, including one read
+		// from api_key_env or api_key_cmd, so the SDK uses it as-is rather than
+		// resolving the reference again.
+		if options.APIKey != "" {
+			opts = append(opts, option.WithAPIKey(options.APIKey))
+		}
 	case options.APIKey != "":
 		opts = append(opts, option.WithAPIKey(options.APIKey))
 	case options.OAuthAccessToken != "":

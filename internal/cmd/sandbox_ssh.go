@@ -96,13 +96,7 @@ func runSSHSetup(cmd *cobra.Command, name, identity string) error {
 		}
 	}
 
-	proxyCmd := fmt.Sprintf("langsmith sandboxes tunnel %s --remote-port 22 --stdio", shellQuote(name))
-	if apiKey := GetAPIKey(); apiKey != "" {
-		proxyCmd += " --api-key " + shellQuote(apiKey)
-	}
-	if apiURL := GetAPIURL(); apiURL != "https://api.smith.langchain.com" {
-		proxyCmd += " --api-url " + shellQuote(apiURL)
-	}
+	proxyCmd := sshProxyCommand(name)
 
 	configBlock := fmt.Sprintf(
 		"# Added by: langsmith sandboxes ssh-setup %s\nHost %s\n    User root\n    ProxyCommand %s\n    UserKnownHostsFile %s\n    ForwardAgent yes\n",
@@ -116,6 +110,23 @@ func runSSHSetup(cmd *cobra.Command, name, identity string) error {
 	fmt.Fprintf(os.Stderr, "Key uploaded (%s). Connect with:\n  ssh %s\n", pubkeyPath, hostAlias)
 
 	return nil
+}
+
+// sshProxyCommand returns the ProxyCommand that tunnels SSH to the sandbox
+// with the current credentials. A profile that reads its API key from
+// api_key_env or api_key_cmd is passed by name, so the key is resolved when
+// the tunnel starts instead of being written into ~/.ssh/config.
+func sshProxyCommand(name string) string {
+	proxyCmd := fmt.Sprintf("langsmith sandboxes tunnel %s --remote-port 22 --stdio", shellQuote(name))
+	if profile, ok := apiKeyRefProfile(); ok {
+		proxyCmd += " --profile " + shellQuote(profile)
+	} else if apiKey := GetAPIKey(); apiKey != "" {
+		proxyCmd += " --api-key " + shellQuote(apiKey)
+	}
+	if apiURL := GetAPIURL(); apiURL != "https://api.smith.langchain.com" {
+		proxyCmd += " --api-url " + shellQuote(apiURL)
+	}
+	return proxyCmd
 }
 
 // ensureSSHConfig writes a config block to ~/.ssh/config.

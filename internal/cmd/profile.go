@@ -29,6 +29,8 @@ type profileShowItem struct {
 	WorkspaceID    string `json:"workspace_id,omitempty"`
 	Auth           string `json:"auth"`
 	APIKey         string `json:"api_key,omitempty"`
+	APIKeyEnv      string `json:"api_key_env,omitempty"`
+	APIKeyCmd      string `json:"api_key_cmd,omitempty"`
 	OAuthExpiresAt string `json:"oauth_expires_at,omitempty"`
 }
 
@@ -50,16 +52,30 @@ func newProfileCmd() *cobra.Command {
 func newProfileCreateCmd() *cobra.Command {
 	var (
 		setCurrent bool
+		keyEnv     string
+		keyCmd     string
 	)
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create an API-key profile",
-		Args:  cobra.ExactArgs(1),
+		Long: `Create an API-key profile.
+
+By default the key from --api-key or LANGSMITH_API_KEY is saved in the config
+file. To keep it out of the file, name where it lives instead: --api-key-env
+reads it from an environment variable, and --api-key-cmd runs a command that
+prints it, such as a password manager lookup. The variable is read, or the
+command run, each time the profile is used.`,
+		Example: `  langsmith profile create prod --api-key-env PROD_LANGSMITH_API_KEY
+  langsmith profile create prod --api-key-cmd 'op read "op://Private/LangSmith/credential"'`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProfileCreate(cmd, args[0], flagWorkspaceID, setCurrent)
+			return runProfileCreate(cmd, args[0], flagWorkspaceID, setCurrent, keyEnv, keyCmd)
 		},
 	}
 	cmd.Flags().BoolVar(&setCurrent, "set-current", false, "Set the new profile as the current profile")
+	cmd.Flags().StringVar(&keyEnv, "api-key-env", "", "Read the API key from this environment variable instead of saving it")
+	cmd.Flags().StringVar(&keyCmd, "api-key-cmd", "", "Run this command to get the API key instead of saving it")
+	cmd.MarkFlagsMutuallyExclusive("api-key-env", "api-key-cmd")
 	return cmd
 }
 
@@ -118,7 +134,7 @@ func newProfileSetWorkspaceCmd() *cobra.Command {
 	}
 }
 
-func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool) error {
+func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool, keyEnv, keyCmd string) error {
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}
@@ -139,17 +155,26 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 		return fmt.Errorf("profile %q already exists", profileName)
 	}
 
-	apiKey := profileCreateAPIKey()
-	if apiKey == "" {
-		return fmt.Errorf("api key required; pass --api-key or set LANGSMITH_API_KEY")
-	}
-	apiURL := profileCreateAPIURL()
-
-	cfg.Profiles[profileName] = lsconfig.Profile{
-		APIKey:      apiKey,
-		APIURL:      apiURL,
+	profile := lsconfig.Profile{
+		APIKeyEnv:   strings.TrimSpace(keyEnv),
+		APIKeyCmd:   strings.TrimSpace(keyCmd),
+		APIURL:      profileCreateAPIURL(),
 		WorkspaceID: workspaceID,
 	}
+	switch {
+	case profile.APIKeyEnv != "" || profile.APIKeyCmd != "":
+		if flagAPIKey != "" {
+			return fmt.Errorf("pass only one of --api-key, --api-key-env, or --api-key-cmd")
+		}
+	default:
+		profile.APIKey = profileCreateAPIKey()
+		if profile.APIKey == "" {
+			return fmt.Errorf("api key required; pass --api-key, --api-key-env, or --api-key-cmd, or set LANGSMITH_API_KEY")
+		}
+	}
+	apiURL := profile.APIURL
+
+	cfg.Profiles[profileName] = profile
 	if cfg.CurrentProfile == "" || setCurrent {
 		cfg.CurrentProfile = profileName
 	}
@@ -220,6 +245,9 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 	}
 	if profile.APIKey != "" {
 		item.APIKey = lsconfig.MaskSecret(profile.APIKey)
+	} else {
+		item.APIKeyEnv = profile.APIKeyEnv
+		item.APIKeyCmd = profile.APIKeyCmd
 	}
 
 	if GetFormat() == "pretty" {
@@ -322,7 +350,7 @@ func profileAuthType(profile lsconfig.Profile) string {
 	switch {
 	case profile.AccessToken() != "" || profile.OAuth.RefreshToken != "":
 		return "oauth"
-	case profile.APIKey != "":
+	case profile.HasAPIKey():
 		return "api_key"
 	default:
 		return "none"
@@ -364,7 +392,7 @@ func renderProfileShowTable(cmd *cobra.Command, profile profileShowItem) {
 		profile.APIURL,
 		profile.WorkspaceID,
 		profile.Auth,
-		profile.APIKey,
+		profileShowAPIKey(profile),
 		profile.OAuthExpiresAt,
 	})
 	_ = table.Render()
@@ -407,4 +435,19 @@ func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {
 		"profile":      profileName,
 		"workspace_id": workspaceID,
 	})
+}
+
+// profileShowAPIKey is the API Key column: the masked key, or where the key is
+// read from when the profile does not store it.
+func profileShowAPIKey(profile profileShowItem) string {
+	switch {
+	case profile.APIKey != "":
+		return profile.APIKey
+	case profile.APIKeyEnv != "":
+		return "$" + profile.APIKeyEnv
+	case profile.APIKeyCmd != "":
+		return "$(" + profile.APIKeyCmd + ")"
+	default:
+		return ""
+	}
 }

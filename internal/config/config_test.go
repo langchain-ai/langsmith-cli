@@ -1,9 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -153,5 +155,45 @@ func TestMaskSecret(t *testing.T) {
 	}
 	if got := MaskSecret("short"); got != "****" {
 		t.Fatalf("unexpected short masked secret: %q", got)
+	}
+}
+
+func TestResolveAPIKeyFromReferences(t *testing.T) {
+	t.Setenv("TEST_LANGSMITH_KEY", " env-key \n")
+	if key, err := (Profile{APIKeyEnv: "TEST_LANGSMITH_KEY"}).ResolveAPIKey(); err != nil || key != "env-key" {
+		t.Fatalf("api_key_env: got %q, %v", key, err)
+	}
+	if key, _ := (Profile{APIKey: "saved-key", APIKeyEnv: "TEST_LANGSMITH_KEY"}).ResolveAPIKey(); key != "saved-key" {
+		t.Fatalf("expected api_key to win over api_key_env, got %q", key)
+	}
+
+	t.Setenv("TEST_LANGSMITH_KEY", "")
+	if _, err := (Profile{APIKeyEnv: "TEST_LANGSMITH_KEY"}).ResolveAPIKey(); err == nil || !strings.Contains(err.Error(), "$TEST_LANGSMITH_KEY, which is not set") {
+		t.Fatalf("expected unset variable error, got %v", err)
+	}
+}
+
+func TestResolveAPIKeyCmdRunsOncePerProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell")
+	}
+	runs := filepath.Join(t.TempDir(), "runs")
+	profile := Profile{APIKeyCmd: fmt.Sprintf("echo run >> %q; echo cmd-key", runs)}
+	for range 3 {
+		key, err := profile.ResolveAPIKey()
+		if err != nil || key != "cmd-key" {
+			t.Fatalf("got %q, %v", key, err)
+		}
+	}
+	data, err := os.ReadFile(runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(data), "run"); n != 1 {
+		t.Fatalf("expected api_key_cmd to run once, ran %d times", n)
+	}
+
+	if _, err := (Profile{APIKeyCmd: "true"}).ResolveAPIKey(); err == nil || !strings.Contains(err.Error(), "printed no API key") {
+		t.Fatalf("expected empty output error, got %v", err)
 	}
 }
