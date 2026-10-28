@@ -607,6 +607,13 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 	}
 }
 
+func TestToV2Params_CapsPageSize(t *testing.T) {
+	v2 := toV2Params(langsmith.RunQueryParams{Limit: langsmith.F(int64(2500))}, nil)
+	if v2.PageSize.Value != maxV2PageSize {
+		t.Errorf("PageSize = %d, want %d", v2.PageSize.Value, maxV2PageSize)
+	}
+}
+
 func TestToV2Params_OmitsUnsetFields(t *testing.T) {
 	v2 := toV2Params(langsmith.RunQueryParams{}, nil)
 	if v2.TraceID.Present || v2.IsRoot.Present || v2.HasError.Present ||

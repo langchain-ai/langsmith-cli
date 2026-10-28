@@ -212,10 +212,14 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) 
 		v2.IDs = langsmith.F(p.ID.Value)
 	}
 	if p.Limit.Present {
-		v2.PageSize = langsmith.F(p.Limit.Value)
+		// The API rejects larger pages; auto-paging fetches the rest up to the limit.
+		v2.PageSize = langsmith.F(min(p.Limit.Value, maxV2PageSize))
 	}
 	return v2
 }
+
+// maxV2PageSize is the largest page_size the v2 run query accepts.
+const maxV2PageSize = 1000
 
 // threadListSelect and threadListSelectV2 add thread_id to the base select
 // sets. `thread list` groups runs by thread_id, so omitting it yields zero
