@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.10](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.9...v0.3.10) (2026-10-29)
+
+
+### Features
+
+* add HTTPS destination rewrite rules for sandboxes ([d65ede1](https://github.com/langchain-ai/langsmith-cli/commit/d65ede1483711428bda44c338a84b9c3c7f5c684))
+
 ## [0.3.9](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.8...v0.3.9) (2026-10-28)
 
 
