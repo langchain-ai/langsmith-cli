@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.12](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.11...v0.3.12) (2026-10-29)
+
+
+### Features
+
+* **cli:** add langsmith evaluators create-decision-model ([97bc90d](https://github.com/langchain-ai/langsmith-cli/commit/97bc90d0a1d5fcdf70c6634e9035272a12d75cbd))
+* **cli:** hidden aliases for flag and command names agents guess ([7975835](https://github.com/langchain-ai/langsmith-cli/commit/79758358e21dfb26112844d5b0dada4d19564aa3))
+* **cli:** select a project by name in generated commands ([f66d5d6](https://github.com/langchain-ai/langsmith-cli/commit/f66d5d6d3e70f08d7e97d2c3ee448983a28c1079))
+
 ## [0.3.11](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.10...v0.3.11) (2026-10-29)
 
 
