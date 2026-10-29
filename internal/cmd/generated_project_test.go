@@ -99,6 +99,13 @@ func TestGeneratedCommandsSelectProjectByName(t *testing.T) {
 			wantRequest: "POST /api/v2/threads/query",
 		},
 		{
+			name: "--project fills a nullable --session-id",
+			args: []string{"evaluators", "create-decision-model", "--project", "my-proj",
+				"--display-name", "x", "--prompt", "[human, x]", "--questions", "{q: {type: noul, instructions: x}}"},
+			wantLookups: []string{"my-proj"},
+			wantRequest: "POST /api/v1/runs/rules/decision-models",
+		},
+		{
 			name: "an optional project filter ignores LANGSMITH_PROJECT",
 			env:  "env-proj",
 			args: []string{"online-evaluators", "spend", "--group-by", "evaluator", "--period-start", "2026-01-01"},

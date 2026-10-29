@@ -274,6 +274,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "evaluators",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&evaluatorsCreateDecisionModel,
+				},
+			},
+			{
 				Name:     "online-evaluators",
 				Category: "API RESOURCE",
 				Suggest:  true,

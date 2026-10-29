@@ -1,0 +1,128 @@
+# Tests for `langsmith evaluators`. Contract cases run against a fake API.
+resource: evaluators
+
+contract:
+  - name: create-decision-model with every field
+    op: create-decision-model
+    args:
+      - --display-name
+      - chocolate-theme
+      - --dataset-id
+      - 22222222-2222-2222-2222-222222222222
+      # Each --prompt is one (role, template) pair; map flags take a YAML literal.
+      - --prompt
+      - "[system, Judge the response.]"
+      - --prompt
+      - "[human, Is it about chocolate]"
+      - --questions
+      - "{on_theme: {type: noul, instructions: Is it about chocolate}, kind: {type: choice, instructions: Which kind, options: [dark, milk]}}"
+      - --template-format
+      - f-string
+      - --variable-mapping
+      - "{output: output}"
+      - --provider
+      - openai_decisions
+      - --model
+      - gpt-6-luna
+      - --model-base-url
+      - https://example.com/v1
+      - --model-headers
+      - "{X-Team: evals}"
+      - --timeout-seconds
+      - "30"
+      - --max-retries
+      - "2"
+      - --playground-settings-id
+      - 33333333-3333-3333-3333-333333333333
+      - --sampling-rate
+      - "0.5"
+      - --filter
+      - eq(is_root, true)
+    response:
+      body: &rule
+        id: 11111111-1111-1111-1111-111111111111
+        display_name: chocolate-theme
+        dataset_id: 22222222-2222-2222-2222-222222222222
+        evaluator_id: 44444444-4444-4444-4444-444444444444
+        sampling_rate: 0.5
+        created_at: "2026-10-29T00:00:00Z"
+        updated_at: "2026-10-29T00:00:00Z"
+    want:
+      method: POST
+      path: /api/v1/runs/rules/decision-models
+      body:
+        display_name: chocolate-theme
+        dataset_id: 22222222-2222-2222-2222-222222222222
+        prompt: [[system, Judge the response.], [human, Is it about chocolate]]
+        questions:
+          on_theme: {type: noul, instructions: Is it about chocolate}
+          kind: {type: choice, instructions: Which kind, options: [dark, milk]}
+        template_format: f-string
+        variable_mapping: {output: output}
+        provider: openai_decisions
+        model: gpt-6-luna
+        base_url: https://example.com/v1
+        model_headers: {X-Team: evals}
+        timeout_seconds: 30
+        max_retries: 2
+        playground_settings_id: 33333333-3333-3333-3333-333333333333
+        sampling_rate: 0.5
+        filter: eq(is_root, true)
+      stdout: '"id": "11111111-1111-1111-1111-111111111111"'
+
+  # Runs after the case above, so it also shows flag values do not carry over
+  # between invocations.
+  - name: create-decision-model on a project in a workspace
+    op: create-decision-model
+    args:
+      - --workspace
+      - 55555555-5555-5555-5555-555555555555
+      - --display-name
+      - chocolate-theme
+      - --session-id
+      - 66666666-6666-6666-6666-666666666666
+      - --prompt
+      - "[human, Is it about chocolate]"
+      - --questions
+      - "{on_theme: {type: noul, instructions: Is it about chocolate}}"
+    response:
+      body: *rule
+    want:
+      method: POST
+      path: /api/v1/runs/rules/decision-models
+      headers: {X-Tenant-Id: 55555555-5555-5555-5555-555555555555}
+      body:
+        display_name: chocolate-theme
+        session_id: 66666666-6666-6666-6666-666666666666
+        prompt: [[human, Is it about chocolate]]
+        questions:
+          on_theme: {type: noul, instructions: Is it about chocolate}
+      stdout: 44444444-4444-4444-4444-444444444444
+
+  - name: create-decision-model reports API errors
+    op: create-decision-model
+    args:
+      - --display-name
+      - chocolate-theme
+      - --dataset-id
+      - 22222222-2222-2222-2222-222222222222
+      - --prompt
+      - "[human, Is it about chocolate]"
+      - --questions
+      - "{q: {type: choice, instructions: Which kind, options: [dark, dark]}}"
+    response:
+      status: 422
+      body: {detail: "Question 'q' has duplicate options"}
+    want:
+      method: POST
+      path: /api/v1/runs/rules/decision-models
+      body:
+        display_name: chocolate-theme
+        dataset_id: 22222222-2222-2222-2222-222222222222
+        prompt: [[human, Is it about chocolate]]
+        questions:
+          q: {type: choice, instructions: Which kind, options: [dark, dark]}
+      exit_code: 1
+      stderr: 422 Unprocessable Entity
+
+lifecycle_skip: "Needs a project or dataset to attach to, which these generated commands cannot create, and they cannot delete the evaluator and rule it makes."

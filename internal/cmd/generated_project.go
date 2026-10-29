@@ -13,16 +13,17 @@ import (
 )
 
 // generatedProjectFlag returns the flag through which op takes a single
-// project UUID, --session-id or --project-id, or nil when it takes none.
-// A list of IDs, such as the experiments annotation-queues populate takes,
-// is not a project.
+// project UUID, --session-id or --project-id, or nil when it takes none. The
+// flag is a *string when the field is nullable. A list of IDs, such as the
+// experiments annotation-queues populate takes, is not a project.
 func generatedProjectFlag(op *cli.Command) cli.Flag {
 	for _, f := range op.Flags {
 		name := f.Names()[0]
 		if name != "session-id" && name != "project-id" {
 			continue
 		}
-		if _, ok := f.Get().(string); ok {
+		switch f.Get().(type) {
+		case string, *string:
 			return f
 		}
 	}

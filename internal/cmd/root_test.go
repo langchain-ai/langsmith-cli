@@ -19,7 +19,7 @@ func isolateConfig(t *testing.T) {
 
 func TestRootCmd_HasAllSubcommands(t *testing.T) {
 	root := NewRootCmd("1.0.0", "1.0.0")
-	expected := []string{"projects", "traces", "runs", "threads", "datasets", "examples", "evaluator", "experiments", "sandboxes", "auth", "profiles", "workspaces", "self-update", "api"}
+	expected := []string{"projects", "traces", "runs", "threads", "datasets", "examples", "evaluators", "experiments", "sandboxes", "auth", "profiles", "workspaces", "self-update", "api"}
 	cmds := root.Commands()
 
 	names := make(map[string]bool, len(cmds))

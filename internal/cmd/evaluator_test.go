@@ -476,8 +476,8 @@ func TestEvaluatorCmd_Subcommands(t *testing.T) {
 
 func TestEvaluatorCmd_UseField(t *testing.T) {
 	cmd := newEvaluatorCmd()
-	if cmd.Use != "evaluator" {
-		t.Errorf("expected Use=evaluator, got %q", cmd.Use)
+	if cmd.Use != "evaluators" {
+		t.Errorf("expected Use=evaluators, got %q", cmd.Use)
 	}
 }
 

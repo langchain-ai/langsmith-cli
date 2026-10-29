@@ -19,8 +19,9 @@ import (
 
 func newEvaluatorCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "evaluator",
-		Short: "Manage evaluators and the rules that attach them to projects and datasets",
+		Use:     "evaluators",
+		Aliases: []string{"evaluator"},
+		Short:   "Manage evaluators and the rules that attach them to projects and datasets",
 		Long: `Manage evaluators and their rules.
 
 An evaluator is the shared scorer (LLM-as-judge prompt or code) shown on the
