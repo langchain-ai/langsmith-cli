@@ -69,6 +69,7 @@ func addGeneratedCommands(root *cobra.Command) {
 	resources := generatedResources()
 	generated.Command.Commands = resources
 	renameGeneratedOperations(resources)
+	addGeneratedProjectFlags(resources)
 	mountGeneratedResources(root, resources)
 }
 
@@ -383,6 +384,9 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 			if err := os.Setenv("LANGSMITH_PROFILE", opts.ProfileName); err != nil {
 				return err
 			}
+		}
+		if rest, err = resolveGeneratedProject(cmd.Context(), resource, rest, opts); err != nil {
+			return err
 		}
 	}
 	argv = append(argv, resource.Name)
