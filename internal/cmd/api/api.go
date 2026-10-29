@@ -72,7 +72,7 @@ Make requests:
 			}
 
 			w := cmd.OutOrStdout()
-			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, w)
+			statusCode, err := runRequest(c, method, path, body, input, params, headers, include, w, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}

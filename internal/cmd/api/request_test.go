@@ -31,7 +31,7 @@ func TestRunRequest_GET(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("test-key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestRunRequest_POSTWithBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, "", nil, nil, false, &out)
+	code, err := runRequest(c, "POST", "sessions", `{"name":"test"}`, "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestRunRequest_POSTWithFields(t *testing.T) {
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
 	params := map[string]any{"name": "test", "limit": 10}
-	code, err := runRequest(c, "POST", "sessions", "", "", params, nil, false, &out)
+	code, err := runRequest(c, "POST", "sessions", "", "", params, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestRunRequest_GETWithFieldsAddsQuery(t *testing.T) {
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
 	params := map[string]any{"name": "test", "limit": 10}
-	_, err := runRequest(c, "GET", "sessions?existing=1", "", "", params, nil, false, &out)
+	_, err := runRequest(c, "GET", "sessions?existing=1", "", "", params, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestRunRequest_ExtraHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Custom:val"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Custom:val"}, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestRunRequest_Include(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, nil, true, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, nil, true, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestRunRequest_4xxPrintsBody(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out)
+	code, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRunRequest_BodyFromFile(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), "", nil, nil, false, &out)
+	code, err := runRequest(c, "POST", "sessions", "@"+f.Name(), "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestRunRequest_FullURLDifferentHost(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", "https://different.host")
-	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", "", nil, nil, false, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/custom/endpoint", "", "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestRunRequest_MultiValueHeaders(t *testing.T) {
 
 	var out bytes.Buffer
 	c := client.New("key", ts.URL)
-	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Multi:one", "X-Multi:two"}, false, &out)
+	_, err := runRequest(c, "GET", "sessions", "", "", nil, []string{"X-Multi:one", "X-Multi:two"}, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestRunRequest_PrefixConfusionAttack(t *testing.T) {
 	c := client.New("secret-key", apiURL)
 
 	var out bytes.Buffer
-	code, err := runRequest(c, "GET", ts.URL+"/steal", "", "", nil, nil, false, &out)
+	code, err := runRequest(c, "GET", ts.URL+"/steal", "", "", nil, nil, false, &out, io.Discard)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -376,5 +376,72 @@ func TestResolveRequestBody_Errors(t *testing.T) {
 	_, err = resolveRequestBody("POST", "", "body.json", map[string]any{"name": "x"})
 	if err == nil || !strings.Contains(err.Error(), "--input cannot be combined") {
 		t.Fatalf("expected input/fields conflict, got %v", err)
+	}
+}
+
+func TestRunRequest_WarnsOnDeprecatedEndpoint(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/runs/query" {
+			w.Header().Set("Deprecation", "true")
+			w.Header().Set("Sunset", "Sun, 31 Jan 2027 00:00:00 GMT")
+			w.Header().Add("Link", `</api/v2/runs/query>; rel="successor-version", <https://docs.example.com/migrate>; rel="deprecation"; type="text/html"`)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"runs":[]}`))
+	}))
+	defer ts.Close()
+	c := client.New("test-key", ts.URL)
+
+	var out, errOut bytes.Buffer
+	if _, err := runRequest(c, "POST", "runs/query", `{}`, "", nil, nil, false, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	want := "warning: POST /api/v1/runs/query is deprecated and will be removed after 2027-01-31; use /api/v2/runs/query. See https://docs.example.com/migrate\n"
+	if errOut.String() != want {
+		t.Fatalf("stderr = %q, want %q", errOut.String(), want)
+	}
+	if strings.Contains(out.String(), "warning") || !strings.Contains(out.String(), `"runs"`) {
+		t.Fatalf("stdout should hold only the response body, got %q", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if _, err := runRequest(c, "GET", "sessions", "", "", nil, nil, false, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected no warning for a current endpoint, got %q", errOut.String())
+	}
+}
+
+func TestWarnIfDeprecatedWithoutSunsetOrLinks(t *testing.T) {
+	var errOut bytes.Buffer
+	warnIfDeprecated(&errOut, "get", "/api/v1/old", http.Header{"Deprecation": {"@1767225600"}})
+	if got, want := errOut.String(), "warning: GET /api/v1/old is deprecated.\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestWarnIfDeprecatedReadsLinksWithQuotedParams(t *testing.T) {
+	for _, title := range []string{`"New, faster"`, `"New \"API"`} {
+		var errOut bytes.Buffer
+		warnIfDeprecated(&errOut, "POST", "/api/v1/old", http.Header{
+			"Deprecation": {"true"},
+			"Link":        {`</api/v2/new>; title=` + title + `; rel=successor-version, <https://docs.example.com/m>; rel="deprecation"`},
+		})
+		if got, want := errOut.String(), "warning: POST /api/v1/old is deprecated; use /api/v2/new. See https://docs.example.com/m\n"; got != want {
+			t.Fatalf("title %s: got %q, want %q", title, got, want)
+		}
+	}
+}
+
+func TestWarnIfDeprecatedIgnoresRelInsideQuotedParam(t *testing.T) {
+	var errOut bytes.Buffer
+	warnIfDeprecated(&errOut, "POST", "/api/v1/old", http.Header{
+		"Deprecation": {"true"},
+		"Link":        {`</api/v1/other>; title="a; rel=successor-version"; rel=alternate, </api/v2/new>; rel=successor-version`},
+	})
+	if got, want := errOut.String(), "warning: POST /api/v1/old is deprecated; use /api/v2/new.\n"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

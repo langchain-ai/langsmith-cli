@@ -17,7 +17,7 @@ import (
 
 // runRequest executes an HTTP request and writes the response to w.
 // Returns the HTTP status code and any transport-level error.
-func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, w io.Writer) (int, error) {
+func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, w, errW io.Writer) (int, error) {
 	apiURL := c.APIURL()
 	fullURL := resolveEndpoint(apiURL, path)
 	if len(params) > 0 && strings.EqualFold(method, "GET") {
@@ -84,6 +84,9 @@ func runRequest(c *client.Client, method, path, body, input string, params map[s
 	}
 	if err != nil {
 		return 0, err
+	}
+	if u, perr := url.Parse(fullURL); perr == nil {
+		warnIfDeprecated(errW, method, u.Path, respHeaders)
 	}
 
 	// Print response headers if --include
