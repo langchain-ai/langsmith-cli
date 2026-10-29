@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.11](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.10...v0.3.11) (2026-10-29)
+
+
+### Features
+
+* **cli:** warn when `langsmith api` calls a deprecated endpoint ([b028ca7](https://github.com/langchain-ai/langsmith-cli/commit/b028ca76ea77b24b667e59d9e5065f3c554342eb))
+
 ## [0.3.10](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.9...v0.3.10) (2026-10-29)
 
 
