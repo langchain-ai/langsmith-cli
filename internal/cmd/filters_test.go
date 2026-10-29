@@ -474,3 +474,50 @@ func TestValidateRawFilter(t *testing.T) {
 		})
 	}
 }
+
+func TestCommonFilterFlags_TimeAliases(t *testing.T) {
+	cmd := &cobra.Command{Use: "list"}
+	var f FilterFlags
+	addCommonFilterFlags(cmd, &f, true)
+	if err := cmd.ParseFlags([]string{"--start-time", "2024-01-15T00:00:00Z", "--end-time", "2024-01-16T00:00:00Z"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.Since != "2024-01-15T00:00:00Z" || f.Before != "2024-01-16T00:00:00Z" {
+		t.Errorf("Since = %q, Before = %q", f.Since, f.Before)
+	}
+	for _, name := range []string{"start-time", "end-time"} {
+		if !cmd.Flags().Lookup(name).Hidden {
+			t.Errorf("--%s should be hidden", name)
+		}
+	}
+}
+
+func TestCommonFilterFlags_TimeAliasesConflict(t *testing.T) {
+	for _, args := range [][]string{
+		{"--since", "2024-01-15T00:00:00Z", "--start-time", "2024-01-16T00:00:00Z"},
+		{"--before", "2024-01-15T00:00:00Z", "--end-time", "2024-01-16T00:00:00Z"},
+	} {
+		cmd := &cobra.Command{Use: "list"}
+		var f FilterFlags
+		addCommonFilterFlags(cmd, &f, true)
+		if err := cmd.ParseFlags(args); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.ValidateFlagGroups(); err == nil {
+			t.Errorf("%v: want a mutually exclusive error", args)
+		}
+	}
+}
+
+func TestRulesAliasesEvaluatorRule(t *testing.T) {
+	root := NewRootCmd("dev", "dev")
+	for _, name := range []string{"rules", "rule"} {
+		c, _, err := root.Find([]string{name, "list"})
+		if err != nil {
+			t.Fatalf("%s list: %v", name, err)
+		}
+		if c.Name() != "list" || !c.Parent().Hidden {
+			t.Errorf("%s list resolved to %q (parent hidden %v)", name, c.CommandPath(), c.Parent().Hidden)
+		}
+	}
+}

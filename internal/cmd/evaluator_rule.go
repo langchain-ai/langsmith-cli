@@ -39,6 +39,14 @@ Examples:
 	return cmd
 }
 
+// newRulesAliasCmd is a hidden top-level "rules" for agents that look for
+// rules outside "evaluator".
+func newRulesAliasCmd() *cobra.Command {
+	cmd := newEvaluatorRuleCmd()
+	cmd.Use, cmd.Aliases, cmd.Hidden = "rules", []string{"rule"}, true
+	return cmd
+}
+
 func newEvaluatorRuleListCmd() *cobra.Command {
 	var (
 		outputFile  string

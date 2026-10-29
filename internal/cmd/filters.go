@@ -59,6 +59,13 @@ func addCommonFilterFlags(cmd *cobra.Command, f *FilterFlags, includeRunType boo
 	cmd.Flags().IntVar(&f.LastNMinutes, "last-n-minutes", 0, "Only include runs from the last N minutes, e.g. 60 (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Since, "since", "", "Only include runs after this timestamp, e.g. 2024-01-15T00:00:00Z (overrides 7-day default)")
 	cmd.Flags().StringVar(&f.Before, "before", "", "Only include runs before this timestamp, e.g. 2024-01-15T00:00:00Z (for pagination)")
+	// Hidden aliases for the names agents guess.
+	cmd.Flags().StringVar(&f.Since, "start-time", "", "Alias for --since")
+	cmd.Flags().StringVar(&f.Before, "end-time", "", "Alias for --before")
+	_ = cmd.Flags().MarkHidden("start-time")
+	_ = cmd.Flags().MarkHidden("end-time")
+	cmd.MarkFlagsMutuallyExclusive("since", "start-time")
+	cmd.MarkFlagsMutuallyExclusive("before", "end-time")
 	cmd.Flags().BoolVar(&f.ErrorFlag, "error", false, "Filter for failed runs only")
 	cmd.Flags().BoolVar(&f.NoErrorFlag, "no-error", false, "Filter for successful runs only")
 	cmd.Flags().StringVar(&f.Name, "name", "", "Filter by run name (exact match)")
