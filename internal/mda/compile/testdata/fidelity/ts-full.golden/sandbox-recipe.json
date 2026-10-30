@@ -1,0 +1,10 @@
+{
+  "hasSetupScript": true,
+  "setupShaPreview": "40a7e492ef5287cf",
+  "snapshotName": null,
+  "snapshotId": null,
+  "dockerImage": "node:22",
+  "registry": null,
+  "fsCapacityBytes": 2147483648,
+  "digest": "0c9de35e748b45ee"
+}

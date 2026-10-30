@@ -27,6 +27,14 @@ func TestHandWrittenPathsCarryAPIPrefix(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		// `langsmith deploy`'s clients join paths to the base of the service
+		// each request goes to (host backend, platform API, Context Hub, a
+		// deployed Agent Server), which hostapi resolves for self-hosted
+		// installations, `/api` and `/api-host` included; they never go
+		// through the CLI's API URL and Raw* helpers.
+		if d.IsDir() && (path == filepath.Join(root, "mda", "hostapi") || path == filepath.Join(root, "mda", "deployment")) {
+			return filepath.SkipDir
+		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}

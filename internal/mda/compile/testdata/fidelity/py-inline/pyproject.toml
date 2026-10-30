@@ -1,0 +1,14 @@
+[project]
+name = "inline"   # trailing comment
+version = "0.0.0"
+dependencies = [ "deepagents>=0.7.3" ,"Managed_DeepAgents>=0.0.0" ]
+
+[tool.mda]
+python-version = "3.12"
+
+[tool.uv]
+sources = { managed-deepagents = { path = "../sdk" }, other = { git = "https://example.com/other" } }
+
+[[tool.uv.index]]
+name = "internal"
+url = "https://pypi.example.com/simple"

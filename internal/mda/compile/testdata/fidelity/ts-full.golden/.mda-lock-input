@@ -1,0 +1,32 @@
+{
+  "name": "support-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "mda dev"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.5.1",
+    "@langchain/core": "^1.2.17",
+    "@langchain/langgraph": "^1.4.18",
+    "@langchain/langgraph-checkpoint": "^1.1.3",
+    "@langchain/langgraph-sdk": "^1.12.0",
+    "@langchain/mcp-adapters": "^2.0.0",
+    "@langchain/openai": "^1.5.5",
+    "deepagents": "^1.15.1",
+    "hono": "^4.12.27",
+    "jose": "^6.2.3",
+    "langchain": "^1.5.12",
+    "langsmith": "^0.8.9",
+    "zod": "^4.0.0",
+    "uuid": "^13.0.2"
+  },
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "__runtime__"
+  ],
+  "overrides": {
+    "langsmith": "^0.8.9"
+  }
+}

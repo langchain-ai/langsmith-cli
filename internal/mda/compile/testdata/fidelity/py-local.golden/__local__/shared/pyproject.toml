@@ -1,0 +1,9 @@
+[project]
+name = "shared"
+version = "1.0.0"
+dependencies = ["orjson"]
+
+[project.optional-dependencies]
+fast = ["orjson"]
+
+[tool.uv.sources]

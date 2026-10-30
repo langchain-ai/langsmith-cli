@@ -1,0 +1,14 @@
+[project]
+name = 'odd'
+version = "0.0.0"
+requires-python = ">=3.11, <3.14"
+dependencies = [
+  # pinned
+  "deepagents >= 0.7",
+  'langgraph>=1.0' , # graph
+]
+
+[tool]
+uv.managed = true
+
+# trailing comment

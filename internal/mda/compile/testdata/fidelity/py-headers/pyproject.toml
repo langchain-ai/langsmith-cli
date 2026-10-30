@@ -1,0 +1,23 @@
+[project]
+name = "headers"
+version = "0.0.0"
+dependencies = [
+    "deepagents>=0.7.3",  # pinned
+]
+
+[ tool . ruff ]
+line-length = 100
+
+[tool]
+other = 1
+
+[tool.ruff.lint]
+select = ["E"]
+
+[[tool.uv.index]]
+name = "a"
+url = "https://a.example.com/simple"
+
+[[tool.uv.index]]
+name = "b"
+url = "https://b.example.com/simple"
