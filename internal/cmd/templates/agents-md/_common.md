@@ -89,6 +89,45 @@ codes and error messages) and uncaught errors stream to that terminal — read i
 to debug without opening browser devtools. Add `--verbose` to also see every
 successful call and all `console.*` output, or `--quiet` to silence it.
 
+## Services outside LangSmith
+
+To reach Google, Slack or your own API, call a LangSmith Tool Gateway kit
+(beta): a set of MCP tools set up on the **Tools** page. Calls run as the
+person viewing the app, with their connected accounts, so credentials never
+reach app code. Your own API joins by putting an MCP server in front of it and
+adding that server on the Tools page. A kit's connection instructions on the
+Tools page include its MCP URL; the kit id is the path segment before `/mcp`.
+
+```ts
+const reply = await window.langsmith.call(`POST /v1/managed-tools/kits/${kitId}/mcp`, {
+  body: {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: toolName, arguments: { query } },
+  },
+});
+if (reply.error || reply.result?.isError) {
+  // Show the tool's error to the viewer.
+}
+```
+
+- `method: 'tools/list'` (no `params`) returns the tools the viewer can call,
+  with their names and input schemas. By default, tools from accounts the
+  viewer hasn't connected are left out, and the missing connections appear in
+  `result._meta["com.langchain.langsmith/missingCredentials"]`; the list can be
+  empty. A kit that requires all connections rejects the list until they're
+  all connected.
+- When the viewer hasn't connected an account a tool needs, the call rejects
+  with an error whose message contains "Authorize the linked servers, then
+  retry the MCP request". Ask them to connect it on the Tools page;
+  `window.langsmith.openUrl` opens LangSmith pages only.
+- A call times out after 10 seconds, and a timed-out tool call may still have
+  run. Never retry a tool call automatically.
+- Under `langsmith apps dev`, calls use the CLI's configured credentials. Use a
+  personal API key or an OAuth login for tools connected to your account; a
+  workspace or service-account key doesn't identify a user.
+
 ## Rate limits & pagination
 
 Every call counts against a rate limit; going over returns **HTTP 429**. Retry
