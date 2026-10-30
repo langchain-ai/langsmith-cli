@@ -78,7 +78,7 @@ type sdkFields struct {
 	// Version is the installed package's version, when its metadata has one.
 	Version *string `json:"version"`
 	// NamedFactories reports whether it has named factories:
-	// `defineDeepAgent(name, factory)` / `define_deep_agent(name, factory)`.
+	// `defineAgent(name, factory)` / `define_agent(name, factory)`.
 	NamedFactories bool `json:"named_factories"`
 }
 

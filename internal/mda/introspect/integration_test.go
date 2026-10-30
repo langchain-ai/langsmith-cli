@@ -32,9 +32,9 @@ func realPythonProject(t *testing.T, files map[string]string) *project.Project {
 
 func TestRealPythonSDKProject(t *testing.T) {
 	p := realPythonProject(t, map[string]string{
-		"agent.py": "from managed_deepagents import define_deep_agent\n" +
+		"agent.py": "from managed_deepagents import define_agent\n" +
 			"def build(runtime):\n    raise RuntimeError('the factory must not run')\n" +
-			"agent = define_deep_agent('Research Assistant', build, async_subagents=['researcher'])\n",
+			"agent = define_agent('Research Assistant', build, async_subagents=['researcher'])\n",
 		"identity.py": "from managed_deepagents import define_identity\nidentity = define_identity(auth='backend')\n",
 		"memory.py": "from managed_deepagents import MemoryLayer, define_memory\n" +
 			"memory = define_memory(agent=MemoryLayer(), user=MemoryLayer(allow=lambda context: True))\n",
@@ -163,4 +163,24 @@ func TestRealPythonSDKStaticAndBareAgents(t *testing.T) {
 	})
 	_, err = ReadAgentStaticConfig(t.Context(), bare)
 	requireErrorPrefix(t, err, "agent.py exports `agent` as a bare factory function")
+
+	named := realPythonProject(t, map[string]string{
+		"agent.py": "from managed_deepagents import define_agent\n" +
+			"agent = define_agent('lead', model='openai:gpt-5')\n",
+	})
+	config, err = ReadAgentStaticConfig(t.Context(), named)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.AssistantID != "lead" || config.IsFactory || *config.Model != "openai:gpt-5" {
+		t.Fatalf("got %+v", config)
+	}
+
+	nameless := realPythonProject(t, map[string]string{
+		"agent.py": "from managed_deepagents import define_agent\n" +
+			"agent = define_agent(model='openai:gpt-5')\n",
+	})
+	_, err = ReadAgentStaticConfig(t.Context(), nameless)
+	requireErrorPrefix(t, err, "agent `name` is required in agent.py. "+
+		"Name the exported agent first, `define_agent(\"research-assistant\", ...)`;")
 }

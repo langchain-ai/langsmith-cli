@@ -374,8 +374,8 @@ func requireNotContains(t *testing.T, text string, unwanted ...string) {
 
 // Authored module snippets.
 const (
-	tsImport      = "import { defineDeepAgent } from \"managed-deepagents\";\n"
-	pyImport      = "from managed_deepagents import define_deep_agent\n"
+	tsImport      = "import { defineAgent, defineDeepAgent } from \"managed-deepagents\";\n"
+	pyImport      = "from managed_deepagents import define_agent, define_deep_agent\n"
 	tsAgent       = tsImport + "export const agent = defineDeepAgent({ name: \"agent\", model: \"openai:gpt-5\" });\n"
 	pyAgent       = pyImport + "agent = define_deep_agent(name=\"agent\", model=\"openai:gpt-5\")\n"
 	tsIdentity    = "import { defineIdentity } from \"managed-deepagents\";\nexport const identity = defineIdentity({ auth: \"backend\" });\n"

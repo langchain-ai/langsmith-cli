@@ -159,12 +159,15 @@ the Rust names and signatures of the functions they replace
 - Modules import with the project's `.env` under the process environment;
   deploy hands its parsed `.env` to `introspect.ImportProject`, which runs
   under a spinner.
-- Agent factories use the new SDK form `defineDeepAgent("name", factory, { asyncSubagents })`
-  / `define_deep_agent("name", factory, async_subagents=[...])`: the exported
-  value carries its name and async subagent names. A bare function export (the
-  old factory form) is an error telling the author to wrap it, or, when the
-  installed SDK has no named factories (no published release has them yet),
-  that it does not, naming its version.
+- Agent factories use the new SDK form `defineAgent("name", factory, { asyncSubagents })`
+  / `define_agent("name", factory, async_subagents=[...])`: the exported
+  value carries its name and async subagent names. Static agents may use
+  `defineAgent("name", { ... })` / `define_agent("name", ...)` or the existing
+  `defineDeepAgent` / `define_deep_agent`. A bare function export (the
+  `defineDeepAgent` factory form, which only source parsing could read) is an
+  error telling the author to wrap it, or, when the installed SDK has no
+  `defineAgent` (no published release has it yet), that it does not, naming
+  its version.
 - Values the Rust code only accepted as literals (schedules, sandbox config)
   must be JSON values; the helper rejects functions, class instances and other
   non-JSON values with the same messages.

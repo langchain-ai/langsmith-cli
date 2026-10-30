@@ -18,8 +18,8 @@
 //
 // Both agent forms build through the same entry: a static definition is
 // checked with `assertStaticAgentDefinition` / `assert_static_agent_definition`
-// before it is compiled, and a named factory (`defineDeepAgent(name, factory)`
-// / `define_deep_agent(name, factory)`) is callable, so the runtime calls it
+// before it is compiled, and a named factory (`defineAgent(name, factory)`
+// / `define_agent(name, factory)`) is callable, so the runtime calls it
 // per run like any factory.
 //
 // The generated files (entry modules, `langgraph.json`, manifests) are byte

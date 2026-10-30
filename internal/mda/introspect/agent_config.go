@@ -14,11 +14,12 @@ import (
 // The agent `name` is required because it becomes the LangGraph graph key /
 // assistant id and the default LangSmith deployment name. The Rust CLI read it
 // from the source; here the helper imports the agent module and reads it off the
-// exported value. A static definition carries it in its config. A factory must
-// be named up front, `defineDeepAgent("name", factory, { asyncSubagents })` /
-// `define_deep_agent("name", factory, async_subagents=[...])`, so the name and
-// its async subagents are known without running it. A module that does not
-// import is reported instead of defaulted.
+// exported value. A static definition, from `defineAgent` / `define_agent` or
+// `defineDeepAgent` / `define_deep_agent`, carries it in its config. A factory
+// must be named up front, `defineAgent("name", factory, { asyncSubagents })` /
+// `define_agent("name", factory, async_subagents=[...])`, so the name and its
+// async subagents are known without running it; a bare factory function is
+// refused. A module that does not import is reported instead of defaulted.
 //
 // Callers that need more than one field should use [ReadAgentStaticConfig]; the
 // helper runs once per project either way.
@@ -200,7 +201,7 @@ func AgentDeclaresDisableMemory(ctx context.Context, p *project.Project) (bool, 
 // exported agent entry.
 //
 // Static definitions use their required authored `name`. Factories are named
-// by `defineDeepAgent(name, factory)` / `define_deep_agent(name, factory)`.
+// by `defineAgent(name, factory)` / `define_agent(name, factory)`.
 func AgentAssistantID(ctx context.Context, p *project.Project) (string, error) {
 	config, err := ReadAgentStaticConfig(ctx, p)
 	if err != nil {
@@ -237,33 +238,36 @@ func readAgentConfigFields(ctx context.Context, p *project.Project) (agentFields
 	return fields, nil
 }
 
-// bareFactoryError is the error for an `agent` export that is a plain function:
-// its name is in its body, which only running it would reveal. sdk is the
-// installed `managed-deepagents`, which may predate named factories.
+// bareFactoryError is the error for an `agent` export that is a plain function,
+// such as a `defineDeepAgent` / `define_deep_agent` factory: its name is in its
+// body, which only running it would reveal. sdk is the installed
+// `managed-deepagents`, which may predate `defineAgent` / `define_agent`.
 func bareFactoryError(fileLabel string, language project.Language, sdk sdkFields) error {
-	define := language.Ident("defineDeepAgent", "define_deep_agent")
+	define := language.Ident("defineAgent", "define_agent")
 	if !sdk.NamedFactories {
 		installed := "the installed managed-deepagents"
 		if sdk.Version != nil {
 			installed += " (" + *sdk.Version + ")"
 		}
 		return errs.Categorized(errs.Project, fmt.Sprintf(
-			"%s exports `agent` as a bare factory function, so its name is known only by running it. "+
-				"`langsmith deploy` reads a factory's name from a named factory, %s(name, factory), "+
-				"but %s does not support named factories. Deploy factory agents with a managed-deepagents "+
-				"release that has them, or with the SDK's own `mda deploy`.",
-			fileLabel, define, installed))
+			"%s exports `agent` as a bare factory function, so its name is known only by running it, "+
+				"which `langsmith deploy` does not do. It reads a factory's name from %s(name, factory), "+
+				"but %s does not have %s. Deploy factory agents with a managed-deepagents release that "+
+				"has it, or with the SDK's own `mda deploy`.",
+			fileLabel, define, installed, define))
 	}
 	named := language.Ident(
-		"`export const agent = defineDeepAgent(\"research-assistant\", factory, { asyncSubagents: [...] })`",
-		"`agent = define_deep_agent(\"research-assistant\", factory, async_subagents=[...])`",
+		"`export const agent = defineAgent(\"research-assistant\", factory, { asyncSubagents: [...] })`",
+		"`agent = define_agent(\"research-assistant\", factory, async_subagents=[...])`",
 	)
+	nameless := language.Ident("defineAgent({ model, ... })", "define_agent(model=..., ...)")
 	return errs.Categorized(errs.Project, fmt.Sprintf(
-		"%s exports `agent` as a bare factory function, so its name is known only by running it. "+
-			"Name the factory where it is exported: %s. The name becomes the LangGraph assistant id "+
-			"and the default LangSmith deployment name; list every async subagent the factory may "+
-			"return. The %s(...) the factory returns may leave `name` out.",
-		fileLabel, named, define))
+		"%s exports `agent` as a bare factory function, so its name is known only by running it, "+
+			"which `langsmith deploy` does not do. Name the factory where it is exported: %s. The name "+
+			"becomes the LangGraph assistant id and the default LangSmith deployment name; list every "+
+			"async subagent the factory may return. The definition the factory returns may leave the "+
+			"name out: %s.",
+		fileLabel, named, nameless))
 }
 
 func validateAgentKeys(keys []string, fileLabel string, language project.Language) error {
@@ -310,7 +314,6 @@ func validateAgentKeys(keys []string, fileLabel string, language project.Languag
 }
 
 func resolveAssistantID(value AgentNameValue, fileLabel string, language project.Language) (string, error) {
-	define := language.Ident("defineDeepAgent", "define_deep_agent")
 	example := language.StringArgument("name", "research-assistant")
 	switch value.Kind {
 	case AgentNameStatic:
@@ -327,10 +330,13 @@ func resolveAssistantID(value AgentNameValue, fileLabel string, language project
 			"agent `name` in %s must be a static string literal (e.g. %s). Dynamic values cannot be "+
 				"used as the LangGraph assistant id.", fileLabel, example))
 	default:
+		// Only `defineAgent(config)` / `define_agent(**config)` leaves it out: it is
+		// for what a named factory returns, not an export.
+		named := language.Ident("`defineAgent(\"research-assistant\", { ... })`", "`define_agent(\"research-assistant\", ...)`")
 		return "", errs.Categorized(errs.Project, fmt.Sprintf(
-			"agent `name` is required in %s. Add a static string (e.g. %s) to %s(...); MDA uses it "+
+			"agent `name` is required in %s. Name the exported agent first, %s; MDA uses it "+
 				"as the LangGraph assistant id and the default LangSmith deployment name.",
-			fileLabel, example, define))
+			fileLabel, named))
 	}
 }
 

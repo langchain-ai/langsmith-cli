@@ -130,14 +130,14 @@ func TestCompileBuildsNamedFactoriesWithoutRunningThem(t *testing.T) {
 	}{
 		{"typescript", func(t *testing.T) fixture {
 			return typescriptProject(t, map[string]string{
-				"agent.ts": tsImport + "export const agent = defineDeepAgent(\"plain\", async (runtime) => {\n" +
+				"agent.ts": tsImport + "export const agent = defineAgent(\"plain\", async (runtime) => {\n" +
 					"  throw new Error(\"the factory must not run\");\n});\n",
 			})
 		}, "_mda_entry.ts"},
 		{"python", func(t *testing.T) fixture {
 			return pythonProject(t, map[string]string{
 				"agent.py": pyImport + "async def build(runtime):\n    raise RuntimeError('the factory must not run')\n" +
-					"agent = define_deep_agent('plain', build)\n",
+					"agent = define_agent('plain', build)\n",
 			})
 		}, "_mda_entry.py"},
 	} {
@@ -161,7 +161,7 @@ func TestCompileBuildsNamedFactoriesWithoutRunningThem(t *testing.T) {
 
 func TestCompileBuildsATypescriptFactoryEntryWithoutRunningTheFactory(t *testing.T) {
 	f := typescriptProject(t, map[string]string{
-		"agent.ts": tsImport + "export const agent = defineDeepAgent(\"support\", () => {\n" +
+		"agent.ts": tsImport + "export const agent = defineAgent(\"support\", () => {\n" +
 			"  throw new Error(\"the factory must not run\");\n});\n",
 		"package.json": "{\n  \"name\": \"dynamic-example\",\n  \"type\": \"module\",\n  \"dependencies\": {\n" +
 			"    \"@langchain/openai\": \"1.5.5\",\n    \"@langchain/anthropic\": \"1.5.1\"\n  }\n}\n",
@@ -199,7 +199,7 @@ func TestCompileBuildsATypescriptFactoryEntryWithoutRunningTheFactory(t *testing
 func TestCompileBuildsAPythonFactoryEntryWithoutRunningTheFactory(t *testing.T) {
 	f := pythonProject(t, map[string]string{
 		"agent.py": pyImport + "def build_agent(_ctx):\n    raise RuntimeError('the factory must not run')\n\n" +
-			"agent = define_deep_agent('support', build_agent)\n",
+			"agent = define_agent('support', build_agent)\n",
 		"pyproject.toml": "[project]\nname = \"dynamic-example\"\nversion = \"0.0.0\"\ndependencies = [\n" +
 			"    \"langchain-openai==1.4.2\",\n    \"langchain-anthropic==1.5.4\",\n]\n",
 		"tools/mcp.py": "from managed_deepagents import define_mcp\nmcp = define_mcp(servers={\n" +

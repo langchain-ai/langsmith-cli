@@ -32,7 +32,7 @@ const VERSION = 1;
 
 process.stdout.write = process.stderr.write.bind(process.stderr);
 
-/** Where a named factory carries its metadata (`defineDeepAgent(name, factory)`). */
+/** Where a named factory carries its metadata (`defineAgent(name, factory)`). */
 const AGENT_FACTORY = Symbol.for("managed-deepagents.agent-factory");
 const CHANNEL_BRAND = Symbol.for("mda.channel");
 const INGRESS_PROVIDERS = new Set(["slack", "github", "linear"]);
@@ -218,7 +218,7 @@ async function introspectProject(request) {
 
 /**
  * The project's own `managed-deepagents`: its version, and whether it has named
- * factories (`defineDeepAgent(name, factory)`).
+ * factories (`defineAgent(name, factory)`).
  */
 async function installedSdk(require, root) {
   let entry;

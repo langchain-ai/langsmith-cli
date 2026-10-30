@@ -15,23 +15,28 @@ function hide(target, key, value) {
   Object.defineProperty(target, key, { value, enumerable: false });
 }
 
-export function defineDeepAgent(...args) {
-  if (typeof args[0] === "string") {
-    const [name, factory, options = {}] = args;
-    if (typeof factory !== "function") throw new TypeError("defineDeepAgent(name, factory) takes a function");
-    const named = async (runtime) => factory(runtime);
-    hide(named, AGENT_FACTORY, Object.freeze({ name, asyncSubagents: Object.freeze([...(options.asyncSubagents ?? [])]) }));
-    return named;
+function definition(caller, config) {
+  for (const [key, guidance] of Object.entries(UNSUPPORTED)) {
+    if (key in config) throw new Error(`Remove \`${key}\` from ${caller}(...). ${guidance}`);
   }
-  const [config] = args;
+  if ("disableMemory" in config) throw new Error(`disableMemory is no longer supported in ${caller}(...).`);
+  return { kind: "deep-agent", config: { ...config } };
+}
+
+export function defineDeepAgent(config) {
   if (typeof config.name !== "string" || config.name.trim() === "") {
     throw new Error('name is required in defineDeepAgent(...). Pass a non-empty string (e.g. name: "research-assistant").');
   }
-  for (const [key, guidance] of Object.entries(UNSUPPORTED)) {
-    if (key in config) throw new Error(`Remove \`${key}\` from defineDeepAgent(...). ${guidance}`);
-  }
-  if ("disableMemory" in config) throw new Error("disableMemory is no longer supported in defineDeepAgent(...).");
-  return { kind: "deep-agent", config: { ...config } };
+  return definition("defineDeepAgent", config);
+}
+
+export function defineAgent(...args) {
+  if (typeof args[0] !== "string") return definition("defineAgent", args[0]);
+  const [name, rest, options = {}] = args;
+  if (typeof rest !== "function") return definition("defineAgent", { ...rest, name });
+  const named = async (runtime) => rest(runtime);
+  hide(named, AGENT_FACTORY, Object.freeze({ name, asyncSubagents: Object.freeze([...(options.asyncSubagents ?? [])]) }));
+  return named;
 }
 
 export function defineIdentity(options) {

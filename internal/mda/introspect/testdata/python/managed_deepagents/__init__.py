@@ -18,7 +18,7 @@ class DeepAgentDefinition:
 
 
 @dataclass(frozen=True, eq=False)
-class DeepAgentFactory:
+class NamedAgentFactory:
     name: str
     factory: object
     async_subagents: tuple = ()
@@ -27,16 +27,23 @@ class DeepAgentFactory:
         return self.factory(runtime)
 
 
-def define_deep_agent(*args, **kwargs):
-    if args:
-        name, factory = args
-        return DeepAgentFactory(name, factory, tuple(kwargs.get("async_subagents", ())))
-    if "disable_memory" in kwargs:
-        raise TypeError("disable_memory is no longer supported in define_deep_agent(...).")
+def _definition(caller, name, config):
+    if "disable_memory" in config:
+        raise TypeError(f"disable_memory is no longer supported in {caller}(...).")
     for key in ("backend", "store", "checkpointer", "system_prompt", "state_schema"):
-        if key in kwargs:
-            raise TypeError(f"Remove `{key}` from define_deep_agent(...).")
-    return DeepAgentDefinition(dict(kwargs))
+        if key in config:
+            raise TypeError(f"Remove `{key}` from {caller}(...).")
+    return DeepAgentDefinition({**({} if name is None else {"name": name}), **config})
+
+
+def define_deep_agent(*, name, **config):
+    return _definition("define_deep_agent", name, config)
+
+
+def define_agent(name=None, factory=None, /, **config):
+    if factory is not None:
+        return NamedAgentFactory(name, factory, tuple(config.get("async_subagents", ())))
+    return _definition("define_agent", name, config)
 
 
 class IdentityDefinition:

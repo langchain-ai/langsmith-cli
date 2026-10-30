@@ -260,7 +260,7 @@ func TestCompileIgnoresASetupScriptWithoutASandboxDeclaration(t *testing.T) {
 
 func TestCompileBakesAFactorySetupScriptWithoutASandboxDeclaration(t *testing.T) {
 	f := typescriptProject(t, map[string]string{
-		"agent.ts":         tsImport + "export const agent = defineDeepAgent(\"agent\", () => defineDeepAgent({}));\n",
+		"agent.ts":         tsImport + "export const agent = defineAgent(\"agent\", () => defineAgent({}));\n",
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho ready\n",
 	})
 
@@ -284,7 +284,7 @@ func TestCompileBakesAFactorySetupScriptWithoutASandboxDeclaration(t *testing.T)
 func TestCompileMarksPythonFactorySandboxSetup(t *testing.T) {
 	f := pythonProject(t, map[string]string{
 		"agent.py": pyImport + "def build(runtime):\n    return define_deep_agent(name='agent')\n" +
-			"agent = define_deep_agent('agent', build)\n",
+			"agent = define_agent('agent', build)\n",
 		"sandbox/__init__.py": "from managed_deepagents import define_sandbox\n" +
 			"sandbox = define_sandbox(docker_image=\"python:3.12-slim\")\n",
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho ready\n",

@@ -177,7 +177,7 @@ func TestRejectRemovedSandboxScope(t *testing.T) {
 func TestProjectUsesSandbox(t *testing.T) {
 	setup := map[string]string{"sandbox/setup.sh": "echo ready\n"}
 	factory := typescriptProject(t, merge(setup, map[string]string{
-		"agent.ts": tsImport + "export const agent = defineDeepAgent(\"a\", () => defineDeepAgent({ name: \"a\" }));\n",
+		"agent.ts": tsImport + "export const agent = defineAgent(\"a\", () => defineAgent({}));\n",
 	}))
 	fixed := typescriptProject(t, merge(setup, map[string]string{"agent.ts": tsAgent}))
 	declared := pythonProject(t, map[string]string{"agent.py": pyAgent, "sandbox/__init__.py": ""})

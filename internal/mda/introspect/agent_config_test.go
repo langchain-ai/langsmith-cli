@@ -9,8 +9,8 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/mda/project"
 )
 
-const tsImport = "import { defineDeepAgent } from \"managed-deepagents\";\n"
-const pyImport = "from managed_deepagents import define_deep_agent\n"
+const tsImport = "import { defineAgent, defineDeepAgent } from \"managed-deepagents\";\n"
+const pyImport = "from managed_deepagents import define_agent, define_deep_agent\n"
 
 func TestAgentNamePayloadsDecodeIntoAgentNameValues(t *testing.T) {
 	for payload, want := range map[string]AgentNameValue{
@@ -53,7 +53,7 @@ func TestTypescriptStaticEntryKeepsAuthoredNameAndModel(t *testing.T) {
 func TestTypescriptNamedFactoryIsReadWithoutRunningIt(t *testing.T) {
 	p := typescriptProject(t, map[string]string{
 		"agent.ts": tsImport +
-			"export const agent = defineDeepAgent(\"Lead Agent\", () => {\n" +
+			"export const agent = defineAgent(\"Lead Agent\", () => {\n" +
 			"  throw new Error(\"factory must not run during build\");\n" +
 			"}, { asyncSubagents: [\"Deep Researcher\"] });\n",
 	})
@@ -80,7 +80,7 @@ func TestPythonNamedFactoryIsReadWithoutRunningIt(t *testing.T) {
 	p := pythonProject(t, map[string]string{
 		"agent.py": pyImport +
 			"def build(runtime):\n    raise RuntimeError('factory must not run during build')\n" +
-			"agent = define_deep_agent('support', build, async_subagents=['researcher'])\n",
+			"agent = define_agent('support', build, async_subagents=['researcher'])\n",
 	})
 
 	config, err := ReadAgentStaticConfig(t.Context(), p)
@@ -106,14 +106,14 @@ func TestBareFactoryFunctionsAskForTheNamedForm(t *testing.T) {
 	_, err := ReadAgentStaticConfig(t.Context(), ts)
 	requireErrorPrefix(t, err, "agent.ts exports `agent` as a bare factory function")
 	requireErrorContains(t, err,
-		"`export const agent = defineDeepAgent(\"research-assistant\", factory, { asyncSubagents: [...] })`")
+		"`export const agent = defineAgent(\"research-assistant\", factory, { asyncSubagents: [...] })`")
 
 	py := pythonProject(t, map[string]string{
 		"agent.py": pyImport + "def agent(runtime):\n    return define_deep_agent(name='plain')\n",
 	})
 	_, err = ReadAgentStaticConfig(t.Context(), py)
 	requireErrorContains(t, err,
-		"`agent = define_deep_agent(\"research-assistant\", factory, async_subagents=[...])`")
+		"`agent = define_agent(\"research-assistant\", factory, async_subagents=[...])`")
 }
 
 func TestStaticAgentsRejectManagedSelections(t *testing.T) {
@@ -127,11 +127,11 @@ func TestStaticAgentsRejectManagedSelections(t *testing.T) {
 
 func TestPythonAgentWithoutNameIsRejected(t *testing.T) {
 	p := pythonProject(t, map[string]string{
-		"agent.py": pyImport + "agent = define_deep_agent(model='openai:gpt-5')\n",
+		"agent.py": pyImport + "agent = define_agent(model='openai:gpt-5')\n",
 	})
 	_, err := ReadAgentStaticConfig(t.Context(), p)
 	requireErrorPrefix(t, err, "agent `name` is required in agent.py. "+
-		"Add a static string (e.g. name=\"research-assistant\") to define_deep_agent(...)")
+		"Name the exported agent first, `define_agent(\"research-assistant\", ...)`;")
 }
 
 func TestAgentModulesThatDoNotParseAreReported(t *testing.T) {
@@ -281,9 +281,9 @@ func TestBareFactoriesNameAnSDKWithoutNamedFactories(t *testing.T) {
 	})
 	_, err := ReadAgentStaticConfig(t.Context(), ts)
 	if err == nil || err.Error() != "agent.ts exports `agent` as a bare factory function, so its name is known "+
-		"only by running it. `langsmith deploy` reads a factory's name from a named factory, "+
-		"defineDeepAgent(name, factory), but the installed managed-deepagents (0.10.0) does not support "+
-		"named factories. Deploy factory agents with a managed-deepagents release that has them, or with "+
+		"only by running it, which `langsmith deploy` does not do. It reads a factory's name from "+
+		"defineAgent(name, factory), but the installed managed-deepagents (0.10.0) does not have "+
+		"defineAgent. Deploy factory agents with a managed-deepagents release that has it, or with "+
 		"the SDK's own `mda deploy`." {
 		t.Fatalf("got %v", err)
 	}
@@ -294,8 +294,8 @@ func TestBareFactoriesNameAnSDKWithoutNamedFactories(t *testing.T) {
 		"managed_deepagents/__init__.py": "class DeepAgentDefinition:\n    pass\n",
 	})
 	_, err = ReadAgentStaticConfig(t.Context(), py)
-	requireErrorContains(t, err, "define_deep_agent(name, factory), but the installed managed-deepagents (0.10.0) "+
-		"does not support named factories.")
+	requireErrorContains(t, err, "define_agent(name, factory), but the installed managed-deepagents (0.10.0) "+
+		"does not have define_agent.")
 }
 
 func TestReadAgentModel(t *testing.T) {
@@ -312,7 +312,7 @@ func TestReadAgentModel(t *testing.T) {
 	}
 
 	factory := pythonProject(t, map[string]string{
-		"agent.py": pyImport + "agent = define_deep_agent('a', lambda runtime: None)\n",
+		"agent.py": pyImport + "agent = define_agent('a', lambda runtime: None)\n",
 	})
 	model, ok, err = ReadAgentModel(t.Context(), factory)
 	if err != nil || ok || model != "" {

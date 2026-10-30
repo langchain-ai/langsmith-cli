@@ -82,7 +82,7 @@ def introspect_project(request):
     import managed_deepagents as mda
 
     kinds = {
-        "factory": getattr(mda, "DeepAgentFactory", None),
+        "factory": getattr(mda, "NamedAgentFactory", None),
         "static": getattr(mda, "DeepAgentDefinition", None),
     }
 
@@ -178,7 +178,7 @@ def introspect_project(request):
 
 
 def installed_sdk(kinds):
-    """The installed ``managed-deepagents``: its version, and whether it has named factories."""
+    """The installed ``managed-deepagents``: its version, and whether it has ``define_agent``."""
     try:
         version = importlib.metadata.version("managed-deepagents")
     except importlib.metadata.PackageNotFoundError:
