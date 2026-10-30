@@ -68,8 +68,7 @@ func (i stubInstallation) RuntimeManifest() project.RuntimeManifest { return i.m
 
 // stubTypescriptManifest and stubPythonManifest are what the stub
 // installations' manifests declare: the ranges the mda CLI wrote from its
-// constants, so a build against an SDK that agrees with the CLI matches the
-// fidelity goldens.
+// constants, which the fidelity goldens record.
 var (
 	stubTypescriptManifest = project.RuntimeManifest{
 		Dependencies: []project.Dependency{
@@ -128,11 +127,6 @@ func (f *fixture) reload(t *testing.T) {
 func (f fixture) deploy(t *testing.T) (*CompileSummary, error) {
 	t.Helper()
 	return CompileForDeploy(t.Context(), f.project, f.outDir, DeployContext{Repo: "context-repo"}, f.installation)
-}
-
-func (f fixture) local(t *testing.T) (*CompileSummary, error) {
-	t.Helper()
-	return Compile(t.Context(), f.project, f.outDir, f.installation)
 }
 
 func mustCompile(t *testing.T, compile func(*testing.T) (*CompileSummary, error)) *CompileSummary {

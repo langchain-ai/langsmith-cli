@@ -138,10 +138,6 @@ func (t theme) warningSymbol() string {
 	return t.style().fg(yellow).Apply(symbolWarn)
 }
 
-func (t theme) errorSymbol() string {
-	return t.style().fg(red).Apply(symbolError)
-}
-
 func (t theme) activeSymbol() string {
 	return t.style().fg(green).Apply(symbolStepActive)
 }
@@ -356,19 +352,19 @@ func (t theme) formatProgressWithState(message string, state themeState) string 
 	return prefix + message + suffix
 }
 
-// formatNoteWithSymbol renders a boxed note with symbol, inline or as an
-// outro, with its body in text.
-func (t theme) formatNoteWithSymbol(isOutro bool, symbol, prompt, message string, text Style) string {
+// formatNote renders a boxed note, with the remark symbol when it has no
+// title and the submitted step's otherwise.
+func (t theme) formatNote(prompt, message string) string {
+	symbol := t.stateSymbol(submitState)
 	if displayWidth(prompt) == 0 {
+		symbol = t.remarkSymbol()
 		prompt = ""
 	}
 	prompt = t.termwrap(prompt, 7)
 	message = t.termwrap(message, 6)
+	text := t.inputStyle(submitState)
 
 	barColor := t.barColor(submitState)
-	if isOutro {
-		symbol = barColor.Apply(symbolConnectLeft)
-	}
 	promptLines := lines(prompt)
 	if prompt == "" {
 		// Omit the empty line inside the box above the message.
@@ -411,23 +407,9 @@ func (t theme) formatNoteWithSymbol(isOutro bool, symbol, prompt, message string
 	}
 
 	horizontal := strings.Repeat(symbolBarH, width+2)
-	if isOutro {
-		note.WriteString(barColor.Apply(symbolBarEnd+horizontal+symbolCornerBottomRight) + "\n")
-	} else {
-		note.WriteString(barColor.Apply(symbolConnectLeft+horizontal+symbolCornerBottomRight) + "\n" +
-			barColor.Apply(symbolBar) + "\n")
-	}
+	note.WriteString(barColor.Apply(symbolConnectLeft+horizontal+symbolCornerBottomRight) + "\n" +
+		barColor.Apply(symbolBar) + "\n")
 	return note.String()
-}
-
-// formatNoteGeneric renders a note with the remark symbol when it has no
-// title and the submitted step's otherwise.
-func (t theme) formatNoteGeneric(isOutro bool, prompt, message string) string {
-	symbol := t.stateSymbol(submitState)
-	if displayWidth(prompt) == 0 {
-		symbol = t.remarkSymbol()
-	}
-	return t.formatNoteWithSymbol(isOutro, symbol, prompt, message, t.inputStyle(submitState))
 }
 
 // formatLog renders a log message with symbol, followed by an empty bar line.

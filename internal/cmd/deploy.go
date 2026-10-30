@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
@@ -12,13 +10,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
-	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/deploy"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/deployment"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/hostapi"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/proc"
-	"github.com/langchain-ai/langsmith-cli/internal/mda/ui"
 )
 
 // maxWaitTimeoutSeconds is the largest --wait-timeout-seconds.
@@ -42,11 +38,13 @@ var contextStrategies = map[string]deploy.ContextStrategy{
 
 // deployFlags are the flags of `langsmith deploy`.
 type deployFlags struct {
-	name               string
-	agentEnvironment   string
-	deploymentType     string
-	hostURL            string
-	pushTo             stringFlagValue
+	name             string
+	agentEnvironment string
+	deploymentType   string
+	hostURL          string
+	pushTo           string
+	// pushToSet tells `--push-to ""` from no --push-to.
+	pushToSet          bool
 	noWait             bool
 	contextStrategy    string
 	yes                bool
@@ -86,6 +84,7 @@ Authentication:
 			if len(args) == 1 {
 				path = args[0]
 			}
+			flags.pushToSet = cmd.Flags().Changed("push-to")
 			return runDeploy(cmd, path, flags)
 		},
 	}
@@ -94,7 +93,7 @@ Authentication:
 	cmd.Flags().StringVar(&flags.deploymentType, "deployment-type", "dev", "Deployment type when creating: dev or prod")
 	cmd.Flags().StringVar(&flags.hostURL, "host-url", "", "Host backend URL override (advanced)")
 	_ = cmd.Flags().MarkHidden("host-url")
-	cmd.Flags().Var(&flags.pushTo, "push-to", "Build and push the image to `REPOSITORY[:TAG]` in a customer-managed registry, then deploy it (self-hosted LangSmith)")
+	cmd.Flags().StringVar(&flags.pushTo, "push-to", "", "Build and push the image to `REPOSITORY[:TAG]` in a customer-managed registry, then deploy it (self-hosted LangSmith)")
 	cmd.Flags().BoolVar(&flags.noWait, "no-wait", false, "Trigger the build but do not wait for it to finish")
 	cmd.Flags().StringVar(&flags.contextStrategy, "context-strategy", "", "Resolve instructions/skills edited in Context Hub without prompting: overwrite or keep-hub")
 	cmd.Flags().BoolVarP(&flags.yes, "yes", "y", false, "Overwrite existing same-name resources on a first deploy without asking (does not resolve Context Hub edits; use --context-strategy for those)")
@@ -110,7 +109,6 @@ func (f deployFlags) options(path string) (deploy.DeployOptions, error) {
 		Name:        f.name,
 		WorkspaceID: flagWorkspaceID,
 		HostURL:     f.hostURL,
-		PushTo:      f.pushTo.value,
 		Wait:        !f.noWait,
 		Yes:         f.yes,
 	}
@@ -119,6 +117,9 @@ func (f deployFlags) options(path string) (deploy.DeployOptions, error) {
 		return opts, err
 	}
 	opts.DeploymentType = deploymentType
+	if f.pushToSet {
+		opts.PushTo = &f.pushTo
+	}
 	if f.agentEnvironment != "" {
 		environment, err := enumFlag("agent-environment", f.agentEnvironment, agentEnvironments, []string{"development", "staging", "production"})
 		if err != nil {
@@ -134,37 +135,18 @@ func (f deployFlags) options(path string) (deploy.DeployOptions, error) {
 		opts.ContextStrategy = &strategy
 	}
 	if f.waitTimeoutSeconds < 1 || f.waitTimeoutSeconds > maxWaitTimeoutSeconds {
-		return opts, fmt.Errorf("invalid value %d for --wait-timeout-seconds: must be between 1 and %d", f.waitTimeoutSeconds, maxWaitTimeoutSeconds)
+		return opts, fmt.Errorf("invalid --wait-timeout-seconds %d: must be between 1 and %d", f.waitTimeoutSeconds, maxWaitTimeoutSeconds)
 	}
 	opts.WaitTimeout = time.Duration(f.waitTimeoutSeconds) * time.Second
 	return opts, nil
 }
-
-// stringFlagValue is a string flag that tells unset from set to "".
-type stringFlagValue struct {
-	value *string
-}
-
-func (o *stringFlagValue) String() string {
-	if o.value == nil {
-		return ""
-	}
-	return *o.value
-}
-
-func (o *stringFlagValue) Set(value string) error {
-	o.value = &value
-	return nil
-}
-
-func (o *stringFlagValue) Type() string { return "string" }
 
 // enumFlag looks value up among a flag's choices, listed in order.
 func enumFlag[T any](flag, value string, choices map[string]T, order []string) (T, error) {
 	choice, ok := choices[value]
 	if !ok {
 		var zero T
-		return zero, fmt.Errorf("invalid value %q for --%s: expected one of %s", value, flag, strings.Join(order, ", "))
+		return zero, fmt.Errorf("invalid --%s %q: must be one of %s", flag, value, strings.Join(order, ", "))
 	}
 	return choice, nil
 }
@@ -203,66 +185,5 @@ func runDeploy(cmd *cobra.Command, path string, flags deployFlags) error {
 	default:
 		// The session already reported how it ended.
 		return ReportedError{Err: fmt.Errorf("deploy %s", completion)}
-	}
-}
-
-// loginAt signs in with the device flow at apiURL, the way `langsmith auth
-// login` does, writing the instructions to out, and saves the tokens to the
-// selected profile; the returned options authenticate with it. The profile
-// becomes the current one only when there is none.
-//
-// apiURL can come from the project being deployed rather than from the CLI's
-// own settings. Signing in anywhere but where `langsmith auth login` would
-// opens a page that server names and repoints the profile there, so it is
-// confirmed first, naming both; without a terminal to ask on, it fails
-// with the `langsmith auth login` command that does it.
-func loginAt(ctx context.Context, apiURL string, out io.Writer) (client.Options, error) {
-	cfg, err := lsconfig.Load()
-	if err != nil {
-		return client.Options{}, err
-	}
-	profileName := loginProfileName(cfg)
-	if err := validateProfileName(profileName); err != nil {
-		return client.Options{}, err
-	}
-	apiURL = client.NormalizeURL(apiURL)
-	if configured := loginAPIURL(cfg, profileName); !client.SameOrigin(configured, apiURL) {
-		if err := confirmLoginElsewhere(ctx, profileName, configured, apiURL); err != nil {
-			return client.Options{}, err
-		}
-	}
-	fmt.Fprintf(out, "Signing in to LangSmith at %s\n\n", apiURL)
-	oauthMeta, token, err := deviceAuthorization{apiURL: apiURL, out: out}.run(ctx)
-	if err != nil {
-		return client.Options{}, err
-	}
-	if cfg.CurrentProfile == "" {
-		cfg.CurrentProfile = profileName
-	}
-	profile, err := saveOAuthLogin(cfg, profileName, apiURL, "", oauthMeta, token)
-	if err != nil {
-		return client.Options{}, err
-	}
-	return client.Options{APIURL: apiURL, ProfileName: profileName, WorkspaceID: profile.WorkspaceID}, nil
-}
-
-// confirmLoginElsewhere asks before signing profileName in at apiURL instead
-// of configured, the LangSmith it is set up for. Declining cancels.
-func confirmLoginElsewhere(ctx context.Context, profileName, configured, apiURL string) error {
-	confirmed, err := ui.Confirm(fmt.Sprintf(
-		"Sign in to LangSmith at %s? Profile '%s' is set up for %s and will point at %s instead.",
-		apiURL, profileName, configured, apiURL)).
-		InitialValue(false).
-		Interact(ctx)
-	switch {
-	case errors.Is(err, ui.ErrNotInteractive):
-		return fmt.Errorf("profile '%s' is set up for %s, not %s; run `langsmith auth login --api-url %s` to sign in there",
-			profileName, configured, apiURL, apiURL)
-	case err != nil:
-		return err
-	case !confirmed:
-		return errs.ErrCancelled
-	default:
-		return nil
 	}
 }

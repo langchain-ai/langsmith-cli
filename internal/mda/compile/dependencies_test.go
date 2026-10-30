@@ -87,11 +87,12 @@ func TestCompileMakesPythonBuildsDependencyOnlyInstallable(t *testing.T) {
 			"dependencies = [\"deepagents>=0.7.3\", \"managed-deepagents>=0.1.0\"]\n",
 	})
 
-	mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	pyproject := f.read(t, "pyproject.toml")
-	requireContains(t, pyproject, "build-backend = \"setuptools.build_meta\"", "py-modules = []",
-		"deepagents>=0.7.3", "managed-deepagents @ file://")
+	requireContains(t, pyproject, "build-backend = \"setuptools.build_meta\"", "py-modules = []", "deepagents>=0.7.3")
+	// `langgraph.json` installs the vendored runtime instead.
+	requireNotContains(t, pyproject, "managed-deepagents")
 }
 
 func TestCompileSynthesizesAPyprojectWhenTheAuthorOmitsIt(t *testing.T) {
@@ -123,7 +124,7 @@ func TestCompileInjectsTheManagedStackAndProviderForTypescript(t *testing.T) {
 			"  \"dependencies\": { \"managed-deepagents\": \"^0.0.2\", \"deepagents\": \"1.12.1\" }\n}\n",
 	})
 
-	mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	manifest := readJSON(t, f.read(t, "package.json"))
 	deps := manifest["dependencies"].(map[string]any)
@@ -144,8 +145,6 @@ func TestCompileInjectsTheManagedStackAndProviderForTypescript(t *testing.T) {
 		"@langchain/langgraph-sdk":        "^1.12.0",
 		"langchain":                       "^1.5.12",
 		"uuid":                            "^13.0.2",
-		// Local builds bring the dev server.
-		"@langchain/langgraph-cli": "^1.5.1",
 		// The `langsmith:` provider uses the OpenAI integration package to
 		// speak the LangSmith Gateway's OpenAI-compatible API.
 		"@langchain/openai": "^1.5.5",
@@ -279,7 +278,7 @@ func TestCompileInjectsTheManagedStackAndProviderForPython(t *testing.T) {
 			"    \"deepagents>=0.7.3\",\n    \"managed-deepagents>=0.1.2\",\n]\n",
 	})
 
-	mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	pyproject := f.read(t, "pyproject.toml")
 	// Author-declared packages are preserved (not duplicated).
@@ -287,8 +286,7 @@ func TestCompileInjectsTheManagedStackAndProviderForPython(t *testing.T) {
 		t.Fatalf("pyproject.toml:\n%s", pyproject)
 	}
 	requireContains(t, pyproject, "langgraph>=1.2.15,<2", "langgraph-prebuilt>=1.1.1,<2", "langgraph-checkpoint>=4.2.0",
-		"langsmith>=0.10.17", "langchain[mcp]>=1.4.6,<2", "langgraph-api>=0.16.0", "langgraph-cli[inmem]>=0.4.36",
-		"langchain-anthropic>=1.5.4")
+		"langsmith>=0.10.17", "langchain[mcp]>=1.4.6,<2", "langchain-anthropic>=1.5.4")
 }
 
 func TestCompileDedupsAPythonDependencyDeclaredWithUnderscores(t *testing.T) {
@@ -365,20 +363,14 @@ func TestCompileWiresTypescriptMemory(t *testing.T) {
 			"export const memory = defineMemory({ scope: [{ type: \"agent\" }] });\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	// Agent memory does not require identity.
-	if !summary.Memory.AgentEnabled() || summary.Memory.Declared.Path != "memory.ts" {
-		t.Fatalf("memory: %+v", summary.Memory)
-	}
 	requireContains(t, f.read(t, "_mda_entry.ts"), "import { memory } from \"./memory\";",
-		"compileManagedAgent(definition, config, { contextRoot, hasSkills, memory, asyncSubagentGraphs }, runtime)")
+		"compileManagedAgent(definition, config, { contextRepo, hasSkills, memory, asyncSubagentGraphs }, runtime)")
 	if !f.exists("memory.ts") {
 		t.Fatal("memory.ts was not copied")
 	}
-	// The empty local agent memory is pointed out.
-	requireContains(t, strings.Join(summary.Warnings, "\n"),
-		"memory.ts enables agent memory, but .mda/__contexthub__/memories/agent/ is empty.")
 }
 
 func TestCompilePreservesNamedMemoryPolicies(t *testing.T) {
@@ -410,11 +402,8 @@ func TestCompilePreservesNamedMemoryPolicies(t *testing.T) {
 			tc.files[tc.memory] = source
 			f := tc.project(t, tc.files)
 
-			summary := mustCompile(t, f.deploy)
+			mustCompile(t, f.deploy)
 
-			if !summary.Memory.AgentEnabled() || !summary.Memory.UserEnabled() {
-				t.Fatalf("memory: %+v", summary.Memory)
-			}
 			if got := f.read(t, tc.memory); got != source {
 				t.Fatalf("%s: %q", tc.memory, got)
 			}
@@ -431,13 +420,10 @@ func TestCompileWiresPythonMemory(t *testing.T) {
 		"memory.py": "from managed_deepagents import define_memory\nmemory = define_memory(scope=[{\"type\": \"agent\"}])\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
-	if !summary.Memory.AgentEnabled() {
-		t.Fatalf("memory: %+v", summary.Memory)
-	}
 	requireContains(t, f.read(t, "_mda_entry.py"), "from memory import memory as _memory",
-		"await compile_managed_agent_async(_definition, config, context_root=_context_root, "+
+		"await compile_managed_agent_async(_definition, config, context_repo=_context_repo, "+
 			"has_skills=_has_skills, memory=_memory, async_subagent_graphs=_async_subagent_graphs, runtime=runtime)")
 }
 
@@ -512,11 +498,8 @@ func TestCompileIgnoresAPythonBrowserInTypescript(t *testing.T) {
 func TestCompileOmitsMemoryWhenTheProjectDeclaresNone(t *testing.T) {
 	f := typescriptProject(t, map[string]string{"agent.ts": tsAgent})
 
-	summary := mustCompile(t, f.deploy)
+	mustCompile(t, f.deploy)
 
-	if summary.Memory.Declared != nil {
-		t.Fatalf("memory: %+v", summary.Memory)
-	}
 	requireNotContains(t, f.read(t, "_mda_entry.ts"), "memory")
 }
 

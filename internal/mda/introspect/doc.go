@@ -60,8 +60,7 @@
 //	    "model": "openai:gpt-5" | null,
 //	    "declares_disable_memory": false,
 //	    "unsupported_keys": ["memory"],
-//	    "async_subagents": [{"kind": "STATIC", "value": "researcher"}],
-//	    "unreadable_subagents": 0}},
+//	    "async_subagents": [{"kind": "STATIC", "value": "researcher"}]}},
 //	  "identity": {"file": "identity.ts", "value": {"declared": true,
 //	    "auth": "backend" | "langsmith_api_key" | "validated_token" | null,
 //	    "auth_omitted": false, "scope": {"credentials": "user"} | null, "declares_memory": false}} | null,
@@ -90,6 +89,6 @@
 // In lex mode (`{"mode": "lex", "files": [{"source": ...}]}`) the TypeScript
 // helper writes `{"version": 1, "files": [{"imports": [...], "error": null | "..."}]}`
 // with each module-level import / export-from statement and its UTF-8 byte
-// span, for [InlineTextModules] and [TypescriptImportsOutsideRoot]. In check
+// span, for [TransformTypescriptSources]. In check
 // mode (`{"mode": "check"}`) it loads its packages and writes `{"version": 1}`.
 package introspect

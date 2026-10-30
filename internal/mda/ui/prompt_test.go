@@ -53,17 +53,10 @@ func TestEscapeCancelsAPrompt(t *testing.T) {
 	assert.Equal(t, "■  Deploy anyway?\n│  No \n└  Operation cancelled.\n", frame)
 }
 
-func TestAnInputRequiresAnAnswerUntilItHasADefault(t *testing.T) {
+func TestAnInputRequiresAnAnswer(t *testing.T) {
 	_, required := press(Input("Organization name").Placeholder("e.g. acme"), enter)
-	defaulted := Input("Organization name").DefaultInput("acme")
-	_, waiting := press(defaulted)
-	model, submitted := press(defaulted, enter)
 
 	assert.Equal(t, "▲  Organization name\n│  e.g. acme\n└  Input required\n", required)
-	assert.Equal(t, "◆  Organization name\n│  acme (default)\n└  \n", waiting)
-	assert.Equal(t, stateSubmit, model.state.kind)
-	assert.Equal(t, "acme", defaulted.text.String())
-	assert.Equal(t, "◇  Organization name\n│  acme\n│\n", submitted)
 }
 
 func TestAnInputShowsItsValidationErrorUntilTheNextKey(t *testing.T) {
@@ -121,18 +114,6 @@ func TestASelectMovesBetweenItemsAndShowsTheHighlightedHint(t *testing.T) {
 	assert.Equal(t, "◇  This agent's GitHub channel needs a GitHub App\n│  Use an existing GitHub App \n│\n", submitted)
 }
 
-func TestTheBrowserPromptSaysToPressEnter(t *testing.T) {
-	_, active := press(&awaitEnter{prompt: "Press Enter to open your browser"})
-
-	assert.Equal(t, "◆  Press Enter to open your browser\n", active)
-}
-
-func TestTheBrowserPromptSubmitFrameIsEmpty(t *testing.T) {
-	_, submitted := press(&awaitEnter{prompt: "Press Enter to open your browser"}, enter)
-
-	assert.Equal(t, "", submitted)
-}
-
 func TestAPromptAnswersThroughTheTerminal(t *testing.T) {
 	var out bytes.Buffer
 	terminal := NewTerminal(strings.NewReader("y"), &out, WithInteractive(true), WithColors(false))
@@ -177,7 +158,7 @@ func TestAPromptWithoutATerminalAsksForAFlag(t *testing.T) {
 func TestASelectWithoutItemsFails(t *testing.T) {
 	terminal, _ := captured(WithInteractive(true))
 
-	_, err := Select[string]("Select an item").InitialValue("").InteractOn(t.Context(), terminal)
+	_, err := Select[string]("Select an item").InteractOn(t.Context(), terminal)
 
 	assert.EqualError(t, err, "no items added to the list")
 }

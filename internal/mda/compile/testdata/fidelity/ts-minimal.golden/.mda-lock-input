@@ -1,14 +1,11 @@
 {
   "name": "minimal",
   "type": "module",
-  "devDependencies": {
-    "tsx": "^4.0.0"
-  },
+  "private": true,
   "dependencies": {
     "@langchain/core": "^1.2.17",
     "@langchain/langgraph": "^1.4.18",
     "@langchain/langgraph-checkpoint": "^1.1.3",
-    "@langchain/langgraph-cli": "^1.5.1",
     "@langchain/langgraph-sdk": "^1.12.0",
     "@langchain/mcp-adapters": "^2.0.0",
     "deepagents": "^1.15.1",
@@ -24,6 +21,5 @@
   },
   "workspaces": [
     "__runtime__"
-  ],
-  "private": true
+  ]
 }

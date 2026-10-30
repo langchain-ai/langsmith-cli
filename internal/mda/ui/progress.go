@@ -11,12 +11,12 @@ import (
 // tickInterval is how often a running spinner advances a frame.
 var tickInterval = 100 * time.Millisecond
 
-// ProgressBar is a spinner: a line that animates while work runs and is
-// replaced by a step line when it ends, like cliclack's.
+// Spinner is a line that animates while work runs and is replaced by a step
+// line when it ends, like cliclack's.
 //
 // Without an animating terminal it prints its message once when it starts and
 // again each time the message changes, then the step line.
-type ProgressBar struct {
+type Spinner struct {
 	t *Terminal
 
 	// Guarded by t.mu.
@@ -33,18 +33,18 @@ type ProgressBar struct {
 	done chan struct{}
 }
 
-// Spinner returns a spinner on t. Nothing shows until [ProgressBar.Start].
-func (t *Terminal) Spinner() *ProgressBar {
-	return &ProgressBar{t: t}
+// Spinner returns a spinner on t. Nothing shows until [Spinner.Start].
+func (t *Terminal) Spinner() *Spinner {
+	return &Spinner{t: t}
 }
 
-// Spinner returns a spinner on the default terminal.
-func Spinner() *ProgressBar {
+// NewSpinner returns a spinner on the default terminal.
+func NewSpinner() *Spinner {
 	return Default().Spinner()
 }
 
 // Start shows the spinner with message.
-func (p *ProgressBar) Start(message string) {
+func (p *Spinner) Start(message string) {
 	t := p.t
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -67,7 +67,7 @@ func (p *ProgressBar) Start(message string) {
 }
 
 // SetMessage replaces the spinner's message.
-func (p *ProgressBar) SetMessage(message string) {
+func (p *Spinner) SetMessage(message string) {
 	t := p.t
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -87,33 +87,26 @@ func (p *ProgressBar) SetMessage(message string) {
 }
 
 // Stop ends the spinner with a submitted step line.
-func (p *ProgressBar) Stop(message string) {
+func (p *Spinner) Stop(message string) {
 	p.finish(message, submitState)
 }
 
 // Cancel ends the spinner with a cancelled step line.
-func (p *ProgressBar) Cancel(message string) {
+func (p *Spinner) Cancel(message string) {
 	p.finish(message, cancelState)
 }
 
 // Error ends the spinner with an error step line.
-func (p *ProgressBar) Error(message string) {
+func (p *Spinner) Error(message string) {
 	p.finish(message, errorState(""))
 }
 
 // Clear ends the spinner, leaving nothing behind.
-func (p *ProgressBar) Clear() {
+func (p *Spinner) Clear() {
 	p.finish("", submitState)
 }
 
-// IsFinished reports whether the spinner has ended.
-func (p *ProgressBar) IsFinished() bool {
-	p.t.mu.Lock()
-	defer p.t.mu.Unlock()
-	return p.finished
-}
-
-func (p *ProgressBar) finish(message string, state themeState) {
+func (p *Spinner) finish(message string, state themeState) {
 	t := p.t
 	t.mu.Lock()
 	if p.finished {
@@ -139,7 +132,7 @@ func (p *ProgressBar) finish(message string, state themeState) {
 	}
 }
 
-func (p *ProgressBar) tick() {
+func (p *Spinner) tick() {
 	defer close(p.done)
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
@@ -161,7 +154,7 @@ func (p *ProgressBar) tick() {
 
 // drawLocked draws the current frame, each line cut to the terminal's width
 // so the frame takes one row per line, and leaves the cursor at its end.
-func (p *ProgressBar) drawLocked() {
+func (p *Spinner) drawLocked() {
 	if p.finished {
 		return
 	}
@@ -176,7 +169,7 @@ func (p *ProgressBar) drawLocked() {
 }
 
 // eraseLocked removes the drawn frame, leaving the cursor where it started.
-func (p *ProgressBar) eraseLocked() {
+func (p *Spinner) eraseLocked() {
 	if p.rows == 0 {
 		return
 	}
@@ -190,7 +183,7 @@ func (p *ProgressBar) eraseLocked() {
 
 // printLocked prints the message of a spinner that cannot animate, unless it
 // already printed it.
-func (p *ProgressBar) printLocked() {
+func (p *Spinner) printLocked() {
 	if p.message == p.printed {
 		return
 	}

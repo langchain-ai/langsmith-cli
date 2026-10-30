@@ -24,17 +24,6 @@ func TestPython3CandidatesIncludePythonOnWindows(t *testing.T) {
 	assert.Equal(t, []string{"python3"}, python3Candidates(false))
 }
 
-func TestNpmBinPrefersCmdOnWindows(t *testing.T) {
-	binDir := filepath.Join("node_modules", ".bin")
-
-	assert.Equal(t, []string{
-		filepath.Join(binDir, "tsx.cmd"),
-		filepath.Join(binDir, "tsx.exe"),
-		filepath.Join(binDir, "tsx"),
-	}, npmBinCandidates(binDir, "tsx", true))
-	assert.Equal(t, []string{filepath.Join(binDir, "tsx")}, npmBinCandidates(binDir, "tsx", false))
-}
-
 func TestResolvedProgramsAreCachedCandidates(t *testing.T) {
 	assert.Contains(t, npmCandidates(isWindows), NpmProgram())
 	assert.Contains(t, npxCandidates(isWindows), NpxProgram())
@@ -133,41 +122,4 @@ func TestProjectPythonPrefersVirtualEnvOverCondaEnv(t *testing.T) {
 
 	require.NoError(t, err, "VIRTUAL_ENV before CONDA_PREFIX")
 	assert.Equal(t, expected, resolved)
-}
-
-func TestPythonForEmitPrefersProjectVenv(t *testing.T) {
-	root := t.TempDir()
-	expected := writeVenvPython(t, filepath.Join(root, ".venv"), true)
-	outDir := filepath.Join(root, "build")
-	require.NoError(t, os.MkdirAll(outDir, 0o755))
-
-	resolved, err := PythonForEmit(t.Context(), root, outDir)
-
-	require.NoError(t, err, "project venv")
-	assert.Equal(t, expected, resolved)
-	assert.NoDirExists(t, EmitVenvDir(outDir))
-	assert.NoDirExists(t, filepath.Join(outDir, PythonEmitVenvDir))
-}
-
-// Needs `uv` or `python3` on PATH to create the venv.
-func TestPythonForEmitCreatesIsolatedVenvWhenProjectEnvIsMissing(t *testing.T) {
-	// ProjectPython would reuse the process env instead of creating one.
-	t.Setenv("VIRTUAL_ENV", "")
-	t.Setenv("CONDA_PREFIX", "")
-	root := t.TempDir()
-	outDir := filepath.Join(root, "build")
-	require.NoError(t, os.MkdirAll(outDir, 0o755))
-
-	python, err := PythonForEmit(t.Context(), root, outDir)
-
-	require.NoError(t, err, "isolated emit venv")
-	venv := EmitVenvDir(outDir)
-	assert.Equal(t, filepath.Join(root, PythonEmitVenvDir), venv)
-	assert.Equal(t, venvInterpreterCandidates(venv, isWindows)[0], python, "emit venv must live outside the build directory")
-	assert.True(t, probeVersion(t.Context(), python))
-
-	again, err := PythonForEmit(t.Context(), root, outDir)
-
-	require.NoError(t, err, "reuse emit venv")
-	assert.Equal(t, python, again)
 }

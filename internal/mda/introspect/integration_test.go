@@ -75,7 +75,7 @@ func TestRealPythonSDKProject(t *testing.T) {
 	}
 
 	memory, err := ResolveMemory(ctx, p)
-	if err != nil || !memory.AgentEnabled() || !memory.UserEnabled() {
+	if err != nil || memory.Declared == nil || memory.Declared.Scope != (MemoryLayers{Agent: true, User: true}) {
 		t.Fatalf("memory: got %+v, %v", memory, err)
 	}
 
@@ -126,8 +126,6 @@ func TestRealPythonSDKProject(t *testing.T) {
 	if want := (ChannelScan{
 		Entries:          []string{filepath.Join("channels", "support.py")},
 		RequiresIdentity: true,
-		NeedsPublicURL:   true,
-		Providers:        []string{"slack"},
 	}); !reflect.DeepEqual(scan, want) {
 		t.Fatalf("channels: got %+v", scan)
 	}

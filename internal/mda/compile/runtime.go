@@ -183,8 +183,8 @@ func copyDirRecursive(src, dst string) error {
 // copyFileIfChanged copies src onto dst without touching mtime when the bytes
 // already match.
 //
-// A rebuild re-vendors the whole runtime tree; rewriting files that did not
-// change would wake the LangGraph watcher under `mda dev`.
+// A rebuild re-vendors the whole runtime tree; files that did not change
+// keep their mtime.
 func copyFileIfChanged(src, dst string) error {
 	contents, err := os.ReadFile(src)
 	if err != nil {

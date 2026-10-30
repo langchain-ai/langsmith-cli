@@ -2,6 +2,7 @@ package project
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -33,8 +34,6 @@ func TestLoadProjectResolvesTheNpmPackageAboveTheProject(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, root, p.Root)
-	assert.Equal(t, TypeScript, installation.Language())
-	assert.Equal(t, "npm", installation.ChannelName())
 	assert.Equal(t, filepath.Join(pkg, "dist"), installation.RuntimeSource())
 	assert.Equal(t, "0.10.0", installation.PackageVersion())
 }
@@ -97,7 +96,7 @@ func TestResolveInstallationAsksForUvSyncWithoutAPythonEnvironment(t *testing.T)
 func pythonVenv(t *testing.T, root string) string {
 	t.Helper()
 	venv := filepath.Join(root, ".venv")
-	output, err := proc.Output(t.Context(), proc.Python3("-m", "venv", "--without-pip", venv))
+	output, err := proc.Output(t.Context(), exec.Command(proc.Python3Program(), "-m", "venv", "--without-pip", venv))
 	require.NoError(t, err)
 	require.True(t, output.Status.Success(), string(output.Stderr))
 	sitePackages, err := filepath.Glob(filepath.Join(venv, "lib", "python3*", "site-packages"))
@@ -129,8 +128,6 @@ func TestResolveInstallationFindsThePackageInTheProjectVenv(t *testing.T) {
 	installation, err := ResolveInstallation(t.Context(), p)
 	require.NoError(t, err)
 
-	assert.Equal(t, Python, installation.Language())
-	assert.Equal(t, "pypi", installation.ChannelName())
 	assert.Equal(t, filepath.Join(sitePackages, "managed_deepagents"), installation.RuntimeSource())
 	assert.Equal(t, "0.10.0", installation.PackageVersion())
 	assert.Equal(t, RuntimeManifest{

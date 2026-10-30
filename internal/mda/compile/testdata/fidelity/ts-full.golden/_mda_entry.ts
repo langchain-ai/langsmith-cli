@@ -14,19 +14,19 @@ import { channels } from "./_mda_channels";
 import { identity } from "./identity";
 import { memory } from "./memory";
 
-const contextRoot = "$ROOT/.mda/__contexthub__";
-const hasSkills = true;
+const contextRepo = "context-repo";
+const hasSkills = false;
 const asyncSubagentGraphs = { "researcher": "support-bot--researcher", "general-purpose": "support-bot--general-purpose" };
 
 export function agent(config: ManagedRunConfig, runtime: ManagedServerRuntime) {
   assertStaticAgentDefinition(definition);
-  return compileManagedAgent(definition, config, { contextRoot, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagentGraphs }, runtime);
+  return compileManagedAgent(definition, config, { contextRepo, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagentGraphs }, runtime);
 }
 
 export function agent__researcher(config: ManagedRunConfig, runtime: ManagedServerRuntime) {
-  return compileManagedAgent(definition, config, { contextRoot, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagent: "researcher" }, runtime);
+  return compileManagedAgent(definition, config, { contextRepo, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagent: "researcher" }, runtime);
 }
 
 export function agent__general_purpose(config: ManagedRunConfig, runtime: ManagedServerRuntime) {
-  return compileManagedAgent(definition, config, { contextRoot, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagent: "general-purpose" }, runtime);
+  return compileManagedAgent(definition, config, { contextRepo, hasSkills, sandbox, connectors, channels, identity, memory, asyncSubagent: "general-purpose" }, runtime);
 }

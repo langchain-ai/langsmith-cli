@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/proc"
@@ -157,7 +158,6 @@ func configurePythonPackaging(outDir string) error {
 func injectManagedDependencies(
 	p *project.Project,
 	outDir string,
-	includeLocalDev bool,
 	model *string,
 	browser bool,
 	runtime []project.Dependency,
@@ -165,9 +165,6 @@ func injectManagedDependencies(
 	deps := alignWithRuntime(project.ManagedDependencies(p.Language), runtime, p.Language)
 	if browser {
 		deps = append(deps, project.BrowserDependencies(p.Language)...)
-	}
-	if includeLocalDev {
-		deps = append(deps, project.LocalDevDependencies(p.Language)...)
 	}
 	if model != nil {
 		if provider, ok := project.ProviderDependencyForModel(*model, p.Language); ok {
@@ -206,27 +203,17 @@ func alignWithRuntime(deps, runtime []project.Dependency, language project.Langu
 	return aligned
 }
 
-// runtimePathMode is where the vendored Python runtime dependency resolves.
-type runtimePathMode int
-
-const (
-	// runtimePathAbsoluteDev is an absolute `file://` URI rooted at the local
-	// build output (local installs).
-	runtimePathAbsoluteDev runtimePathMode = iota
-	// runtimePathDeploy is the LangSmith deploy layout under `/deps/source`.
-	runtimePathDeploy
-)
-
 // rewriteRuntimeDependency rewrites the `managed-deepagents` dependency for
 // the build language.
 //
 // TypeScript builds vendor the runtime under `__runtime__/` and expose it as
 // an npm workspace package instead of a `file:` dependency — hosted npm 11.x
 // has crashed with `Exit handler never called!` when installing `file:` deps.
-// Python builds still point at the vendored `file://` URI.
-func rewriteRuntimeDependency(language project.Language, outDir string, mode runtimePathMode) error {
+// Python builds drop the requirement: `langgraph.json` installs the vendored
+// copy as its own local dependency.
+func rewriteRuntimeDependency(language project.Language, outDir string) error {
 	if language == project.Python {
-		return rewritePyRuntimeDep(outDir, mode)
+		return rewritePyRuntimeDep(outDir)
 	}
 	return rewriteTsRuntimeDep(outDir)
 }
@@ -304,7 +291,7 @@ func ensureWorkspace(object *jsonObject, entry string) {
 	}
 }
 
-func rewritePyRuntimeDep(outDir string, mode runtimePathMode) error {
+func rewritePyRuntimeDep(outDir string) error {
 	path := filepath.Join(outDir, "pyproject.toml")
 	if !isFile(path) {
 		return nil
@@ -326,43 +313,12 @@ func rewritePyRuntimeDep(outDir string, mode runtimePathMode) error {
 		}
 	}
 
-	var fileURI string
-	if mode == runtimePathAbsoluteDev {
-		abs, err := filepath.EvalSymlinks(outDir)
-		if err == nil {
-			abs, err = filepath.Abs(abs)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to canonicalize %s: %w", outDir, err)
-		}
-		fileURI = fmt.Sprintf("%s @ file://%s", runtimePackage, filepath.Join(abs, runtimeDir))
-	}
-
 	if slot := tomlGetMutPath(doc.root, "project", "dependencies"); slot != nil {
 		if deps, ok := (*slot).(*tomlArray); ok {
-			if mode == runtimePathDeploy {
-				deps.values = slices.DeleteFunc(deps.values, func(value tomlValue) bool {
-					text, ok := tomlString(value)
-					return ok && canonicalRequirementName(text) == runtimePackage
-				})
-				return writeTomlDocument(path, doc)
-			}
-
-			// Replace any existing managed-deepagents entry (matching
-			// equivalent PEP 503 spellings) with the vendored file:// URI,
-			// or add it if the author never declared it.
-			found := false
-			for i, value := range deps.values {
+			deps.values = slices.DeleteFunc(deps.values, func(value tomlValue) bool {
 				text, ok := tomlString(value)
-				if ok && canonicalRequirementName(text) == runtimePackage {
-					deps.values[i] = newTomlString(fileURI)
-					found = true
-					break
-				}
-			}
-			if !found {
-				deps.values = append(deps.values, newTomlString(fileURI))
-			}
+				return ok && canonicalRequirementName(text) == runtimePackage
+			})
 		}
 	}
 	return writeTomlDocument(path, doc)
@@ -372,15 +328,14 @@ func rewritePyRuntimeDep(outDir string, mode runtimePathMode) error {
 // packages vendored under `__local__/`.
 //
 // TypeScript links each copy as an npm workspace, like the runtime. Python
-// local builds use an editable uv path source; deploy builds drop the
-// requirement because `langgraph.json` installs the copy as its own local
-// dependency.
-func rewriteLocalPackageDependencies(language project.Language, outDir string, packages []LocalPackage, mode runtimePathMode) error {
+// drops the requirement because `langgraph.json` installs the copy as its own
+// local dependency.
+func rewriteLocalPackageDependencies(language project.Language, outDir string, packages []LocalPackage) error {
 	if len(packages) == 0 {
 		return nil
 	}
 	if language == project.Python {
-		return rewritePyLocalDeps(outDir, packages, mode)
+		return rewritePyLocalDeps(outDir, packages)
 	}
 	return rewriteTsLocalDeps(outDir, packages)
 }
@@ -401,7 +356,7 @@ func rewriteTsLocalDeps(outDir string, packages []LocalPackage) error {
 	return writePackageJSON(path, manifest)
 }
 
-func rewritePyLocalDeps(outDir string, packages []LocalPackage, mode runtimePathMode) error {
+func rewritePyLocalDeps(outDir string, packages []LocalPackage) error {
 	path := filepath.Join(outDir, "pyproject.toml")
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -413,7 +368,7 @@ func rewritePyLocalDeps(outDir string, packages []LocalPackage, mode runtimePath
 			direct = append(direct, pkg.Name)
 		}
 	}
-	rewritten, err := pointPyRequirements(string(contents), direct, mode, localPackagesDir)
+	rewritten, err := dropPyLocalRequirements(string(contents), direct)
 	if err != nil {
 		return fmt.Errorf("failed to rewrite %s: %w", path, err)
 	}
@@ -425,13 +380,13 @@ func rewritePyLocalDeps(outDir string, packages []LocalPackage, mode runtimePath
 
 // rewriteVendoredManifest rewrites the manifest of a vendored local package so
 // its own local packages resolve to their sibling copies under `__local__/`.
-func rewriteVendoredManifest(language project.Language, contents string, pkg LocalPackage, mode runtimePathMode) (string, error) {
+func rewriteVendoredManifest(language project.Language, contents string, pkg LocalPackage) (string, error) {
 	if language == project.Python {
-		rewritten, err := pointPyRequirements(contents, pkg.LocalDependencies, mode, "..")
+		rewritten, err := dropPyLocalRequirements(contents, pkg.LocalDependencies)
 		if err != nil {
 			return "", err
 		}
-		if mode == runtimePathDeploy && len(pkg.Extras) > 0 {
+		if len(pkg.Extras) > 0 {
 			return foldRequestedExtras(rewritten, pkg)
 		}
 		return rewritten, nil
@@ -450,13 +405,9 @@ func rewriteVendoredManifest(language project.Language, contents string, pkg Loc
 	return prettyJSON(manifest) + "\n", nil
 }
 
-// pointPyRequirements points the uv path sources named in names at their
-// vendored copies.
-//
-// Local builds keep the requirement and use an editable uv source under
-// devDir. Deploy builds drop the requirement because `langgraph.json` installs
-// each copy separately.
-func pointPyRequirements(contents string, names []string, mode runtimePathMode, devDir string) (string, error) {
+// dropPyLocalRequirements drops the requirements and uv path sources named in
+// names: `langgraph.json` installs each vendored copy separately.
+func dropPyLocalRequirements(contents string, names []string) (string, error) {
 	doc, err := parseTomlDocument(contents)
 	if err != nil {
 		return "", err
@@ -468,13 +419,6 @@ func pointPyRequirements(contents string, names []string, mode runtimePathMode, 
 		}
 		if sources == nil {
 			return "", errors.New("[tool.uv.sources] is not a table")
-		}
-		if mode == runtimePathAbsoluteDev {
-			source := &tomlInlineTable{}
-			source.items.put(newTomlKey("path"), newTomlString(devDir+"/"+name))
-			source.items.put(newTomlKey("editable"), newTomlBool(true))
-			sources.insertItem(name, source)
-			continue
 		}
 		sources.removeItem(name)
 
@@ -715,7 +659,7 @@ func mergePyprojectDeps(outDir string, deps []project.Dependency) error {
 // (the leading run of name characters before any version specifier or
 // extras).
 func requirementName(requirement string) string {
-	trimmed := strings.TrimLeftFunc(requirement, isRustWhitespace)
+	trimmed := strings.TrimLeftFunc(requirement, unicode.IsSpace)
 	end := strings.IndexFunc(trimmed, func(c rune) bool {
 		return c >= 0x80 || !(isBareKeyByte(byte(c)) || c == '.')
 	})
@@ -749,19 +693,10 @@ func asciiLower(text string) string {
 	}, text)
 }
 
-// isRustWhitespace is Rust's `char::is_whitespace` (Unicode White_Space).
-func isRustWhitespace(c rune) bool {
-	switch c {
-	case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000:
-		return true
-	}
-	return 0x2000 <= c && c <= 0x200A
-}
-
 // requirementMarker is the environment marker after `;`, if any.
 func requirementMarker(requirement string) (string, bool) {
 	_, marker, ok := strings.Cut(requirement, ";")
-	marker = strings.TrimFunc(marker, isRustWhitespace)
+	marker = strings.TrimSpace(marker)
 	return marker, ok && marker != ""
 }
 
@@ -769,7 +704,7 @@ func requirementMarker(requirement string) (string, bool) {
 // additive: a bare author pin does not supply managed runtime extras.
 func requirementExtras(requirement string) []string {
 	name := requirementName(requirement)
-	rest := strings.TrimLeftFunc(strings.TrimLeftFunc(requirement, isRustWhitespace)[len(name):], isRustWhitespace)
+	rest := strings.TrimLeftFunc(strings.TrimLeftFunc(requirement, unicode.IsSpace)[len(name):], unicode.IsSpace)
 	inner, ok := strings.CutPrefix(rest, "[")
 	if !ok {
 		return nil
@@ -780,7 +715,7 @@ func requirementExtras(requirement string) []string {
 	}
 	var out []string
 	for _, extra := range strings.Split(extras, ",") {
-		out = append(out, normalizeExtraName(strings.TrimFunc(extra, isRustWhitespace)))
+		out = append(out, normalizeExtraName(strings.TrimSpace(extra)))
 	}
 	return out
 }

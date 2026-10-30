@@ -80,15 +80,15 @@ func FindTargetDeployment(ctx context.Context, c *hostapi.Client, name string, a
 	return FindDeploymentByName(response, name), nil
 }
 
-// WithManagedMarker prefers a deployment object that actually carries the
-// Managed Deep Agent marker.
+// FetchDeploymentWithMarker returns deployment, re-read in full when its
+// listing lacks the Managed Deep Agent marker.
 //
 // List responses are trimmed, so a marker missing from the listing means
 // "unknown", not "not ours" — and reading unknown as not-ours would make every
 // redeploy look like a collision. Re-read the full object once before letting
 // the caller conclude anything. A failed or still-unmarked re-read keeps the
 // listed object, which errs toward asking rather than silently overwriting.
-func WithManagedMarker(ctx context.Context, c *hostapi.Client, deployment map[string]any) map[string]any {
+func FetchDeploymentWithMarker(ctx context.Context, c *hostapi.Client, deployment map[string]any) map[string]any {
 	if _, ok := DeploymentManagedDeepAgentMarker(deployment); ok {
 		return deployment
 	}
@@ -107,29 +107,6 @@ func WithManagedMarker(ctx context.Context, c *hostapi.Client, deployment map[st
 	return deployment
 }
 
-// ResolveDeploymentID is the ID of the deployment named name. Fails when
-// nothing matches; `delete` calls [FindDeploymentIDByName] directly instead,
-// because a missing deployment is a normal teardown outcome there rather than
-// an error.
-func ResolveDeploymentID(ctx context.Context, c *hostapi.Client, name string) (string, error) {
-	listed, err := c.ListDeployments(ctx, name)
-	if err != nil {
-		return "", fmt.Errorf("failed to reach LangSmith: %w", err)
-	}
-	if id := FindDeploymentIDByName(listed, name); id != "" {
-		return id, nil
-	}
-	dashboard := ""
-	if url, err := c.DashboardURL(ctx); err == nil {
-		dashboard = " (" + url + ")"
-	} else {
-		slog.Debug("dashboard URL lookup failed", "error", err)
-	}
-	return "", fmt.Errorf("No deployment named '%s' exists in this workspace.\n"+
-		"Deploy it with `langsmith deploy` first, or pass `-n <name>` / `--workspace-id <id>` "+
-		"if it lives under a different name or workspace%s.", name, dashboard)
-}
-
 // ResolveCredential resolves the LangSmith credential for deploy and the
 // commands beside it (`resolve_api_key`).
 //
@@ -146,7 +123,7 @@ func ResolveDeploymentID(ctx context.Context, c *hostapi.Client, name string) (s
 //
 // The options returned carry the credential and, for the CLI's, the
 // workspace that came with it; a `LANGSMITH_API_KEY` comes with none, as its
-// workspace is `LANGSMITH_WORKSPACE_ID`'s ([ResolveWorkspaceID]).
+// workspace is `LANGSMITH_WORKSPACE_ID`'s ([resolveWorkspaceID]).
 // [LangSmithEndpoints.WithAuth] sets the API URL and the resolved workspace.
 func ResolveCredential(ctx context.Context, cli CLI, envPath string, envVars map[string]string, platformAPIURL string) (client.Options, error) {
 	if cli.APIKey != "" {

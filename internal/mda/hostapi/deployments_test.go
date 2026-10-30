@@ -18,66 +18,6 @@ func clientForHost(t *testing.T, hostBackendURL string) *Client {
 	return newClient(t, apiKeyCLIClient(t, "key", "tenant"), hostBackendURL, "http://unused.invalid")
 }
 
-func TestArtifactReportSendsRevisionCredentialWithoutChangingOtherRequests(t *testing.T) {
-	server := serveSequence(t, reply{status: 204}, reply{status: 200, body: `{"id":"deployment"}`})
-	c := clientForHost(t, server.URL)
-
-	response, err := c.PutManagedDeepAgentArtifacts(t.Context(), "deployment", "revision", map[string]any{"version": 1, "assistant_id": "agent"}, "test-build-token")
-	if err != nil || response != nil {
-		t.Fatalf("PutManagedDeepAgentArtifacts = %v, %v; want nothing", response, err)
-	}
-	if _, err := c.GetDeployment(t.Context(), "deployment"); err != nil {
-		t.Fatal(err)
-	}
-
-	requests := server.Requests()
-	report := requests[0]
-	if report.Line() != "PUT /v2/managed-deep-agents/deployment/revisions/revision/build-artifacts" {
-		t.Errorf("request = %s", report.Line())
-	}
-	for name, want := range map[string]string{"X-Mda-Build-Token": "test-build-token", "X-Api-Key": "key", "X-Tenant-Id": "tenant"} {
-		if got := report.Header.Get(name); got != want {
-			t.Errorf("%s = %q, want %q", name, got, want)
-		}
-	}
-	if !jsonEqual(t, report.JSON(t), `{"version":1,"assistant_id":"agent"}`) {
-		t.Errorf("body = %s", report.Body)
-	}
-	if got := requests[1].Header.Get("X-Mda-Build-Token"); got != "" {
-		t.Errorf("a later request carried the build token %q", got)
-	}
-}
-
-func TestArtifactReportPreservesForbiddenError(t *testing.T) {
-	server := serveOnce(t, 403, `{"detail":"A revision build credential is required"}`)
-
-	_, err := clientForHost(t, server.URL).PutManagedDeepAgentArtifacts(t.Context(), "deployment", "revision", map[string]any{}, "rejected-token")
-
-	var api *APIError
-	if !errors.As(err, &api) || api.Status != http.StatusForbidden {
-		t.Fatalf("err = %v, want a 403 API error", err)
-	}
-	if strings.Contains(err.Error(), "rejected-token") {
-		t.Fatalf("err leaks the token: %v", err)
-	}
-}
-
-func TestArtifactReportDoesNotFollowRedirects(t *testing.T) {
-	for _, target := range []string{"/other-endpoint", "https://other.example/artifacts"} {
-		server := serveSequence(t, reply{status: http.StatusTemporaryRedirect, header: map[string]string{"Location": target}})
-
-		_, err := clientForHost(t, server.URL).PutManagedDeepAgentArtifacts(t.Context(), "deployment", "revision", map[string]any{}, "test-build-token")
-
-		var api *APIError
-		if !errors.As(err, &api) || api.Status != http.StatusTemporaryRedirect {
-			t.Fatalf("%s: err = %v, want a 307 API error", target, err)
-		}
-		if line := server.Only(t).Line(); !strings.HasPrefix(line, "PUT /v2/managed-deep-agents/") {
-			t.Fatalf("request = %s", line)
-		}
-	}
-}
-
 func TestListDeploymentsFiltersByNameSubstring(t *testing.T) {
 	server := serveOnce(t, 200, `{"resources":[]}`)
 	if _, err := clientForHost(t, server.URL).ListDeployments(t.Context(), "my-agent"); err != nil {
@@ -181,52 +121,6 @@ func TestCreateDeploymentReportsAnEntitlementGateAsATypedError(t *testing.T) {
 	}
 }
 
-func TestDeleteDeploymentRequestsTracingProjectRemoval(t *testing.T) {
-	server := serveOnce(t, 200, "{}")
-	deleted, err := clientForHost(t, server.URL).DeleteDeployment(t.Context(), "deployment-1", true)
-	if err != nil || !deleted {
-		t.Fatalf("DeleteDeployment = %v, %v", deleted, err)
-	}
-	if line := server.Only(t).Line(); line != "DELETE /v2/deployments/deployment-1?delete_tracing_project=true" {
-		t.Fatalf("request = %s", line)
-	}
-}
-
-func TestDeleteDeploymentCanKeepTheTracingProject(t *testing.T) {
-	server := serveOnce(t, 200, "{}")
-	if _, err := clientForHost(t, server.URL).DeleteDeployment(t.Context(), "deployment-1", false); err != nil {
-		t.Fatal(err)
-	}
-	if line := server.Only(t).Line(); line != "DELETE /v2/deployments/deployment-1?delete_tracing_project=false" {
-		t.Fatalf("request = %s", line)
-	}
-}
-
-func TestDeleteDeploymentTreatsMissingDeploymentAsAlreadyGone(t *testing.T) {
-	deleted, err := clientForHost(t, serveOnce(t, 404, `{"detail":"not found"}`).URL).DeleteDeployment(t.Context(), "deployment-1", true)
-	if err != nil || deleted {
-		t.Fatalf("DeleteDeployment = %v, %v; want already gone", deleted, err)
-	}
-}
-
-func TestDeleteDeploymentSurfacesOtherErrors(t *testing.T) {
-	_, err := clientForHost(t, serveOnce(t, 403, `{"detail":"missing permission"}`).URL).DeleteDeployment(t.Context(), "deployment-1", true)
-	if err == nil || err.Error() != "missing permission (HTTP 403)" {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestPutManagedDeepAgentArtifactsTargetsTheRevisionRoute(t *testing.T) {
-	server := serveOnce(t, 200, "{}")
-	if _, err := clientForHost(t, server.URL).PutManagedDeepAgentArtifacts(t.Context(), "deployment-1", "revision-1", map[string]any{"version": 1}, "test-build-token"); err != nil {
-		t.Fatal(err)
-	}
-	request := server.Only(t)
-	if request.Line() != "PUT /v2/managed-deep-agents/deployment-1/revisions/revision-1/build-artifacts" || field(request.JSON(t), "version") != float64(1) {
-		t.Fatalf("request = %s %s", request.Line(), request.Body)
-	}
-}
-
 func TestUpdateInternalSourceSendsManagedDeepAgentFlag(t *testing.T) {
 	server := serveOnce(t, 200, `{"latest_revision_id":"revision-1"}`)
 
@@ -279,7 +173,8 @@ func TestARequestThatNeverAnswersTimesOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	c := clientForHost(t, "http://"+listener.Addr().String()).WithTimeout(50 * time.Millisecond)
+	c := clientForHost(t, "http://"+listener.Addr().String())
+	c.timeout = 50 * time.Millisecond
 
 	start := time.Now()
 	_, err = c.GetDeployment(t.Context(), "d1")

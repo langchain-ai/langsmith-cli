@@ -105,17 +105,6 @@ func (c *Client) ReconcileRegistry(ctx context.Context, name, url, username, pas
 	return registry, nil
 }
 
-// DeleteRegistry deletes a deployment-owned registry. Missing registries are a
-// success.
-func (c *Client) DeleteRegistry(ctx context.Context, name string) error {
-	encoded := urlencodingPath(name)
-	_, _, err := c.sdkRequestOptional(ctx, http.MethodDelete, registriesPath+"/"+encoded,
-		func(ctx context.Context, opts ...option.RequestOption) error {
-			return c.ls.SDK.Sandboxes.Registries.Delete(ctx, encoded, opts...)
-		})
-	return err
-}
-
 func decodeRegistry(raw json.RawMessage) (RegistrySummary, error) {
 	var registry RegistrySummary
 	if err := json.Unmarshal(nullIfEmpty(raw), &registry); err != nil {

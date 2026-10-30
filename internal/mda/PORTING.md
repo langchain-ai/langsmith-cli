@@ -80,20 +80,24 @@ All packages live under `internal/mda/`.
 | `errs` | `error.rs`, `command.rs` |
 | `proc` | `child.rs`, `toolchain.rs`, `interrupt.rs` (as ctx helpers), `path_util.rs` |
 | `ui` | cliclack (intro/outro/log/spinner/prompts/notes) and `cli_output.rs`; `secret_input.rs` |
-| `project` | `project.rs`, `naming.rs`, `context_layout.rs`, `version.rs`, `install.rs`, `dependencies.rs`, `local_context_hub.rs`, `deploy/env_file.rs` |
+| `project` | `project.rs`, `naming.rs`, `context_layout.rs`, `version.rs`, `install.rs`, `dependencies.rs`, `deploy/env_file.rs` |
 | `hostapi` | `langsmith/*` except `login.rs` (dropped), plus `github.rs` |
 | `deployment` | `deploy/helpers.rs`, `deploy/langsmith_context.rs`, the credential resolution in `deploy/mod.rs` (`resolve_api_key`, `client_without_prompt`, …, rewritten per rule 4) |
 | `introspect` | `agent_config.rs`, `typescript.rs`, `text_module.rs`, `python_extract*`, `compile/{model,identity,exports,static_extract}.rs`, and the source-reading halves of `compile/{memory,sandbox_recipe,schedules,requirements,local_packages}.rs`, plus the embedded helper programs |
-| `compile` | the rest of `compile/*` |
+| `compile` | the rest of `compile/*`, for the deploy build only |
 | `connection` | `connection/*` (what deploy reaches) |
 | `channels` | `deploy/{channel_setup,channel_app,channel_icon,slack_app,trigger_channels,trigger_icon}.rs`, `deploy/github_channel/*`, `deploy/linear_channel/*` |
 | `deploy` | `deploy/{mod,archive,bake,context_hub,image,upsell}.rs` |
 | `internal/cmd/deploy.go` | `DeployArgs` / `run_deploy` in `cli.rs` |
 
-Not ported: `dev`, `chat`, `init`, `eval`, `logs`, `delete`, `channel`,
-`coding_agent`, `telemetry`, `state`, `http`, `deploy/prepare.rs` (run by the
-remote build, not by deploy), `langsmith/login.rs`. Port a helper from them
-only when deploy reaches it.
+Not ported: `build` (the local build, `compile::compile`, and its
+`local_context_hub.rs`), `dev`, `chat`, `init`, `eval`, `logs`, `delete`,
+`connections`, `channel`, `coding_agent`, `telemetry`, `state`, `http`,
+`deploy/prepare.rs` (run by the remote build, not by deploy),
+`langsmith/login.rs`. Port a helper from them only when deploy reaches it, and
+delete what deploy stops reaching: `deadcode ./cmd/langsmith` lists nothing in
+`internal/mda` but the test seams of `ui` (`SetDefault`, `With*`) and
+`proc.Python3Program`.
 
 ## The installed SDK replaces the launcher
 
@@ -183,13 +187,13 @@ Read the package docs of finished packages before using them.
   `errs.CategoryOf` sees their status.
 - `proc`: `proc.Spawn` gives a nil stdio stream the null device (as `exec.Cmd`
   does), unlike Rust's inherit; set `cmd.Stdout = os.Stdout` to pass output
-  through. `TeeStderr` is called before `Spawn`. `proc.InstallInterrupt` is the
-  command's signal handling (first Ctrl-C cancels ctx).
-- `ui`: package-level functions mirror cliclack (`ui.Intro`, `ui.LogInfo`,
-  `ui.Spinner()`, `ui.Confirm(p).Interact(ctx)`, `ui.Password`, `ui.Select[T]`,
-  `ui.NoteLinks` …) on `ui.Default()`; tests swap it with `ui.SetDefault`.
-  Prompts without a terminal return `ui.ErrNotInteractive`. `ui.ResolveValue`
-  takes a `ui.LookupEnv` closure instead of the project `.env` map.
+  through. `proc.InstallInterrupt` is the command's signal handling (first
+  Ctrl-C cancels ctx).
+- `ui`: package-level functions mirror cliclack (`ui.ShowWordmarkIntro`,
+  `ui.LogInfo`, `ui.NewSpinner()`, `ui.Confirm(p).Interact(ctx)`,
+  `ui.Password`, `ui.Select[T]`, `ui.NoteLinks` …) on `ui.Default()`; tests
+  swap it with `ui.SetDefault`. Prompts without a terminal return
+  `ui.ErrNotInteractive`.
 - `project`: `project.LoadProject(ctx, root) (*Project, *Installation, error)`
   replaces `Installation::from_env` + `load_project`; the installed SDK version
   is `Installation.PackageVersion()` (no global `version::package_version`).
@@ -203,11 +207,12 @@ Read the package docs of finished packages before using them.
   The GCS signed-URL upload must carry no LangSmith credential: plain
   `net/http`.
 - `deployment`: `deployment.CLI{APIURL, APIKey, Options, Login}` is what the
-  cmd layer passes in (`Options` resolves the CLI's own options lazily); `deployment.ResolveLangSmithContext(ctx, cli, envPath, envVars,
-  hostOverride, workspaceFlag, workspaceHint)` replaces
-  `LangSmithContext::resolve` and builds `Client()` / `ContextHubClient()`.
+  cmd layer passes in (`Options` resolves the CLI's own options lazily); `deployment.ResolveLangSmithEndpoints(cli, envVars, hostOverride)` then
+  `.Authenticate(ctx, cli, envPath, envVars, workspaceFlag)` replace
+  `LangSmithContext::resolve` (deploy picks the image source between the two)
+  and build `Client()` / `ContextHubClient()`.
   `ResolveCredential` replaces `resolve_api_key`. Secrets helpers take
-  `*[]hostapi.Secret`. `RecipeDigest` takes pointer optionals.
+  `*[]hostapi.Secret`. `RecipeInputs{...}.Digest()` replaces `recipe_digest`.
 - `introspect`: read its `doc.go`. It owns the whole of `compile/memory.rs`
   (`ResolveMemory`, `MemoryDecision`, `DeclareMemorySnippet`) and the
   discovery locators (`FindSandboxEntry`, `FindMcpEntry`,
@@ -230,7 +235,9 @@ Read the package docs of finished packages before using them.
   error), envVars)`, `NeedsLiveURL()`, `SetUp(ctx, channels.SetupTarget{…})`;
   `channels.ListsEventsURL(manifest)` for `http_channel_links`.
 - `compile`: `compile.CompileForDeploy(ctx, p, outDir, compile.DeployContext{…},
-  inst)` with `inst` the `*project.Installation`; `compile.ShowBuildSummary`.
+  inst)` with `inst` the `*project.Installation`. The local build
+  (`compile::compile`, the local Context Hub mock, `file://` and editable
+  dependencies, `mda dev`'s dev server) is not ported.
   Functions Rust re-exported from `compile` (memory, identity, sandbox use,
   emits) are called on `introspect`. Requirement helpers and loaders
   (`compile.LoadSandboxRecipeManifest`, `compile.RequiredEnvFromConnectorRequirements`,

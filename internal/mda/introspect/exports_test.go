@@ -90,15 +90,9 @@ func TestScanExportedChannels(t *testing.T) {
 			filepath.Join("channels", "webhook.ts"),
 		},
 		RequiresIdentity: true,
-		NeedsPublicURL:   true,
-		Providers:        []string{"github", "slack"},
 	}
 	if !reflect.DeepEqual(scan, want) {
 		t.Fatalf("got %+v", scan)
-	}
-	needs, err := ProjectNeedsEventsPublicURL(t.Context(), p)
-	if err != nil || !needs {
-		t.Fatalf("got %v, %v", needs, err)
 	}
 }
 
@@ -116,7 +110,6 @@ func TestPythonChannelProviders(t *testing.T) {
 	want := ChannelScan{
 		Entries:          []string{filepath.Join("channels", "linear.py")},
 		RequiresIdentity: true,
-		Providers:        []string{"linear"},
 	}
 	if !reflect.DeepEqual(scan, want) {
 		t.Fatalf("got %+v", scan)
@@ -130,20 +123,4 @@ func TestChannelModulesWithADefaultExportAreRejected(t *testing.T) {
 	})
 	_, err := ScanExportedChannels(t.Context(), p)
 	requireErrorContains(t, err, "has a default export but no `channel` export")
-}
-
-func TestParseChannelIngress(t *testing.T) {
-	if got := parseChannelIngress(nil); got.isIngress() || got.needsPublicURL() {
-		t.Fatalf("got %+v", got)
-	}
-	for provider, needsURL := range map[string]bool{"slack": true, "github": false, "linear": false} {
-		got := parseChannelIngress(&provider)
-		if got != (channelIngress{kind: ingressProvider, provider: provider}) || got.needsPublicURL() != needsURL {
-			t.Fatalf("%s: got %+v", provider, got)
-		}
-	}
-	unknown := "unknown"
-	if got := parseChannelIngress(&unknown); got.kind != ingressUnresolved || !got.isIngress() || !got.needsPublicURL() {
-		t.Fatalf("got %+v", got)
-	}
 }

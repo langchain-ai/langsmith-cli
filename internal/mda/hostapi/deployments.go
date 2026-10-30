@@ -9,7 +9,6 @@ package hostapi
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -130,49 +129,10 @@ func (c *Client) UpdateDeploymentExternalImage(ctx context.Context, deploymentID
 	return c.hostObject(ctx, http.MethodPatch, "/v2/deployments/"+deploymentID, nil, payload, requestOptions{})
 }
 
-// DeleteDeployment deletes a deployment, optionally removing its tracing
-// project too.
-//
-// Returns false when the deployment is already gone (HTTP 404), so teardown
-// can report "nothing to do" instead of failing.
-//
-// The tracing project LangSmith auto-creates alongside a deployment is a
-// separate resource that outlives the deployment. Leaving it behind makes the
-// next deploy of the same name fail with a conflict, so callers tearing a
-// deployment down should pass deleteTracingProject.
-func (c *Client) DeleteDeployment(ctx context.Context, deploymentID string, deleteTracingProject bool) (bool, error) {
-	_, deleted, err := c.requestOptional(ctx, c.hostBackendURL, http.MethodDelete, "/v2/deployments/"+deploymentID,
-		[]queryParam{{"delete_tracing_project", strconv.FormatBool(deleteTracingProject)}}, nil)
-	return deleted, err
-}
-
 // ListRevisions lists a deployment's revisions, newest first.
 func (c *Client) ListRevisions(ctx context.Context, deploymentID string, limit uint32) (map[string]any, error) {
 	return c.hostObject(ctx, http.MethodGet, "/v2/deployments/"+deploymentID+"/revisions",
 		[]queryParam{{"limit", strconv.FormatUint(uint64(limit), 10)}}, nil, requestOptions{})
-}
-
-// PutManagedDeepAgentArtifacts stores the build artifacts `mda prepare`
-// produced for a revision.
-//
-// Host-backend accepts this only while the revision is building; the deploy
-// step reads the snapshot reference and the reconcile step reads the cron and
-// channel payloads.
-func (c *Client) PutManagedDeepAgentArtifacts(ctx context.Context, deploymentID, revisionID string, artifacts any, buildToken string) (map[string]any, error) {
-	// This credential must not enter shared client state or follow redirects.
-	path := fmt.Sprintf("/v2/managed-deep-agents/%s/revisions/%s/build-artifacts", deploymentID, revisionID)
-	status, text, err := c.send(ctx, c.hostBackendURL+path, http.MethodPut, nil, artifacts, requestOptions{
-		noRedirects: true,
-		header:      http.Header{"X-Mda-Build-Token": {buildToken}},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build artifact report request failed: %w", err)
-	}
-	raw, err := successResult(status, text, path)
-	if err != nil {
-		return nil, err
-	}
-	return decodeObject(raw, path)
 }
 
 // GetRevision fetches a single revision (expected to carry a `status`).

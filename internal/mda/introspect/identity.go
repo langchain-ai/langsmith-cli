@@ -39,18 +39,6 @@ const (
 	IdentityAuthValidatedToken
 )
 
-// Label is the mode's snake_case name.
-func (m IdentityAuthMode) Label() string {
-	switch m {
-	case IdentityAuthBackend:
-		return "backend"
-	case IdentityAuthLangSmithAPIKey:
-		return "langsmith_api_key"
-	default:
-		return "validated_token"
-	}
-}
-
 // IdentitySummary is the root identity declaration of a project.
 type IdentitySummary struct {
 	// Path is relative to the project root (`identity.ts`, `identity.py`, …).

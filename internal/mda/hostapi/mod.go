@@ -32,9 +32,8 @@
 // (`--api-key`, `LANGSMITH_API_KEY`, or the selected profile's API key or OAuth
 // token, refreshed under the lock shared with other CLI processes) and the
 // workspace (`X-Tenant-Id`) from the client options. hostapi never builds a
-// credential header itself; the only headers it adds are not credentials:
-// `x-auth-scheme: langsmith` for Agent Server calls and the revision build
-// token for build artifacts. This holds for every host: the host backend, the
+// credential header itself; the only header it adds is not a credential:
+// `x-auth-scheme: langsmith` for Agent Server calls. This holds for every host: the host backend, the
 // platform API, Context Hub, a deployed Agent Server, Trigger Server (on the
 // platform API) and a sandbox dataplane. The credential only travels over
 // `https` (or plain `http` to this machine), and never follows a redirect to
@@ -47,7 +46,7 @@
 // whatever credential its own request carried from Trigger Server's answers.
 // No credential header ever leaves this package's requests. The PAT
 // cache, device login and `Login` of `login.rs` are dropped; only the URL
-// helpers deploy reaches are kept (login.go).
+// helpers deploy reaches are kept (platform_api.go, browser.go).
 //
 // # Typed SDK and raw requests
 //
@@ -211,12 +210,6 @@ func LookupEnvOrProcess(key string, envFile map[string]string) (string, bool) {
 	return LookupEnv(key, envFile, os.LookupEnv)
 }
 
-// LookupEnvFile is [LookupEnv] over envFile alone, ignoring the process
-// environment.
-func LookupEnvFile(key string, envFile map[string]string) (string, bool) {
-	return LookupEnv(key, envFile, func(string) (string, bool) { return "", false })
-}
-
 // RequestTimeout is the per-request timeout. Source uploads use their own
 // client/timeout.
 const RequestTimeout = 30 * time.Second
@@ -235,8 +228,6 @@ type requestOptions struct {
 	studioAuth bool
 	// noRedirects answers a redirect with the redirect itself.
 	noRedirects bool
-	// header holds extra headers, which are never credentials.
-	header http.Header
 	// observe sees the request as sent, credentials included.
 	observe func(*http.Request)
 }
@@ -391,26 +382,10 @@ func New(ls *client.Client, hostBackendURL, platformAPIURL string) (*Client, err
 	}, nil
 }
 
-// WithTimeout returns a copy of the client with timeout as its default
-// request timeout.
-func (c *Client) WithTimeout(timeout time.Duration) *Client {
-	copied := *c
-	copied.timeout = timeout
-	return &copied
-}
-
 // WorkspaceID is the workspace the client is scoped to, or "" when the
 // credential's default workspace applies.
 func (c *Client) WorkspaceID() string {
 	return c.ls.WorkspaceID()
-}
-
-// SendsKeySecurely reports whether the credential would travel encrypted: an
-// `https` platform API, or plain `http` only to this machine (local
-// LangSmith).
-func (c *Client) SendsKeySecurely() bool {
-	u, err := url.Parse(c.platformAPIURL)
-	return err == nil && client.SendsCredentialsSecurely(u)
 }
 
 // queryParam is one query parameter; requests keep their order.
@@ -570,9 +545,6 @@ func sendJSONRequest(ctx context.Context, ls *client.Client, method, rawURL stri
 	if options.studioAuth {
 		header.Set("x-auth-scheme", "langsmith")
 	}
-	for name, values := range options.header {
-		header[http.CanonicalHeaderKey(name)] = values
-	}
 	// Bodyless POST/PATCH requests still need a Content-Length: some gateways
 	// (e.g. Google frontends) reject them with HTTP 411 otherwise. Go sends
 	// `Content-Length: 0` for them.
@@ -590,7 +562,7 @@ type sdkCall func(ctx context.Context, opts ...option.RequestOption) error
 // and body of its response, as [sendJSONRequest] does: one attempt, the
 // unsuccessful statuses as a response rather than an error.
 func sendSDKRequest(ctx context.Context, base string, options requestOptions, call sdkCall) (int, []byte, error) {
-	if err := client.CheckSecureTransport(base); err != nil {
+	if err := client.CheckCredentialTransport(base); err != nil {
 		return 0, nil, err
 	}
 	var response *http.Response
@@ -601,12 +573,6 @@ func sendSDKRequest(ctx context.Context, base string, options requestOptions, ca
 		option.WithResponseInto(&response),
 		option.WithResponseBodyInto(&body),
 	)
-	for name, values := range options.header {
-		opts = append(opts, option.WithHeaderDel(name))
-		for _, value := range values {
-			opts = append(opts, option.WithHeaderAdd(name, value))
-		}
-	}
 	err := call(ctx, opts...)
 	if response == nil {
 		return 0, nil, err

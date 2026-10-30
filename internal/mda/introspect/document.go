@@ -149,7 +149,6 @@ type agentFields struct {
 	DeclaresDisableMemory bool             `json:"declares_disable_memory"`
 	UnsupportedKeys       []string         `json:"unsupported_keys"`
 	AsyncSubagents        []AgentNameValue `json:"async_subagents"`
-	UnreadableSubagents   int              `json:"unreadable_subagents"`
 }
 
 // identityFields is the helper's reading of the exported `identity`.

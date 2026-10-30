@@ -16,7 +16,7 @@ func hostClient(t *testing.T, hostURL, workspace string) *hostapi.Client {
 	t.Helper()
 	isolateEnv(t)
 	endpoints := LangSmithEndpoints{HostURL: hostURL, PlatformAPIURL: hostURL}
-	c, err := endpoints.WithAuth(client.Options{APIKey: "test-key"}, workspace).Client()
+	c, err := endpoints.withAuth(client.Options{APIKey: "test-key"}, workspace).Client()
 	require.NoError(t, err)
 	return c
 }
@@ -66,21 +66,21 @@ func TestPostCommandDeploymentLookupMatchesExactNameOrAgent(t *testing.T) {
 	assert.Nil(t, deployment)
 }
 
-func TestWithManagedMarkerRereadsATrimmedListing(t *testing.T) {
+func TestFetchDeploymentWithMarkerRereadsATrimmedListing(t *testing.T) {
 	server := serve(t, `{"id":"dep-1","name":"agent","is_managed_deep_agent":true}`)
 	c := hostClient(t, server.URL, "")
 
-	deployment := WithManagedMarker(t.Context(), c, map[string]any{"id": "dep-1", "name": "agent"})
+	deployment := FetchDeploymentWithMarker(t.Context(), c, map[string]any{"id": "dep-1", "name": "agent"})
 
 	assert.Equal(t, map[string]any{"id": "dep-1", "name": "agent", "is_managed_deep_agent": true}, deployment)
 	assert.Equal(t, "/v2/deployments/dep-1", server.Requests()[0].URI)
 }
 
-func TestWithManagedMarkerKeepsTheListingWhenTheRereadIsUnmarked(t *testing.T) {
+func TestFetchDeploymentWithMarkerKeepsTheListingWhenTheRereadIsUnmarked(t *testing.T) {
 	server := serve(t, `{"id":"dep-1","name":"agent"}`)
 	listed := map[string]any{"id": "dep-1", "name": "agent", "source": "listing"}
 
-	deployment := WithManagedMarker(t.Context(), hostClient(t, server.URL, ""), listed)
+	deployment := FetchDeploymentWithMarker(t.Context(), hostClient(t, server.URL, ""), listed)
 
 	assert.Equal(t, listed, deployment)
 }

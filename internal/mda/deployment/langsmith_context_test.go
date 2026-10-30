@@ -133,8 +133,7 @@ func TestAProjectAPIKeyBeatsTheCLIProfileWithoutItsWorkspace(t *testing.T) {
 	isolateEnv(t)
 	cli := oauthProfileCLI(t, "oauth-token", "profile-workspace")
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env",
-		map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, cli, map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, client.Options{
@@ -148,8 +147,7 @@ func TestTheAPIKeyFlagBeatsAProjectAPIKey(t *testing.T) {
 	cli := cliWith(client.Options{APIKey: "flag-key", APIURL: "https://api.smith.langchain.com", WorkspaceID: "cli-workspace"})
 	cli.APIKey = "flag-key"
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env",
-		map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, cli, map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, client.Options{
@@ -164,10 +162,10 @@ func TestTheAPIKeyFlagIsNotSentToAProjectEndpointElsewhere(t *testing.T) {
 	cli := cliWith(client.Options{APIKey: "flag-key", APIURL: "https://api.smith.langchain.com"})
 	cli.APIKey = "flag-key"
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env", map[string]string{
+	lsctx, err := resolveContext(t, cli, map[string]string{
 		"LANGSMITH_ENDPOINT": "https://langsmith.attacker.example",
 		"LANGSMITH_API_KEY":  "project-key",
-	}, "", "", WorkspaceFlagHint)
+	}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, client.Options{
@@ -180,7 +178,7 @@ func TestTheCLICredentialIsUsedWithoutAProjectAPIKey(t *testing.T) {
 	isolateEnv(t)
 	cli := oauthProfileCLI(t, "oauth-token", "profile-workspace")
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env", map[string]string{}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, cli, map[string]string{}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, client.Options{
@@ -199,8 +197,7 @@ func TestTheCLICredentialIsNotSentToAProjectEndpointElsewhere(t *testing.T) {
 		return client.Options{}, nil
 	}
 
-	_, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env",
-		map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "", WorkspaceFlagHint)
+	_, err := resolveContext(t, cli, map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "")
 
 	assert.EqualError(t, err, "The LangSmith CLI's credentials are for https://api.smith.langchain.com, not "+
 		"https://eu.api.smith.langchain.com, so they are not sent there. Run `langsmith auth login --api-url "+
@@ -218,8 +215,7 @@ func TestAProjectEndpointElsewhereSignsInThereOnATerminal(t *testing.T) {
 		return client.Options{ProfileName: "oauth-profile"}, nil
 	}
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env",
-		map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, cli, map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://eu.api.smith.langchain.com", signedInAt)
@@ -232,12 +228,11 @@ func TestABrokenCLIConfigOnlyFailsWhenItsCredentialIsNeeded(t *testing.T) {
 		return client.Options{}, errors.New("config is not valid JSON")
 	}}
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), broken, "/project/.env",
-		map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, broken, map[string]string{"LANGSMITH_API_KEY": "project-key"}, "", "")
 	require.NoError(t, err)
 	assert.Equal(t, client.Options{APIKey: "project-key", APIURL: "https://api.smith.langchain.com"}, lsctx.Options)
 
-	_, err = ResolveLangSmithContext(t.Context(), broken, "/project/.env", map[string]string{}, "", "", WorkspaceFlagHint)
+	_, err = resolveContext(t, broken, map[string]string{}, "", "")
 	assert.EqualError(t, err, "config is not valid JSON")
 }
 
@@ -273,8 +268,7 @@ func TestNoCredentialOnATerminalSignsInAtThePlatformAPI(t *testing.T) {
 		return client.Options{ProfileName: "default", WorkspaceID: "login-workspace"}, nil
 	}
 
-	lsctx, err := ResolveLangSmithContext(t.Context(), CLI{Login: login}, "/project/.env",
-		map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, CLI{Login: login}, map[string]string{"LANGSMITH_ENDPOINT": "https://eu.api.smith.langchain.com"}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://eu.api.smith.langchain.com", signedInAt)
@@ -303,9 +297,9 @@ func TestTheWorkspaceFlagBeatsTheEnvAndTheCLI(t *testing.T) {
 	cli := oauthProfileCLI(t, "oauth-token", "profile-workspace")
 	env := map[string]string{"LANGSMITH_WORKSPACE_ID": "env-workspace"}
 
-	fromFlag, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env", env, "", " flag-workspace ", WorkspaceFlagHint)
+	fromFlag, err := resolveContext(t, cli, env, "", " flag-workspace ")
 	require.NoError(t, err)
-	fromEnv, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env", env, "", "", WorkspaceFlagHint)
+	fromEnv, err := resolveContext(t, cli, env, "", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "flag-workspace", fromFlag.WorkspaceID())
@@ -316,10 +310,9 @@ func TestARemovedWorkspaceNameIsAnError(t *testing.T) {
 	isolateEnv(t)
 	cli := oauthProfileCLI(t, "oauth-token", "profile-workspace")
 
-	_, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env",
-		map[string]string{"LANGSMITH_TENANT_ID": "old"}, "", "", WorkspaceFlagHint)
+	_, err := resolveContext(t, cli, map[string]string{"LANGSMITH_TENANT_ID": "old"}, "", "")
 
-	assert.EqualError(t, err, "LANGSMITH_TENANT_ID is no longer supported; set LANGSMITH_WORKSPACE_ID or pass --workspace-id instead")
+	assert.EqualError(t, err, "LANGSMITH_TENANT_ID is no longer supported; set LANGSMITH_WORKSPACE_ID or pass --workspace instead")
 }
 
 // recorded is a request a stub received.
@@ -371,7 +364,7 @@ func TestTheContextClientAuthenticatesWithTheCLIOAuthProfile(t *testing.T) {
 	require.NoError(t, err)
 	signedIn.APIURL = server.URL
 	cli := cliWith(signedIn)
-	lsctx, err := ResolveLangSmithContext(t.Context(), cli, "/project/.env", map[string]string{}, server.URL, "", WorkspaceFlagHint)
+	lsctx, err := resolveContext(t, cli, map[string]string{}, server.URL, "")
 	require.NoError(t, err)
 	c, err := lsctx.Client()
 	require.NoError(t, err)
@@ -384,4 +377,11 @@ func TestTheContextClientAuthenticatesWithTheCLIOAuthProfile(t *testing.T) {
 	assert.Equal(t, "Bearer oauth-token", request.Header.Get("Authorization"))
 	assert.Equal(t, "", request.Header.Get("X-Api-Key"))
 	assert.Equal(t, "profile-workspace", request.Header.Get("X-Tenant-Id"))
+}
+
+// resolveContext resolves the endpoints, then authenticates, as deploy does,
+// for a project whose `.env` is at /project/.env.
+func resolveContext(t *testing.T, cli CLI, envVars map[string]string, hostOverride, workspaceFlag string) (LangSmithContext, error) {
+	t.Helper()
+	return ResolveLangSmithEndpoints(cli, envVars, hostOverride).Authenticate(t.Context(), cli, "/project/.env", envVars, workspaceFlag)
 }

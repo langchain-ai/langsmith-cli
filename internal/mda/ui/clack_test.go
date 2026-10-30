@@ -69,14 +69,13 @@ func TestASpinnerWithoutATerminalPrintsItsStartAndStopLines(t *testing.T) {
 			"◇  Deployment live\n"+
 			"│\n",
 		out.String())
-	assert.True(t, spinner.IsFinished())
 }
 
 func TestASpinnerEndsInTheStateItFinishedWith(t *testing.T) {
-	cases := map[string]func(*ProgressBar){
-		"■  Sign-in cancelled\n│\n":   func(p *ProgressBar) { p.Cancel("Sign-in cancelled") },
-		"▲  Could not reconcile\n│\n": func(p *ProgressBar) { p.Error("Could not reconcile") },
-		"":                            func(p *ProgressBar) { p.Clear() },
+	cases := map[string]func(*Spinner){
+		"■  Sign-in cancelled\n│\n":   func(p *Spinner) { p.Cancel("Sign-in cancelled") },
+		"▲  Could not reconcile\n│\n": func(p *Spinner) { p.Error("Could not reconcile") },
+		"":                            func(p *Spinner) { p.Clear() },
 	}
 	for expected, finish := range cases {
 		terminal, out := captured(WithInteractive(false))

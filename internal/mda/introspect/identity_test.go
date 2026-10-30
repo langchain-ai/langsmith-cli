@@ -7,23 +7,20 @@ import (
 const tsAgent = tsImport + "export const agent = defineDeepAgent({ name: \"agent\" });\n"
 const pyAgent = pyImport + "agent = define_deep_agent(name='agent')\n"
 
-func identityAuth(t *testing.T, summary *IdentitySummary) string {
+func identityAuth(t *testing.T, summary *IdentitySummary) *IdentityAuthMode {
 	t.Helper()
 	if summary == nil {
 		t.Fatal("expected an identity summary")
 	}
-	if summary.Auth == nil {
-		return "<none>"
-	}
-	return summary.Auth.Label()
+	return summary.Auth
 }
 
 func TestTypescriptIdentityAuthModes(t *testing.T) {
-	for source, want := range map[string]string{
-		`defineIdentity({ auth: "backend" })`:                              "backend",
-		`defineIdentity({ auth: auth.langsmithApiKey() })`:                 "langsmith_api_key",
-		`defineIdentity({ auth: auth.supabase({ projectRef: "abc" }) })`:   "validated_token",
-		`defineIdentity({ auth: [auth.supabase({ projectRef: "abc" })] })`: "validated_token",
+	for source, want := range map[string]IdentityAuthMode{
+		`defineIdentity({ auth: "backend" })`:                              IdentityAuthBackend,
+		`defineIdentity({ auth: auth.langsmithApiKey() })`:                 IdentityAuthLangSmithAPIKey,
+		`defineIdentity({ auth: auth.supabase({ projectRef: "abc" }) })`:   IdentityAuthValidatedToken,
+		`defineIdentity({ auth: [auth.supabase({ projectRef: "abc" })] })`: IdentityAuthValidatedToken,
 	} {
 		p := typescriptProject(t, map[string]string{
 			"agent.ts": tsAgent,
@@ -35,8 +32,8 @@ func TestTypescriptIdentityAuthModes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := identityAuth(t, summary); got != want {
-			t.Fatalf("%s: got %s, want %s", source, got, want)
+		if got := identityAuth(t, summary); got == nil || *got != want {
+			t.Fatalf("%s: got %v, want %v", source, got, want)
 		}
 		if summary.Path != "identity.ts" || summary.Scope == nil || summary.Scope.Credentials != "user" ||
 			summary.AuthOmitted || summary.DeclaresMemory {
@@ -46,7 +43,7 @@ func TestTypescriptIdentityAuthModes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if requires != (want == "backend") {
+		if requires != (want == IdentityAuthBackend) {
 			t.Fatalf("%s: requires ingress secret = %v", source, requires)
 		}
 	}
@@ -76,8 +73,8 @@ func TestPythonIdentityFollowsImportAliasesAndNamespaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := identityAuth(t, summary); got != "validated_token" {
-		t.Fatalf("got %s", got)
+	if got := identityAuth(t, summary); got == nil || *got != IdentityAuthValidatedToken {
+		t.Fatalf("got %v", got)
 	}
 }
 
@@ -102,7 +99,7 @@ func TestIdentityModuleWithoutADeclarationHasNoAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := identityAuth(t, summary); got != "<none>" || summary.Scope != nil {
+	if identityAuth(t, summary) != nil || summary.Scope != nil {
 		t.Fatalf("got %+v", summary)
 	}
 }

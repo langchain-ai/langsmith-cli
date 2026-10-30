@@ -13,10 +13,8 @@ dependencies = [
     "pyjwt[crypto]>=2.8.0",
     "fastmcp>=4.0.10,<5",
     "mcp>=2.2.0,<3",
-    "langsmith>=0.10.17",
-    "langgraph-cli[inmem]>=0.4.36",
-    "langgraph-api>=0.16.0"
-, "managed-deepagents @ file://$ROOT/.mda/build/__runtime__"]
+    "langsmith>=0.10.17"
+]
 
 [tool]
 uv.managed = true

@@ -331,8 +331,8 @@ func EnsureDeploymentNameSecret(secrets *[]hostapi.Secret, name string) {
 // EnsureRecipeSnapshotSecret injects [MDASandboxRecipeSnapshotEnv] so the
 // runtime clones the baked recipe for new threads.
 //
-// Same ownership rule as [EnsureDeploymentNameSecret]: deploy/dev owns the
-// value and overwrites a stale `.env` copy.
+// Same ownership rule as [EnsureDeploymentNameSecret]: deploy owns the value
+// and overwrites a stale `.env` copy.
 func EnsureRecipeSnapshotSecret(secrets *[]hostapi.Secret, recipeName string) {
 	if recipeName == "" {
 		return
@@ -399,27 +399,40 @@ func SandboxRegistryName(deployment string) string {
 	return deployment + SandboxNameSeparator + "registry"
 }
 
-// RecipeDigest is the hex digest (truncated to [RecipeDigestLength]) of setup
-// bytes and optional bake bases. Same inputs always produce the same digest.
+// RecipeInputs is what a sandbox recipe snapshot is built from: the setup
+// script and the optional bake bases.
+type RecipeInputs struct {
+	Setup        []byte
+	SnapshotName *string
+	SnapshotID   *string
+	DockerImage  *string
+	// Registry is the registry declaration's digest input
+	// ([introspect.SandboxRegistryManifest.DigestInput]).
+	Registry        *string
+	FsCapacityBytes *uint64
+}
+
+// Digest is the hex digest (truncated to [RecipeDigestLength]) of the inputs.
+// Same inputs always produce the same digest.
 //
-// registry and fsCapacityBytes are only hashed when present so existing
+// Registry and FsCapacityBytes are only hashed when present so existing
 // digests stay stable for projects that do not set them.
-func RecipeDigest(setupBytes []byte, snapshotName, snapshotID, dockerImage, registry *string, fsCapacityBytes *uint64) string {
+func (in RecipeInputs) Digest() string {
 	hasher := sha256.New()
-	hasher.Write(setupBytes)
+	hasher.Write(in.Setup)
 	hasher.Write([]byte{0})
-	hasher.Write([]byte(deref(snapshotName)))
+	hasher.Write([]byte(deref(in.SnapshotName)))
 	hasher.Write([]byte{0})
-	hasher.Write([]byte(deref(snapshotID)))
+	hasher.Write([]byte(deref(in.SnapshotID)))
 	hasher.Write([]byte{0})
-	hasher.Write([]byte(deref(dockerImage)))
-	if registry != nil {
+	hasher.Write([]byte(deref(in.DockerImage)))
+	if in.Registry != nil {
 		hasher.Write([]byte{0})
-		hasher.Write([]byte(*registry))
+		hasher.Write([]byte(*in.Registry))
 	}
-	if fsCapacityBytes != nil {
+	if in.FsCapacityBytes != nil {
 		hasher.Write([]byte("\x00fs_capacity_bytes="))
-		hasher.Write([]byte(strconv.FormatUint(*fsCapacityBytes, 10)))
+		hasher.Write([]byte(strconv.FormatUint(*in.FsCapacityBytes, 10)))
 	}
 	return hex.EncodeToString(hasher.Sum(nil))[:RecipeDigestLength]
 }
@@ -497,18 +510,11 @@ func isLowerHexByte(b byte) bool {
 	return ('0' <= b && b <= '9') || ('a' <= b && b <= 'f')
 }
 
-// IsDeploymentBakeSnapshot reports whether name is any bake snapshot (recipe
-// or temporary base) owned by deployment.
-func IsDeploymentBakeSnapshot(name, deployment string) bool {
-	return IsDeploymentRecipeSnapshot(name, deployment) ||
-		IsDeploymentIntermediateSnapshot(name, deployment)
-}
-
 // BakeSnapshotListPrefix is the prefix that lists every bake snapshot
 // deployment owns in one request.
 //
 // Neighbour deployments can share it; filter results with
-// [IsDeploymentBakeSnapshot].
+// [IsDeploymentRecipeSnapshot] and [IsDeploymentIntermediateSnapshot].
 func BakeSnapshotListPrefix(deployment string) string {
 	shared := RecipeSnapshotPrefix(deployment)
 	for _, kind := range IntermediateSnapshotKinds {
@@ -535,8 +541,8 @@ func commonPrefix(left, right string) string {
 // EnsureAssistantIDSecret injects [MDAAssistantIDEnv] so channel ingress
 // invokes the compiled graph.
 //
-// Same ownership rule as [EnsureDeploymentNameSecret]: deploy/dev owns the
-// value and overwrites a stale `.env` copy.
+// Same ownership rule as [EnsureDeploymentNameSecret]: deploy owns the value
+// and overwrites a stale `.env` copy.
 func EnsureAssistantIDSecret(secrets *[]hostapi.Secret, assistantID string) {
 	if assistantID == "" {
 		return
@@ -557,45 +563,6 @@ func EnsureLangsmithURLSecret(secrets *[]hostapi.Secret, langsmithURL string) {
 	replaceSecret(secrets, MDALangsmithURLEnv, langsmithURL)
 }
 
-// SandboxNamePrefix is the prefix shared by every managed sandbox a deployment
-// creates.
-//
-// This is the stable primary-name prefix. Deployments whose full primary name
-// fits Host's limit keep this prefix across runtime upgrades.
-func SandboxNamePrefix(deploymentName string) string {
-	return SandboxDeploymentComponent(deploymentName, maxPrimaryDeploymentComponentLength) + SandboxNameSeparator
-}
-
-// SandboxNamePrefixes are the prefixes `mda delete` must query for
-// primary and shortened fallback names.
-//
-// Collision fallback names reserve nine characters for `-<8 hex>`, so their
-// deployment component may be shorter than the stable primary component.
-func SandboxNamePrefixes(deploymentName string) []string {
-	primary := SandboxNamePrefix(deploymentName)
-	fallback := SandboxDeploymentComponent(deploymentName, maxFallbackDeploymentComponentLength) + SandboxNameSeparator
-	if fallback == primary {
-		return []string{primary}
-	}
-	return []string{primary, fallback}
-}
-
-// sandboxDigestLength is the number of hex characters in the identity digest
-// the runtimes append to a sandbox name.
-const sandboxDigestLength = 12
-
-// fallbackSuffixLength is the number of hex characters in the
-// collision-fallback suffix the runtimes add when a deterministic sandbox name
-// is already taken.
-const fallbackSuffixLength = 8
-
-// Deployment component lengths that keep primary and fallback names within
-// Host's 63-character limit.
-const (
-	maxPrimaryDeploymentComponentLength  = 49
-	maxFallbackDeploymentComponentLength = 40
-)
-
 // sandboxDeploymentDigestLength is the number of hex characters used to
 // distinguish truncated deployment names.
 const sandboxDeploymentDigestLength = 8
@@ -614,46 +581,6 @@ func SandboxDeploymentComponent(deploymentName string, maxLength int) string {
 	return string(runes[:prefixLength]) + "-" + fullDigest[:sandboxDeploymentDigestLength]
 }
 
-// IsDeploymentSandbox reports whether sandboxName is one this deployment's
-// runtime created.
-//
-// The prefix alone is not conclusive: a deployment may itself be named with a
-// `--` in it, so `my-agent--` would otherwise sweep up sandboxes belonging to a
-// separate `my-agent--foo` deployment. Requiring the remainder to be exactly
-// the digest the runtimes generate (optionally plus their collision-fallback
-// suffix) keeps teardown from deleting a neighbour's sandbox.
-func IsDeploymentSandbox(sandboxName, deploymentName string) bool {
-	for _, prefix := range SandboxNamePrefixes(deploymentName) {
-		if suffix, ok := strings.CutPrefix(sandboxName, prefix); ok && isManagedSandboxSuffix(suffix) {
-			return true
-		}
-	}
-	return false
-}
-
-func isManagedSandboxSuffix(suffix string) bool {
-	digest, fallback, hasFallback := strings.Cut(suffix, "-")
-	if len(digest) != sandboxDigestLength || !isLowercaseHex(digest) {
-		return false
-	}
-	if !hasFallback {
-		return true
-	}
-	return len(fallback) == fallbackSuffixLength && isLowercaseHex(fallback)
-}
-
-func isLowercaseHex(value string) bool {
-	if value == "" {
-		return false
-	}
-	for i := 0; i < len(value); i++ {
-		if !isLowerHexByte(value[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 // CORSAllowOriginsEnv is the LangGraph Agent Server CORS allowlist (exact
 // origins, comma-separated).
 const CORSAllowOriginsEnv = "CORS_ALLOW_ORIGINS"
@@ -666,42 +593,6 @@ const MDAPublicAppURLEnv = "MDA_PUBLIC_APP_URL"
 // `redirect_uri`.
 const MDAPublicAPIURLEnv = "MDA_PUBLIC_API_URL"
 
-// PublicAPIURLKind is the outcome of reading `MDA_PUBLIC_API_URL` for Events /
-// Connect URLs.
-type PublicAPIURLKind int
-
-// The outcomes.
-const (
-	// PublicAPIURLHTTPS: an `https://` URL, in [PublicAPIURL.URL].
-	PublicAPIURLHTTPS PublicAPIURLKind = iota
-	// PublicAPIURLMissing: unset or blank.
-	PublicAPIURLMissing
-	// PublicAPIURLNotHTTPS: set, but not `https://`; the value is in
-	// [PublicAPIURL.URL].
-	PublicAPIURLNotHTTPS
-)
-
-// PublicAPIURL is the outcome of reading `MDA_PUBLIC_API_URL`.
-type PublicAPIURL struct {
-	Kind PublicAPIURLKind
-	// URL is the trimmed value, without trailing slashes; empty for
-	// [PublicAPIURLMissing].
-	URL string
-}
-
-// ResolveHTTPSPublicAPIURL reads and classifies `MDA_PUBLIC_API_URL` from a
-// merged env map.
-func ResolveHTTPSPublicAPIURL(envVars map[string]string) PublicAPIURL {
-	raw := strings.TrimRight(strings.TrimSpace(envVars[MDAPublicAPIURLEnv]), "/")
-	if raw == "" {
-		return PublicAPIURL{Kind: PublicAPIURLMissing}
-	}
-	if strings.HasPrefix(raw, "https://") {
-		return PublicAPIURL{Kind: PublicAPIURLHTTPS, URL: raw}
-	}
-	return PublicAPIURL{Kind: PublicAPIURLNotHTTPS, URL: raw}
-}
-
 // envLookup finds a non-empty value for an env var.
 type envLookup func(key string) (string, bool)
 
@@ -713,8 +604,8 @@ func processEnvLookup(envVars map[string]string) envLookup {
 	}
 }
 
-// ResolveLangsmithAPIBases resolves host-backend and platform (Fleet) API
-// bases from `LANGSMITH_ENDPOINT`, read from the process env, then envVars.
+// resolveLangsmithAPIBasesWith resolves host-backend and platform (Fleet) API
+// bases from `LANGSMITH_ENDPOINT`, read through env.
 //
 // One env var is enough for every SaaS environment: set the platform API
 // (`https://eu.api.smith.langchain.com`, `https://beta.api.smith.langchain.com`,
@@ -726,10 +617,6 @@ func processEnvLookup(envVars map[string]string) envLookup {
 //
 // Self-hosted LangSmith serves the platform API at the configured origin and
 // the Deployment API below `/api-host` on that origin.
-func ResolveLangsmithAPIBases(envVars map[string]string) (hostURL, platformAPIURL string) {
-	return resolveLangsmithAPIBasesWith(processEnvLookup(envVars))
-}
-
 func resolveLangsmithAPIBasesWith(env envLookup) (hostURL, platformAPIURL string) {
 	endpoint, ok := env(LangsmithEndpointEnv)
 	if !ok {
@@ -763,17 +650,11 @@ func resolveLangsmithAPIBasesWith(env envLookup) (hostURL, platformAPIURL string
 	}
 }
 
-// ResolvePlatformAPIURL is the platform API origin for device login and Fleet.
-//
-// Prefers process env then project `.env` for `LANGSMITH_ENDPOINT`, then
-// derives from the host backend (`*.api.host.langchain.com` →
-// `*.api.smith.langchain.com`).
-func ResolvePlatformAPIURL(hostURL string, envVars map[string]string) string {
-	return resolvePlatformAPIURLWith(hostURL, processEnvLookup(envVars))
-}
-
+// resolvePlatformAPIURLWith is the platform API origin for device login and
+// Fleet: `LANGSMITH_ENDPOINT` read through env, else derived from the host
+// backend (`*.api.host.langchain.com` → `*.api.smith.langchain.com`).
 func resolvePlatformAPIURLWith(hostURL string, env envLookup) string {
-	return hostapi.ResolveLoginAPIURL(hostURL, env)
+	return hostapi.PlatformAPIURLForHost(hostURL, env)
 }
 
 // isLocalLangsmithNginx reports whether endpoint is the local `poe run-auth`

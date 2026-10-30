@@ -114,14 +114,6 @@ func (a AgentAuthApp) State() GitHubAppState {
 	}
 }
 
-// HTMLURL is the App's page on GitHub, once it exists.
-func (a AgentAuthApp) HTMLURL() (string, bool) {
-	if a.AppMetadata == nil {
-		return "", false
-	}
-	return githubPage(a.AppMetadata.HTMLURL)
-}
-
 // StrandedURLs are the pages of the Apps GitHub created that Agent Auth could
 // not store, oldest first.
 func (a AgentAuthApp) StrandedURLs() []string {

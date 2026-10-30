@@ -4,7 +4,6 @@ package proc
 
 import (
 	"context"
-	"io"
 	"maps"
 	"os/exec"
 	"slices"
@@ -93,6 +92,16 @@ func eventually(t *testing.T, condition func() bool, message string) {
 	require.True(t, condition(), message)
 }
 
+// wait waits for child, stopping it if ctx is cancelled first.
+func wait(ctx context.Context, child *OwnedChild) (Outcome, error) {
+	select {
+	case <-child.done:
+	case <-ctx.Done():
+	}
+	outcome, _, err := child.Poll(ctx)
+	return outcome, err
+}
+
 func cancelled(t *testing.T) context.Context {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -179,7 +188,7 @@ func TestAnInterruptStopsARunningChild(t *testing.T) {
 	child := stubbornTree(t)
 	started := time.Now()
 
-	outcome, err := child.Wait(cancelled(t))
+	outcome, err := wait(cancelled(t), child)
 
 	require.NoError(t, err)
 	assert.True(t, outcome.Stopped())
@@ -190,7 +199,7 @@ func TestAnInterruptStopsARunningChild(t *testing.T) {
 func TestAnUninterruptedChildReportsItsOwnStatus(t *testing.T) {
 	child := spawnTree(t, "exit 3")
 
-	outcome, err := child.Wait(t.Context())
+	outcome, err := wait(t.Context(), child)
 
 	require.NoError(t, err)
 	require.False(t, outcome.Stopped(), "nothing stopped it")
@@ -242,18 +251,6 @@ func TestACaptureReturnsWhatTheChildWroteAndRead(t *testing.T) {
 	assert.Equal(t, 3, output.Status.ExitCode())
 	assert.Equal(t, "in", string(output.Stdout))
 	assert.Equal(t, "oops\n", string(output.Stderr))
-}
-
-func TestAStderrTailKeepsTheEnd(t *testing.T) {
-	command := exec.Command("sh", "-c", "{ printf start; printf '%0100d' 0; printf end; } >&2; exit 1")
-	tail := teeStderr(command, 10, io.Discard)
-	child, err := Spawn(command)
-	require.NoError(t, err)
-
-	_, err = child.Wait(t.Context())
-
-	require.NoError(t, err)
-	assert.Equal(t, "0000000end", string(tail.Finish()))
 }
 
 func TestAnInterruptedCaptureIsACancellation(t *testing.T) {

@@ -1,25 +1,23 @@
 // Package ui draws `langsmith deploy`'s terminal session the way the mda CLI
 // does with the `cliclack` crate: the `┌ │ ◇ ◆ ▲ ■ └` bar layout, spinners and
-// prompts. It also ports `cli_output.rs` (guidance sequences, link notes) and
-// `secret_input.rs`.
+// prompts. It also ports the link notes of `cli_output.rs` and the file
+// reading of `secret_input.rs`. Only what deploy draws is ported.
 //
 // cliclack's free functions are package-level functions here that draw on the
 // [Default] terminal, and methods of [Terminal] for any other one:
 //
-//	cliclack::intro(t)            Intro(t)
+//	cliclack::intro(t)            Terminal.Intro(t), drawn by ShowWordmarkIntro()
 //	cliclack::outro(m)            Outro(m)
 //	cliclack::outro_cancel(m)     OutroCancel(m)
-//	cliclack::outro_note(p, m)    OutroNote(p, m)
 //	cliclack::note(p, m)          Note(p, m)
-//	cliclack::log::info(m)        LogInfo(m), and LogRemark, LogWarning, LogError, LogSuccess, LogStep
-//	cliclack::spinner()           Spinner(), a *ProgressBar
+//	cliclack::log::info(m)        LogInfo(m), and LogWarning, LogSuccess, LogStep
+//	cliclack::spinner()           NewSpinner(), a *Spinner
 //	cliclack::confirm(p)          Confirm(p).InitialValue(v).Interact(ctx)
 //	cliclack::input(p)            Input(p).Placeholder(s).Validate(f).Interact(ctx)
 //	cliclack::password(p)         Password(p).Mask('•').Validate(f).Interact(ctx)
 //	cliclack::select(p)           Select[T](p).Item(v, label, hint).Interact(ctx)
 //
-// cliclack's themes are not ported. The one prompt mda draws with its own
-// theme, connection's "Press Enter to open your browser", is [AwaitEnter].
+// cliclack's themes are not ported.
 //
 // All output goes to the terminal's writer, stderr by default, as cliclack
 // writes to stderr. Without an interactive terminal (stdin or stderr not a
@@ -53,7 +51,7 @@ type Terminal struct {
 
 	// mu serializes writes to out with the spinner drawn on it.
 	mu      sync.Mutex
-	spinner *ProgressBar
+	spinner *Spinner
 }
 
 // Option configures a [Terminal] beyond what [NewTerminal] detects.
@@ -127,11 +125,6 @@ func SetDefault(t *Terminal) (restore func()) {
 	}
 }
 
-// IsInputTerminal reports whether answers come from a terminal.
-func (t *Terminal) IsInputTerminal() bool {
-	return t.inTerminal
-}
-
 // IsOutputTerminal reports whether output goes to a terminal.
 func (t *Terminal) IsOutputTerminal() bool {
 	return t.outTerminal
@@ -186,12 +179,6 @@ func (t *Terminal) writeLocked(text string) error {
 		t.spinner.drawLocked()
 	}
 	return err
-}
-
-// IsInputTerminal reports whether the default terminal's answers come from a
-// terminal.
-func IsInputTerminal() bool {
-	return Default().IsInputTerminal()
 }
 
 // IsOutputTerminal reports whether the default terminal's output goes to a

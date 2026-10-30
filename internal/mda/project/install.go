@@ -30,17 +30,6 @@ type Installation struct {
 	local bool
 }
 
-// Language is the authoring language supported by this installation.
-func (i *Installation) Language() Language {
-	return i.language
-}
-
-// ChannelName is the registry the installed package comes from: `npm` or
-// `pypi`.
-func (i *Installation) ChannelName() string {
-	return i.language.Ident("npm", "pypi")
-}
-
 // RuntimeSource is the absolute path to the installed runtime package: the npm
 // package's `dist` directory, or the `managed_deepagents` Python package
 // directory.

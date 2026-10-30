@@ -240,7 +240,6 @@ def read_agent(module, kinds):
         "declares_disable_memory": False,
         "unsupported_keys": [],
         "async_subagents": [],
-        "unreadable_subagents": 0,
     }
     agent = getattr(module, "agent", MISSING)
     if agent is MISSING:

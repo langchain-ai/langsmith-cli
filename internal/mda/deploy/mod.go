@@ -7,7 +7,7 @@
 //
 //  1. Validate the directory is a Managed Deep Agent project (`agent.ts` /
 //     `agent.py`).
-//  2. Resolve the LangSmith credential ([deployment.ResolveLangSmithContext]'s
+//  2. Resolve the LangSmith credential ([deployment.LangSmithContext]'s
 //     order): `--api-key`, else a `LANGSMITH_API_KEY` from the shell or
 //     `.env`, else the selected profile's API key or OAuth token, else, on a
 //     terminal, the `langsmith auth login` OAuth device flow. The CLI's own
@@ -75,10 +75,6 @@ import (
 // pollInterval is the delay between revision status polls.
 const pollInterval = 3 * time.Second
 
-// workspaceFlagHint completes the removed-alias error: `langsmith deploy` takes
-// the CLI's global `--workspace`.
-const workspaceFlagHint = " or pass --workspace instead"
-
 // pollMaxFailures is how many consecutive failed revision polls are allowed
 // before the deploy stops waiting.
 const pollMaxFailures = 5
@@ -95,14 +91,6 @@ const (
 	// ContextStrategyKeepHub preserves Hub-edited instructions or skills.
 	ContextStrategyKeepHub
 )
-
-// String is the strategy's `--context-strategy` value.
-func (s ContextStrategy) String() string {
-	if s == ContextStrategyKeepHub {
-		return "keep-hub"
-	}
-	return "overwrite"
-}
 
 // randomHandoffSecret is a high-entropy, per-revision credential for internal
 // loopback calls.
@@ -161,17 +149,15 @@ func Run(ctx context.Context, cli deployment.CLI, opts DeployOptions) (errs.Comm
 	if err != nil {
 		return errs.Failed(errs.CategoryOf(err)), err
 	}
-	root := p.Root
-
 	if err := ui.ShowWordmarkIntro(); err != nil {
 		return errs.Failed(errs.CategoryOf(err)), err
 	}
-	if err := ui.LogInfo("Project: " + root); err != nil {
+	if err := ui.LogInfo("Project: " + p.Root); err != nil {
 		return errs.Failed(errs.CategoryOf(err)), err
 	}
 
 	var client *hostapi.Client
-	completion, err := runSession(ctx, cli, &opts, p, root, installation, &client)
+	completion, err := runSession(ctx, cli, opts, p, installation, &client)
 	switch {
 	case err == nil:
 		return completion, nil
@@ -216,9 +202,8 @@ func reportSessionFailure(ctx context.Context, err error, client *hostapi.Client
 func runSession(
 	ctx context.Context,
 	cli deployment.CLI,
-	opts *DeployOptions,
+	opts DeployOptions,
 	p *project.Project,
-	root string,
 	installation *project.Installation,
 	clientSlot **hostapi.Client,
 ) (errs.CommandCompletion, error) {
@@ -231,7 +216,7 @@ func runSession(
 	// Import the project's modules once; every question about them below is
 	// answered from that import. They may read the environment as they import,
 	// so they see the project's `.env`.
-	envPath := filepath.Join(root, ".env")
+	envPath := filepath.Join(p.Root, ".env")
 	envVars := project.ParseEnvFile(envPath)
 	if err := importProjectModules(ctx, p, envVars); err != nil {
 		return failed, err
@@ -260,15 +245,10 @@ func runSession(
 	if err != nil {
 		return failed, err
 	}
-	credential, err := deployment.ResolveCredential(ctx, cli, envPath, envVars, endpoints.PlatformAPIURL)
+	lsCtx, err := endpoints.Authenticate(ctx, cli, envPath, envVars, opts.WorkspaceID)
 	if err != nil {
 		return failed, err
 	}
-	workspaceFlag, err := deployment.ResolveWorkspaceID(envVars, opts.WorkspaceID, workspaceFlagHint)
-	if err != nil {
-		return failed, err
-	}
-	lsCtx := endpoints.WithAuth(credential, workspaceFlag)
 	platformAPIURL := lsCtx.PlatformAPIURL()
 	workspaceID := lsCtx.WorkspaceID()
 
@@ -410,7 +390,7 @@ func runSession(
 	if err := ctx.Err(); err != nil {
 		return failed, err
 	}
-	outDir := filepath.Join(root, ".mda", "build")
+	outDir := filepath.Join(p.Root, ".mda", "build")
 	summary, err := compileForDeployStep(ctx, p, outDir, synced, installation)
 	if err != nil {
 		return failed, err
@@ -484,7 +464,7 @@ func runSession(
 
 	externalImage := ""
 	if source.Kind == ImageSourceCustomerRegistry {
-		sp := ui.Spinner()
+		sp := ui.NewSpinner()
 		sp.Start("Building and pushing deployment image")
 		image, err := step(sp, "Could not build and push the deployment image", func() (string, error) {
 			return buildAndPush(ctx, p.Language, outDir, source.Target)
@@ -563,7 +543,7 @@ func runSession(
 	case externalImage != "" && createdExternal != nil:
 		updated = createdExternal
 	case externalImage != "":
-		sp := ui.Spinner()
+		sp := ui.NewSpinner()
 		sp.Start("Updating deployment image")
 		updated, err = step(sp, "Could not update the deployment", func() (map[string]any, error) {
 			return client.UpdateDeploymentExternalImage(ctx, deploymentID, externalImage, secrets)
@@ -651,8 +631,8 @@ func runSession(
 
 // requireTriggerRegistrationURL fails when a channel needs the live Agent
 // Server URL to finish setup but no revision was tracked to find it.
-func requireTriggerRegistrationURL(agentServerURL string, hasTriggerChannel bool) error {
-	if hasTriggerChannel && agentServerURL == "" {
+func requireTriggerRegistrationURL(agentServerURL string, needsLiveURL bool) error {
+	if needsLiveURL && agentServerURL == "" {
 		return errors.New("Deployment started, but channel setup could not complete because no revision was available to track; retry `langsmith deploy` once the deployment is live.")
 	}
 	return nil
@@ -661,7 +641,7 @@ func requireTriggerRegistrationURL(agentServerURL string, hasTriggerChannel bool
 // importProjectModules imports the project's modules under a spinner, which
 // says so when the introspection helper installs itself first.
 func importProjectModules(ctx context.Context, p *project.Project, envVars map[string]string) error {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	started := false
 	err := introspect.ImportProject(ctx, p, introspect.ImportOptions{
 		Env: envVars,
@@ -687,13 +667,13 @@ func importProjectModules(ctx context.Context, p *project.Project, envVars map[s
 // step closes the spinner sp when run fails: in an error state with
 // failMessage (so the session line is closed cleanly), or a cancelled one when
 // the user stopped it.
-func step[T any](sp *ui.ProgressBar, failMessage string, run func() (T, error)) (T, error) {
+func step[T any](sp *ui.Spinner, failMessage string, run func() (T, error)) (T, error) {
 	value, err := run()
 	return value, closeFailedStep(sp, failMessage, err)
 }
 
 // closeFailedStep is [step] for a step that returns only an error.
-func closeFailedStep(sp *ui.ProgressBar, failMessage string, err error) error {
+func closeFailedStep(sp *ui.Spinner, failMessage string, err error) error {
 	switch {
 	case err == nil:
 	case errs.IsCancellation(err):
@@ -718,7 +698,7 @@ func bakeSpinnerMessage(phase BakePhase) string {
 // bakeProgress is a progress callback for [bakeRecipe] that rewrites the
 // spinner sub-line in place. Without a terminal the spinner prints each
 // phase once instead.
-func bakeProgress(sp *ui.ProgressBar) func(BakePhase) {
+func bakeProgress(sp *ui.Spinner) func(BakePhase) {
 	return func(phase BakePhase) {
 		sp.SetMessage(bakeSpinnerMessage(phase))
 	}
@@ -777,7 +757,7 @@ func confirmFirstDeployCollisions(
 	source ImageSource,
 	yes bool,
 ) (bool, error) {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Checking for existing resources named '%s'", name))
 	existing, err := step(sp, "Could not check existing resources", func() (map[string]any, error) {
 		return deployment.FindTargetDeployment(ctx, client, name, agent)
@@ -786,7 +766,7 @@ func confirmFirstDeployCollisions(
 		return false, err
 	}
 	if existing != nil {
-		existing = deployment.WithManagedMarker(ctx, client, existing)
+		existing = deployment.FetchDeploymentWithMarker(ctx, client, existing)
 	}
 	// Source types are immutable. Reject an incompatible image deploy before
 	// inspecting or syncing Context Hub so a deploy that cannot succeed leaves
@@ -859,7 +839,7 @@ func syncContextHub(
 	memoryEnabled bool,
 	strategy *ContextStrategy,
 ) (syncSummary, error) {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Checking Context Hub context '%s'", name))
 	plan, err := step(sp, "Could not inspect Context Hub context", func() (*syncPlan, error) {
 		return prepareContextSync(ctx, contextClient, p, name, memoryEnabled)
@@ -876,7 +856,7 @@ func syncContextHub(
 	}
 	preserved := resolution == conflictResolutionKeepHub && len(conflicts) > 0
 
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Syncing Context Hub context '%s'", name))
 	synced, err := step(sp, "Could not sync Context Hub context", func() (syncSummary, error) {
 		return applyContextSync(ctx, contextClient, plan, resolution)
@@ -956,7 +936,7 @@ func compileForDeployStep(ctx context.Context, p *project.Project, outDir string
 		Repo:      synced.Repo,
 		HasSkills: synced.HasSkills,
 	}
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Compiling project")
 	summary, err := step(sp, "Could not compile the project", func() (*compile.CompileSummary, error) {
 		summary, err := compile.CompileForDeploy(ctx, p, outDir, deployContext, installation)
@@ -986,13 +966,9 @@ type emittedRequirements struct {
 	channels       compile.ChannelRequirements
 }
 
-// emitRequirementsStep emits connector, MCP, and channel requirements and
-// reports progress.
-//
-// The emits import the project's modules in a Node or Python subprocess, so
-// this step takes a noticeable moment with no other output. Without
-// connectors or channels the emits only clear stale manifests, so no spinner
-// is shown.
+// emitRequirementsStep writes the connector, MCP, and channel requirements the
+// project import captured into outDir and reports what it resolved. Without
+// connectors or channels it only clears stale manifests and reports nothing.
 func emitRequirementsStep(ctx context.Context, p *project.Project, outDir string, summary *compile.CompileSummary) (emittedRequirements, error) {
 	emit := func() (emittedRequirements, error) {
 		connectors, err := introspect.EmitConnectorRequirementsForEntries(ctx, p, outDir, summary.Connectors)
@@ -1023,7 +999,7 @@ func emitRequirementsStep(ctx context.Context, p *project.Project, outDir string
 	if len(modules) == 0 {
 		return emit()
 	}
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Resolving connector and channel requirements")
 	emitted, err := step(sp, "Could not resolve connector and channel requirements", emit)
 	if err != nil {
@@ -1042,7 +1018,7 @@ func bakeSandboxRecipeStep(ctx context.Context, client *hostapi.Client, deployme
 		registryPasswordEnv = spec.Registry.PasswordEnv
 	}
 	bakeEnv := bakeEnvVars(envVars)
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start(bakeSpinnerTitle)
 	outcome, err := step(sp, "Could not bake the sandbox recipe", func() (BakeOutcome, error) {
 		return bakeRecipe(ctx, client, deploymentName, spec, bakeEnv, bakeProgress(sp))
@@ -1094,7 +1070,7 @@ func bakeEnvVars(envVars map[string]string) map[string]string {
 // resolveOrCreateDeployment looks up a LangSmith deployment by name, or
 // creates one when missing.
 func resolveOrCreateDeployment(ctx context.Context, client *hostapi.Client, name string, deploymentType hostapi.DeploymentType, secrets []hostapi.Secret) (string, error) {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Looking up deployment '%s'", name))
 	listed, err := step(sp, "Could not reach LangSmith", func() (map[string]any, error) {
 		return client.ListDeployments(ctx, name)
@@ -1107,7 +1083,7 @@ func resolveOrCreateDeployment(ctx context.Context, client *hostapi.Client, name
 		return id, nil
 	}
 	sp.Stop("No existing deployment — creating a new one")
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Creating deployment '%s'", name))
 	created, err := client.CreateDeployment(ctx, name, deploymentType, secrets)
 	switch {
@@ -1124,7 +1100,7 @@ func resolveOrCreateDeployment(ctx context.Context, client *hostapi.Client, name
 		// The host backend may still finish provisioning even when the client
 		// times out waiting for the response.
 		sp.Stop("Create request timed out — checking whether the deployment exists")
-		sp = ui.Spinner()
+		sp = ui.NewSpinner()
 		sp.Start(fmt.Sprintf("Looking up deployment '%s'", name))
 		listed, listErr := step(sp, "Could not reach LangSmith", func() (map[string]any, error) {
 			return client.ListDeployments(ctx, name)
@@ -1168,7 +1144,7 @@ func resolveOrCreateAgentDeployment(ctx context.Context, client *hostapi.Client,
 // external image. It returns the created deployment, nil when it already
 // existed.
 func resolveOrCreateExternalDeployment(ctx context.Context, client *hostapi.Client, name string, agent *hostapi.DeploymentAgent, imageURI string, secrets []hostapi.Secret) (string, map[string]any, error) {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Checking for an existing deployment")
 	existing, err := step(sp, "Could not check existing deployments", func() (map[string]any, error) {
 		if agent != nil {
@@ -1204,7 +1180,7 @@ func resolveOrCreateExternalDeployment(ctx context.Context, client *hostapi.Clie
 	}
 
 	sp.Stop("No existing deployment — creating a new one")
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Creating deployment '%s'", name))
 	created, err := step(sp, "Could not create the deployment", func() (map[string]any, error) {
 		if agent != nil {
@@ -1243,8 +1219,31 @@ func ensureRequestedDeploymentSource(name string, existing map[string]any, sourc
 	return nil
 }
 
+// uploadTarget is where a source archive goes: the signed URL to upload it
+// to, and the object path the build is then triggered with.
+type uploadTarget struct {
+	signedURL  string
+	objectPath string
+}
+
+func requestUploadTarget(ctx context.Context, client *hostapi.Client, deploymentID string) (uploadTarget, error) {
+	upload, err := client.RequestUploadURL(ctx, deploymentID)
+	if err != nil {
+		return uploadTarget{}, err
+	}
+	signedURL, err := hostapi.RequireStr(upload, "upload_url", "upload URL")
+	if err != nil {
+		return uploadTarget{}, err
+	}
+	objectPath, err := hostapi.RequireStr(upload, "object_path", "upload URL")
+	if err != nil {
+		return uploadTarget{}, err
+	}
+	return uploadTarget{signedURL: signedURL, objectPath: objectPath}, nil
+}
+
 func archiveUploadAndTrigger(ctx context.Context, client *hostapi.Client, outDir, deploymentID string, secrets []hostapi.Secret) (map[string]any, error) {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Creating source archive")
 	archive, err := step(sp, "Could not archive the build", func() (*Archive, error) {
 		return CreateArchive(outDir)
@@ -1254,39 +1253,27 @@ func archiveUploadAndTrigger(ctx context.Context, client *hostapi.Client, outDir
 	}
 	sp.Stop(fmt.Sprintf("Archived build (%.1f KB)", float64(len(archive.Bytes))/1024.0))
 
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start("Requesting upload URL")
-	upload, err := step(sp, "Could not request an upload URL", func() (map[string]any, error) {
-		return client.RequestUploadURL(ctx, deploymentID)
-	})
-	if err != nil {
-		return nil, err
-	}
-	signedURL, err := step(sp, "Could not request an upload URL", func() (string, error) {
-		return hostapi.RequireStr(upload, "upload_url", "upload URL")
-	})
-	if err != nil {
-		return nil, err
-	}
-	objectPath, err := step(sp, "Could not request an upload URL", func() (string, error) {
-		return hostapi.RequireStr(upload, "object_path", "upload URL")
+	upload, err := step(sp, "Could not request an upload URL", func() (uploadTarget, error) {
+		return requestUploadTarget(ctx, client, deploymentID)
 	})
 	if err != nil {
 		return nil, err
 	}
 	sp.Stop("Received upload URL")
 
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start("Uploading source")
-	if err := closeFailedStep(sp, "Could not upload the source", uploadToGCS(ctx, signedURL, archive.Bytes)); err != nil {
+	if err := closeFailedStep(sp, "Could not upload the source", uploadToGCS(ctx, upload.signedURL, archive.Bytes)); err != nil {
 		return nil, err
 	}
 	sp.Stop("Uploaded source")
 
-	sp = ui.Spinner()
+	sp = ui.NewSpinner()
 	sp.Start("Triggering remote build")
 	updated, err := step(sp, "Could not trigger the remote build", func() (map[string]any, error) {
-		return client.UpdateDeploymentInternalSource(ctx, deploymentID, objectPath, archive.ConfigRel, secrets)
+		return client.UpdateDeploymentInternalSource(ctx, deploymentID, upload.objectPath, archive.ConfigRel, secrets)
 	})
 	if err != nil {
 		return nil, err
@@ -1608,7 +1595,42 @@ func (s *secretPreflight) ensureRequiredSecret(ctx context.Context, keyEnv, reas
 		return nil
 	}
 
-	sp := ui.Spinner()
+	return s.requireWorkspaceSecret(ctx, keyEnv, workspaceSecretCheck{
+		found: keyEnv + " found in LangSmith workspace secrets",
+		absent: func(dashboard string) error {
+			return fmt.Errorf("%s. %s is not set in %s and not configured as a LangSmith "+
+				"workspace secret.\n"+
+				"Add `%s=...` to %s, or add it under Settings > Workspaces > Secrets "+
+				"in LangSmith%s, then deploy again. Values exported in your shell "+
+				"are not read.", reason, keyEnv, s.envPath, keyEnv, s.envPath, dashboard)
+		},
+		unverified: func(lookupErr error) (string, error) {
+			return fmt.Sprintf("Could not verify %s (%v)", keyEnv, lookupErr),
+				fmt.Errorf("%s. %s is not set in %s, and LangSmith workspace secrets "+
+					"could not be checked (%v).\n"+
+					"Add `%s=...` to %s, then deploy again. Values exported in your "+
+					"shell are not read.", reason, keyEnv, s.envPath, lookupErr, keyEnv, s.envPath)
+		},
+	})
+}
+
+// workspaceSecretCheck is what [secretPreflight.requireWorkspaceSecret] says
+// for each outcome.
+type workspaceSecretCheck struct {
+	// found is the step line when the workspace has the secret.
+	found string
+	// absent is the error when it does not; dashboard is " (<dashboard URL>)",
+	// or "" when the URL is unknown.
+	absent func(dashboard string) error
+	// unverified is the step line and the error when the workspace could not
+	// be checked.
+	unverified func(lookupErr error) (string, error)
+}
+
+// requireWorkspaceSecret checks, under a spinner, that the workspace has
+// keyEnv.
+func (s *secretPreflight) requireWorkspaceSecret(ctx context.Context, keyEnv string, check workspaceSecretCheck) error {
+	sp := ui.NewSpinner()
 	sp.Start(fmt.Sprintf("Checking that %s is configured", keyEnv))
 
 	status, lookupErr := s.verifyWorkspaceSecret(ctx, keyEnv)
@@ -1617,7 +1639,7 @@ func (s *secretPreflight) ensureRequiredSecret(ctx context.Context, keyEnv, reas
 		sp.Cancel("Cancelled")
 		return lookupErr
 	case status == workspaceSecretPresent:
-		sp.Stop(keyEnv + " found in LangSmith workspace secrets")
+		sp.Stop(check.found)
 		return nil
 	case status == workspaceSecretAbsent:
 		sp.Error(keyEnv + " is not configured")
@@ -1625,17 +1647,11 @@ func (s *secretPreflight) ensureRequiredSecret(ctx context.Context, keyEnv, reas
 		if s.dashboardURL != "" {
 			dashboard = " (" + s.dashboardURL + ")"
 		}
-		return fmt.Errorf("%s. %s is not set in %s and not configured as a LangSmith "+
-			"workspace secret.\n"+
-			"Add `%s=...` to %s, or add it under Settings > Workspaces > Secrets "+
-			"in LangSmith%s, then deploy again. Values exported in your shell "+
-			"are not read.", reason, keyEnv, s.envPath, keyEnv, s.envPath, dashboard)
+		return check.absent(dashboard)
 	default:
-		sp.Error(fmt.Sprintf("Could not verify %s (%v)", keyEnv, lookupErr))
-		return fmt.Errorf("%s. %s is not set in %s, and LangSmith workspace secrets "+
-			"could not be checked (%v).\n"+
-			"Add `%s=...` to %s, then deploy again. Values exported in your "+
-			"shell are not read.", reason, keyEnv, s.envPath, lookupErr, keyEnv, s.envPath)
+		step, err := check.unverified(lookupErr)
+		sp.Error(step)
+		return err
 	}
 }
 
@@ -1682,33 +1698,21 @@ func (s *secretPreflight) ensureModelAPIKey(ctx context.Context, model *string) 
 		return nil
 	}
 
-	sp := ui.Spinner()
-	sp.Start(fmt.Sprintf("Checking that %s is configured", keyEnv))
-
-	status, lookupErr := s.verifyWorkspaceSecret(ctx, keyEnv)
-	switch {
-	case errs.IsCancellation(lookupErr):
-		sp.Cancel("Cancelled")
-		return lookupErr
-	case status == workspaceSecretPresent:
-		sp.Stop(keyEnv + " found in LangSmith workspace Provider Secrets")
-		return nil
-	case status == workspaceSecretAbsent:
-		sp.Error(keyEnv + " is not configured")
-		dashboard := ""
-		if s.dashboardURL != "" {
-			dashboard = " (" + s.dashboardURL + ")"
-		}
-		return fmt.Errorf("The agent model '%s' uses LangSmith Gateway and requires %s in "+
-			"LangSmith workspace Provider Secrets. Add `%s` under Settings > "+
-			"Integrations > Provider Secrets in LangSmith%s, then deploy again.",
-			*model, keyEnv, keyEnv, dashboard)
-	default:
-		sp.Error("Could not check LangSmith workspace Provider Secrets")
-		return fmt.Errorf("The agent model '%s' uses LangSmith Gateway and requires %s in "+
-			"LangSmith workspace Provider Secrets, but Provider Secrets could not be checked "+
-			"(%v).", *model, keyEnv, lookupErr)
-	}
+	return s.requireWorkspaceSecret(ctx, keyEnv, workspaceSecretCheck{
+		found: keyEnv + " found in LangSmith workspace Provider Secrets",
+		absent: func(dashboard string) error {
+			return fmt.Errorf("The agent model '%s' uses LangSmith Gateway and requires %s in "+
+				"LangSmith workspace Provider Secrets. Add `%s` under Settings > "+
+				"Integrations > Provider Secrets in LangSmith%s, then deploy again.",
+				*model, keyEnv, keyEnv, dashboard)
+		},
+		unverified: func(lookupErr error) (string, error) {
+			return "Could not check LangSmith workspace Provider Secrets",
+				fmt.Errorf("The agent model '%s' uses LangSmith Gateway and requires %s in "+
+					"LangSmith workspace Provider Secrets, but Provider Secrets could not be checked "+
+					"(%v).", *model, keyEnv, lookupErr)
+		},
+	})
 }
 
 // missingModelAPIKeyMessage tells the author model needs keyEnv in env; next
@@ -1888,7 +1892,7 @@ func pollAndReport(
 		return "", ui.Outro(fmt.Sprintf("Build triggered for '%s'. No revision to track yet.", name))
 	}
 
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Waiting for deployment")
 	deadline := time.Now().Add(waitTimeout)
 	lastStatus := ""
@@ -2089,7 +2093,7 @@ func httpChannelLinks(agentServerURL string, requirements compile.ChannelRequire
 // failing the deploy: the code is deployed either way, and rerunning
 // `langsmith deploy` reconciles again.
 func reconcileSchedules(ctx context.Context, client *hostapi.Client, deploymentURL string, scheduleCrons compile.ScheduleCrons) error {
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start("Reconciling schedules")
 	removed, err := reconcileSchedulesAtURL(ctx, client, deploymentURL, scheduleCrons)
 	if err != nil {

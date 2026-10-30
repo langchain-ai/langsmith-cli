@@ -2,7 +2,6 @@ package compile
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,9 +50,6 @@ func TestCompileRejectsManagedSettingsBeforeReplacingBuildOutput(t *testing.T) {
 			if got := f.read(t, "previous.txt"); got != "keep this build" {
 				t.Fatalf("previous build output changed: %q", got)
 			}
-			if _, err := os.Stat(filepath.Join(f.root(), ".mda", "__contexthub__")); !os.IsNotExist(err) {
-				t.Fatalf("the local Context Hub was created: %v", err)
-			}
 		})
 	}
 }
@@ -64,11 +60,8 @@ func TestCompileCopiesFilesVerbatimAndGeneratesAManagedEntry(t *testing.T) {
 		"tools/query-db.ts": "export const queryDB = 1;\n",
 	})
 
-	summary := mustCompile(t, f.deploy)
+	mustCompile(t, f.deploy)
 
-	if summary.AssistantID != "agent" {
-		t.Fatalf("assistant id: %q", summary.AssistantID)
-	}
 	// The user's agent file is carried over byte-for-byte: no transform.
 	if got := f.read(t, "agent.ts"); got != tsAgent {
 		t.Fatalf("agent.ts: %q", got)
@@ -143,9 +136,10 @@ func TestCompileBuildsNamedFactoriesWithoutRunningThem(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := tc.project(t)
-			summary := mustCompile(t, f.deploy)
-			if summary.AssistantID != "plain" {
-				t.Fatalf("assistant id: %q", summary.AssistantID)
+			mustCompile(t, f.deploy)
+			graphs := readJSON(t, f.read(t, "langgraph.json"))["graphs"].(map[string]any)
+			if graphs["plain"] != "./"+tc.entry+":agent" {
+				t.Fatalf("graphs: %v", graphs)
 			}
 			entry := f.read(t, tc.entry)
 			if tc.name == "python" {
@@ -173,11 +167,10 @@ func TestCompileBuildsATypescriptFactoryEntryWithoutRunningTheFactory(t *testing
 		"skills/team-playbook/SKILL.md": "# Team playbook\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	summary := mustCompile(t, f.deploy)
 
-	if summary.AssistantID != "support" || !reflect.DeepEqual(summary.Connectors, []string{filepath.Join("tools", "mcp.ts")}) ||
-		!summary.Memory.AgentEnabled() || !summary.HasSkills {
-		t.Fatalf("summary: %+v", summary)
+	if !reflect.DeepEqual(summary.Connectors, []string{filepath.Join("tools", "mcp.ts")}) {
+		t.Fatalf("connectors: %v", summary.Connectors)
 	}
 	langgraph := readJSON(t, f.read(t, "langgraph.json"))
 	want := map[string]any{
@@ -208,11 +201,10 @@ func TestCompileBuildsAPythonFactoryEntryWithoutRunningTheFactory(t *testing.T) 
 		"skills/team-playbook/SKILL.md": "# Team playbook\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	summary := mustCompile(t, f.deploy)
 
-	if summary.AssistantID != "support" || !reflect.DeepEqual(summary.Connectors, []string{filepath.Join("tools", "mcp.py")}) ||
-		!summary.Memory.AgentEnabled() || !summary.HasSkills {
-		t.Fatalf("summary: %+v", summary)
+	if !reflect.DeepEqual(summary.Connectors, []string{filepath.Join("tools", "mcp.py")}) {
+		t.Fatalf("connectors: %v", summary.Connectors)
 	}
 	langgraph := readJSON(t, f.read(t, "langgraph.json"))
 	want := map[string]any{

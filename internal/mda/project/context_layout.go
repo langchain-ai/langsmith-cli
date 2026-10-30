@@ -2,8 +2,7 @@ package project
 
 import "path/filepath"
 
-// Shared Context Hub layout constants for deploy sync and the local `mda dev`
-// mock (`context_layout.rs`).
+// Context Hub layout constants for deploy sync (`context_layout.rs`).
 const (
 	// InstructionsFile is the deploy-owned system prompt file at the Hub root.
 	InstructionsFile = "instructions.md"
@@ -23,10 +22,6 @@ const (
 	// Preserved when already present.
 	FlatMemoryFile = "memories/AGENTS.md"
 
-	// LocalContextHubDir is the directory name under `.mda/` for the local
-	// Context Hub filesystem mock.
-	LocalContextHubDir = "__contexthub__"
-
 	// DefaultMemoryContent is the seed content for a new agent-scoped hot
 	// memory file.
 	//
@@ -39,16 +34,12 @@ const (
 	//
 	// A zero-byte file rather than no file at all: it is prompt-identical (both
 	// render as no memory loaded), but it keeps `edit_file` — the verb
-	// deepagents teaches — working on the agent's first save, and keeps the
-	// `mda dev` mock structurally identical to a deployment.
+	// deepagents teaches — working on the agent's first save.
 	DefaultMemoryContent = ""
 )
 
 // AgentMemorySeed is the content that should be written to [AgentMemoryFile],
 // if any.
-//
-// Shared by the local Hub mock and deploy-time Context Hub sync so both apply
-// the same migration / refresh rules.
 type AgentMemorySeed struct {
 	// Write is false when existing agent-scoped memory is current — leave it
 	// alone — and true to write Content to [AgentMemoryFile] (seed, migrate, or

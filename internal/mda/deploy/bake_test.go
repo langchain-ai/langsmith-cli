@@ -18,7 +18,7 @@ const snapshotsPath = "/api/v2/sandboxes/snapshots"
 func noProgress(BakePhase) {}
 
 func TestBakeSkipsWhenRecipeAlreadyReady(t *testing.T) {
-	recipe := deployment.RecipeSnapshotName("agent", deployment.RecipeDigest(nil, nil, nil, nil, nil, nil))
+	recipe := deployment.RecipeSnapshotName("agent", deployment.RecipeInputs{}.Digest())
 	server := serveSequence(t, okReply(`{"snapshots":[{"id":"1","name":"`+recipe+`","status":"ready"}]}`))
 
 	outcome, err := bakeRecipe(t.Context(), hostClient(t, server.URL), "agent", &RecipeSpec{}, map[string]string{}, noProgress)
@@ -30,7 +30,7 @@ func TestBakeSkipsWhenRecipeAlreadyReady(t *testing.T) {
 func TestBakeSkipKeepsTheTagOfADockerBuiltRecipe(t *testing.T) {
 	// Every run after the first cold bake takes the skip path, so it has to
 	// re-derive the tag or the recipe pointer breaks again.
-	digest := deployment.RecipeDigest(nil, nil, nil, ptr("acme/base:0.1.1"), nil, nil)
+	digest := deployment.RecipeInputs{DockerImage: ptr("acme/base:0.1.1")}.Digest()
 	recipe := deployment.RecipeSnapshotName("agent", digest)
 	server := serveSequence(t, okReply(`{"snapshots":[{"id":"1","name":"`+recipe+`","status":"ready","tags":["0.1.1"]}]}`))
 
@@ -43,7 +43,7 @@ func TestBakeSkipKeepsTheTagOfADockerBuiltRecipe(t *testing.T) {
 }
 
 func TestEmptyDockerImageCreatesRecipeDirectly(t *testing.T) {
-	digest := deployment.RecipeDigest(nil, nil, nil, ptr("python:3.12-slim"), nil, nil)
+	digest := deployment.RecipeInputs{DockerImage: ptr("python:3.12-slim")}.Digest()
 	recipe := deployment.RecipeSnapshotName("agent", digest)
 	// find (miss) → create docker → wait get. Host tags a Docker-built
 	// snapshot with the image's tag, not `latest`.
@@ -74,7 +74,7 @@ func TestEmptyDockerImageCreatesRecipeDirectly(t *testing.T) {
 func TestDockerImageBakePassesRegistryID(t *testing.T) {
 	registry := compile.SandboxRegistryManifest{URL: "ghcr.io", Username: "octocat", PasswordEnv: "GHCR_TOKEN"}
 	registryDigest := registry.DigestInput()
-	digest := deployment.RecipeDigest(nil, nil, nil, ptr("ghcr.io/acme/base:1"), &registryDigest, nil)
+	digest := deployment.RecipeInputs{DockerImage: ptr("ghcr.io/acme/base:1"), Registry: &registryDigest}.Digest()
 	recipe := deployment.RecipeSnapshotName("agent", digest)
 	// find (miss) → registry miss → create registry → create docker → wait
 	server := serveSequence(t,

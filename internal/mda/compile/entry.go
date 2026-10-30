@@ -51,8 +51,8 @@ type entryInputs struct {
 	// factory reports whether `agent` is a factory rather than a static
 	// definition.
 	factory bool
-	// context is the source of managed context for the runtime.
-	context runtimeContext
+	// deploy is the Context Hub repo the runtime reads managed context from.
+	deploy DeployContext
 	// sandboxImport is the module specifier for the `sandbox` declaration, if
 	// the project has one.
 	sandboxImport string
@@ -82,31 +82,6 @@ type entryInputs struct {
 	browserImport string
 }
 
-// runtimeContextKind says where the runtime reads its managed context from.
-type runtimeContextKind int
-
-const (
-	// runtimeContextLocal is local builds, which read context from
-	// `.mda/__contexthub__` on disk.
-	runtimeContextLocal runtimeContextKind = iota
-	// runtimeContextContextHub is deploy builds, which read instructions,
-	// skills, and memories from Context Hub.
-	runtimeContextContextHub
-)
-
-// runtimeContext is the source of managed context for the runtime. The mda
-// CLI's eval context is not ported: `langsmith deploy` never builds eval
-// artifacts.
-type runtimeContext struct {
-	kind runtimeContextKind
-	// contextRoot is the absolute path to the local Context Hub filesystem
-	// mock (local builds).
-	contextRoot string
-	// repo is the Context Hub repo handle (deploy builds).
-	repo      string
-	hasSkills bool
-}
-
 func generateEntry(language project.Language, inputs entryInputs) string {
 	if language == project.Python {
 		return generatePythonEntry(inputs)
@@ -130,8 +105,6 @@ func generateTypescriptEntry(inputs entryInputs) string {
 // otherwise StateBackend scratch), store, checkpointer, and runtime context are
 // injected by the managed runtime, not by the agent author.
 `)
-	// Local/deploy keep the full managed compile (Context Hub, sandbox
-	// backend, memory).
 	const compileFn = "compileManagedAgent"
 	fmt.Fprintf(&out, "import { %s } from \"managed-deepagents/runtime\";\n", compileFn)
 	if !inputs.factory {
@@ -164,17 +137,9 @@ func generateTypescriptEntry(inputs entryInputs) string {
 	out.WriteString("\n")
 
 	// Managed options handed to the runtime, in shorthand object form.
-	var optionKeys []string
-	switch inputs.context.kind {
-	case runtimeContextLocal:
-		fmt.Fprintf(&out, "const contextRoot = %s;\n", encodeStringLiteral(inputs.context.contextRoot))
-		optionKeys = append(optionKeys, "contextRoot")
-	case runtimeContextContextHub:
-		fmt.Fprintf(&out, "const contextRepo = %s;\n", encodeStringLiteral(inputs.context.repo))
-		optionKeys = append(optionKeys, "contextRepo")
-	}
-	fmt.Fprintf(&out, "const hasSkills = %s;\n", boolLiteral(inputs.context.hasSkills, project.TypeScript))
-	optionKeys = append(optionKeys, "hasSkills")
+	fmt.Fprintf(&out, "const contextRepo = %s;\n", encodeStringLiteral(inputs.deploy.Repo))
+	fmt.Fprintf(&out, "const hasSkills = %s;\n", boolLiteral(inputs.deploy.HasSkills, project.TypeScript))
+	optionKeys := []string{"contextRepo", "hasSkills"}
 	if inputs.sandboxImport != "" {
 		optionKeys = append(optionKeys, "sandbox")
 	}
@@ -243,8 +208,6 @@ func generatePythonEntry(inputs entryInputs) string {
 # otherwise StateBackend scratch), store, checkpointer, and runtime context are
 # injected by the managed runtime, not by the agent author.
 `)
-	// Local/deploy keep the full managed compile (Context Hub, sandbox
-	// backend, memory).
 	const compileFn = "compile_managed_agent_async"
 	// Served entries hold `parent_run` open for the whole run: an async
 	// subagent's run is checked against the agent that launched it, and nests
@@ -280,17 +243,9 @@ func generatePythonEntry(inputs entryInputs) string {
 	out.WriteString("\n")
 
 	// Keyword arguments handed to the runtime.
-	var kwargs []string
-	switch inputs.context.kind {
-	case runtimeContextLocal:
-		fmt.Fprintf(&out, "_context_root = %s\n", encodeStringLiteral(inputs.context.contextRoot))
-		kwargs = append(kwargs, "context_root=_context_root")
-	case runtimeContextContextHub:
-		fmt.Fprintf(&out, "_context_repo = %s\n", encodeStringLiteral(inputs.context.repo))
-		kwargs = append(kwargs, "context_repo=_context_repo")
-	}
-	fmt.Fprintf(&out, "_has_skills = %s\n", boolLiteral(inputs.context.hasSkills, project.Python))
-	kwargs = append(kwargs, "has_skills=_has_skills")
+	fmt.Fprintf(&out, "_context_repo = %s\n", encodeStringLiteral(inputs.deploy.Repo))
+	fmt.Fprintf(&out, "_has_skills = %s\n", boolLiteral(inputs.deploy.HasSkills, project.Python))
+	kwargs := []string{"context_repo=_context_repo", "has_skills=_has_skills"}
 	if inputs.sandboxImport != "" {
 		kwargs = append(kwargs, "sandbox=_sandbox")
 	}
@@ -566,12 +521,9 @@ export const auth = buildManagedAuth(identity);
 // it is validated by the auth handler and must never reach
 // `config.configurable`.
 //
-// disableStudioAuth turns off the Agent Server's `x-auth-scheme: langsmith`
-// ingress. Local builds set it: the dev server grants that identity on the
-// header alone with no credential check, and `mda dev` has no need for it
-// because `MDA_LOCAL_DEV` already resolves local Studio to an unscoped service
-// principal. Deploy leaves it enabled so LangSmith Studio and the CLI's
-// schedule reconciliation keep reaching the deployment.
+// The auth block keeps the Agent Server's `x-auth-scheme: langsmith` ingress
+// (`disable_studio_auth: false`) so LangSmith Studio and the CLI's schedule
+// reconciliation keep reaching the deployment.
 type langgraphManifestInputs struct {
 	// graph is the export specifier for the generated managed entry
 	// (`./_mda_entry.py:agent`).
@@ -593,13 +545,9 @@ type langgraphManifestInputs struct {
 	// assistantID is the graphs-map key, and therefore the LangGraph
 	// assistant id.
 	assistantID string
-	// includeVendoredRuntime installs the vendored Python runtime as a
-	// separate local package.
-	includeVendoredRuntime bool
 	// localPackages are the local package directories that Python deploys
-	// install separately.
-	localPackages     []string
-	disableStudioAuth bool
+	// install separately, after the vendored runtime.
+	localPackages []string
 	// extraGraphs are the extra (graph key, export specifier) pairs, one per
 	// async subagent.
 	extraGraphs [][2]string
@@ -626,10 +574,7 @@ func generateLanggraphJSON(inputs langgraphManifestInputs) string {
 	// `_INTERNAL_docker_tag`.
 	var value *jsonObject
 	if inputs.language == project.Python {
-		dependencies := []any{"."}
-		if inputs.includeVendoredRuntime {
-			dependencies = append(dependencies, "./"+runtimeDir)
-		}
+		dependencies := []any{".", "./" + runtimeDir}
 		for _, dir := range inputs.localPackages {
 			dependencies = append(dependencies, "./"+dir)
 		}
@@ -655,7 +600,7 @@ func generateLanggraphJSON(inputs langgraphManifestInputs) string {
 		if inputs.authPath != "" {
 			value.insert("auth", jsonObjectOf(
 				"path", inputs.authPath,
-				"disable_studio_auth", inputs.disableStudioAuth,
+				"disable_studio_auth", false,
 			))
 			// The auth-scoped knobs only apply when identity is enabled. Only
 			// the trusted caller ID is forwarded into config.configurable.

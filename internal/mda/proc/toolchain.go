@@ -4,10 +4,10 @@ package proc
 //
 // Windows `CreateProcess` does not honor `PATHEXT` the way shells do: a bare
 // `npm` looks for `npm.exe` only, while Node ships `npm.cmd`. The same applies
-// to `npx` and npm `.bin` shims (`tsx.cmd`). Python 3 is usually installed as
-// `python.exe` with no `python3.exe` (and a Windows Store `python3` alias may
-// exist but fail). These helpers pick working program names so compile and
-// deploy spawn sites stay OS-agnostic.
+// to `npx`. Python 3 is usually installed as `python.exe` with no
+// `python3.exe` (and a Windows Store `python3` alias may exist but fail).
+// These helpers pick working program names so compile and deploy spawn sites
+// stay OS-agnostic.
 //
 // The resolved program names are probed once per process, the first time they
 // are asked for, and not under any context: a `--version` probe is short.
@@ -19,7 +19,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 )
 
@@ -45,25 +44,6 @@ func Uv(args ...string) *exec.Cmd {
 	return exec.Command("uv", args...)
 }
 
-// NpmAvailable reports whether a working `npm` is on PATH.
-func NpmAvailable(ctx context.Context) bool {
-	return probeVersion(ctx, NpmProgram())
-}
-
-// UvAvailable reports whether a working `uv` is on PATH.
-func UvAvailable(ctx context.Context) bool {
-	return probeVersion(ctx, "uv")
-}
-
-// PythonPipAvailableFor reports whether `python -m pip` works for the given
-// interpreter program or path.
-//
-// `uv`-created environments often omit pip; prefer probing the module over
-// assuming a host `pip` binary exists.
-func PythonPipAvailableFor(ctx context.Context, python string) bool {
-	return exec.CommandContext(ctx, python, "-m", "pip", "--version").Run() == nil
-}
-
 // ProjectPython returns the Python interpreter for subprocesses that import
 // project or runtime packages.
 //
@@ -77,72 +57,13 @@ func ProjectPython(ctx context.Context, root string) (string, error) {
 	return resolveProjectPython(ctx, root, os.Getenv("VIRTUAL_ENV"), os.Getenv("CONDA_PREFIX"))
 }
 
-// PythonForEmit returns the interpreter for connector and channel emit.
-//
-// Uses the project environment when it exists. Otherwise creates an isolated
-// venv next to the build directory (not inside it) so deploy never archives a
-// local interpreter.
-func PythonForEmit(ctx context.Context, projectRoot, outDir string) (string, error) {
-	if python, err := ProjectPython(ctx, projectRoot); err == nil {
-		return python, nil
-	}
-	return isolatedEmitPython(ctx, outDir)
-}
-
-// PythonEmitVenvDir is the directory name of the isolated emit venv.
+// PythonEmitVenvDir is the directory name of the isolated venv the mda CLI
+// creates for the requirement emit when a project has no environment of its
+// own. `langsmith deploy` emits in the project's environment, but the deploy
+// archive still omits the directory.
 const PythonEmitVenvDir = ".mda-emit-venv"
 
-// EmitVenvDir returns the isolated emit venv path: a sibling of outDir.
-func EmitVenvDir(outDir string) string {
-	return filepath.Join(filepath.Dir(outDir), PythonEmitVenvDir)
-}
-
-func isolatedEmitPython(ctx context.Context, outDir string) (string, error) {
-	venv := EmitVenvDir(outDir)
-	if python, ok := venvInterpreter(ctx, venv); ok {
-		return python, nil
-	}
-	if err := createIsolatedVenv(ctx, venv); err != nil {
-		return "", err
-	}
-	python, ok := venvInterpreter(ctx, venv)
-	if !ok {
-		return "", fmt.Errorf("created isolated emit venv at %s but found no usable interpreter", venv)
-	}
-	return python, nil
-}
-
 const createVenvHint = "Run `uv sync` so `.venv` exists, or invoke `langsmith` via `uv run`."
-
-func createIsolatedVenv(ctx context.Context, venv string) error {
-	if err := os.RemoveAll(venv); err != nil {
-		return fmt.Errorf("failed to replace %s: %w", venv, err)
-	}
-	parent := filepath.Dir(venv)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return fmt.Errorf("failed to create %s: %w", parent, err)
-	}
-
-	if UvAvailable(ctx) {
-		output, err := Output(ctx, Uv("venv", "--python", Python3Program(), venv))
-		if err != nil {
-			return fmt.Errorf("failed to run uv venv for connector emit: %w", err)
-		}
-		if output.Status.Success() {
-			return nil
-		}
-	}
-
-	output, err := Output(ctx, Python3("-m", "venv", venv))
-	if err != nil {
-		return fmt.Errorf("failed to create isolated emit venv at %s\n%s: %w", venv, createVenvHint, err)
-	}
-	if !output.Status.Success() {
-		stderr := strings.ToValidUTF8(string(output.Stderr), "�")
-		return fmt.Errorf("failed to create isolated emit venv at %s\n%s\n%s", venv, stderr, createVenvHint)
-	}
-	return nil
-}
 
 func resolveProjectPython(ctx context.Context, root, virtualEnv, condaPrefix string) (string, error) {
 	dotVenv := filepath.Join(root, ".venv")
@@ -224,32 +145,11 @@ func NodeProgram() string {
 	return nodeProgram()
 }
 
-// Python3 returns a command that runs Python 3 (`python3`, or `python` on
-// Windows when needed).
-func Python3(args ...string) *exec.Cmd {
-	return exec.Command(Python3Program(), args...)
-}
-
-// Python3Available reports whether a working Python 3 interpreter is on PATH.
-func Python3Available(ctx context.Context) bool {
-	return probeVersion(ctx, Python3Program())
-}
-
-// Python3Program returns the resolved Python 3 program name (also useful in
-// error messages).
+// Python3Program returns the resolved Python 3 program name. Deploy runs a
+// project's own interpreter ([ProjectPython]); tests use this one to create
+// the virtualenvs they run projects under.
 func Python3Program() string {
 	return python3Program()
-}
-
-// NpmBin resolves an npm-installed `.bin` shim, preferring the Windows `.cmd`
-// form.
-func NpmBin(binDir, name string) (string, bool) {
-	for _, candidate := range npmBinCandidates(binDir, name, isWindows) {
-		if isFile(candidate) {
-			return candidate, true
-		}
-	}
-	return "", false
 }
 
 // firstWorking returns the first candidate whose `--version` succeeds, else
@@ -284,17 +184,6 @@ func npxCandidates(windows bool) []string {
 		return []string{"npx.cmd", "npx"}
 	}
 	return []string{"npx"}
-}
-
-func npmBinCandidates(binDir, name string, windows bool) []string {
-	if windows {
-		return []string{
-			filepath.Join(binDir, name+".cmd"),
-			filepath.Join(binDir, name+".exe"),
-			filepath.Join(binDir, name),
-		}
-	}
-	return []string{filepath.Join(binDir, name)}
 }
 
 func python3Candidates(windows bool) []string {

@@ -104,7 +104,7 @@ registerHooks({
 });`))
 	p := typescriptProject(t, map[string]string{"agent.ts": tsAgent})
 
-	_, err := AgentAssistantID(t.Context(), p)
+	_, err := ReadAgentStaticConfig(t.Context(), p)
 
 	toolchain, openErr := openTypescriptToolchain(t.Context())
 	if openErr != nil {
@@ -125,7 +125,7 @@ func TestAProjectWithoutItsSDKIsAskedToInstallIt(t *testing.T) {
 	writeFiles(t, root, map[string]string{"package.json": `{"type": "module"}`, "agent.ts": tsAgent})
 	p := loadProject(t, root)
 
-	_, err := AgentAssistantID(t.Context(), p)
+	_, err := ReadAgentStaticConfig(t.Context(), p)
 
 	requireErrorPrefix(t, err, "cannot import the modules of "+p.Root+" to read its configuration: "+
 		"Error: cannot import managed-deepagents from "+p.Root+": ")
@@ -172,12 +172,12 @@ func TestModulesWritingToStdoutCannotCorruptTheDocument(t *testing.T) {
 			"agent = define_deep_agent(name='loud')\n",
 	})
 	for label, p := range map[string]*project.Project{"typescript": ts, "python": py} {
-		id, err := AgentAssistantID(t.Context(), p)
+		config, err := ReadAgentStaticConfig(t.Context(), p)
 		if err != nil {
 			t.Fatalf("%s: %v", label, err)
 		}
-		if id != "loud" {
-			t.Fatalf("%s: got %q", label, id)
+		if config.AssistantID != "loud" {
+			t.Fatalf("%s: got %q", label, config.AssistantID)
 		}
 	}
 }
@@ -203,12 +203,12 @@ func TestModulesImportWithTheProjectEnvUnderTheProcessEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	for label, p := range map[string]*project.Project{"typescript": ts, "python": py} {
-		id, err := AgentAssistantID(t.Context(), p)
+		config, err := ReadAgentStaticConfig(t.Context(), p)
 		if err != nil {
 			t.Fatalf("%s: %v", label, err)
 		}
-		if id != "dotenv-process" {
-			t.Fatalf("%s: got %q", label, id)
+		if config.AssistantID != "dotenv-process" {
+			t.Fatalf("%s: got %q", label, config.AssistantID)
 		}
 	}
 }
@@ -221,12 +221,12 @@ func TestThePythonHelperIgnoresPythonPath(t *testing.T) {
 	t.Setenv("PYTHONPATH", shadow)
 	p := pythonProject(t, map[string]string{"agent.py": pyAgent})
 
-	id, err := AgentAssistantID(t.Context(), p)
+	config, err := ReadAgentStaticConfig(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "agent" {
-		t.Fatalf("got %q", id)
+	if config.AssistantID != "agent" {
+		t.Fatalf("got %q", config.AssistantID)
 	}
 }
 
@@ -235,12 +235,12 @@ func TestThePythonHelperReadsItsRequestAsUTF8(t *testing.T) {
 	t.Setenv("LC_ALL", "en_US.ISO8859-1")
 	p := pythonProjectIn(t, filepath.Join(t.TempDir(), "agenté"), map[string]string{"agent.py": pyAgent})
 
-	id, err := AgentAssistantID(t.Context(), p)
+	config, err := ReadAgentStaticConfig(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "agent" {
-		t.Fatalf("got %q", id)
+	if config.AssistantID != "agent" {
+		t.Fatalf("got %q", config.AssistantID)
 	}
 }
 
@@ -288,7 +288,6 @@ func TestDocumentsDecodeStrictly(t *testing.T) {
 		"agent": map[string]any{"file": "agent.ts", "error": nil, "value": map[string]any{
 			"kind": "static", "name": map[string]any{"kind": "STATIC", "value": "agent"}, "model": nil,
 			"declares_disable_memory": false, "unsupported_keys": []any{}, "async_subagents": []any{},
-			"unreadable_subagents": 0,
 		}},
 		"identity": nil, "memory": nil, "sandbox": nil, "mcp": nil,
 		"legacy_connectors": []any{}, "channels": []any{}, "schedules": []any{},

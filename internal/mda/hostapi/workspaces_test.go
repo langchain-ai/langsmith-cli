@@ -128,16 +128,6 @@ func TestAWorkspaceWithoutAnIDIsNotAWorkspace(t *testing.T) {
 	}
 }
 
-func TestAgentPlatformReadyReadsTheWorkspaceConfig(t *testing.T) {
-	base := servePaths(t, map[string]reply{"/v1/platform/workspaces/current/info": {status: 200, body: `{"config":{"agent_platform_workspace_ready":true}}`}})
-	if !clientFor(t, base, "ws-1").AgentPlatformReady(t.Context()) {
-		t.Fatal("a ready workspace is not ready")
-	}
-	if clientFor(t, servePaths(t, nil), "ws-1").AgentPlatformReady(t.Context()) {
-		t.Fatal("an unknown workspace is ready")
-	}
-}
-
 func TestDashboardURLUsesTheAuthoritativeBYOCBase(t *testing.T) {
 	base := servePaths(t, map[string]reply{
 		"/v1/platform/workspaces/current/info": {status: 200, body: `{"dashboard_url":"https://aws.smith.langchain.com/"}`},

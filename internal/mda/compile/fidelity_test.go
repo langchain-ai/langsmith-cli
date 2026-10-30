@@ -4,37 +4,43 @@ import (
 	"flag"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 )
 
-// The generated build must match what the mda CLI writes for the same project
-// byte for byte. `testdata/fidelity/<name>` are fixture projects and
-// `testdata/fidelity/<name>.golden` the local build (`mda build`) the Rust CLI
-// wrote for each, with the project root replaced by `$ROOT`. Regenerate them
-// with a reference binary built from the Managed Deep Agents SDK:
+// The generated build must not change unnoticed. `testdata/fidelity/<name>`
+// are fixture projects and `testdata/fidelity/<name>.golden` their deploy
+// build ([CompileForDeploy]), with the project root replaced by `$ROOT`.
+// Regenerate them with
 //
-//	go test ./internal/mda/compile -run TestCompileMatchesTheMdaCLI -mda-binary=/path/to/mda
+//	go test ./internal/mda/compile -run TestCompileMatchesTheGoldens -update
 //
-// `package-lock.json` is left out: the Rust CLI resolves it from the npm
-// registry, and these tests stub it.
+// Until commit db46170 the goldens were the Rust CLI's local build
+// (`mda build`), which the Go port of that build matched byte for byte. Only
+// the deploy build is ported now, and no Rust command writes one offline, so
+// the goldens are the Go deploy build. It differs from those local builds
+// only where deploy does: the entry reads the Context Hub repo deploy names
+// instead of a local context root; `langgraph.json` keeps Studio auth and, for
+// Python, installs the vendored runtime and local packages itself, so the
+// manifests drop those requirements instead of pointing at `file://` and
+// editable copies; no dev server or devDependencies are installed; and the
+// vendored `__runtime__/package.json` lists the installed package's
+// dependencies, which the Rust CLI, shipping in lockstep with its runtime,
+// left to the managed stack it injects at the root.
 //
-// One difference is intended ([departFromTheMdaCLI]): the vendored
-// `__runtime__/package.json` lists the installed package's dependencies, which
-// the Rust CLI, shipping in lockstep with its runtime, left to the managed
-// stack it injects at the root.
+// `package-lock.json` is left out: it comes from the npm registry, and these
+// tests stub it.
 
-var mdaBinary = flag.String("mda-binary", "", "regenerate the fidelity goldens by running this mda CLI binary")
+var update = flag.Bool("update", false, "rewrite the fidelity goldens from the deploy build")
 
 const fidelityDir = "testdata/fidelity"
 
 // unmatchedArtifacts are the build files the goldens do not record.
 var unmatchedArtifacts = []string{"package-lock.json"}
 
-func TestCompileMatchesTheMdaCLI(t *testing.T) {
+func TestCompileMatchesTheGoldens(t *testing.T) {
 	entries, err := os.ReadDir(fidelityDir)
 	if err != nil {
 		t.Fatal(err)
@@ -46,26 +52,23 @@ func TestCompileMatchesTheMdaCLI(t *testing.T) {
 		name := entry.Name()
 		t.Run(name, func(t *testing.T) {
 			golden := filepath.Join(fidelityDir, name+".golden")
-			if *mdaBinary != "" {
-				reference := fidelityFixture(t, name)
-				runReferenceBuild(t, reference)
-				writeGolden(t, golden, normalizedBuild(t, reference))
-			}
 			f := fidelityFixture(t, name)
-			mustCompile(t, f.local)
+			mustCompile(t, f.deploy)
 			got := normalizedBuild(t, f)
+			if *update {
+				writeGolden(t, golden, got)
+			}
 			want := normalizedBuild(t, fixture{outDir: golden, project: f.project})
-			departFromTheMdaCLI(t, want, f.installation)
 			for _, rel := range sortedKeys(want) {
 				if got[rel] != want[rel] {
 					at := firstDifference(got[rel], want[rel])
-					t.Errorf("%s differs from the mda CLI's build at byte %d (mda %q, langsmith %q):\n--- mda\n%s\n--- langsmith\n%s",
+					t.Errorf("%s differs from the golden at byte %d (golden %q, build %q):\n--- golden\n%s\n--- build\n%s",
 						rel, at, excerpt(want[rel], at), excerpt(got[rel], at), want[rel], got[rel])
 				}
 			}
 			for _, rel := range sortedKeys(got) {
 				if _, ok := want[rel]; !ok {
-					t.Errorf("%s is not in the mda CLI's build", rel)
+					t.Errorf("%s is not in the golden", rel)
 				}
 			}
 		})
@@ -106,45 +109,6 @@ func fidelityFixture(t *testing.T, name string) fixture {
 		return pythonProjectAt(t, root, map[string]string{})
 	}
 	return typescriptProjectAt(t, root, map[string]string{"package.json": readFile(t, filepath.Join(root, "package.json"))})
-}
-
-// departFromTheMdaCLI makes the intended differences from the mda CLI's build
-// in want: the vendored npm runtime declares the installed package's
-// dependencies.
-func departFromTheMdaCLI(t *testing.T, want map[string]string, installation stubInstallation) {
-	t.Helper()
-	const rel = "__runtime__/package.json"
-	contents, ok := want[rel]
-	if !ok {
-		return
-	}
-	manifest, _, err := parseJSONObject([]byte(contents))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dependencies := newJSONObject()
-	for _, dep := range installation.manifest.Dependencies {
-		dependencies.insert(dep.Name, dep.Version)
-	}
-	manifest.insert("dependencies", dependencies)
-	want[rel] = prettyJSON(manifest) + "\n"
-}
-
-// runReferenceBuild builds f with the mda CLI at mdaBinary.
-func runReferenceBuild(t *testing.T, f fixture) {
-	t.Helper()
-	cmd := exec.Command(*mdaBinary, "build", f.root())
-	cmd.Env = append(os.Environ(),
-		"MDA_INSTALL_CHANNEL="+f.project.Language.Ident("npm", "pypi"),
-		"MDA_BUNDLED_RUNTIME_PATH="+f.installation.RuntimeSource(),
-		"MDA_RUNTIME_VERSION="+stubPackageVersion,
-		"MDA_TELEMETRY_DISABLED=1",
-		"DO_NOT_TRACK=1",
-	)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("mda build failed: %v\n%s", err, output)
-	}
 }
 
 // normalizedBuild reads every file of f's build, with f's root replaced by

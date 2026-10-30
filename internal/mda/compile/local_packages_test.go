@@ -11,20 +11,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-func TestIsVendoredPathSkipsInstallsCachesAndEnvFiles(t *testing.T) {
-	for path, want := range map[string]bool{
-		"src/index.ts":              true,
-		"dist/index.js":             true,
-		"node_modules/zod/index.js": false,
-		"pkg/__pycache__/a.pyc":     false,
-		".env":                      false,
-	} {
-		if got := IsVendoredPath(filepath.FromSlash(path)); got != want {
-			t.Fatalf("%s: got %v", path, got)
-		}
-	}
-}
-
 func TestUvPathSourcesSkipSourcesOutsideProjectDependencies(t *testing.T) {
 	sources, err := uvPathSources("[project]\n" +
 		"dependencies = [\"My_Dep[fast]>=1\"]\n\n" +
@@ -105,7 +91,7 @@ func TestCompileVendorsATypescriptLocalPackageAsAWorkspace(t *testing.T) {
 		t.Run(spec, func(t *testing.T) {
 			w := tsProjectWithLocalPackage(t, spec)
 
-			mustCompile(t, w.local)
+			mustCompile(t, w.deploy)
 
 			if !w.exists("__local__/dep/index.js") || !w.exists("__local__/dep/package.json") ||
 				w.exists("__local__/dep/node_modules") || w.exists("__local__/dep/.env") {
@@ -139,7 +125,7 @@ func TestCompileLeavesTypescriptLocalPackagesInsideTheProjectAlone(t *testing.T)
 	writeFile(t, w.root(), "packages/dep/package.json", `{"name":"dep","version":"1.0.0"}`)
 	w.reload(t)
 
-	mustCompile(t, w.local)
+	mustCompile(t, w.deploy)
 
 	if w.exists("__local__") {
 		t.Fatal("a package inside the project was vendored")
@@ -152,7 +138,7 @@ func TestCompileLeavesTypescriptLocalPackagesInsideTheProjectAlone(t *testing.T)
 func TestCompileRejectsAMissingLocalPackage(t *testing.T) {
 	w := tsProjectWithLocalPackage(t, "file:../missing")
 
-	_, err := w.local(t)
+	_, err := w.deploy(t)
 	if err == nil || err.Error() != "local package `dep` points to `../missing`, which does not exist" {
 		t.Fatalf("got %v", err)
 	}
@@ -166,7 +152,7 @@ func TestCompileVendorsNestedTypescriptLocalPackagesAsWorkspaces(t *testing.T) {
 		"other/index.js":     "export const other = 1;\n",
 	})
 
-	mustCompile(t, w.local)
+	mustCompile(t, w.deploy)
 
 	if !w.exists("__local__/other/index.js") {
 		t.Fatal("the nested package was not vendored")
@@ -189,7 +175,7 @@ func TestCompileCopiesASharedLocalPackageOnce(t *testing.T) {
 		"other/package.json": `{"name":"other"}`,
 	})
 
-	mustCompile(t, w.local)
+	mustCompile(t, w.deploy)
 
 	workspaces := w.readJSON(t, "package.json")["workspaces"]
 	if !reflect.DeepEqual(workspaces, []any{"__runtime__", "__local__/dep", "__local__/other"}) {
@@ -204,7 +190,7 @@ func TestCompileRejectsTwoLocalPackagesWithTheSameName(t *testing.T) {
 		"copy/package.json": `{"name":"dep"}`,
 	})
 
-	_, err := w.local(t)
+	_, err := w.deploy(t)
 	requireErrorContains(t, err, fmt.Sprintf("two different local packages are named `dep`: %s and %s",
 		filepath.Join(w.dir, "dep"), filepath.Join(w.dir, "copy")))
 }
@@ -213,7 +199,7 @@ func TestCompileRejectsALocalPackageDeclaredUnderAnotherName(t *testing.T) {
 	w := tsProjectWithLocalPackage(t, "file:../dep")
 	writeFile(t, w.dir, "dep/package.json", `{"name":"@acme/actual","version":"1.0.0","main":"index.js"}`)
 
-	_, err := w.local(t)
+	_, err := w.deploy(t)
 	if err == nil || err.Error() != "local package `dep` at `../dep` is named `@acme/actual` in its package.json; "+
 		"declare it as `@acme/actual`" {
 		t.Fatalf("got %v", err)
@@ -228,7 +214,7 @@ func TestCompileRejectsAProjectPackageThatDeclaresAPackageOutsideTheProject(t *t
 	})
 	w.reload(t)
 
-	_, err := w.local(t)
+	_, err := w.deploy(t)
 	if err == nil || err.Error() != "local package `shared` at `../../../shared` is declared by `"+
 		filepath.Join("packages", "dep")+"`, which is inside the project, but resolves outside it; "+
 		"move `shared` into the project" {
@@ -247,7 +233,7 @@ func TestCompileWarnsAboutTypescriptImportsOutsideTheProject(t *testing.T) {
 	})
 	w.reload(t)
 
-	summary := mustCompile(t, w.local)
+	summary := mustCompile(t, w.deploy)
 
 	var outside []string
 	for _, warning := range summary.Warnings {
@@ -270,7 +256,7 @@ func TestCompileLeavesALocalRuntimeDependencyToTheVendoredRuntime(t *testing.T) 
 		"runtime/package.json": `{"name":"managed-deepagents","version":"0.0.0"}`,
 	})
 
-	mustCompile(t, w.local)
+	mustCompile(t, w.deploy)
 
 	if w.exists("__local__") {
 		t.Fatal("the runtime was vendored as a local package")
@@ -320,30 +306,15 @@ func decodedTable(t *testing.T, doc map[string]any, path ...string) map[string]a
 	return doc
 }
 
-func TestCompilePointsAPythonLocalBuildAtTheVendoredLocalPackage(t *testing.T) {
-	w := pyProjectWithLocalPackage(t, "")
-
-	mustCompile(t, w.local)
-
-	if !w.exists("__local__/my-dep/my_dep/__init__.py") || w.exists("__local__/my-dep/.venv") ||
-		w.exists("__local__/my-dep/my_dep/__pycache__") {
-		t.Fatal("the local package was not vendored as expected")
-	}
-	pyproject := w.readToml(t, "pyproject.toml")
-	source := decodedTable(t, pyproject, "tool", "uv", "sources", "my-dep")
-	if source["path"] != "__local__/my-dep" || source["editable"] != true {
-		t.Fatalf("source: %v", source)
-	}
-	if !slices.Contains(decodedTable(t, pyproject, "project")["dependencies"].([]any), any("my-dep")) {
-		t.Fatalf("dependencies: %v", pyproject["project"])
-	}
-}
-
 func TestCompileForDeployInstallsAPythonLocalPackageFromLanggraphJSON(t *testing.T) {
 	w := pyProjectWithLocalPackage(t, "")
 
 	mustCompile(t, w.deploy)
 
+	if !w.exists("__local__/my-dep/my_dep/__init__.py") || w.exists("__local__/my-dep/.venv") ||
+		w.exists("__local__/my-dep/my_dep/__pycache__") {
+		t.Fatal("the local package was not vendored as expected")
+	}
 	if got := readJSON(t, w.read(t, "langgraph.json"))["dependencies"]; !reflect.DeepEqual(got,
 		[]any{".", "./__runtime__", "./__local__/my-dep"}) {
 		t.Fatalf("dependencies: %v", got)
@@ -367,7 +338,7 @@ func TestCompileLeavesALocalPythonRuntimeSourceToTheVendoredRuntime(t *testing.T
 		"[tool.uv.sources]\nmanaged_deepagents = { path = \"../runtime\" }\n")
 	writeFile(t, w.dir, "runtime/pyproject.toml", "[project]\nname = \"managed-deepagents\"\nversion = \"0.0.0\"\n")
 
-	mustCompile(t, w.local)
+	mustCompile(t, w.deploy)
 
 	if w.exists("__local__") {
 		t.Fatal("the runtime was vendored as a local package")
@@ -389,29 +360,14 @@ func nestedPythonLocalPackages(t *testing.T) workspace {
 	return w
 }
 
-func TestCompilePointsANestedPythonLocalPackageAtItsSiblingCopy(t *testing.T) {
-	w := nestedPythonLocalPackages(t)
-
-	mustCompile(t, w.local)
-
-	if !w.exists("__local__/other/other/__init__.py") {
-		t.Fatal("the nested package was not vendored")
-	}
-	want := "[project]\nname = \"my-dep\"\nversion = \"0.1.0\"\n" +
-		"dependencies = [\"httpx\", \"other\"]\n\n[tool.uv.sources]\nother = { path = \"../other\", editable = true }\n"
-	if got := w.read(t, "__local__/my-dep/pyproject.toml"); got != want {
-		t.Fatalf("__local__/my-dep/pyproject.toml:\n%s", got)
-	}
-	if _, ok := decodedTable(t, w.readToml(t, "pyproject.toml"), "tool", "uv", "sources")["other"]; ok {
-		t.Fatal("the nested package is a source of the project")
-	}
-}
-
 func TestCompileForDeployInstallsNestedPythonLocalPackagesFromLanggraphJSON(t *testing.T) {
 	w := nestedPythonLocalPackages(t)
 
 	mustCompile(t, w.deploy)
 
+	if !w.exists("__local__/other/other/__init__.py") {
+		t.Fatal("the nested package was not vendored")
+	}
 	if got := readJSON(t, w.read(t, "langgraph.json"))["dependencies"]; !reflect.DeepEqual(got,
 		[]any{".", "./__runtime__", "./__local__/my-dep", "./__local__/other"}) {
 		t.Fatalf("dependencies: %v", got)

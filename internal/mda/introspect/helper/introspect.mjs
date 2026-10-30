@@ -295,7 +295,6 @@ function readAgent(module) {
     declares_disable_memory: false,
     unsupported_keys: [],
     async_subagents: [],
-    unreadable_subagents: 0,
   };
   if (!("agent" in module)) return fields;
   const agent = module.agent;

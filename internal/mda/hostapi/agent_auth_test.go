@@ -54,50 +54,6 @@ func TestSaaSAgentAuthKeepsTheDirectPlatformRoute(t *testing.T) {
 	}
 }
 
-func TestResolveDeveloperPrincipalUsesDevProviderWithVerifiedLangSmithUser(t *testing.T) {
-	principalID := "11111111-1111-4111-8111-111111111111"
-	server := serveSequence(t,
-		reply{status: 200, body: `{"ls_user_id":"22222222-2222-4222-8222-222222222222","tenant_id":"workspace-1"}`},
-		reply{status: 201, body: `{"principal":{"id":"` + principalID + `"}}`},
-	)
-	c := newClient(t, apiKeyCLIClient(t, "personal-key", "workspace-1"), "http://unused.invalid", server.URL)
-
-	resolved, err := c.ResolveDeveloperPrincipal(t.Context())
-
-	if err != nil || resolved != (DeveloperPrincipal{PrincipalID: principalID, WorkspaceID: "workspace-1"}) {
-		t.Fatalf("resolved = %+v, %v", resolved, err)
-	}
-	requests := server.Requests()
-	if requests[0].Line() != "GET /auth" || requests[1].Line() != "POST /v1/agent-auth/principals" {
-		t.Fatalf("requests = %s, %s", requests[0].Line(), requests[1].Line())
-	}
-	if !jsonEqual(t, requests[1].JSON(t), `{"provider":"langsmith-dev","issuer":"workspace-1","subject":"22222222-2222-4222-8222-222222222222"}`) {
-		t.Fatalf("body = %s", requests[1].Body)
-	}
-}
-
-func TestSelfHostedDeveloperPrincipalUsesThePublicAuthRoutes(t *testing.T) {
-	server := serveSequence(t,
-		reply{status: 200, body: `{"ls_user_id":"22222222-2222-4222-8222-222222222222","tenant_id":"workspace-1"}`},
-		reply{status: 201, body: `{"principal":{"id":"11111111-1111-4111-8111-111111111111"}}`},
-	)
-	if _, err := selfHostedClientFor(t, server.URL, "").ResolveDeveloperPrincipal(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	requests := server.Requests()
-	if requests[0].Line() != "GET /api/v1/auth" || requests[1].Line() != "POST /api/v1/agent-auth/principals" {
-		t.Fatalf("requests = %s, %s", requests[0].Line(), requests[1].Line())
-	}
-}
-
-func TestResolveDeveloperPrincipalRejectsServiceKeyAuth(t *testing.T) {
-	server := serveOnce(t, 200, `{"tenant_id":"workspace-1","service_identity":"workspace"}`)
-	_, err := testClient(t, server.URL).ResolveDeveloperPrincipal(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "user memory, user-owned connections, and managed tools in `mda dev` require a LangSmith Personal Access Token (PAT)") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestCreateAgentConnectionForExistingDeploymentPostsAgentOwner(t *testing.T) {
 	server := serveOnce(t, 201, workspaceConnectionJSON("my-tavily-key"))
 

@@ -26,9 +26,9 @@
 // for byte what the mda CLI writes for the same project: JSON follows
 // `serde_json` with `preserve_order` and TOML edits follow `toml_edit`.
 //
-// Only the builds `langsmith deploy` and its connection checks run are ported:
-// [CompileForDeploy] and the local [Compile]. The mda CLI's in-place refresh
-// for `mda dev` and its eval builds are not.
+// Only the build `langsmith deploy` runs is ported: [CompileForDeploy]. The
+// mda CLI's local build (`mda build`, `mda dev`), its in-place refresh and its
+// eval builds are not.
 package compile
 
 import (
@@ -41,13 +41,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/introspect"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/proc"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/project"
-	"github.com/langchain-ai/langsmith-cli/internal/mda/ui"
 )
 
 // Installation is what compile needs of the installed `managed-deepagents`:
@@ -58,12 +58,6 @@ type Installation interface {
 	PackageVersion() string
 	RuntimeManifest() project.RuntimeManifest
 }
-
-// MemoryDecision is what memory a project has ([introspect.ResolveMemory]).
-type MemoryDecision = introspect.MemoryDecision
-
-// IdentitySummary is the root identity declaration of a project.
-type IdentitySummary = introspect.IdentitySummary
 
 // nodeVersion is the LangGraph Node.js runtime version targeted by compiled
 // TypeScript apps.
@@ -113,19 +107,13 @@ const LanggraphAPIVersionEnv = "MDA_LANGGRAPH_API_VERSION"
 // [LanggraphAPIVersionEnv].
 const LanggraphAPIVersion = "0.18.0.dev12"
 
-// LanggraphRuntimeInmemVersion is the in-memory runtime `mda dev` pairs with
-// [LanggraphAPIVersion]. A pre-release Agent Server pulls a pre-release
-// runtime, which uv only accepts when pinned explicitly, so this moves
-// together with the version above.
-const LanggraphRuntimeInmemVersion = "0.38.0.dev12"
-
 // resolveLanggraphAPIVersion resolves the langgraph-api version stem for
 // `_INTERNAL_docker_tag`.
 //
 // Prefers a non-empty overrideStem (typically from [LanggraphAPIVersionEnv]);
 // otherwise the default.
 func resolveLanggraphAPIVersion(overrideStem string) (string, error) {
-	raw := strings.TrimFunc(overrideStem, isRustWhitespace)
+	raw := strings.TrimSpace(overrideStem)
 	if raw == "" {
 		return LanggraphAPIVersion, nil
 	}
@@ -141,7 +129,7 @@ func ResolvedLanggraphAPIVersion() (string, error) {
 // validateLanggraphAPIVersionStem rejects empty, whitespace-containing, or
 // fully-qualified tag values.
 func validateLanggraphAPIVersionStem(stem string) (string, error) {
-	if strings.IndexFunc(stem, isRustWhitespace) >= 0 {
+	if strings.IndexFunc(stem, unicode.IsSpace) >= 0 {
 		return "", fmt.Errorf("%s must not contain whitespace (got %q)", LanggraphAPIVersionEnv, stem)
 	}
 	if strings.Contains(stem, "/") || strings.Contains(stem, "-node") || strings.Contains(stem, "-py") {
@@ -180,7 +168,7 @@ type ResolvedPython struct {
 func resolvePythonVersion(requiresPython, configuredVersion, envOverride *string) (ResolvedPython, error) {
 	spec := ""
 	if requiresPython != nil {
-		spec = strings.TrimFunc(*requiresPython, isRustWhitespace)
+		spec = strings.TrimSpace(*requiresPython)
 	}
 	var specifiers []versionSpecifier
 	if spec != "" {
@@ -194,12 +182,12 @@ func resolvePythonVersion(requiresPython, configuredVersion, envOverride *string
 	var raw, source string
 	explicit := false
 	if envOverride != nil {
-		if value := strings.TrimFunc(*envOverride, isRustWhitespace); value != "" {
+		if value := strings.TrimSpace(*envOverride); value != "" {
 			raw, source, explicit = value, PythonVersionEnv, true
 		}
 	}
 	if !explicit && configuredVersion != nil {
-		raw, source, explicit = strings.TrimFunc(*configuredVersion, isRustWhitespace), "[tool.mda] python-version", true
+		raw, source, explicit = strings.TrimSpace(*configuredVersion), "[tool.mda] python-version", true
 	}
 	var selected pythonSeries
 	switch {
@@ -396,13 +384,9 @@ const runtimePackage = project.UserRuntimePackage
 
 // CompileSummary is the summary of a successful compilation.
 type CompileSummary struct {
-	OutDir string
 	// Copied are the user files carried into the build verbatim, relative to
 	// the root.
 	Copied []string
-	// AssistantID is the LangGraph `graphs` key / assistant id from the
-	// authored name.
-	AssistantID string
 	// Connectors are the connector modules (the `tools/mcp.{ts,py}`
 	// declaration), relative to the root. Their HTTP routes are enumerated at
 	// runtime, not here.
@@ -410,20 +394,6 @@ type CompileSummary struct {
 	// Channels are the channel modules discovered under `channels/`, relative
 	// to the root.
 	Channels []string
-	// ChannelProviders are the first-party ingress channel providers
-	// (`slack`, `github`) those modules declare, sorted.
-	ChannelProviders []string
-	// Identity is the root `identity.{ts,py}` declaration, when present.
-	Identity *IdentitySummary
-	// Memory is what durable memory this project declares. Reports scope and
-	// file only — never memory contents.
-	Memory MemoryDecision
-	// Sandbox reports whether the project uses a managed sandbox: a
-	// declaration, or a factory `setup.sh` recipe.
-	Sandbox bool
-	// HasSkills reports whether deploy-owned skills were synced into the
-	// Context Hub mock / repo.
-	HasSkills bool
 	// ScheduleCrons are the managed schedules discovered under `schedules/`,
 	// keyed by file-derived name.
 	ScheduleCrons ScheduleCrons
@@ -431,29 +401,6 @@ type CompileSummary struct {
 	// caller to render in its own idiom. Compile never prints them itself: it
 	// runs inside a spinner under `langsmith deploy`.
 	Warnings []string
-}
-
-func buildResultItems(outDir, projectPath string, warnings []string) []ui.SequenceItem {
-	command := func(program, verb string) string {
-		if projectPath == "." {
-			return program + " " + verb
-		}
-		return program + " " + verb + " " + projectPath
-	}
-	items := []ui.SequenceItem{ui.NewSection("Managed app compiled", outDir)}
-	if len(warnings) > 0 {
-		items = append(items, ui.NewSection("Build warnings", warnings...))
-	}
-	return append(items,
-		ui.NewSection("Run locally", command("mda", "dev")),
-		ui.NewSection("Deploy when ready", command("langsmith", "deploy")),
-	)
-}
-
-// ShowBuildSummary shows the compiled app and the same action headings used by
-// `mda init`.
-func ShowBuildSummary(summary *CompileSummary, projectPath string) error {
-	return ui.ShowSequence(buildResultItems(summary.OutDir, projectPath, summary.Warnings))
 }
 
 // DeployContext is the Context Hub metadata the generated deploy entry passes
@@ -466,34 +413,6 @@ type DeployContext struct {
 	HasSkills bool
 }
 
-// Compile compiles p into outDir for a local build, replacing any previous
-// build output. The Python `file://` dependency points at the canonicalized
-// outDir.
-func Compile(ctx context.Context, p *project.Project, outDir string, installation Installation) (*CompileSummary, error) {
-	// One decision, read before the hub is touched: it gates the local
-	// hot-file seed *and* what the generated entry mounts.
-	memory, err := introspect.ResolveMemory(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-	hub, err := project.EnsureLocalContextHub(p, memory.AgentEnabled())
-	if err != nil {
-		return nil, err
-	}
-	if !utf8.ValidString(hub.Root) {
-		return nil, fmt.Errorf("non-UTF-8 local Context Hub path %s", hub.Root)
-	}
-	apiVersion, err := ResolvedLanggraphAPIVersion()
-	if err != nil {
-		return nil, err
-	}
-	return compileInner(ctx, p, outDir, runtimeContext{
-		kind:        runtimeContextLocal,
-		contextRoot: hub.Root,
-		hasSkills:   hub.HasSkills,
-	}, installation, memory, apiVersion)
-}
-
 // Compilation reports an unclassified compile failure as `compilation`,
 // keeping its causes so a child's stderr still reaches the error record. A
 // cancellation passes through unchanged.
@@ -501,8 +420,9 @@ func Compilation(err error) error {
 	return errs.CategorizeUnclassified(errs.Compilation, err)
 }
 
-// CompileForDeploy compiles p for deployment, replacing local embedded context
-// with Context Hub metadata consumed by the deployed runtime.
+// CompileForDeploy compiles p into outDir for deployment, replacing any
+// previous build output. The generated entry reads the agent's instructions,
+// skills and memories from the Context Hub repo deploy names.
 func CompileForDeploy(
 	ctx context.Context,
 	p *project.Project,
@@ -510,52 +430,15 @@ func CompileForDeploy(
 	deploy DeployContext,
 	installation Installation,
 ) (*CompileSummary, error) {
-	memory, err := introspect.ResolveMemory(ctx, p)
-	if err != nil {
+	// Rejects the retired memory knobs before the build directory is touched.
+	if _, err := introspect.ResolveMemory(ctx, p); err != nil {
 		return nil, err
 	}
 	apiVersion, err := ResolvedLanggraphAPIVersion()
 	if err != nil {
 		return nil, err
 	}
-	return compileInner(ctx, p, outDir, runtimeContext{
-		kind:      runtimeContextContextHub,
-		repo:      deploy.Repo,
-		hasSkills: deploy.HasSkills,
-	}, installation, memory, apiVersion)
-}
-
-// ConnectorRequirementsForProject emits connector requirements for deploy and
-// connection checks.
-//
-// Runs a full local compile first so connector modules and the vendored
-// runtime are materialized in outDir before requirements are emitted.
-func ConnectorRequirementsForProject(
-	ctx context.Context,
-	p *project.Project,
-	outDir string,
-	installation Installation,
-) (ConnectorRequirements, error) {
-	summary, err := Compile(ctx, p, outDir, installation)
-	if err != nil {
-		return nil, err
-	}
-	return introspect.EmitConnectorRequirementsForEntries(ctx, p, outDir, summary.Connectors)
-}
-
-// McpConnectionEntriesForProject compiles p locally and emits its MCP
-// connection entries.
-func McpConnectionEntriesForProject(
-	ctx context.Context,
-	p *project.Project,
-	outDir string,
-	installation Installation,
-) ([]McpConnectionEntry, error) {
-	summary, err := Compile(ctx, p, outDir, installation)
-	if err != nil {
-		return nil, err
-	}
-	return introspect.EmitMcpConnectionEntriesForEntries(ctx, p, outDir, summary.Connectors)
+	return compileInner(ctx, p, outDir, deploy, installation, apiVersion)
 }
 
 // writeModule writes a generated module, reporting a failure as what.
@@ -570,9 +453,8 @@ func compileInner(
 	ctx context.Context,
 	p *project.Project,
 	outDir string,
-	context runtimeContext,
+	deploy DeployContext,
 	installation Installation,
-	memory MemoryDecision,
 	apiVersion string,
 ) (*CompileSummary, error) {
 	// Validate first: prepareOutDir clears existing files.
@@ -632,26 +514,7 @@ func compileInner(
 		warnings = append(warnings, warning)
 	}
 	warnings = append(warnings, outsideImports...)
-	shapeWarnings, err := projectWarnings(p, memory, context, agent.IsFactory)
-	if err != nil {
-		return nil, err
-	}
-	warnings = append(warnings, shapeWarnings...)
-	if agent.UnreadableSubagents > 0 {
-		rule := p.Language.Ident(
-			"An async subagent (`async: true`) must be an object literal, or a name "+
-				"bound to one, in `subagents: [...]`.",
-			"An async subagent (`\"async\": True`) must be a dict literal, or a name "+
-				"bound to one, in `subagents=[...]`. Annotate a name spread there that holds "+
-				"only sync subagents as `list[SubAgent]`.",
-		)
-		plural := "ies"
-		if agent.UnreadableSubagents == 1 {
-			plural = "y"
-		}
-		warnings = append(warnings, fmt.Sprintf("%d subagent entr%s in %s could not be read without running it. %s",
-			agent.UnreadableSubagents, plural, p.AgentFile, rule))
-	}
+	warnings = append(warnings, projectWarnings(p, agent.IsFactory)...)
 	if err := introspect.RejectRemovedSandboxScope(ctx, p); err != nil {
 		return nil, err
 	}
@@ -718,7 +581,7 @@ func compileInner(
 	entrySource := generateEntry(p.Language, entryInputs{
 		agentImport:      agentImport,
 		factory:          agent.IsFactory,
-		context:          context,
+		deploy:           deploy,
 		sandboxImport:    sandboxImport,
 		sandboxSetup:     sandboxSetup,
 		connectorsImport: connectorsImport,
@@ -805,27 +668,20 @@ func compileInner(
 		}
 		pythonVersion = python.Version
 	}
-	var deployLocalPackages []string
-	if context.kind == runtimeContextContextHub {
-		for _, pkg := range localPackages {
-			deployLocalPackages = append(deployLocalPackages, pkg.BuildDir())
-		}
+	var localPackageDirs []string
+	for _, pkg := range localPackages {
+		localPackageDirs = append(localPackageDirs, pkg.BuildDir())
 	}
 	langgraph := generateLanggraphJSON(langgraphManifestInputs{
-		graph:                  graph,
-		language:               p.Language,
-		apiVersion:             apiVersion,
-		pythonVersion:          pythonVersion,
-		authPath:               authPath,
-		managedHTTPPath:        managedHTTPPath,
-		assistantID:            assistantID,
-		includeVendoredRuntime: context.kind == runtimeContextContextHub,
-		localPackages:          deployLocalPackages,
-		// Local builds turn off the Studio auth scheme: the dev server hands
-		// out Studio identity on `x-auth-scheme: langsmith` alone, with no
-		// credential check, and `MDA_LOCAL_DEV` already unscopes local Studio.
-		disableStudioAuth: context.kind == runtimeContextLocal,
-		extraGraphs:       extraGraphs,
+		graph:           graph,
+		language:        p.Language,
+		apiVersion:      apiVersion,
+		pythonVersion:   pythonVersion,
+		authPath:        authPath,
+		managedHTTPPath: managedHTTPPath,
+		assistantID:     assistantID,
+		localPackages:   localPackageDirs,
+		extraGraphs:     extraGraphs,
 	})
 	// Avoid bumping mtime when the manifest is unchanged.
 	if err := writeModule(filepath.Join(outDir, "langgraph.json"), langgraph, "langgraph.json"); err != nil {
@@ -838,32 +694,26 @@ func compileInner(
 		}
 	}
 
-	isDev := context.kind == runtimeContextLocal
-	mode := runtimePathDeploy
-	if isDev {
-		mode = runtimePathAbsoluteDev
-	}
-
 	// Inject the inferred dependency stack (the LangChain/LangGraph runtime
 	// plus the chat-model provider implied by the agent's `model`) into the
 	// build manifest. Authors only declare `managed-deepagents` and
 	// `deepagents`; everything else is managed and never written into their
 	// source.
 	runtimeDeps := installation.RuntimeManifest().Dependencies
-	if err := injectManagedDependencies(p, outDir, isDev, agent.Model, browserImport != "", runtimeDeps); err != nil {
+	if err := injectManagedDependencies(p, outDir, agent.Model, browserImport != "", runtimeDeps); err != nil {
 		return nil, err
 	}
 
 	if err := vendorRuntime(p.Language, installation, outDir); err != nil {
 		return nil, err
 	}
-	if err := rewriteRuntimeDependency(p.Language, outDir, mode); err != nil {
+	if err := rewriteRuntimeDependency(p.Language, outDir); err != nil {
 		return nil, err
 	}
-	if err := vendorLocalPackages(p.Language, localPackages, outDir, mode); err != nil {
+	if err := vendorLocalPackages(p.Language, localPackages, outDir); err != nil {
 		return nil, err
 	}
-	if err := rewriteLocalPackageDependencies(p.Language, outDir, localPackages, mode); err != nil {
+	if err := rewriteLocalPackageDependencies(p.Language, outDir, localPackages); err != nil {
 		return nil, err
 	}
 
@@ -872,14 +722,12 @@ func compileInner(
 		// Drop devDependencies before materializing the lockfile so remote
 		// `npm ci` does not pull platform-skewed optional peers (e.g.
 		// @emnapi/*).
-		if !isDev {
-			if err := stripPackageJSONDevDependencies(outDir); err != nil {
+		if err := stripPackageJSONDevDependencies(outDir); err != nil {
+			return nil, err
+		}
+		for _, pkg := range localPackages {
+			if err := stripPackageJSONDevDependencies(filepath.Join(outDir, filepath.FromSlash(pkg.BuildDir()))); err != nil {
 				return nil, err
-			}
-			for _, pkg := range localPackages {
-				if err := stripPackageJSONDevDependencies(filepath.Join(outDir, filepath.FromSlash(pkg.BuildDir()))); err != nil {
-					return nil, err
-				}
 			}
 		}
 		if err := generateLockfile(ctx, outDir); err != nil {
@@ -888,18 +736,11 @@ func compileInner(
 	}
 
 	return &CompileSummary{
-		OutDir:           outDir,
-		Copied:           copied,
-		AssistantID:      assistantID,
-		Connectors:       connectorEntries,
-		Channels:         channelEntries,
-		ChannelProviders: channelScan.Providers,
-		Identity:         identity,
-		Memory:           memory,
-		Sandbox:          hasSandbox || recipe != nil,
-		HasSkills:        context.hasSkills,
-		ScheduleCrons:    scheduleCrons,
-		Warnings:         warnings,
+		Copied:        copied,
+		Connectors:    connectorEntries,
+		Channels:      channelEntries,
+		ScheduleCrons: scheduleCrons,
+		Warnings:      warnings,
 	}, nil
 }
 

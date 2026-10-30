@@ -28,12 +28,6 @@ func Failed(category ErrorCategory) CommandCompletion {
 	return CommandCompletion{outcome: failed, category: category}
 }
 
-// FailedCategory returns the failure's category, and false for a command that
-// did not fail.
-func (c CommandCompletion) FailedCategory() (ErrorCategory, bool) {
-	return c.category, c.outcome == failed
-}
-
 func (c CommandCompletion) String() string {
 	switch c.outcome {
 	case succeeded:

@@ -12,9 +12,8 @@ import (
 //
 // Durable memory is opt-in and owned by one root module: a project with no
 // `memory.{ts,tsx,mts,cts,py}` mounts nothing, whatever identity says. This is
-// the single place build, deploy, and dev ask "does this project have memory",
-// so the generated entry, the Context Hub seed, and the CLI summary can never
-// disagree.
+// the single place compile and deploy ask "does this project have memory", so
+// the generated entry and the Context Hub seed can never disagree.
 //
 // The helper imports the memory module and classifies the exported `memory`
 // value. An unusable value is a hard error rather than an unknown: deploy seeds
@@ -45,15 +44,9 @@ type MemoryDecision struct {
 	Declared *MemorySummary
 }
 
-// AgentEnabled reports whether deploy and dev should seed the shared agent
-// layer.
+// AgentEnabled reports whether deploy should seed the shared agent layer.
 func (d MemoryDecision) AgentEnabled() bool {
 	return d.Declared != nil && d.Declared.Scope.Agent
-}
-
-// UserEnabled reports whether runs mount caller-scoped memory.
-func (d MemoryDecision) UserEnabled() bool {
-	return d.Declared != nil && d.Declared.Scope.User
 }
 
 // ResolveMemory resolves the project's memory decision, rejecting the retired
@@ -61,7 +54,7 @@ func (d MemoryDecision) UserEnabled() bool {
 //
 // The legacy checks live here rather than at each call site so a project can
 // never end up with two answers to "which layers does a run mount": whichever
-// entry point asks (build, deploy, dev) gets the same error.
+// asks (compile, deploy) gets the same error.
 func ResolveMemory(ctx context.Context, p *project.Project) (MemoryDecision, error) {
 	if err := assertNoLegacyMemoryConfig(ctx, p); err != nil {
 		return MemoryDecision{}, err

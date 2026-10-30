@@ -94,12 +94,11 @@ func TestTomlInsertResetsAnExistingKeysFormatting(t *testing.T) {
 	table := item.(*tomlTable)
 	source := &tomlInlineTable{}
 	source.items.put(newTomlKey("path"), newTomlString("y"))
-	source.items.put(newTomlKey("editable"), newTomlBool(true))
 
 	table.insertItem("dep", source)
 	table.insertItem("new key", newTomlString("it's"))
 
-	if got := doc.String(); got != "[sources]\ndep = { path = \"y\", editable = true }\nother = 1\n\"new key\" = \"it's\"\n" {
+	if got := doc.String(); got != "[sources]\ndep = { path = \"y\" }\nother = 1\n\"new key\" = \"it's\"\n" {
 		t.Fatalf("got %q", got)
 	}
 }

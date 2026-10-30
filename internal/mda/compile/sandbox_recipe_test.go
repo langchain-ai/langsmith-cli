@@ -25,8 +25,8 @@ func TestARecipeRecordsTheBakeBasesAndSetupDigest(t *testing.T) {
 
 	image, registry := "ghcr.io/acme/base:1", "ghcr.io\x00octocat\x00GHCR_TOKEN"
 	capacity := uint64(2 << 30)
-	digest := deployment.RecipeDigest([]byte("echo ready\n"), nil, nil, &image, &registry, &capacity)
-	preview := deployment.RecipeDigest([]byte("echo ready\n"), nil, nil, nil, nil, nil)
+	digest := deployment.RecipeInputs{Setup: []byte("echo ready\n"), DockerImage: &image, Registry: &registry, FsCapacityBytes: &capacity}.Digest()
+	preview := deployment.RecipeInputs{Setup: []byte("echo ready\n")}.Digest()
 	want := "{\n  \"hasSetupScript\": true,\n  \"setupShaPreview\": \"" + preview + "\",\n" +
 		"  \"snapshotName\": null,\n  \"snapshotId\": null,\n  \"dockerImage\": \"ghcr.io/acme/base:1\",\n" +
 		"  \"registry\": {\n    \"url\": \"ghcr.io\",\n    \"username\": \"octocat\",\n    \"passwordEnv\": \"GHCR_TOKEN\"\n  },\n" +
@@ -48,7 +48,7 @@ func TestAFactorySetupScriptWithoutADeclarationBakesOnTheDefaultImage(t *testing
 		t.Fatal(err)
 	}
 
-	digest := deployment.RecipeDigest([]byte("echo ready\n"), nil, nil, nil, nil, nil)
+	digest := deployment.RecipeInputs{Setup: []byte("echo ready\n")}.Digest()
 	want := &SandboxRecipeManifest{HasSetupScript: true, SetupShaPreview: &digest, Digest: digest}
 	if !reflect.DeepEqual(manifest, want) {
 		t.Fatalf("got %+v", manifest)

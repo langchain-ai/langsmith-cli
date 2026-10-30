@@ -6,9 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/langchain-ai/langsmith-cli/internal/mda/introspect"
-	"github.com/langchain-ai/langsmith-cli/internal/mda/project"
 )
 
 func TestCompilePreservesExecutablePermissionsOnCopiedHelpers(t *testing.T) {
@@ -39,27 +36,5 @@ func TestCompilePreservesExecutablePermissionsOnCopiedHelpers(t *testing.T) {
 	}
 	if mode() != 0o755 {
 		t.Fatalf("mode %v", mode())
-	}
-}
-
-func TestSymlinksDoNotCountAsMemory(t *testing.T) {
-	root := t.TempDir()
-	writeFiles(t, root, map[string]string{
-		"instructions.md":          "instructions",
-		"outside/notes.md":         "fixture data",
-		"memories/agent/AGENTS.md": "",
-	})
-	for link, target := range map[string]string{"linked": "outside", "notes.md": "outside/notes.md"} {
-		if err := os.Symlink(filepath.Join(root, target), filepath.Join(root, "memories", "agent", link)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got := warnings(t, diagnosticsProject(root, project.Python),
-		introspect.MemoryDecision{Declared: &introspect.MemorySummary{Path: "memory.py", Scope: introspect.MemoryLayers{Agent: true}}},
-		local(root), false)
-
-	if len(got) != 1 {
-		t.Fatalf("got %q", got)
 	}
 }

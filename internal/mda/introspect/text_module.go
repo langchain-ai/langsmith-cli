@@ -105,28 +105,6 @@ func lexTypescript(ctx context.Context, sources []string) ([]lexedFile, error) {
 	return doc.Files, nil
 }
 
-// InlineTextModules inlines every text-module import found in source.
-//
-// fileName is used for error messages. resolveDir is the directory the
-// importing file lives in, against which relative import specifiers are
-// resolved.
-//
-// Returns the rewritten source, or the original source unchanged when there are
-// no text-module imports.
-//
-// Every TypeScript file in the project passes through here, so syntax errors are
-// deliberately not reported: a source the lexer cannot read is copied verbatim
-// and the language toolchain that compiles it produces the authoritative
-// diagnostic. Imports the lexer never sees stay in the output as written.
-func InlineTextModules(ctx context.Context, source, fileName, resolveDir string) (string, error) {
-	lexed, err := lexTypescript(ctx, []string{source})
-	if err != nil {
-		return "", err
-	}
-	inlined, _, err := inlineTextModules(source, fileName, resolveDir, lexed[0])
-	return inlined, err
-}
-
 // inlineTextModules rewrites the text-module imports of lexed in source and
 // returns the imports it rewrote.
 func inlineTextModules(source, fileName, resolveDir string, lexed lexedFile) (string, []lexedImport, error) {
@@ -231,17 +209,24 @@ type TypescriptSource struct {
 
 // TypescriptTransform is a [TypescriptSource] as the build gets it.
 type TypescriptTransform struct {
-	// Source has its text-module imports inlined ([InlineTextModules]).
+	// Source has its text-module imports inlined, or is the original source
+	// when it has none.
 	Source string
 	// OutsideImports are the relative imports of Source that resolve outside
-	// the project root ([TypescriptImportsOutsideRoot]).
+	// the project root. Type-only imports are skipped because they are erased.
 	OutsideImports []string
 }
 
 // TransformTypescriptSources inlines the text modules of every source and lists
-// the imports of the result that leave the project root, in one helper run: the
-// batch form of [InlineTextModules] followed by [TypescriptImportsOutsideRoot],
-// as compile applies them to each file it copies.
+// the imports of the result that leave the project root, in one helper run, as
+// compile applies them to each file it copies. A text-module import resolves
+// against the importing file's ResolveDir; errors name its Rel.
+//
+// Every TypeScript file in the project passes through here, so syntax errors are
+// deliberately not reported: a source the lexer cannot read is copied verbatim
+// and has no imports, and the language toolchain that compiles it produces the
+// authoritative diagnostic. Imports the lexer never sees stay in the output as
+// written.
 func TransformTypescriptSources(ctx context.Context, sources []TypescriptSource) ([]TypescriptTransform, error) {
 	if len(sources) == 0 {
 		return nil, nil

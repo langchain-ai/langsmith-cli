@@ -3,7 +3,7 @@
 name = "support-bot"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["managed-deepagents @ file://$ROOT/.mda/build/__runtime__",  # the SDK
+dependencies = [  # the SDK
     "httpx>=0.28",
     "langchain_openai>=1.0",
     "deepagents>=0.7.30,<1",
@@ -15,9 +15,7 @@ dependencies = ["managed-deepagents @ file://$ROOT/.mda/build/__runtime__",  # t
     "pyjwt[crypto]>=2.8.0",
     "fastmcp>=4.0.10,<5",
     "mcp>=2.2.0,<3",
-    "langsmith>=0.10.17",
-    "langgraph-cli[inmem]>=0.4.36",
-    "langgraph-api>=0.16.0"
+    "langsmith>=0.10.17"
 ]
 
 [project.optional-dependencies]

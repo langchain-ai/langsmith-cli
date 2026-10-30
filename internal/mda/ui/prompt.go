@@ -230,22 +230,17 @@ func (c *ConfirmPrompt) render(theme theme, state themeState) string {
 
 // InputPrompt asks for a line of text.
 type InputPrompt struct {
-	prompt       string
-	text         *stringCursor
-	required     bool
-	defaultInput string
-	hasDefault   bool
-	placeholder  *stringCursor
-	validator    Validator
+	prompt      string
+	text        *stringCursor
+	placeholder *stringCursor
+	validator   Validator
 }
 
-// Input returns a text prompt. An answer is required unless [InputPrompt.Required]
-// says otherwise.
+// Input returns a text prompt. An empty answer is refused.
 func Input(prompt string) *InputPrompt {
 	return &InputPrompt{
 		prompt:      prompt,
 		text:        newStringCursor(""),
-		required:    true,
 		placeholder: newStringCursor(""),
 	}
 }
@@ -253,19 +248,6 @@ func Input(prompt string) *InputPrompt {
 // Placeholder sets the dimmed hint shown while the input is empty.
 func (i *InputPrompt) Placeholder(placeholder string) *InputPrompt {
 	i.placeholder = newStringCursor(placeholder)
-	return i
-}
-
-// DefaultInput sets the answer an empty input submits, shown as the
-// placeholder unless one is set.
-func (i *InputPrompt) DefaultInput(value string) *InputPrompt {
-	i.defaultInput, i.hasDefault = value, true
-	return i
-}
-
-// Required sets whether an empty answer is refused when there is no default.
-func (i *InputPrompt) Required(required bool) *InputPrompt {
-	i.required = required
 	return i
 }
 
@@ -296,12 +278,7 @@ func (i *InputPrompt) on(key tea.KeyMsg) themeState {
 		return activeState
 	}
 	if i.text.isEmpty() {
-		if i.hasDefault {
-			i.text = newStringCursor(i.defaultInput)
-			i.text.moveEnd()
-		} else if i.required {
-			return errorState("Input required")
-		}
+		return errorState("Input required")
 	}
 	if state, ok := validate(i.validator, i.text.String()); !ok {
 		return state
@@ -312,26 +289,20 @@ func (i *InputPrompt) on(key tea.KeyMsg) themeState {
 func (i *InputPrompt) render(theme theme, state themeState) string {
 	body := theme.formatInput(state, i.text)
 	if i.text.isEmpty() {
-		placeholder := i.placeholder
-		if placeholder.isEmpty() && i.hasDefault {
-			placeholder = newStringCursor(i.defaultInput + " (default)")
-		}
-		body = theme.formatPlaceholder(state, placeholder)
+		body = theme.formatPlaceholder(state, i.placeholder)
 	}
 	return theme.formatHeader(state, i.prompt) + body + theme.formatFooterWithMessage(state, "")
 }
 
 // PasswordPrompt asks for a secret, masking what is typed.
 type PasswordPrompt struct {
-	prompt     string
-	mask       rune
-	text       *stringCursor
-	allowEmpty bool
-	validator  Validator
+	prompt    string
+	mask      rune
+	text      *stringCursor
+	validator Validator
 }
 
-// Password returns a masked prompt. An empty answer is refused unless
-// [PasswordPrompt.AllowEmpty] is set.
+// Password returns a masked prompt. An empty answer is refused.
 func Password(prompt string) *PasswordPrompt {
 	return &PasswordPrompt{prompt: prompt, mask: symbolPasswordMask, text: newStringCursor("")}
 }
@@ -339,12 +310,6 @@ func Password(prompt string) *PasswordPrompt {
 // Mask sets the character shown for each typed one, like `•`.
 func (p *PasswordPrompt) Mask(mask rune) *PasswordPrompt {
 	p.mask = mask
-	return p
-}
-
-// AllowEmpty accepts an empty answer.
-func (p *PasswordPrompt) AllowEmpty() *PasswordPrompt {
-	p.allowEmpty = true
 	return p
 }
 
@@ -376,7 +341,7 @@ func (p *PasswordPrompt) on(key tea.KeyMsg) themeState {
 	if key.Type != tea.KeyEnter {
 		return activeState
 	}
-	if p.text.isEmpty() && !p.allowEmpty {
+	if p.text.isEmpty() {
 		return errorState("Input required")
 	}
 	if state, ok := validate(p.validator, p.text.String()); !ok {
@@ -394,10 +359,9 @@ func (p *PasswordPrompt) render(theme theme, state themeState) string {
 // SelectPrompt asks for one of a list of options.
 type SelectPrompt[T comparable] struct {
 	noInput
-	prompt       string
-	items        []selectItem[T]
-	cursor       int
-	initialValue *T
+	prompt string
+	items  []selectItem[T]
+	cursor int
 }
 
 type selectItem[T comparable] struct {
@@ -418,12 +382,6 @@ func (s *SelectPrompt[T]) Item(value T, label, hint string) *SelectPrompt[T] {
 	return s
 }
 
-// InitialValue highlights the option with value first.
-func (s *SelectPrompt[T]) InitialValue(value T) *SelectPrompt[T] {
-	s.initialValue = &value
-	return s
-}
-
 // Interact asks on the default terminal.
 func (s *SelectPrompt[T]) Interact(ctx context.Context) (T, error) {
 	return s.InteractOn(ctx, Default())
@@ -434,14 +392,6 @@ func (s *SelectPrompt[T]) InteractOn(ctx context.Context, t *Terminal) (T, error
 	var zero T
 	if len(s.items) == 0 {
 		return zero, errors.New("no items added to the list")
-	}
-	if s.initialValue != nil {
-		for index, item := range s.items {
-			if item.value == *s.initialValue {
-				s.cursor = index
-				break
-			}
-		}
 	}
 	if err := t.interact(ctx, s); err != nil {
 		return zero, err
@@ -476,36 +426,4 @@ func (s *SelectPrompt[T]) render(theme theme, state themeState) string {
 		rendered += theme.formatSelectItem(state, index == s.cursor, item.label, item.hint)
 	}
 	return rendered + theme.formatFooterWithMessage(state, "")
-}
-
-// awaitEnter is a prompt that only waits for Enter, then leaves nothing
-// behind.
-type awaitEnter struct {
-	noInput
-	prompt string
-}
-
-// AwaitEnter shows prompt (like `◆  Press Enter to open your browser`) on t
-// and waits for Enter, then erases it.
-func (t *Terminal) AwaitEnter(ctx context.Context, prompt string) error {
-	return t.interact(ctx, &awaitEnter{prompt: prompt})
-}
-
-// AwaitEnter waits for Enter on the default terminal.
-func AwaitEnter(ctx context.Context, prompt string) error {
-	return Default().AwaitEnter(ctx, prompt)
-}
-
-func (a *awaitEnter) on(key tea.KeyMsg) themeState {
-	if key.Type == tea.KeyEnter {
-		return submitState
-	}
-	return activeState
-}
-
-func (a *awaitEnter) render(theme theme, state themeState) string {
-	if state.kind == stateSubmit {
-		return ""
-	}
-	return theme.formatHeader(state, a.prompt)
 }

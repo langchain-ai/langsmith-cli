@@ -5,30 +5,6 @@ import (
 	"testing"
 )
 
-func TestLocalEnvironmentProjectCreatesAMissingAgent(t *testing.T) {
-	server := serveSequence(t,
-		reply{status: 404, body: `{"detail":"not found"}`},
-		reply{status: 201, body: `{"id":"research"}`},
-		reply{status: 200, body: `{"environment":"LOCAL","tracer_session_name":"research-local"}`},
-	)
-
-	project, err := testClient(t, server.URL).LocalEnvironmentProject(t.Context(), "research")
-
-	if err != nil || project != "research-local" {
-		t.Fatalf("LocalEnvironmentProject = %q, %v", project, err)
-	}
-	requests := server.Requests()
-	if requests[0].Line() != "POST /api/v1/agents/research/environments" || !jsonEqual(t, requests[0].JSON(t), `{"environment":"LOCAL"}`) {
-		t.Errorf("first request = %s %s", requests[0].Line(), requests[0].Body)
-	}
-	if requests[1].Line() != "POST /api/v1/agents" || !jsonEqual(t, requests[1].JSON(t), `{"id":"research","source_type":"MDA"}`) {
-		t.Errorf("second request = %s %s", requests[1].Line(), requests[1].Body)
-	}
-	if requests[2].Line() != "POST /api/v1/agents/research/environments" {
-		t.Errorf("third request = %s", requests[2].Line())
-	}
-}
-
 func TestDeploymentAgentTagUsesTheRegisteredAgentNotTheDeploymentName(t *testing.T) {
 	server := serveOnce(t, 200, `{"items":[{"id":"actual-agent","tag_value_id":"agent-tag"}],"next_cursor":null}`)
 

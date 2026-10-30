@@ -1,7 +1,7 @@
 // Package project discovers a Managed Deep Agent project on disk and the
 // facts about it that compile and deploy share (`project.rs`, `naming.rs`,
 // `context_layout.rs`, `install.rs`, `version.rs`, `dependencies.rs`,
-// `local_context_hub.rs`, `deploy/env_file.rs`).
+// `deploy/env_file.rs`).
 //
 // Load scans the project root, collects every file that should be carried into
 // the build, and locates the agent entry (`agent.ts`/`agent.tsx`/`agent.py`)
@@ -13,14 +13,12 @@
 // has no launcher: [LoadProject] loads the project and resolves an
 // [Installation] from the `managed-deepagents` package the project itself has
 // installed. The installed version is [Installation.PackageVersion], which
-// stands in for the Rust `version::package_version()`; functions that pin it
-// ([PackageJSONEntries], [PyprojectEntries]) take it as an argument.
+// stands in for the Rust `version::package_version()`.
 package project
 
 import (
 	"cmp"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -28,7 +26,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -558,17 +555,4 @@ func isDir(path string) bool {
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()
-}
-
-// readToString reads path as UTF-8 text, failing on invalid UTF-8 like Rust's
-// `fs::read_to_string`.
-func readToString(path string) (string, error) {
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	if !utf8.Valid(contents) {
-		return "", errors.New("stream did not contain valid UTF-8")
-	}
-	return string(contents), nil
 }

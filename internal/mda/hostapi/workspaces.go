@@ -72,72 +72,6 @@ func (t DeployTarget) LabelFor(workspaceID string) string {
 	return workspaceID
 }
 
-// AuthIdentity is the user, organization and workspace LangSmith verifies
-// behind a credential. It serializes as `user_id`, `org_id` and
-// `workspace_id`; empty fields are unknown.
-type AuthIdentity struct {
-	UserID      string `json:"user_id"`
-	OrgID       string `json:"org_id"`
-	WorkspaceID string `json:"workspace_id"`
-}
-
-// UnmarshalJSON reads the identity from the `/auth/public` field names.
-func (a *AuthIdentity) UnmarshalJSON(data []byte) error {
-	var wire struct {
-		UserID      *string `json:"ls_user_id"`
-		OrgID       *string `json:"organization_id"`
-		WorkspaceID *string `json:"tenant_id"`
-	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return err
-	}
-	*a = AuthIdentity{UserID: deref(wire.UserID), OrgID: deref(wire.OrgID), WorkspaceID: deref(wire.WorkspaceID)}
-	return nil
-}
-
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
-// AuthIdentityWithin is [Client.AuthIdentity], giving up after timeout.
-// Skipped when the credential would cross the network in cleartext, since
-// nothing the user asked for depends on it.
-func (c *Client) AuthIdentityWithin(ctx context.Context, timeout time.Duration) (AuthIdentity, bool) {
-	if !c.SendsKeySecurely() {
-		return AuthIdentity{}, false
-	}
-	return c.WithTimeout(timeout).AuthIdentity(ctx)
-}
-
-// AuthIdentity is a best-effort identity lookup; errors leave optional
-// metadata unknown.
-func (c *Client) AuthIdentity(ctx context.Context) (AuthIdentity, bool) {
-	raw, err := c.request(ctx, c.PlatformBase(), http.MethodGet, "/auth/public", nil, nil)
-	if err != nil {
-		slog.Debug("LangSmith identity lookup failed", "error", err)
-		return AuthIdentity{}, false
-	}
-	var metadata AuthIdentity
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		slog.Debug("LangSmith identity lookup returned an unexpected body", "error", err)
-		return AuthIdentity{}, false
-	}
-	for _, id := range []*string{&metadata.UserID, &metadata.OrgID, &metadata.WorkspaceID} {
-		value := strings.TrimSpace(*id)
-		if strings.ContainsAny(value, "\n\r") {
-			value = ""
-		}
-		*id = value
-	}
-	if tenant := c.WorkspaceID(); tenant != "" && metadata.WorkspaceID != tenant {
-		return AuthIdentity{}, false
-	}
-	return metadata, true
-}
-
 // WorkspaceIDForLinks resolves a workspace id for this client, for use in
 // dashboard links.
 //
@@ -245,23 +179,6 @@ func (c *Client) listWorkspaces(ctx context.Context) ([]WorkspaceSummary, error)
 		}
 	}
 	return workspaces, nil
-}
-
-// AgentPlatformReady reports whether the workspace uses the Agent platform,
-// false when unknown.
-func (c *Client) AgentPlatformReady(ctx context.Context) bool {
-	raw, err := c.lookup(ctx, "/v1/platform/workspaces/current/info")
-	if err != nil {
-		slog.Debug("workspace info lookup failed", "error", err)
-		return false
-	}
-	info, err := decodeAny(raw)
-	if err != nil {
-		slog.Debug("workspace info lookup returned an unexpected body", "error", err)
-		return false
-	}
-	ready, _ := field(field(info, "config"), "agent_platform_workspace_ready").(bool)
-	return ready
 }
 
 // DashboardURL is the authoritative dashboard base URL for this LangSmith

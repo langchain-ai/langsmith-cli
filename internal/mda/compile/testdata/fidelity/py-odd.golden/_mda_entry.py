@@ -12,7 +12,7 @@ from langgraph_sdk.runtime import ServerRuntime
 
 from agent import agent as _definition
 
-_context_root = "$ROOT/.mda/__contexthub__"
+_context_repo = "context-repo"
 _has_skills = False
 
 _async_subagent_graphs = {"general-purpose": "odd--general-purpose"}
@@ -21,10 +21,10 @@ _async_subagent_graphs = {"general-purpose": "odd--general-purpose"}
 async def agent(config, runtime: ServerRuntime):
     assert_static_agent_definition(_definition)
     async with parent_run(config):
-        yield await compile_managed_agent_async(_definition, config, context_root=_context_root, has_skills=_has_skills, async_subagent_graphs=_async_subagent_graphs, runtime=runtime)
+        yield await compile_managed_agent_async(_definition, config, context_repo=_context_repo, has_skills=_has_skills, async_subagent_graphs=_async_subagent_graphs, runtime=runtime)
 
 
 @asynccontextmanager
 async def agent__general_purpose(config, runtime: ServerRuntime):
     async with parent_run(config):
-        yield await compile_managed_agent_async(_definition, config, context_root=_context_root, has_skills=_has_skills, runtime=runtime, async_subagent="general-purpose")
+        yield await compile_managed_agent_async(_definition, config, context_repo=_context_repo, has_skills=_has_skills, runtime=runtime, async_subagent="general-purpose")

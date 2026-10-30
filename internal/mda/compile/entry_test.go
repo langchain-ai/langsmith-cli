@@ -11,41 +11,34 @@ import (
 // not resolution.
 const pythonVersion = "3.11"
 
-var servedContexts = []runtimeContext{
-	{kind: runtimeContextLocal, contextRoot: "/tmp/context"},
-	{kind: runtimeContextContextHub, repo: "context-repo"},
-}
+var contextHub = DeployContext{Repo: "context-repo"}
 
 func TestStaticEntriesCheckDynamicOnlyFieldsBeforeCompilation(t *testing.T) {
-	for _, context := range servedContexts {
-		inputs := entryInputs{agentImport: "./agent", context: context}
-		for language, check := range map[project.Language]string{
-			project.TypeScript: "assertStaticAgentDefinition(definition);",
-			project.Python:     "assert_static_agent_definition(_definition)",
-		} {
-			entry := generateEntry(language, inputs)
-			checkAt := strings.Index(entry, check)
-			// Served Python entries yield the graph instead of returning it.
-			compileAt := max(strings.LastIndex(entry, "return "), strings.LastIndex(entry, "yield "))
-			if checkAt < 0 || compileAt < checkAt {
-				t.Fatalf("%v:\n%s", context, entry)
-			}
+	inputs := entryInputs{agentImport: "./agent", deploy: contextHub}
+	for language, check := range map[project.Language]string{
+		project.TypeScript: "assertStaticAgentDefinition(definition);",
+		project.Python:     "assert_static_agent_definition(_definition)",
+	} {
+		entry := generateEntry(language, inputs)
+		checkAt := strings.Index(entry, check)
+		// Served Python entries yield the graph instead of returning it.
+		compileAt := max(strings.LastIndex(entry, "return "), strings.LastIndex(entry, "yield "))
+		if checkAt < 0 || compileAt < checkAt {
+			t.Fatalf("%v:\n%s", language, entry)
 		}
 	}
 }
 
 func TestFactoryEntriesOmitTheStaticDefinitionCheck(t *testing.T) {
-	for _, context := range servedContexts {
-		inputs := entryInputs{agentImport: "./agent", factory: true, context: context}
-		for _, language := range []project.Language{project.TypeScript, project.Python} {
-			entry := generateEntry(language, inputs)
-			requireNotContains(t, entry, "assertStaticAgentDefinition", "assert_static_agent_definition")
-		}
+	inputs := entryInputs{agentImport: "./agent", factory: true, deploy: contextHub}
+	for _, language := range []project.Language{project.TypeScript, project.Python} {
+		entry := generateEntry(language, inputs)
+		requireNotContains(t, entry, "assertStaticAgentDefinition", "assert_static_agent_definition")
 	}
 }
 
 func TestPythonServedEntriesHoldParentRunForTheRun(t *testing.T) {
-	entry := generateEntry(project.Python, entryInputs{agentImport: "agent", context: servedContexts[0]})
+	entry := generateEntry(project.Python, entryInputs{agentImport: "agent", deploy: contextHub})
 
 	requireContains(t, entry,
 		"@asynccontextmanager\nasync def agent(config, runtime: ServerRuntime):",
@@ -120,7 +113,8 @@ func TestGenerateLanggraphJSONUsesThePythonVersionForPython(t *testing.T) {
   "python_version": "3.11",
   "_INTERNAL_docker_tag": "0.18.0.dev12-py3.11",
   "dependencies": [
-    "."
+    ".",
+    "./__runtime__"
   ],
   "graphs": {
     "agent": "./_mda_entry.py:agent"
@@ -135,7 +129,6 @@ func TestGenerateLanggraphJSONUsesThePythonVersionForPython(t *testing.T) {
 
 func TestGenerateLanggraphJSONInstallsTheVendoredRuntimeAndLocalPackagesForPythonDeploys(t *testing.T) {
 	inputs := manifestInputs(project.Python)
-	inputs.includeVendoredRuntime = true
 	inputs.localPackages = []string{"__local__/my-dep"}
 
 	dependencies := readJSON(t, generateLanggraphJSON(inputs))["dependencies"]
@@ -167,18 +160,6 @@ func TestGenerateLanggraphJSONUsesTheAssistantIDAsGraphKey(t *testing.T) {
 	}
 }
 
-func TestGenerateLanggraphJSONDisablesStudioAuthForLocalBuilds(t *testing.T) {
-	// The dev server grants Studio identity on `x-auth-scheme: langsmith`
-	// with no credential check, so local builds turn the scheme off.
-	inputs := manifestInputs(project.Python)
-	inputs.authPath = "./_mda_auth.py:auth"
-	inputs.disableStudioAuth = true
-
-	if got := readJSON(t, generateLanggraphJSON(inputs))["auth"].(map[string]any)["disable_studio_auth"]; got != true {
-		t.Fatalf("got %v", got)
-	}
-}
-
 func TestGenerateLanggraphJSONAddsAnAuthBlockWhenIdentityIsPresent(t *testing.T) {
 	inputs := manifestInputs(project.Python)
 	inputs.authPath = "./_mda_auth.py:auth"
@@ -191,7 +172,8 @@ func TestGenerateLanggraphJSONAddsAnAuthBlockWhenIdentityIsPresent(t *testing.T)
   "python_version": "3.11",
   "_INTERNAL_docker_tag": "0.18.0.dev12-py3.11",
   "dependencies": [
-    "."
+    ".",
+    "./__runtime__"
   ],
   "graphs": {
     "agent": "./_mda_entry.py:agent"

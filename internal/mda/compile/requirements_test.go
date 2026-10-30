@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/langchain-ai/langsmith-cli/internal/mda/hostapi"
 )
 
 // manifest decodes a requirement manifest literal, the way the emitted
@@ -119,83 +117,5 @@ func TestReservedAgentConnectionsNoChannelProvidesAreListed(t *testing.T) {
 	if got := UnprovidedReservedConnections(connectors, ChannelRequirements{}); !reflect.DeepEqual(got,
 		[]string{"mda/github-token", "mda/linear-token"}) {
 		t.Fatalf("got %v", got)
-	}
-}
-
-func TestConnectionOwnerPolicyForSlugReadsManifestLists(t *testing.T) {
-	requirements := ConnectorRequirements{"mcp": manifest(map[string][]string{
-		"userConnections":  {"notion"},
-		"agentConnections": {"docs-token"},
-	})}
-	if policy, ok := ConnectionOwnerPolicyForSlug(requirements, "notion"); !ok || policy != hostapi.ConnectionOwnerPolicyUser {
-		t.Fatalf("notion: %v %v", policy, ok)
-	}
-	if policy, ok := ConnectionOwnerPolicyForSlug(requirements, "docs-token"); !ok || policy != hostapi.ConnectionOwnerPolicyAgent {
-		t.Fatalf("docs-token: %v %v", policy, ok)
-	}
-	if _, ok := ConnectionOwnerPolicyForSlug(requirements, "missing"); ok {
-		t.Fatal("missing slug has a policy")
-	}
-	shared := ConnectorRequirements{"mcp": manifest(map[string][]string{
-		"userConnections":  {"shared"},
-		"agentConnections": {"shared"},
-	})}
-	if _, ok := ConnectionOwnerPolicyForSlug(shared, "shared"); ok {
-		t.Fatal("a slug with both owners has a policy")
-	}
-}
-
-func TestLoadRequirementsReadsTheEmittedArtifacts(t *testing.T) {
-	out := t.TempDir()
-	for _, load := range []func(string) (ConnectorRequirements, error){LoadConnectorRequirements, LoadChannelRequirements} {
-		if got, err := load(out); err != nil || len(got) != 0 {
-			t.Fatalf("missing artifact: %v, %v", got, err)
-		}
-	}
-	if got, err := LoadMcpConnectionEntries(out); err != nil || got != nil {
-		t.Fatalf("missing artifact: %v, %v", got, err)
-	}
-
-	writeFiles(t, out, map[string]string{
-		ConnectorRequirementsFile: `{"mcp": {"userConnections": ["notion"]}}`,
-		ChannelRequirementsFile:   `["not", "an", "object"]`,
-		McpConnectionsFile: `[{"connector_name": "mcp", "server_name": "notion", "url": "https://mcp.notion.com/mcp", ` +
-			`"slug": "notion", "owner_policy": "user"}]`,
-	})
-	connectors, err := LoadConnectorRequirements(out)
-	if err != nil || !reflect.DeepEqual(UserConnectionsFromConnectorRequirements(connectors), []string{"notion"}) {
-		t.Fatalf("connectors: %v, %v", connectors, err)
-	}
-	if _, err := LoadChannelRequirements(out); err == nil || err.Error() != "channel-manifests.json must be a JSON object" {
-		t.Fatalf("channels: %v", err)
-	}
-	entries, err := LoadMcpConnectionEntries(out)
-	want := []McpConnectionEntry{{
-		ConnectorName: "mcp", ServerName: "notion", URL: "https://mcp.notion.com/mcp", Slug: "notion", OwnerPolicy: "user",
-	}}
-	if err != nil || !reflect.DeepEqual(entries, want) {
-		t.Fatalf("entries: %v, %v", entries, err)
-	}
-}
-
-func TestConnectorRequirementsForProjectCompilesAndEmits(t *testing.T) {
-	f := pythonProject(t, map[string]string{
-		"agent.py": pyAgent,
-		"tools/mcp.py": "from managed_deepagents import define_mcp\n" +
-			"from managed_deepagents import Connection\n" +
-			"mcp = define_mcp(servers={'notion': {'transport': 'http', 'url': 'https://mcp.notion.com/mcp', " +
-			"'connection': Connection('notion')}})\n",
-	})
-
-	requirements, err := ConnectorRequirementsForProject(t.Context(), f.project, f.outDir, f.installation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := UserConnectionsFromConnectorRequirements(requirements); !reflect.DeepEqual(got, []string{"notion"}) {
-		t.Fatalf("got %v", requirements)
-	}
-	loaded, err := LoadConnectorRequirements(f.outDir)
-	if err != nil || !reflect.DeepEqual(loaded, requirements) {
-		t.Fatalf("loaded: %v, %v", loaded, err)
 	}
 }

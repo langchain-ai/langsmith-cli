@@ -37,8 +37,8 @@ const (
 	AgentNameDynamic
 )
 
-// AgentNameValue is the outcome of reading the authored `name` from
-// `defineDeepAgent` / `define_deep_agent`.
+// AgentNameValue is the outcome of reading the authored `name` from the
+// exported agent.
 //
 // The helpers emit it as `{"kind": "STATIC", "value": ...}`.
 type AgentNameValue struct {
@@ -84,10 +84,6 @@ type AgentStaticConfig struct {
 	IsFactory bool
 	// AsyncSubagents are the subagents marked async, each built as its own graph.
 	AsyncSubagents []AsyncSubagentGraph
-	// UnreadableSubagents counts subagent entries MDA cannot read. The Rust CLI
-	// counted entries its parser could not follow; an imported definition is
-	// always readable, so this is 0.
-	UnreadableSubagents int
 }
 
 // GeneralPurposeSubagent is the name of the general-purpose subagent, which MDA
@@ -141,11 +137,10 @@ func ReadAgentStaticConfig(ctx context.Context, p *project.Project) (AgentStatic
 		return AgentStaticConfig{}, err
 	}
 	return AgentStaticConfig{
-		AssistantID:         assistantID,
-		Model:               fields.Model,
-		IsFactory:           fields.Kind == "factory",
-		AsyncSubagents:      asyncSubagents,
-		UnreadableSubagents: fields.UnreadableSubagents,
+		AssistantID:    assistantID,
+		Model:          fields.Model,
+		IsFactory:      fields.Kind == "factory",
+		AsyncSubagents: asyncSubagents,
 	}, nil
 }
 
@@ -195,19 +190,6 @@ func AgentDeclaresDisableMemory(ctx context.Context, p *project.Project) (bool, 
 		return false, err
 	}
 	return fields.DeclaresDisableMemory, nil
-}
-
-// AgentAssistantID resolves the LangGraph graph / assistant id from the
-// exported agent entry.
-//
-// Static definitions use their required authored `name`. Factories are named
-// by `defineAgent(name, factory)` / `define_agent(name, factory)`.
-func AgentAssistantID(ctx context.Context, p *project.Project) (string, error) {
-	config, err := ReadAgentStaticConfig(ctx, p)
-	if err != nil {
-		return "", err
-	}
-	return config.AssistantID, nil
 }
 
 // agentSection is the helper's reading of the agent module, and of the
@@ -340,12 +322,6 @@ func resolveAssistantID(value AgentNameValue, fileLabel string, language project
 	}
 }
 
-// IsValidAssistantID reports whether name is a valid assistant / graph id (and
-// scaffold agent name).
-func IsValidAssistantID(name string) bool {
-	return ValidateAssistantID(name, "agent") == nil
-}
-
 // ValidateAssistantID validates a candidate assistant / graph id.
 func ValidateAssistantID(name, fileLabel string) error {
 	if name == "" {
@@ -364,24 +340,4 @@ func ValidateAssistantID(name, fileLabel string) error {
 
 func isASCIILetter(c byte) bool {
 	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
-}
-
-// ReadAgentModel reads the `model` configured on the exported agent definition,
-// when it is a string (`compile/model.rs`).
-//
-// The model is read off the imported definition itself, so an unrelated
-// `model` elsewhere in the module (a tool config, a subagent) is never mistaken
-// for the agent's. A factory picks its model per run, so it has none here.
-//
-// Unlike [ReadAgentStaticConfig], a missing `name` does not fail this helper —
-// model inference is independent of assistant-id validation.
-func ReadAgentModel(ctx context.Context, p *project.Project) (string, bool, error) {
-	fields, _, err := agentSection(ctx, p)
-	if err != nil {
-		return "", false, err
-	}
-	if fields.Model == nil {
-		return "", false, nil
-	}
-	return *fields.Model, true, nil
 }

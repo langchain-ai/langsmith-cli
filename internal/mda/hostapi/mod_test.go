@@ -4,87 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
 )
-
-func TestPATServiceAndFailedLookupsReportOnlyVerifiedIDs(t *testing.T) {
-	for _, tt := range []struct {
-		status          int
-		body            string
-		user, workspace string
-		ok              bool
-	}{
-		{200, `{"ls_user_id":"person","organization_id":"org","tenant_id":"workspace","user_email":"excluded"}`, "person", "workspace", true},
-		{200, `{"user_id":"service","organization_id":"org","tenant_id":"workspace"}`, "", "workspace", true},
-		{200, `{"ls_user_id":"person","organization_id":"org","tenant_id":"other"}`, "", "", false},
-		{401, `{}`, "", "", false},
-		{200, `not json`, "", "", false},
-	} {
-		server := serveOnce(t, tt.status, tt.body)
-		c := newClient(t, apiKeyCLIClient(t, "test-key", "workspace"), server.URL, server.URL)
-
-		identity, ok := c.AuthIdentity(t.Context())
-
-		wantOrg := ""
-		if tt.ok {
-			wantOrg = "org"
-		}
-		if ok != tt.ok || identity.UserID != tt.user || identity.WorkspaceID != tt.workspace || identity.OrgID != wantOrg {
-			t.Errorf("%s: identity = %+v, %v; want user %q, workspace %q, org %q, %v", tt.body, identity, ok, tt.user, tt.workspace, wantOrg, tt.ok)
-		}
-		request := server.Only(t)
-		if request.Line() != "GET /auth/public" || request.Header.Get("X-Tenant-Id") != "workspace" {
-			t.Errorf("request = %s with tenant %q, want GET /auth/public in workspace", request.Line(), request.Header.Get("X-Tenant-Id"))
-		}
-		serialized := mustJSON(t, identity)
-		if strings.Contains(serialized, "excluded") || strings.Contains(serialized, "test-key") {
-			t.Errorf("serialized identity leaks: %s", serialized)
-		}
-	}
-}
-
-func TestLookupTimeoutDoesNotFailTheCommand(t *testing.T) {
-	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
-	}))
-	defer server.Close()
-	defer close(release)
-	c := newClient(t, apiKeyCLIClient(t, "test-key", ""), server.URL, server.URL).WithTimeout(time.Second)
-
-	start := time.Now()
-	_, ok := c.AuthIdentity(t.Context())
-
-	if ok {
-		t.Fatal("a lookup that timed out reported an identity")
-	}
-	if elapsed := time.Since(start); elapsed >= 1750*time.Millisecond {
-		t.Fatalf("lookup took %s, want under 1.75s", elapsed)
-	}
-}
-
-func TestTheKeyTravelsInCleartextOnlyToThisMachine(t *testing.T) {
-	ls := apiKeyCLIClient(t, "key", "")
-	for platform, want := range map[string]bool{
-		"https://api.smith.langchain.com": true,
-		"http://localhost:1980":           true,
-		"http://127.0.0.1:1980":           true,
-		"http://[::1]:1980":               true,
-		"http://langsmith.example.com":    false,
-	} {
-		if got := newClient(t, ls, platform, platform).SendsKeySecurely(); got != want {
-			t.Errorf("SendsKeySecurely(%s) = %v, want %v", platform, got, want)
-		}
-	}
-}
 
 func TestRequestsCarryTheOAuthProfileTokenAndWorkspace(t *testing.T) {
 	server := serveOnce(t, 200, `{"resources":[]}`)

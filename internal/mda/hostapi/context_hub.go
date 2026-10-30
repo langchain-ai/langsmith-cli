@@ -53,9 +53,6 @@ const (
 type ContextHubClient struct {
 	ls      *client.Client
 	baseURL string
-	// extraRepoTags are added alongside [managedRepoTag] when this client
-	// creates a repo (for example the GitHub-sourced marker the Hub UI reads).
-	extraRepoTags []string
 }
 
 // NewContextHubClient creates a Context Hub client for baseURL that sends
@@ -75,26 +72,6 @@ func NewContextHubClient(ls *client.Client, baseURL string) (*ContextHubClient, 
 		return nil, errors.New("Context Hub base URL must use http or https")
 	}
 	return &ContextHubClient{ls: ls, baseURL: strings.TrimRight(baseURL, "/")}, nil
-}
-
-// WithExtraRepoTags returns a copy of the client that tags repos it creates
-// with tags in addition to the ownership tag. Ownership detection only ever
-// looks for [managedRepoTag], so extra tags never change what RepoOwnership
-// reports.
-func (h *ContextHubClient) WithExtraRepoTags(tags []string) *ContextHubClient {
-	copied := *h
-	copied.extraRepoTags = append([]string(nil), tags...)
-	return &copied
-}
-
-func (h *ContextHubClient) repoTags() []string {
-	tags := []string{managedRepoTag}
-	for _, tag := range h.extraRepoTags {
-		if tag != managedRepoTag {
-			tags = append(tags, tag)
-		}
-	}
-	return tags
 }
 
 // EnsureRepo ensures a Context Hub repo exists for this deployment.
@@ -247,7 +224,7 @@ func (h *ContextHubClient) createRepo(ctx context.Context, repo string) error {
 				Description: langsmith.F("Managed Deep Agents deployed context"),
 				// Read back by RepoOwnership to tell our repos from same-name
 				// ones we must not overwrite. Keep the two in step.
-				Tags: langsmith.F(h.repoTags()),
+				Tags: langsmith.F([]string{managedRepoTag}),
 			}, opts...)
 			return err
 		})
@@ -258,82 +235,6 @@ func (h *ContextHubClient) createRepo(ctx context.Context, repo string) error {
 		return nil
 	}
 	return apiErrorFromResponse(status, text)
-}
-
-// DeleteRepo deletes a Context Hub repo and everything committed to it.
-//
-// Returns false when the repo is already gone (HTTP 404) so teardown is
-// idempotent.
-func (h *ContextHubClient) DeleteRepo(ctx context.Context, repo string) (bool, error) {
-	status, text, err := h.sdk(ctx, http.MethodDelete, directoriesPath(repo),
-		func(ctx context.Context, opts ...option.RequestOption) error {
-			return h.ls.SDK.Repos.Directories.Delete(ctx, currentOwner, repo, langsmith.RepoDirectoryDeleteParams{}, opts...)
-		})
-	if err != nil {
-		return false, err
-	}
-	if status == http.StatusNotFound {
-		return false, nil
-	}
-	if !isSuccess(status) {
-		return false, apiErrorFromResponse(status, text)
-	}
-	return true, nil
-}
-
-// ListAgentRepoHandles lists the handles of every non-archived agent repo in
-// the workspace.
-//
-// Paginates to exhaustion. Used by teardown to find a deployment's repo plus
-// any legacy per-user or org memory children under it, which are not
-// discoverable by name alone.
-func (h *ContextHubClient) ListAgentRepoHandles(ctx context.Context) ([]string, error) {
-	const pageSize = 100
-	handles := []string{}
-	offset := 0
-
-	for {
-		status, text, err := h.sdk(ctx, http.MethodGet, "/api/v1/repos",
-			func(ctx context.Context, opts ...option.RequestOption) error {
-				_, err := h.ls.SDK.Repos.List(ctx, langsmith.RepoListParams{
-					SingleRepoType: langsmith.F(langsmith.RepoListParamsRepoTypeAgent),
-					IsArchived:     langsmith.F(langsmith.RepoListParamsIsArchivedFalse),
-					Limit:          langsmith.F(int64(pageSize)),
-					Offset:         langsmith.F(int64(offset)),
-				}, opts...)
-				return err
-			})
-		if err != nil {
-			return nil, err
-		}
-		if !isSuccess(status) {
-			return nil, apiErrorFromResponse(status, text)
-		}
-		raw, err := decodeJSONBody(text, "Context Hub repos")
-		if err != nil {
-			return nil, err
-		}
-		payload, err := decodeAny(raw)
-		if err != nil {
-			return nil, err
-		}
-		page, _ := field(payload, "repos").([]any)
-		for _, repo := range page {
-			if handle, ok := field(repo, "repo_handle").(string); ok {
-				handles = append(handles, handle)
-			}
-		}
-
-		if len(page) < pageSize {
-			break
-		}
-		offset += len(page)
-		if total, ok := field(payload, "total").(float64); ok && total >= 0 && float64(offset) >= total {
-			break
-		}
-	}
-
-	return handles, nil
 }
 
 // send is one raw Context Hub request at path.

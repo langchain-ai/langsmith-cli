@@ -40,13 +40,3 @@ func TestReconcileRegistryUpdatesAnExistingOne(t *testing.T) {
 		t.Fatalf("update = %s", line)
 	}
 }
-
-func TestDeleteRegistryIgnoresAMissingRegistry(t *testing.T) {
-	server := serveOnce(t, 404, `{}`)
-	if err := testClient(t, server.URL).DeleteRegistry(t.Context(), "agent--registry"); err != nil {
-		t.Fatal(err)
-	}
-	if line := server.Only(t).Line(); line != "DELETE /api/v2/sandboxes/registries/agent--registry" {
-		t.Fatalf("request = %s", line)
-	}
-}

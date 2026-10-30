@@ -654,13 +654,13 @@ func TestDeployOutsideAProjectFailsBeforeTheSession(t *testing.T) {
 func TestDeployRejectsAnOutOfRangeWaitTimeout(t *testing.T) {
 	_, err := runDeployCommand(t, ".", "--wait-timeout-seconds", "3601")
 
-	assert.EqualError(t, err, "invalid value 3601 for --wait-timeout-seconds: must be between 1 and 3600")
+	assert.EqualError(t, err, "invalid --wait-timeout-seconds 3601: must be between 1 and 3600")
 }
 
 func TestDeployRejectsAnUnknownAgentEnvironment(t *testing.T) {
 	_, err := runDeployCommand(t, ".", "--agent-environment", "dev")
 
-	assert.EqualError(t, err, `invalid value "dev" for --agent-environment: expected one of development, staging, production`)
+	assert.EqualError(t, err, `invalid --agent-environment "dev": must be one of development, staging, production`)
 }
 
 func TestDeployTreatsAnEmptyPushToAsGiven(t *testing.T) {

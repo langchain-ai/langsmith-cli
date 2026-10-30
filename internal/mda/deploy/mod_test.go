@@ -626,7 +626,7 @@ func TestWithoutATerminalEachDeploymentStatusIsPrintedOnce(t *testing.T) {
 func TestWithoutATerminalEachBakePhaseIsPrintedOnce(t *testing.T) {
 	session := unattended(t)
 	stderr := captureStderr(t)
-	sp := ui.Spinner()
+	sp := ui.NewSpinner()
 	sp.Start(bakeSpinnerTitle)
 	progress := bakeProgress(sp)
 

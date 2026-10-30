@@ -17,6 +17,11 @@ func tsProject(root, agentFile string) *project.Project {
 	return testProject(root, agentFile, project.TypeScript)
 }
 
+// newLocalContext is an empty local context with memory enabled.
+func newLocalContext() localContext {
+	return localContext{files: map[string]string{}, memoryEnabled: true}
+}
+
 func buildAllCommitFiles(t *testing.T, existing map[string]any, local localContext) map[string]any {
 	t.Helper()
 	baseline, err := readDeployManifest(existing)

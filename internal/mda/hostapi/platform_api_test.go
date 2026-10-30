@@ -10,10 +10,10 @@ func envFrom(pairs map[string]string) func(string) (string, bool) {
 }
 
 func TestLangSmithSaaSIsTheDefaultSignInTarget(t *testing.T) {
-	if got := ResolveLoginAPIURL("https://unknown.example", envFrom(nil)); got != "https://unknown.example" {
+	if got := PlatformAPIURLForHost("https://unknown.example", envFrom(nil)); got != "https://unknown.example" {
 		t.Errorf("got %q", got)
 	}
-	if got := ResolveLoginAPIURL("", envFrom(nil)); got != DefaultAPIURL {
+	if got := PlatformAPIURLForHost("", envFrom(nil)); got != DefaultAPIURL {
 		t.Errorf("got %q", got)
 	}
 }
@@ -25,7 +25,7 @@ func TestLangSmithEndpointSelectsTheSignInTarget(t *testing.T) {
 		"https://eu.api.smith.langchain.com":         "https://eu.api.smith.langchain.com",
 		"   ":                                        "https://api.smith.langchain.com",
 	} {
-		if got := ResolveLoginAPIURL("https://api.host.langchain.com", envFrom(map[string]string{"LANGSMITH_ENDPOINT": endpoint})); got != want {
+		if got := PlatformAPIURLForHost("https://api.host.langchain.com", envFrom(map[string]string{"LANGSMITH_ENDPOINT": endpoint})); got != want {
 			t.Errorf("%q: got %q, want %q", endpoint, got, want)
 		}
 	}
@@ -37,7 +37,7 @@ func TestLoginAPIURLDerivesFromHostWhenEnvIsUnset(t *testing.T) {
 		"https://beta.api.host.langchain.com": "https://beta.api.smith.langchain.com",
 		"https://dev.api.host.langchain.com":  "https://dev.api.smith.langchain.com",
 	} {
-		if got := ResolveLoginAPIURL(host, envFrom(nil)); got != want {
+		if got := PlatformAPIURLForHost(host, envFrom(nil)); got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}

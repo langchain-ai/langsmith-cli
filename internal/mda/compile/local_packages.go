@@ -186,7 +186,7 @@ func isPackageName(name string) bool {
 //
 // A package that declares local packages gets its manifest rewritten to
 // point at their copies.
-func vendorLocalPackages(language project.Language, packages []LocalPackage, outDir string, mode runtimePathMode) error {
+func vendorLocalPackages(language project.Language, packages []LocalPackage, outDir string) error {
 	for _, pkg := range packages {
 		buildDir := filepath.FromSlash(pkg.BuildDir())
 		manifest := language.ManifestName()
@@ -219,7 +219,7 @@ func vendorLocalPackages(language project.Language, packages []LocalPackage, out
 				if err != nil {
 					return fmt.Errorf("failed to read %s: %w", path, err)
 				}
-				rewritten, err := rewriteVendoredManifest(language, string(contents), pkg, mode)
+				rewritten, err := rewriteVendoredManifest(language, string(contents), pkg)
 				if err != nil {
 					return fmt.Errorf("failed to rewrite %s: %w", path, err)
 				}
@@ -279,17 +279,6 @@ func vendoredManifests(outDir, fileName string) ([]string, error) {
 	}
 	slices.SortFunc(manifests, comparePathComponents)
 	return manifests, nil
-}
-
-// IsVendoredPath reports whether a change at rel inside a local package
-// affects the build.
-func IsVendoredPath(rel string) bool {
-	for _, component := range strings.Split(filepath.ToSlash(rel), "/") {
-		if slices.Contains(skippedDirs, component) {
-			return false
-		}
-	}
-	return !project.IsIgnoredFile(rel)
 }
 
 // isRuntimePackage reports whether name is the runtime dependency, which is

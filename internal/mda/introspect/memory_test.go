@@ -1,6 +1,7 @@
 package introspect
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/langchain-ai/langsmith-cli/internal/mda/project"
@@ -128,7 +129,7 @@ func TestTheDeclarationSnippetFollowsTheProjectLanguage(t *testing.T) {
 func TestResolveMemory(t *testing.T) {
 	none := typescriptProject(t, map[string]string{"agent.ts": tsAgent})
 	decision, err := ResolveMemory(t.Context(), none)
-	if err != nil || decision.Declared != nil || decision.AgentEnabled() || decision.UserEnabled() {
+	if err != nil || decision.Declared != nil || decision.AgentEnabled() {
 		t.Fatalf("got %+v, %v", decision, err)
 	}
 
@@ -137,7 +138,7 @@ func TestResolveMemory(t *testing.T) {
 		"memory.ts": tsMemoryImport + "export const memory = defineMemory({ agent: memoryLayer() });\n",
 	})
 	decision, err = ResolveMemory(t.Context(), agent)
-	if err != nil || !decision.AgentEnabled() || decision.UserEnabled() || decision.Declared.Path != "memory.ts" {
+	if err != nil || !reflect.DeepEqual(decision.Declared, &MemorySummary{Path: "memory.ts", Scope: MemoryLayers{Agent: true}}) {
 		t.Fatalf("got %+v, %v", decision, err)
 	}
 
@@ -147,7 +148,7 @@ func TestResolveMemory(t *testing.T) {
 		"identity.py": "from managed_deepagents import define_identity\nidentity = define_identity(auth='backend')\n",
 	})
 	decision, err = ResolveMemory(t.Context(), user)
-	if err != nil || decision.AgentEnabled() || !decision.UserEnabled() {
+	if err != nil || !reflect.DeepEqual(decision.Declared, &MemorySummary{Path: "memory.py", Scope: MemoryLayers{User: true}}) {
 		t.Fatalf("got %+v, %v", decision, err)
 	}
 }

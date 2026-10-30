@@ -27,7 +27,6 @@ package project
 // floors together when the managed image advances.
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -133,32 +132,16 @@ var (
 	// lists as a peer dependency.
 	TypeScriptBrowserTools = Dependency{Name: "stagehand-middleware", Version: "0.1.1"}
 
-	// TypeScriptDevServerCLI is the npm package that provides the local
-	// LangGraph in-memory dev server.
-	//
-	// The caret range keeps local development on compatible LangGraph CLI
-	// updates; the compile-generated lockfile records the concrete resolved
-	// version.
+	// TypeScriptDevServerCLI is the npm package that provides the LangGraph
+	// in-memory dev server and the `langgraphjs build` used by
+	// `langsmith deploy --push-to`.
 	TypeScriptDevServerCLI = Dependency{Name: "@langchain/langgraph-cli", Version: "^1.5.1"}
 
-	// PythonDevServerCLI is the Python package that provides the local
-	// LangGraph in-memory dev server and the `langgraph build` used by
+	// PythonDevServerCLI is the Python package that provides the LangGraph
+	// in-memory dev server and the `langgraph build` used by
 	// `langsmith deploy --push-to`.
 	PythonDevServerCLI = Dependency{Name: "langgraph-cli[inmem]", Version: ">=0.4.36"}
-
-	// PythonDevServerAPI is the Python LangGraph API server behind `mda dev`.
-	// 0.16 keeps each interrupt's `response_schema` in thread state, so a
-	// conversation reopened with `mda chat --thread` still knows which
-	// decisions a tool approval allows. Deploys pin their own image
-	// (`LANGGRAPH_API_VERSION`).
-	PythonDevServerAPI = Dependency{Name: "langgraph-api", Version: ">=0.16.0"}
 )
-
-// typescriptLocalDev are the npm dependencies only needed by `mda dev`.
-var typescriptLocalDev = []Dependency{TypeScriptDevServerCLI}
-
-// pythonLocalDev are the PyPI dependencies only needed by `mda dev`.
-var pythonLocalDev = []Dependency{PythonDevServerCLI, PythonDevServerAPI}
 
 // ManagedDependencies are the managed LangChain / LangGraph dependencies for
 // language, injected into the build manifest at compile time.
@@ -172,12 +155,6 @@ func BrowserDependencies(language Language) []Dependency {
 	return byLanguage(language,
 		[]Dependency{TypeScriptBrowser, TypeScriptBrowserTools},
 		[]Dependency{PythonBrowser, PythonBrowserTools})
-}
-
-// LocalDevDependencies are the extra dependencies needed only for local
-// `mda dev`.
-func LocalDevDependencies(language Language) []Dependency {
-	return slices.Clone(byLanguage(language, typescriptLocalDev, pythonLocalDev))
 }
 
 func byLanguage[T any](language Language, typescript, python T) T {
@@ -443,21 +420,6 @@ func DeployModelAPIKeyRequirement(model string) ModelAPIKeyRequirement {
 	return ModelAPIKeyRequirement{Kind: UnresolvedLangsmithProvider}
 }
 
-// ProviderAPIKeyEnvs is every distinct API-key environment variable declared
-// by the managed provider registry, sorted. Used by `mda evals` Harbor jobs so
-// supported models keep working when their documented key is set (including
-// providers not listed in the scaffolded `.env` comments).
-func ProviderAPIKeyEnvs() []string {
-	var names []string
-	for _, provider := range modelProviders {
-		if provider.apiKeyEnv != "" {
-			names = append(names, provider.apiKeyEnv)
-		}
-	}
-	slices.Sort(names)
-	return slices.Compact(names)
-}
-
 // providerForModel matches model to a [modelProvider], preferring an explicit,
 // known `provider:` prefix and falling back to name-based inference.
 func providerForModel(model string) *modelProvider {
@@ -517,19 +479,4 @@ func inferProviderFromModelName(model string) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-// PackageJSONEntries renders the user-facing TypeScript dependency (the
-// runtime package every project gets, pinned to packageVersion, normally
-// [Installation.PackageVersion]) as a `"name": "version"` JSON member indented
-// by indent spaces.
-func PackageJSONEntries(indent int, packageVersion string) string {
-	return fmt.Sprintf("%s\"%s\": \"%s\"", strings.Repeat(" ", indent), UserRuntimePackage, packageVersion)
-}
-
-// PyprojectEntries renders the user-facing Python dependency as a quoted TOML
-// array element (e.g. `"managed-deepagents==0.7.3"`) indented by indent
-// spaces.
-func PyprojectEntries(indent int, packageVersion string) string {
-	return fmt.Sprintf("%s\"%s==%s\"", strings.Repeat(" ", indent), UserRuntimePackage, packageVersion)
 }

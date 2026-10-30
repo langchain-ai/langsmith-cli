@@ -18,13 +18,24 @@ func writeText(t *testing.T, dir, name, contents string) {
 	}
 }
 
+// transform runs [TransformTypescriptSources] on source, the file rel in dir.
+func transform(t *testing.T, dir, rel, source string) (TypescriptTransform, error) {
+	t.Helper()
+	transforms, err := TransformTypescriptSources(t.Context(), []TypescriptSource{{Source: source, Rel: rel, ResolveDir: dir}})
+	if err != nil {
+		return TypescriptTransform{}, err
+	}
+	return transforms[0], nil
+}
+
+// inline is the source of agent.ts in dir with its text modules inlined.
 func inline(t *testing.T, dir, source string) string {
 	t.Helper()
-	out, err := InlineTextModules(t.Context(), source, "agent.ts", dir)
+	out, err := transform(t, dir, "agent.ts", source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return out
+	return out.Source
 }
 
 func TestEscapesBackticksDollarsAndBackslashes(t *testing.T) {
@@ -78,14 +89,14 @@ func TestEscapesMarkdownContainingBackticksAndInterpolation(t *testing.T) {
 func TestRejectsNamedTextImports(t *testing.T) {
 	dir := t.TempDir()
 	writeText(t, dir, "instructions.md", "hi")
-	_, err := InlineTextModules(t.Context(),
-		"import { systemPrompt } from \"./instructions.md\" with { type: \"text\" };\n", "agent.ts", dir)
+	_, err := transform(t, dir, "agent.ts",
+		"import { systemPrompt } from \"./instructions.md\" with { type: \"text\" };\n")
 	requireErrorContains(t, err, "single default import")
 }
 
 func TestErrorsWhenTheReferencedFileIsMissing(t *testing.T) {
-	_, err := InlineTextModules(t.Context(),
-		"import sp from \"./missing.md\" with { type: \"text\" };\n", "agent.ts", t.TempDir())
+	_, err := transform(t, t.TempDir(), "agent.ts",
+		"import sp from \"./missing.md\" with { type: \"text\" };\n")
 	requireErrorContains(t, err, "failed to inline text module \"./missing.md\" imported by agent.ts")
 }
 
@@ -120,12 +131,12 @@ func TestInlinesMultipleImportsAndPreservesSurroundingCode(t *testing.T) {
 func TestHandlesTSXSources(t *testing.T) {
 	dir := t.TempDir()
 	writeText(t, dir, "prompt.md", "tsx prompt")
-	out, err := InlineTextModules(t.Context(),
-		"import sp from \"./prompt.md\" with { type: \"text\" };\nconst el = <div>{sp}</div>;\n", "view.tsx", dir)
+	out, err := transform(t, dir, "view.tsx",
+		"import sp from \"./prompt.md\" with { type: \"text\" };\nconst el = <div>{sp}</div>;\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "const sp = `tsx prompt`;\n") {
+	if !strings.HasPrefix(out.Source, "const sp = `tsx prompt`;\n") {
 		t.Fatalf("got %q", out)
 	}
 }

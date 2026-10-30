@@ -154,7 +154,7 @@ type syncSummary struct {
 // directory contents.
 //
 // memoryEnabled comes from the project's memory declaration
-// ([introspect.ResolveMemory]) — the single answer build, deploy, and dev all
+// ([introspect.ResolveMemory]) — the single answer compile and deploy both
 // read, so the seeded tree always matches what the runtime mounts.
 func prepareContextSync(ctx context.Context, client *hostapi.ContextHubClient, p *project.Project, repo string, memoryEnabled bool) (*syncPlan, error) {
 	if err := client.EnsureRepo(ctx, repo); err != nil {
@@ -282,10 +282,6 @@ type localContext struct {
 	hasSkills        bool
 	hasLocalMemories bool
 	memoryEnabled    bool
-}
-
-func newLocalContext() localContext {
-	return localContext{files: map[string]string{}, memoryEnabled: true}
 }
 
 func isSkillPath(path string) bool {

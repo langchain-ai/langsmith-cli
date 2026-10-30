@@ -1,13 +1,10 @@
 package deployment
 
-// Where a command's LangSmith calls go and who they go as
-// (`deploy/langsmith_context.rs`).
-//
-// Every command that talks to LangSmith resolves the same four things in the
-// same order — host backend, platform API, credential, workspace — before it
-// builds a [hostapi.Client] or [hostapi.ContextHubClient].
-// [ResolveLangSmithContext] does that once so `--host-url` and
-// `--workspace-id` mean the same thing in every command.
+// Where deploy's LangSmith calls go and who they go as
+// (`deploy/langsmith_context.rs`): host backend, platform API, credential and
+// workspace, resolved by [ResolveLangSmithEndpoints] and then
+// [LangSmithEndpoints.Authenticate] before a [hostapi.Client] or
+// [hostapi.ContextHubClient] is built.
 
 import (
 	"context"
@@ -19,9 +16,9 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/mda/hostapi"
 )
 
-// WorkspaceFlagHint completes the removed-alias error for commands that take
-// `--workspace-id`.
-const WorkspaceFlagHint = " or pass --workspace-id instead"
+// workspaceFlagHint completes the removed-alias error: `langsmith deploy` takes
+// the CLI's global `--workspace`.
+const workspaceFlagHint = " or pass --workspace instead"
 
 // CLI is what the LangSmith CLI brings to this invocation, before the project
 // had a say: the cmd layer owns the global flags and profiles, so it hands
@@ -113,10 +110,10 @@ func endpointLookup(cli CLI, envVars map[string]string) envLookup {
 	}
 }
 
-// WithAuth pairs these endpoints with an already-resolved credential and
+// withAuth pairs these endpoints with an already-resolved credential and
 // workspace. A blank workspaceID leaves the credential's own workspace (the
 // CLI's `--workspace` or its profile's default), if any.
-func (e LangSmithEndpoints) WithAuth(credential client.Options, workspaceID string) LangSmithContext {
+func (e LangSmithEndpoints) withAuth(credential client.Options, workspaceID string) LangSmithContext {
 	options := credential
 	options.APIURL = e.PlatformAPIURL
 	if workspaceID != "" {
@@ -128,7 +125,7 @@ func (e LangSmithEndpoints) WithAuth(credential client.Options, workspaceID stri
 // LangSmithContext is the endpoints plus the credential and workspace every
 // LangSmith request carries.
 //
-// [ResolveLangSmithContext] resolves it in this order:
+// It is resolved in this order:
 //
 //  1. Host backend: `--host-url`, else derived from `LANGSMITH_ENDPOINT` read
 //     from `--api-url`, then the process env, then the project `.env`, then
@@ -142,11 +139,10 @@ func (e LangSmithEndpoints) WithAuth(credential client.Options, workspaceID stri
 //     authentication error naming `langsmith auth login`. The CLI's
 //     credentials (`--api-key` included) only go to the platform API they
 //     belong to.
-//  4. Workspace ([ResolveWorkspaceID]): `--workspace-id`, else
+//  4. Workspace ([resolveWorkspaceID]): `--workspace`, else
 //     `LANGSMITH_WORKSPACE_ID` from the process env, then the project `.env`
 //     (removed aliases are an error); else, with the CLI's credential, the
-//     CLI's workspace (`--workspace` or the profile's default); else the
-//     credential's default workspace.
+//     profile's default workspace; else the credential's default workspace.
 //
 // The process env wins over the project `.env` as everywhere in mda, with a
 // warning when the two disagree.
@@ -157,23 +153,21 @@ type LangSmithContext struct {
 	Options client.Options
 }
 
-// ResolveLangSmithContext resolves endpoints, then the credential, then the
-// workspace (see [LangSmithContext]).
+// Authenticate resolves the credential, then the workspace, for e (see
+// [LangSmithContext]).
 //
 // envVars is the project `.env` at envPath, which the missing-credential error
-// names. The workspace is workspaceFlag when non-blank; workspaceHint completes
-// the error for a removed alias.
-func ResolveLangSmithContext(ctx context.Context, cli CLI, envPath string, envVars map[string]string, hostOverride, workspaceFlag, workspaceHint string) (LangSmithContext, error) {
-	endpoints := ResolveLangSmithEndpoints(cli, envVars, hostOverride)
-	credential, err := ResolveCredential(ctx, cli, envPath, envVars, endpoints.PlatformAPIURL)
+// names. The workspace is workspaceFlag when non-blank.
+func (e LangSmithEndpoints) Authenticate(ctx context.Context, cli CLI, envPath string, envVars map[string]string, workspaceFlag string) (LangSmithContext, error) {
+	credential, err := ResolveCredential(ctx, cli, envPath, envVars, e.PlatformAPIURL)
 	if err != nil {
 		return LangSmithContext{}, err
 	}
-	workspaceID, err := ResolveWorkspaceID(envVars, workspaceFlag, workspaceHint)
+	workspaceID, err := resolveWorkspaceID(envVars, workspaceFlag)
 	if err != nil {
 		return LangSmithContext{}, err
 	}
-	return endpoints.WithAuth(credential, workspaceID), nil
+	return e.withAuth(credential, workspaceID), nil
 }
 
 // HostURL is the host backend base URL.
@@ -214,17 +208,17 @@ func (c LangSmithContext) ContextHubClient() (*hostapi.ContextHubClient, error) 
 	)
 }
 
-// ResolveWorkspaceID is workspaceFlag when non-blank, else
+// resolveWorkspaceID is workspaceFlag when non-blank, else
 // `LANGSMITH_WORKSPACE_ID` from the process env, then envVars; "" when none is
 // set. Errors on a removed alias.
-func ResolveWorkspaceID(envVars map[string]string, workspaceFlag, workspaceHint string) (string, error) {
+func resolveWorkspaceID(envVars map[string]string, workspaceFlag string) (string, error) {
 	workspaceID, _, err := hostapi.ResolvePreferredEnv(
 		WorkspaceIDEnv,
 		RemovedWorkspaceIDEnvs,
 		workspaceFlag,
 		envVars,
 		os.LookupEnv,
-		workspaceHint,
+		workspaceFlagHint,
 	)
 	return workspaceID, err
 }

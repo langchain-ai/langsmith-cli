@@ -224,12 +224,12 @@ func TestTextModuleImportsLoadWhileIntrospecting(t *testing.T) {
 			"export const agent = defineDeepAgent({ name: name.trim() });\n",
 	})
 
-	id, err := AgentAssistantID(t.Context(), p)
+	config, err := ReadAgentStaticConfig(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "from-text" {
-		t.Fatalf("got %q", id)
+	if config.AssistantID != "from-text" {
+		t.Fatalf("got %q", config.AssistantID)
 	}
 }
 
@@ -243,12 +243,12 @@ syncBuiltinESMExports();`))
 			"export const agent = defineDeepAgent({ name: name.trim() });\n",
 	})
 
-	id, err := AgentAssistantID(t.Context(), p)
+	config, err := ReadAgentStaticConfig(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "from-text" {
-		t.Fatalf("got %q", id)
+	if config.AssistantID != "from-text" {
+		t.Fatalf("got %q", config.AssistantID)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestTextModuleImportsLoadInCommonJSProjects(t *testing.T) {
 			"export const agent = defineDeepAgent({ name: name.trim() + text });\n",
 	})
 
-	id, err := AgentAssistantID(t.Context(), p)
+	config, err := ReadAgentStaticConfig(t.Context(), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "from-text-cts" {
-		t.Fatalf("got %q", id)
+	if config.AssistantID != "from-text-cts" {
+		t.Fatalf("got %q", config.AssistantID)
 	}
 }
 
@@ -296,36 +296,6 @@ func TestBareFactoriesNameAnSDKWithoutNamedFactories(t *testing.T) {
 	_, err = ReadAgentStaticConfig(t.Context(), py)
 	requireErrorContains(t, err, "define_agent(name, factory), but the installed managed-deepagents (0.10.0) "+
 		"does not have define_agent.")
-}
-
-func TestReadAgentModel(t *testing.T) {
-	p := typescriptProject(t, map[string]string{
-		"agent.ts": tsImport + "const tool = { model: \"openai:gpt-4\" };\n" +
-			"export const agent = defineDeepAgent({\n" +
-			"  name: \"agent\", model: \"openai:gpt-5\",\n" +
-			"  subagents: [{ name: \"sub\", description: \"d\", model: \"anthropic:claude\" }],\n" +
-			"});\n",
-	})
-	model, ok, err := ReadAgentModel(t.Context(), p)
-	if err != nil || !ok || model != "openai:gpt-5" {
-		t.Fatalf("got %q %v %v", model, ok, err)
-	}
-
-	factory := pythonProject(t, map[string]string{
-		"agent.py": pyImport + "agent = define_agent('a', lambda runtime: None)\n",
-	})
-	model, ok, err = ReadAgentModel(t.Context(), factory)
-	if err != nil || ok || model != "" {
-		t.Fatalf("got %q %v %v", model, ok, err)
-	}
-
-	dynamic := pythonProject(t, map[string]string{
-		"agent.py": pyImport + "agent = define_deep_agent(name='a', model=object())\n",
-	})
-	_, ok, err = ReadAgentModel(t.Context(), dynamic)
-	if err != nil || ok {
-		t.Fatalf("got %v %v", ok, err)
-	}
 }
 
 func TestAsyncSubagentsResolveToGraphsUnderTheAssistant(t *testing.T) {
@@ -394,8 +364,5 @@ func TestValidateAssistantID(t *testing.T) {
 		if err := ValidateAssistantID(id, "agent.ts"); err == nil {
 			t.Fatalf("%q: expected an error", id)
 		}
-	}
-	if !IsValidAssistantID("my-agent") || IsValidAssistantID("1bad") || IsValidAssistantID("") {
-		t.Fatal("IsValidAssistantID disagrees with ValidateAssistantID")
 	}
 }

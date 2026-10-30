@@ -112,11 +112,6 @@ func newTomlString(text string) *tomlScalar {
 	return &tomlScalar{repr: defaultTomlStringRepr(text), text: text, isString: true}
 }
 
-// newTomlBool is `toml_edit::Value::from(bool)`.
-func newTomlBool(value bool) *tomlScalar {
-	return &tomlScalar{repr: strconv.FormatBool(value)}
-}
-
 type tomlArray struct {
 	decor         tomlDecor
 	values        []tomlValue

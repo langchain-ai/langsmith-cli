@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
+	"github.com/langchain-ai/langsmith-cli/internal/mda/ui"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -575,4 +578,65 @@ func openBrowserDefault(rawURL string) error {
 
 func getenv(name string) string {
 	return strings.TrimSpace(os.Getenv(name))
+}
+
+// loginAt signs in with the device flow at apiURL, the way `langsmith auth
+// login` does, writing the instructions to out, and saves the tokens to the
+// selected profile; the returned options authenticate with it. The profile
+// becomes the current one only when there is none.
+//
+// apiURL can come from the project being deployed rather than from the CLI's
+// own settings. Signing in anywhere but where `langsmith auth login` would
+// opens a page that server names and repoints the profile there, so it is
+// confirmed first, naming both; without a terminal to ask on, it fails
+// with the `langsmith auth login` command that does it.
+func loginAt(ctx context.Context, apiURL string, out io.Writer) (client.Options, error) {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return client.Options{}, err
+	}
+	profileName := loginProfileName(cfg)
+	if err := validateProfileName(profileName); err != nil {
+		return client.Options{}, err
+	}
+	apiURL = client.NormalizeURL(apiURL)
+	if configured := loginAPIURL(cfg, profileName); !client.SameOrigin(configured, apiURL) {
+		if err := confirmLoginElsewhere(ctx, profileName, configured, apiURL); err != nil {
+			return client.Options{}, err
+		}
+	}
+	fmt.Fprintf(out, "Signing in to LangSmith at %s\n\n", apiURL)
+	oauthMeta, token, err := deviceAuthorization{apiURL: apiURL, out: out}.run(ctx)
+	if err != nil {
+		return client.Options{}, err
+	}
+	if cfg.CurrentProfile == "" {
+		cfg.CurrentProfile = profileName
+	}
+	profile, err := saveOAuthLogin(cfg, profileName, apiURL, "", oauthMeta, token)
+	if err != nil {
+		return client.Options{}, err
+	}
+	return client.Options{APIURL: apiURL, ProfileName: profileName, WorkspaceID: profile.WorkspaceID}, nil
+}
+
+// confirmLoginElsewhere asks before signing profileName in at apiURL instead
+// of configured, the LangSmith it is set up for. Declining cancels.
+func confirmLoginElsewhere(ctx context.Context, profileName, configured, apiURL string) error {
+	confirmed, err := ui.Confirm(fmt.Sprintf(
+		"Sign in to LangSmith at %s? Profile '%s' is set up for %s and will point at %s instead.",
+		apiURL, profileName, configured, apiURL)).
+		InitialValue(false).
+		Interact(ctx)
+	switch {
+	case errors.Is(err, ui.ErrNotInteractive):
+		return fmt.Errorf("profile '%s' is set up for %s, not %s; run `langsmith auth login --api-url %s` to sign in there",
+			profileName, configured, apiURL, apiURL)
+	case err != nil:
+		return err
+	case !confirmed:
+		return errs.ErrCancelled
+	default:
+		return nil
+	}
 }

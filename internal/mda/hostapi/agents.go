@@ -1,6 +1,6 @@
 package hostapi
 
-// Agent Platform endpoints used by deploy and dev.
+// Agent Platform endpoints used by deploy.
 
 import (
 	"context"
@@ -50,40 +50,4 @@ func (c *Client) DeploymentAgentTagValueID(ctx context.Context, deploymentID str
 		return "", false, errors.New("Agent lookup response has an invalid tag_value_id")
 	}
 	return text, true, nil
-}
-
-// LocalEnvironmentProject is the tracing project of agentID's LOCAL
-// environment, creating the agent or the environment when missing.
-func (c *Client) LocalEnvironmentProject(ctx context.Context, agentID string) (string, error) {
-	base := c.PlatformBase()
-	path := "/api/v1/agents/" + agentID + "/environments"
-	local := map[string]any{"environment": "LOCAL"}
-	environment, found, err := c.requestOptional(ctx, base, http.MethodPost, path, nil, local)
-	if err != nil {
-		return "", err
-	}
-	if !found {
-		if _, err := c.sdkRequest(ctx, http.MethodPost, "/api/v1/agents", requestOptions{},
-			func(ctx context.Context, opts ...option.RequestOption) error {
-				_, err := c.ls.SDK.Agents.New(ctx, langsmith.AgentNewParams{
-					ID:         langsmith.F(agentID),
-					SourceType: langsmith.F(langsmith.AgentNewParamsSourceTypeMda),
-				}, opts...)
-				return err
-			}); err != nil {
-			return "", err
-		}
-		if environment, err = c.request(ctx, base, http.MethodPost, path, nil, local); err != nil {
-			return "", err
-		}
-	}
-	value, err := decodeAny(environment)
-	if err != nil {
-		return "", err
-	}
-	project, ok := field(value, "tracer_session_name").(string)
-	if !ok {
-		return "", errors.New("Agent environment response has no tracer_session_name")
-	}
-	return project, nil
 }

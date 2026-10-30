@@ -2,7 +2,8 @@
   "python_version": "3.14",
   "_INTERNAL_docker_tag": "0.18.0.dev12-py3.14",
   "dependencies": [
-    "."
+    ".",
+    "./__runtime__"
   ],
   "graphs": {
     "support-bot": "./_mda_entry.py:agent",
@@ -12,7 +13,7 @@
   "env": ".env",
   "auth": {
     "path": "./_mda_auth.py:auth",
-    "disable_studio_auth": true
+    "disable_studio_auth": false
   },
   "http": {
     "configurable_headers": {

@@ -2,7 +2,8 @@
   "python_version": "3.12",
   "_INTERNAL_docker_tag": "0.18.0.dev12-py3.12",
   "dependencies": [
-    "."
+    ".",
+    "./__runtime__"
   ],
   "graphs": {
     "inline": "./_mda_entry.py:agent",

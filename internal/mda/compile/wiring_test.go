@@ -11,34 +11,6 @@ import (
 
 // Context Hub and sandbox wiring of the generated entry.
 
-func TestCompileWiresTheLocalContextHubForTypescript(t *testing.T) {
-	f := typescriptProject(t, map[string]string{
-		"agent.ts":        tsAgent,
-		"instructions.md": "# Assistant\n\nUse `code` and ${vars}.\n",
-	})
-
-	mustCompile(t, f.local)
-
-	// The agent file is still carried over verbatim — never rewritten.
-	if got := f.read(t, "agent.ts"); got != tsAgent {
-		t.Fatalf("agent.ts: %q", got)
-	}
-	hub := filepath.Join(f.root(), ".mda", "__contexthub__")
-	if got := readFile(t, filepath.Join(hub, "instructions.md")); got != "# Assistant\n\nUse `code` and ${vars}.\n" {
-		t.Fatalf("instructions.md: %q", got)
-	}
-	// No memory declaration → no hot file seeded locally, matching deploy.
-	if isFile(filepath.Join(hub, "memories", "agent", "AGENTS.md")) {
-		t.Fatal("the hot memory file was seeded")
-	}
-	entry := f.read(t, "_mda_entry.ts")
-	requireContains(t, entry,
-		"const contextRoot = "+encodeStringLiteral(hub)+";",
-		"const hasSkills = false;",
-		"compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagentGraphs }, runtime)")
-	requireNotContains(t, entry, "systemPrompt")
-}
-
 func TestCompileForDeployWiresContextHubMetadataForTypescript(t *testing.T) {
 	f := typescriptProject(t, map[string]string{
 		"agent.ts":        tsAgent,
@@ -57,45 +29,21 @@ func TestCompileForDeployWiresContextHubMetadataForTypescript(t *testing.T) {
 		"compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagentGraphs }, runtime)")
 	// Commit pinning is not wired in the runtime yet — do not emit it.
 	requireNotContains(t, entry, "contextCommit", "systemPrompt", "Do not embed me")
-	if isDir(filepath.Join(f.root(), ".mda", "__contexthub__")) {
-		t.Fatal("a deploy build created the local Context Hub")
-	}
 }
 
-func TestCompileWiresTheLocalContextHubWhenInstructionsAreAbsent(t *testing.T) {
+func TestCompileWarnsWhenInstructionsAreAbsent(t *testing.T) {
 	f := typescriptProject(t, map[string]string{"agent.ts": tsAgent})
 
-	summary := mustCompile(t, f.local)
+	summary := mustCompile(t, f.deploy)
 
-	hub := filepath.Join(f.root(), ".mda", "__contexthub__")
-	if isFile(filepath.Join(hub, "instructions.md")) || isFile(filepath.Join(hub, "memories", "agent", "AGENTS.md")) {
-		t.Fatal("the local Context Hub was seeded")
-	}
 	entry := f.read(t, "_mda_entry.ts")
 	requireNotContains(t, entry, "systemPrompt")
-	requireContains(t, entry, "const contextRoot = ",
-		"compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagentGraphs }, runtime)")
+	requireContains(t, entry, "compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagentGraphs }, runtime)")
 	if !reflect.DeepEqual(summary.Warnings, []string{
 		"instructions.md is missing. Add it next to the agent file to set the system prompt.",
 	}) {
 		t.Fatalf("warnings: %q", summary.Warnings)
 	}
-}
-
-func TestCompileWiresTheLocalContextHubForPython(t *testing.T) {
-	f := pythonProject(t, map[string]string{"agent.py": pyAgent, "instructions.md": "Be helpful.\n"})
-
-	mustCompile(t, f.local)
-
-	hub := filepath.Join(f.root(), ".mda", "__contexthub__")
-	if got := readFile(t, filepath.Join(hub, "instructions.md")); got != "Be helpful.\n" {
-		t.Fatalf("instructions.md: %q", got)
-	}
-	entry := f.read(t, "_mda_entry.py")
-	requireContains(t, entry, "_context_root = ", "_has_skills = False",
-		"await compile_managed_agent_async(_definition, config, context_root=_context_root, has_skills=_has_skills, "+
-			"async_subagent_graphs=_async_subagent_graphs, runtime=runtime)")
-	requireNotContains(t, entry, "_system_prompt")
 }
 
 func TestCompileForDeployWiresContextHubMetadataForPython(t *testing.T) {
@@ -172,14 +120,10 @@ func TestCompileFindsInstructionsNextToANestedAgentFile(t *testing.T) {
 		},
 	}
 
-	summary := mustCompile(t, f.local)
+	summary := mustCompile(t, f.deploy)
 
-	hub := filepath.Join(f.root(), ".mda", "__contexthub__")
-	if got := readFile(t, filepath.Join(hub, "instructions.md")); got != "Nested prompt.\n" {
-		t.Fatalf("instructions.md: %q", got)
-	}
 	entry := f.read(t, "_mda_entry.ts")
-	requireContains(t, entry, "const contextRoot = ", "import { agent as definition } from \"./src/agent\";")
+	requireContains(t, entry, "import { agent as definition } from \"./src/agent\";")
 	requireNotContains(t, entry, "Root prompt", "Nested prompt")
 	if len(summary.Warnings) != 0 {
 		t.Fatalf("warnings: %q", summary.Warnings)
@@ -194,20 +138,17 @@ func TestCompileWiresATypescriptSandboxWithoutTheSetupScript(t *testing.T) {
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho hello > /tmp/marker\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	entry := f.read(t, "_mda_entry.ts")
 	requireContains(t, entry, "import { sandbox } from \"./sandbox/index\";",
-		"compileManagedAgent(definition, config, { contextRoot, hasSkills, sandbox, asyncSubagentGraphs }, runtime)",
+		"compileManagedAgent(definition, config, { contextRepo, hasSkills, sandbox, asyncSubagentGraphs }, runtime)",
 		"import { compileManagedAgent } from \"managed-deepagents/runtime\";")
 	requireNotContains(t, entry, "setupScript", "sandboxSetup")
 	// The sandbox module and setup script are still carried for bake/recipe
 	// digest.
 	if !f.exists("sandbox/index.ts") || !f.exists("sandbox/setup.sh") {
 		t.Fatal("the sandbox files were not copied")
-	}
-	if !summary.Sandbox {
-		t.Fatal("summary does not report the sandbox")
 	}
 }
 
@@ -219,11 +160,11 @@ func TestCompileWiresAPythonSandboxWithoutTheSetupScript(t *testing.T) {
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho hi\n",
 	})
 
-	mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	entry := f.read(t, "_mda_entry.py")
 	requireContains(t, entry, "from sandbox import sandbox as _sandbox",
-		"await compile_managed_agent_async(_definition, config, context_root=_context_root, has_skills=_has_skills, "+
+		"await compile_managed_agent_async(_definition, config, context_repo=_context_repo, has_skills=_has_skills, "+
 			"sandbox=_sandbox, async_subagent_graphs=_async_subagent_graphs, runtime=runtime)",
 		"from managed_deepagents.runtime import compile_managed_agent_async")
 	requireNotContains(t, entry, "_setup_script", "setup_script=", "sandbox_setup")
@@ -232,13 +173,13 @@ func TestCompileWiresAPythonSandboxWithoutTheSetupScript(t *testing.T) {
 func TestCompileOmitsSandboxWiringWhenAbsent(t *testing.T) {
 	f := typescriptProject(t, map[string]string{"agent.ts": tsAgent})
 
-	summary := mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	entry := f.read(t, "_mda_entry.ts")
 	requireNotContains(t, entry, "import { sandbox }", "setupScript")
-	requireContains(t, entry, "compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagentGraphs }, runtime)")
-	if summary.Sandbox {
-		t.Fatal("summary reports a sandbox")
+	requireContains(t, entry, "compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagentGraphs }, runtime)")
+	if f.exists(SandboxRecipeFile) {
+		t.Fatal("a recipe was written")
 	}
 }
 
@@ -248,11 +189,11 @@ func TestCompileIgnoresASetupScriptWithoutASandboxDeclaration(t *testing.T) {
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho orphaned\n",
 	})
 
-	mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	entry := f.read(t, "_mda_entry.ts")
 	requireNotContains(t, entry, "import { sandbox }", "setupScript", "sandboxSetup")
-	requireContains(t, entry, "compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagentGraphs }, runtime)")
+	requireContains(t, entry, "compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagentGraphs }, runtime)")
 	if f.exists(SandboxRecipeFile) {
 		t.Fatal("a recipe was written")
 	}
@@ -264,20 +205,17 @@ func TestCompileBakesAFactorySetupScriptWithoutASandboxDeclaration(t *testing.T)
 		"sandbox/setup.sh": "#!/usr/bin/env bash\necho ready\n",
 	})
 
-	summary := mustCompile(t, f.local)
+	mustCompile(t, f.deploy)
 
 	entry := f.read(t, "_mda_entry.ts")
 	requireContains(t, entry, "const sandboxSetup = true;",
-		"compileManagedAgent(definition, config, { contextRoot, hasSkills, sandboxSetup, asyncSubagentGraphs }, runtime)")
+		"compileManagedAgent(definition, config, { contextRepo, hasSkills, sandboxSetup, asyncSubagentGraphs }, runtime)")
 	manifest, err := LoadSandboxRecipeManifest(f.outDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if manifest == nil || !manifest.HasSetupScript || manifest.DockerImage != nil {
 		t.Fatalf("recipe: %+v", manifest)
-	}
-	if !summary.Sandbox {
-		t.Fatal("summary does not report the sandbox")
 	}
 }
 

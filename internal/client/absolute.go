@@ -79,10 +79,10 @@ func parseHTTPURL(raw string) (*url.URL, bool) {
 	return u, true
 }
 
-// SendsCredentialsSecurely reports whether a credential sent to u travels
-// encrypted: `https`, or plain `http` only to this machine (a local
-// LangSmith or a test server).
-func SendsCredentialsSecurely(u *url.URL) bool {
+// CredentialTransportAllowed reports whether a credential may be sent to u:
+// over `https`, or over plain `http` only to this machine (a local LangSmith
+// or a test server), where it never crosses the network.
+func CredentialTransportAllowed(u *url.URL) bool {
 	switch u.Scheme {
 	case "https":
 		return true
@@ -98,14 +98,14 @@ func SendsCredentialsSecurely(u *url.URL) bool {
 	}
 }
 
-// CheckSecureTransport fails unless credentials sent to rawURL, an absolute
-// http(s) URL, travel encrypted ([SendsCredentialsSecurely]).
-func CheckSecureTransport(rawURL string) error {
+// CheckCredentialTransport fails unless credentials may be sent to rawURL, an
+// absolute http(s) URL ([CredentialTransportAllowed]).
+func CheckCredentialTransport(rawURL string) error {
 	u, ok := parseHTTPURL(rawURL)
 	if !ok {
 		return fmt.Errorf("request URL %q must be an absolute http(s) URL", rawURL)
 	}
-	if !SendsCredentialsSecurely(u) {
+	if !CredentialTransportAllowed(u) {
 		return fmt.Errorf("refusing to send LangSmith credentials over plain HTTP to %s; use https", Origin(u))
 	}
 	return nil
@@ -182,7 +182,7 @@ func (c *Client) DoAbsolute(ctx context.Context, method, absoluteURL string, bod
 	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
 		return nil, fmt.Errorf("refusing to send a request to %s: %w", origin, errNoCredential)
 	}
-	if err := CheckSecureTransport(absoluteURL); err != nil {
+	if err := CheckCredentialTransport(absoluteURL); err != nil {
 		return nil, err
 	}
 	reqOpts := []option.RequestOption{option.WithHTTPClient(sameOriginRedirects)}

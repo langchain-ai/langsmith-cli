@@ -105,13 +105,10 @@ func TestAppsAreListedByOwnerAndReadTheirState(t *testing.T) {
 	if !slices.Equal(states, []GitHubAppState{GitHubAppStateCreated, GitHubAppStateExternal, GitHubAppStatePending, GitHubAppStatePending}) {
 		t.Errorf("states = %v", states)
 	}
-	if url, ok := apps[0].HTMLURL(); !ok || url != "https://github.com/apps/acme-triage" {
-		t.Errorf("HTMLURL = %q, %v", url, ok)
-	}
-	if _, ok := apps[2].HTMLURL(); ok || len(apps[2].StrandedURLs()) != 0 {
+	if len(apps[2].StrandedURLs()) != 0 {
 		t.Errorf("a pending app has pages")
 	}
-	if _, ok := apps[3].HTMLURL(); ok || !slices.Equal(apps[3].StrandedURLs(), []string{"https://github.com/apps/acme-triage"}) {
+	if !slices.Equal(apps[3].StrandedURLs(), []string{"https://github.com/apps/acme-triage"}) {
 		t.Errorf("stranded = %v", apps[3].StrandedURLs())
 	}
 	if line := server.Only(t).Line(); line != "GET /v1/agent-auth/apps?owner_id=agent-1" {

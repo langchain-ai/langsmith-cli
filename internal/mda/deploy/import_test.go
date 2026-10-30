@@ -43,9 +43,9 @@ func TestImportProjectModulesShowsProgressAndHandsOverTheEnv(t *testing.T) {
 
 	require.NoError(t, importProjectModules(t.Context(), p, map[string]string{"MDA_DEPLOY_TEST_NAME": "from-dotenv"}))
 
-	id, err := introspect.AgentAssistantID(t.Context(), p)
+	config, err := introspect.ReadAgentStaticConfig(t.Context(), p)
 	require.NoError(t, err)
-	assert.Equal(t, "from-dotenv", id)
+	assert.Equal(t, "from-dotenv", config.AssistantID)
 	assert.Contains(t, output.String(), "Importing project modules…")
 	assert.Contains(t, output.String(), "Imported project modules")
 }

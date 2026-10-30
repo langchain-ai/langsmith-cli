@@ -24,18 +24,18 @@ func TestEscapesRootCountsParentSegmentsFromTheImportingFile(t *testing.T) {
 	}
 }
 
-func TestTypescriptImportsOutsideRootSkipsTypeOnlyImports(t *testing.T) {
+func TestImportsOutsideRootSkipTypeOnlyImports(t *testing.T) {
 	source := "import { a } from \"../../shared/a\";\n" +
 		"import type { B } from \"../../shared/b\";\n" +
 		"export * from \"../../shared/c\";\n" +
 		"export type { D } from \"../../shared/d\";\n" +
 		"import { e } from \"../e\";\n" +
 		"const lazy = await import(\"../../shared/f\");\n"
-	got, err := TypescriptImportsOutsideRoot(t.Context(), source, filepath.Join("tools", "search.ts"))
+	got, err := transform(t, t.TempDir(), filepath.Join("tools", "search.ts"), source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"../../shared/a", "../../shared/c"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v", got)
+	if want := []string{"../../shared/a", "../../shared/c"}; !reflect.DeepEqual(got.OutsideImports, want) {
+		t.Fatalf("got %v", got.OutsideImports)
 	}
 }

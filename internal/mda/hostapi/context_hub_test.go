@@ -1,9 +1,6 @@
 package hostapi
 
 import (
-	"fmt"
-	"slices"
-	"strings"
 	"testing"
 )
 
@@ -14,17 +11,6 @@ func hubClient(t *testing.T, baseURL string) *ContextHubClient {
 		t.Fatal(err)
 	}
 	return h
-}
-
-func TestRepoTagsAlwaysLeadWithTheOwnershipTag(t *testing.T) {
-	h := hubClient(t, "http://localhost:1980")
-	if got := h.repoTags(); !slices.Equal(got, []string{"managed-deepagents"}) {
-		t.Fatalf("repoTags = %v", got)
-	}
-	tagged := h.WithExtraRepoTags([]string{"managed-deepagents:github", "managed-deepagents"})
-	if got := tagged.repoTags(); !slices.Equal(got, []string{"managed-deepagents", "managed-deepagents:github"}) {
-		t.Fatalf("repoTags = %v", got)
-	}
 }
 
 func TestNewContextHubClientRejectsUnusableBaseURLs(t *testing.T) {
@@ -139,15 +125,6 @@ func TestTagRepoTagsTheRepoByID(t *testing.T) {
 	}
 }
 
-func repoPage(t *testing.T, handles []string) string {
-	t.Helper()
-	repos := make([]map[string]string, 0, len(handles))
-	for _, handle := range handles {
-		repos = append(repos, map[string]string{"id": handle, "repo_handle": handle})
-	}
-	return mustJSON(t, map[string]any{"repos": repos})
-}
-
 func managedRepoBody() string {
 	return `{"repo":{"repo_handle":"my-agent","tags":["managed-deepagents"]}}`
 }
@@ -214,7 +191,7 @@ func TestRepoOwnershipSurfacesOtherErrors(t *testing.T) {
 func TestEnsureRepoCreatesOnlyWhenTheRepoIsMissing(t *testing.T) {
 	server := serveSequence(t, reply{status: 404, body: `{"detail":"nope"}`}, reply{status: 200, body: managedRepoBody()})
 
-	if err := hubClient(t, server.URL).WithExtraRepoTags([]string{"managed-deepagents:github"}).EnsureRepo(t.Context(), "my-agent"); err != nil {
+	if err := hubClient(t, server.URL).EnsureRepo(t.Context(), "my-agent"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -222,7 +199,7 @@ func TestEnsureRepoCreatesOnlyWhenTheRepoIsMissing(t *testing.T) {
 	if requests[0].Line() != "GET /api/v1/repos/-/my-agent" || requests[1].Line() != "POST /api/v1/repos" {
 		t.Fatalf("requests = %s, %s", requests[0].Line(), requests[1].Line())
 	}
-	want := `{"repo_handle":"my-agent","repo_type":"agent","is_public":false,"description":"Managed Deep Agents deployed context","tags":["managed-deepagents","managed-deepagents:github"]}`
+	want := `{"repo_handle":"my-agent","repo_type":"agent","is_public":false,"description":"Managed Deep Agents deployed context","tags":["managed-deepagents"]}`
 	if !jsonEqual(t, requests[1].JSON(t), want) {
 		t.Fatalf("create body = %s", requests[1].Body)
 	}
@@ -242,73 +219,5 @@ func TestEnsureRepoAcceptsARepoCreatedConcurrently(t *testing.T) {
 	server := serveSequence(t, reply{status: 404, body: `{}`}, reply{status: 409, body: `{"detail":"exists"}`})
 	if err := hubClient(t, server.URL).EnsureRepo(t.Context(), "my-agent"); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestDeleteRepoTargetsTheCurrentOwnerDirectoryEndpoint(t *testing.T) {
-	server := serveOnce(t, 200, "{}")
-	deleted, err := hubClient(t, server.URL).DeleteRepo(t.Context(), "my-agent")
-	if err != nil || !deleted {
-		t.Fatalf("DeleteRepo = %v, %v", deleted, err)
-	}
-	if line := server.Only(t).Line(); line != "DELETE /api/v1/platform/hub/repos/-/my-agent/directories" {
-		t.Fatalf("request = %s", line)
-	}
-}
-
-func TestDeleteRepoTreatsMissingRepoAsAlreadyGone(t *testing.T) {
-	deleted, err := hubClient(t, serveOnce(t, 404, `{"detail":"nope"}`).URL).DeleteRepo(t.Context(), "my-agent")
-	if err != nil || deleted {
-		t.Fatalf("DeleteRepo = %v, %v", deleted, err)
-	}
-}
-
-func TestDeleteRepoSurfacesOtherErrors(t *testing.T) {
-	_, err := hubClient(t, serveOnce(t, 403, `{"detail":"missing permission"}`).URL).DeleteRepo(t.Context(), "my-agent")
-	if err == nil || err.Error() != "missing permission (HTTP 403)" {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestListAgentRepoHandlesFiltersToAgentRepos(t *testing.T) {
-	server := serveOnce(t, 200, repoPage(t, []string{"my-agent", "other"}))
-	handles, err := hubClient(t, server.URL).ListAgentRepoHandles(t.Context())
-	if err != nil || !slices.Equal(handles, []string{"my-agent", "other"}) {
-		t.Fatalf("handles = %v, %v", handles, err)
-	}
-	query := server.Only(t).Query(t)
-	if strings.Join(query["repo_type"], ",") != "agent" || strings.Join(query["is_archived"], ",") != "false" {
-		t.Fatalf("query = %v", query)
-	}
-}
-
-func TestListAgentRepoHandlesPaginatesUntilAShortPage(t *testing.T) {
-	first := make([]string, 100)
-	for i := range first {
-		first[i] = fmt.Sprintf("repo-%d", i)
-	}
-	server := serveSequence(t, reply{status: 200, body: repoPage(t, first)}, reply{status: 200, body: repoPage(t, []string{"repo-100"})})
-
-	handles, err := hubClient(t, server.URL).ListAgentRepoHandles(t.Context())
-
-	if err != nil || len(handles) != 101 || handles[100] != "repo-100" {
-		t.Fatalf("got %d handles, %v", len(handles), err)
-	}
-	requests := server.Requests()
-	if strings.Join(requests[0].Query(t)["offset"], ",") != "0" || strings.Join(requests[1].Query(t)["offset"], ",") != "100" {
-		t.Fatalf("offsets = %v, %v", requests[0].Query(t)["offset"], requests[1].Query(t)["offset"])
-	}
-}
-
-func TestListAgentRepoHandlesStopsAtTheReportedTotal(t *testing.T) {
-	first := make([]string, 100)
-	for i := range first {
-		first[i] = fmt.Sprintf("repo-%d", i)
-	}
-	page := strings.TrimSuffix(repoPage(t, first), "}") + `,"total":100}`
-	// A full page whose `total` is already reached must not request another.
-	handles, err := hubClient(t, serveOnce(t, 200, page).URL).ListAgentRepoHandles(t.Context())
-	if err != nil || len(handles) != 100 {
-		t.Fatalf("got %d handles, %v", len(handles), err)
 	}
 }

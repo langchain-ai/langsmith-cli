@@ -138,14 +138,14 @@ func bakeRecipe(ctx context.Context, client *hostapi.Client, deploymentName stri
 		digest := spec.Registry.DigestInput()
 		registryDigest = &digest
 	}
-	digest := deployment.RecipeDigest(
-		[]byte(spec.SetupScript),
-		spec.SnapshotName,
-		spec.SnapshotID,
-		spec.DockerImage,
-		registryDigest,
-		spec.FsCapacityBytes,
-	)
+	digest := deployment.RecipeInputs{
+		Setup:           []byte(spec.SetupScript),
+		SnapshotName:    spec.SnapshotName,
+		SnapshotID:      spec.SnapshotID,
+		DockerImage:     spec.DockerImage,
+		Registry:        registryDigest,
+		FsCapacityBytes: spec.FsCapacityBytes,
+	}.Digest()
 	recipeName := deployment.RecipeSnapshotName(deploymentName, digest)
 
 	progress(BakePhaseCheckingRecipe)

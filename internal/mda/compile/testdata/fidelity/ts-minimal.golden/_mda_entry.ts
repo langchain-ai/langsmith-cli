@@ -9,15 +9,15 @@ import { assertStaticAgentDefinition } from "managed-deepagents/runtime";
 import type { ManagedRunConfig, ManagedServerRuntime } from "managed-deepagents/runtime";
 import { agent as definition } from "./agent";
 
-const contextRoot = "$ROOT/.mda/__contexthub__";
+const contextRepo = "context-repo";
 const hasSkills = false;
 const asyncSubagentGraphs = { "general-purpose": "minimal--general-purpose" };
 
 export function agent(config: ManagedRunConfig, runtime: ManagedServerRuntime) {
   assertStaticAgentDefinition(definition);
-  return compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagentGraphs }, runtime);
+  return compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagentGraphs }, runtime);
 }
 
 export function agent__general_purpose(config: ManagedRunConfig, runtime: ManagedServerRuntime) {
-  return compileManagedAgent(definition, config, { contextRoot, hasSkills, asyncSubagent: "general-purpose" }, runtime);
+  return compileManagedAgent(definition, config, { contextRepo, hasSkills, asyncSubagent: "general-purpose" }, runtime);
 }

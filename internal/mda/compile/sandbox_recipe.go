@@ -114,11 +114,17 @@ func writeSandboxRecipeManifest(ctx context.Context, p *project.Project, outDir 
 		input := bases.Registry.DigestInput()
 		registryDigest = &input
 	}
-	digest := deployment.RecipeDigest([]byte(setup), bases.SnapshotName, bases.SnapshotID,
-		bases.DockerImage, registryDigest, bases.FsCapacityBytes)
+	digest := deployment.RecipeInputs{
+		Setup:           []byte(setup),
+		SnapshotName:    bases.SnapshotName,
+		SnapshotID:      bases.SnapshotID,
+		DockerImage:     bases.DockerImage,
+		Registry:        registryDigest,
+		FsCapacityBytes: bases.FsCapacityBytes,
+	}.Digest()
 	var setupShaPreview *string
 	if hasSetupScript {
-		preview := deployment.RecipeDigest([]byte(setup), nil, nil, nil, nil, nil)
+		preview := deployment.RecipeInputs{Setup: []byte(setup)}.Digest()
 		setupShaPreview = &preview
 	}
 

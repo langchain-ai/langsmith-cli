@@ -131,20 +131,20 @@ func TestEnsureDeploymentNameSecretSkipsEmpty(t *testing.T) {
 
 func TestRecipeDigestIsStableAndLengthBounded(t *testing.T) {
 	setup := []byte("#!/bin/sh\necho hi\n")
-	a := RecipeDigest(setup, ptr("base"), nil, nil, nil, nil)
-	b := RecipeDigest(setup, ptr("base"), nil, nil, nil, nil)
+	a := RecipeInputs{Setup: setup, SnapshotName: ptr("base")}.Digest()
+	b := RecipeInputs{Setup: setup, SnapshotName: ptr("base")}.Digest()
 	assert.Equal(t, a, b)
 	assert.Len(t, a, RecipeDigestLength)
 	assert.True(t, isRecipeDigest(a), a)
-	assert.NotEqual(t, a, RecipeDigest([]byte("#!/bin/sh\necho bye\n"), ptr("base"), nil, nil, nil, nil))
-	assert.NotEqual(t, a, RecipeDigest(setup, nil, ptr("id-1"), nil, nil, nil))
+	assert.NotEqual(t, a, RecipeInputs{Setup: []byte("#!/bin/sh\necho bye\n"), SnapshotName: ptr("base")}.Digest())
+	assert.NotEqual(t, a, RecipeInputs{Setup: setup, SnapshotID: ptr("id-1")}.Digest())
 	assert.NotEqual(t,
-		RecipeDigest(setup, nil, nil, ptr("ghcr.io/acme/base:1"), ptr("ghcr"), nil),
-		RecipeDigest(setup, nil, nil, ptr("ghcr.io/acme/base:1"), nil, nil),
+		RecipeInputs{Setup: setup, DockerImage: ptr("ghcr.io/acme/base:1"), Registry: ptr("ghcr")}.Digest(),
+		RecipeInputs{Setup: setup, DockerImage: ptr("ghcr.io/acme/base:1")}.Digest(),
 	)
 	assert.NotEqual(t,
-		RecipeDigest(nil, nil, nil, ptr("python:3.12"), nil, nil),
-		RecipeDigest(nil, nil, nil, ptr("python:3.12"), nil, ptr(uint64(2<<30))),
+		RecipeInputs{DockerImage: ptr("python:3.12")}.Digest(),
+		RecipeInputs{DockerImage: ptr("python:3.12"), FsCapacityBytes: ptr(uint64(2 << 30))}.Digest(),
 	)
 }
 
@@ -152,8 +152,8 @@ func TestRecipeDigestMatchesTheRustCLI(t *testing.T) {
 	// Recipe snapshots are named by this digest, so it must stay the one mda
 	// computed or every existing deployment would bake its recipe again.
 	// Expected values: Python's hashlib over the bytes the Rust CLI hashes.
-	assert.Equal(t, "1b8723323333a490", RecipeDigest([]byte("echo ready\n"), nil, nil, nil, nil, nil))
-	assert.Equal(t, "97b45d43659ad8a1", RecipeDigest(nil, nil, nil, ptr("python:3.12"), ptr("ghcr"), ptr(uint64(2<<30))))
+	assert.Equal(t, "1b8723323333a490", RecipeInputs{Setup: []byte("echo ready\n")}.Digest())
+	assert.Equal(t, "97b45d43659ad8a1", RecipeInputs{DockerImage: ptr("python:3.12"), Registry: ptr("ghcr"), FsCapacityBytes: ptr(uint64(2 << 30))}.Digest())
 }
 
 func TestIntermediateSnapshotsMatchOnlyTheirOwnDeployment(t *testing.T) {
@@ -162,7 +162,6 @@ func TestIntermediateSnapshotsMatchOnlyTheirOwnDeployment(t *testing.T) {
 		name := IntermediateSnapshotName("agent", kind, digest)
 		assert.Equal(t, fmt.Sprintf("agent--%s-%s", kind, digest), name)
 		assert.True(t, IsDeploymentIntermediateSnapshot(name, "agent"))
-		assert.True(t, IsDeploymentBakeSnapshot(name, "agent"))
 		// Neighbours that share a prefix with `agent`.
 		assert.False(t, IsDeploymentIntermediateSnapshot(name, "agent--x"))
 		assert.False(t, IsDeploymentIntermediateSnapshot(IntermediateSnapshotName("agent--x", kind, digest), "agent"))
@@ -248,57 +247,6 @@ func TestDeploymentNameIsNotForwardedFromEnv(t *testing.T) {
 	assert.Empty(t, SecretsFromEnv(env))
 }
 
-func TestSandboxPrefixCannotMatchALongerDeploymentName(t *testing.T) {
-	prefix := SandboxNamePrefix("my-agent")
-	assert.Equal(t, "my-agent--", prefix)
-	assert.True(t, strings.HasPrefix("my-agent"+SandboxNameSeparator+"abc123", prefix))
-	// The doubled separator is what keeps a sibling deployment out.
-	assert.False(t, strings.HasPrefix("my-agent-staging"+SandboxNameSeparator+"abc123", prefix))
-}
-
-func TestSandboxPrefixPreservesLongDeploymentWhenPrimaryNameFits(t *testing.T) {
-	deployment := "mda-integ-sandbox-recipe-ts-pr-339-4d66e3"
-	assert.Equal(t, deployment+"--", SandboxNamePrefix(deployment))
-}
-
-func TestRecognizesPrimaryAndShortenedFallbackNamesForLongDeployments(t *testing.T) {
-	deployment := "mda-integ-sandbox-recipe-ts-pr-339-4d66e3"
-	prefixes := SandboxNamePrefixes(deployment)
-	require.Len(t, prefixes, 2)
-
-	assert.True(t, IsDeploymentSandbox(prefixes[0]+"0123456789ab", deployment))
-	assert.True(t, IsDeploymentSandbox(prefixes[1]+"0123456789ab-0a1b2c3d", deployment))
-}
-
-func TestRecognizesSandboxesThisDeploymentCreated(t *testing.T) {
-	assert.True(t, IsDeploymentSandbox("my-agent--0123456789ab", "my-agent"))
-	// Collision fallback suffix.
-	assert.True(t, IsDeploymentSandbox("my-agent--0123456789ab-0a1b2c3d", "my-agent"))
-}
-
-func TestRejectsSandboxesBelongingToAnotherDeployment(t *testing.T) {
-	// A neighbour whose own name contains the separator would otherwise be
-	// swept up by the `my-agent--` prefix.
-	assert.False(t, IsDeploymentSandbox("my-agent--foo--0123456789ab", "my-agent"))
-	assert.False(t, IsDeploymentSandbox("my-agent-staging--0123456789ab", "my-agent"))
-	assert.False(t, IsDeploymentSandbox("other--0123456789ab", "my-agent"))
-}
-
-func TestRejectsNamesThatDoNotCarryAScopeDigest(t *testing.T) {
-	// Hand-named sandboxes that merely start with the deployment name are not
-	// ours to delete.
-	for _, name := range []string{
-		"my-agent--scratch",
-		"my-agent--0123456789",
-		"my-agent--0123456789abc",
-		"my-agent--0123456789AB",
-		"my-agent--0123456789ab-xyz",
-		"my-agent",
-	} {
-		assert.False(t, IsDeploymentSandbox(name, "my-agent"), name)
-	}
-}
-
 func TestResolveCORSAllowOriginsMergesExactOrigins(t *testing.T) {
 	env := map[string]string{
 		MDAPublicAppURLEnv: "https://app.example.com/",
@@ -321,8 +269,8 @@ func TestEnsureCORSAllowOriginsInjectsWhenMissing(t *testing.T) {
 func TestLoginAPIURLDerivesEUAndStagingFromHost(t *testing.T) {
 	// Empty lookup, so an ambient `LANGSMITH_ENDPOINT` cannot short-circuit
 	// the derivation under test.
-	assert.Equal(t, "https://eu.api.smith.langchain.com", hostapi.ResolveLoginAPIURL("https://eu.api.host.langchain.com", noEnv))
-	assert.Equal(t, "https://beta.api.smith.langchain.com", hostapi.ResolveLoginAPIURL("https://beta.api.host.langchain.com", noEnv))
+	assert.Equal(t, "https://eu.api.smith.langchain.com", hostapi.PlatformAPIURLForHost("https://eu.api.host.langchain.com", noEnv))
+	assert.Equal(t, "https://beta.api.smith.langchain.com", hostapi.PlatformAPIURLForHost("https://beta.api.host.langchain.com", noEnv))
 }
 
 func TestPlatformAPIURLPrefersProcessEnvOverDotenv(t *testing.T) {
@@ -375,20 +323,6 @@ func TestResolveLangsmithAPIBasesStripsSDKRestPathFromSelfHostedEndpoint(t *test
 func TestResolveLangsmithAPIBasesDefaultsToSaaS(t *testing.T) {
 	host, platform := resolveLangsmithAPIBasesWith(noEnv)
 	assert.Equal(t, [2]string{DefaultHostURL, "https://api.smith.langchain.com"}, [2]string{host, platform})
-}
-
-func TestHTTPSPublicURLIsAccepted(t *testing.T) {
-	env := map[string]string{MDAPublicAPIURLEnv: "https://abc.trycloudflare.com/"}
-	assert.Equal(t, PublicAPIURL{Kind: PublicAPIURLHTTPS, URL: "https://abc.trycloudflare.com"}, ResolveHTTPSPublicAPIURL(env))
-}
-
-func TestMissingPublicURLIsReported(t *testing.T) {
-	assert.Equal(t, PublicAPIURL{Kind: PublicAPIURLMissing}, ResolveHTTPSPublicAPIURL(map[string]string{}))
-}
-
-func TestHTTPPublicURLIsRejected(t *testing.T) {
-	env := map[string]string{MDAPublicAPIURLEnv: "http://localhost:2024"}
-	assert.Equal(t, PublicAPIURL{Kind: PublicAPIURLNotHTTPS, URL: "http://localhost:2024"}, ResolveHTTPSPublicAPIURL(env))
 }
 
 func TestEnsurePublicAPIURLInjectsNonLoopback(t *testing.T) {

@@ -12,7 +12,7 @@
   "env": ".env",
   "auth": {
     "path": "./_mda_auth.ts:auth",
-    "disable_studio_auth": true
+    "disable_studio_auth": false
   },
   "http": {
     "configurable_headers": {

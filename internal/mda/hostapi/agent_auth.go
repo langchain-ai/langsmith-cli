@@ -30,10 +30,6 @@ const (
 	oauthAuthorizationSessionsPath = "/v1/agent-auth/oauth-authorization-sessions"
 	oauthCallbackPath              = "/v1/agent-auth/oauth/callback"
 	oauthClientMetadataPath        = "/v1/agent-auth/oauth/client-metadata.json"
-	principalsPath                 = "/v1/agent-auth/principals"
-	saasPlatformAuthPath           = "/auth"
-	selfHostedPlatformAuthPath     = "/v1/auth"
-	langsmithDevIdentityProvider   = "langsmith-dev"
 )
 
 const (
@@ -128,11 +124,6 @@ func (s *ConnectionSummary) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// IsSecret reports whether the connection holds an opaque secret.
-func (s ConnectionSummary) IsSecret() bool {
-	return s.Kind == kindSecret
-}
-
 // CreateOAuthConnection holds the fields for creating a workspace OAuth
 // connection row. Empty optional strings are unset.
 //
@@ -189,12 +180,6 @@ type oauthProviderListPage struct {
 	NextCursor *string               `json:"next_cursor"`
 }
 
-// DeveloperPrincipal is the Agent Auth principal of the signed-in developer.
-type DeveloperPrincipal struct {
-	PrincipalID string
-	WorkspaceID string
-}
-
 // OAuthAuthorizationSession is an Agent Auth OAuth authorization session.
 type OAuthAuthorizationSession struct {
 	ID              string `json:"id"`
@@ -211,55 +196,6 @@ func (s *OAuthAuthorizationSession) UnmarshalJSON(data []byte) error {
 	}
 	type plain OAuthAuthorizationSession
 	return json.Unmarshal(data, (*plain)(s))
-}
-
-// ResolveDeveloperPrincipal resolves the personal LangSmith credential owner
-// to a separate `mda dev` principal.
-func (c *Client) ResolveDeveloperPrincipal(ctx context.Context) (DeveloperPrincipal, error) {
-	base, err := c.PublicPlatformBase()
-	if err != nil {
-		return DeveloperPrincipal{}, err
-	}
-	authPath := saasPlatformAuthPath
-	if c.IsSelfHosted() {
-		authPath = selfHostedPlatformAuthPath
-	}
-	raw, err := c.request(ctx, base, http.MethodGet, authPath, nil, nil)
-	if err != nil {
-		return DeveloperPrincipal{}, fmt.Errorf("LangSmith could not identify the API key owner: %w", err)
-	}
-	auth, err := decodeAny(raw)
-	if err != nil {
-		return DeveloperPrincipal{}, err
-	}
-	subject, ok := nonEmptyStr(field(auth, "ls_user_id"))
-	if !ok {
-		return DeveloperPrincipal{}, errors.New("user memory, user-owned connections, and managed tools in `mda dev` require " +
-			"a LangSmith Personal Access Token (PAT). Replace the configured " +
-			"LANGSMITH_API_KEY with a PAT from LangSmith Settings > API Keys > Personal.")
-	}
-	workspaceID, ok := nonEmptyStr(field(auth, "tenant_id"))
-	if !ok {
-		return DeveloperPrincipal{}, errors.New("LangSmith auth response missing tenant_id")
-	}
-	payload := map[string]any{
-		"provider": langsmithDevIdentityProvider,
-		"issuer":   workspaceID,
-		"subject":  subject,
-	}
-	raw, err = c.request(ctx, base, http.MethodPost, principalsPath, nil, payload)
-	if err != nil {
-		return DeveloperPrincipal{}, fmt.Errorf("Agent Auth could not resolve the signed-in LangSmith developer: %w", err)
-	}
-	principal, err := decodeAny(raw)
-	if err != nil {
-		return DeveloperPrincipal{}, err
-	}
-	principalID, ok := nonEmptyStr(field(field(principal, "principal"), "id"))
-	if !ok {
-		return DeveloperPrincipal{}, errors.New("Agent Auth principal response missing principal.id")
-	}
-	return DeveloperPrincipal{PrincipalID: principalID, WorkspaceID: workspaceID}, nil
 }
 
 // OAuthRedirectURI is the redirect URI to register with the OAuth provider.
@@ -531,21 +467,6 @@ func (c *Client) PublishedOAuthRedirectURI(ctx context.Context) (string, bool, e
 	}
 	uri, ok := nonEmptyStr(uris[0])
 	return uri, ok, nil
-}
-
-// FindWorkspaceConnectionBySlug finds the workspace connection named slug,
-// nil when there is none.
-func (c *Client) FindWorkspaceConnectionBySlug(ctx context.Context, slug string) (*ConnectionSummary, error) {
-	connections, err := c.ListWorkspaceConnections(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, connection := range connections {
-		if connection.Slug == slug {
-			return &connection, nil
-		}
-	}
-	return nil, nil
 }
 
 // DeleteConnection deletes a connection, false when it was already gone.

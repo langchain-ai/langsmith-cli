@@ -12,9 +12,9 @@
 // group is therefore registered while it lives, so [TerminateRegistered] can
 // take them all down from a signal handler that holds no [OwnedChild].
 //
-// [OwnedChild.Wait] takes the interrupt as a context rather than reading a
-// process-global flag, so tests can fabricate one and run without installing a
-// real signal handler.
+// [OwnedChild.Poll] and [Output] take the interrupt as a context rather than
+// reading a process-global flag, so tests can fabricate one and run without
+// installing a real signal handler.
 package proc
 
 import (
@@ -244,16 +244,6 @@ func (c *OwnedChild) Poll(ctx context.Context) (outcome Outcome, ok bool, err er
 	return Outcome{Status: status}, true, nil
 }
 
-// Wait waits for the child, stopping it if ctx is cancelled first.
-func (c *OwnedChild) Wait(ctx context.Context) (Outcome, error) {
-	select {
-	case <-c.done:
-	case <-ctx.Done():
-	}
-	outcome, _, err := c.Poll(ctx)
-	return outcome, err
-}
-
 // Stop stops the child and everything it spawned, then reaps it.
 //
 // Returns the child's own status when it had already exited, so a failure
@@ -349,48 +339,4 @@ func capture(ctx context.Context, cmd *exec.Cmd, stdin []byte, timeout time.Dura
 		return nil, ctx.Err()
 	}
 	return &Captured{Status: outcome.Status, Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, nil
-}
-
-// StderrTail is a child's stderr, passed through to ours as it arrives, with
-// its last part kept for the error if the child fails.
-type StderrTail struct {
-	out  io.Writer
-	keep int
-	mu   sync.Mutex
-	tail []byte
-}
-
-// TeeStderr routes cmd's stderr through a tail that keeps its last keep bytes.
-// Call it before [Spawn].
-func TeeStderr(cmd *exec.Cmd, keep int) *StderrTail {
-	return teeStderr(cmd, keep, os.Stderr)
-}
-
-func teeStderr(cmd *exec.Cmd, keep int, out io.Writer) *StderrTail {
-	tail := &StderrTail{out: out, keep: keep}
-	cmd.Stderr = tail
-	return tail
-}
-
-// Write passes p through to our stderr and keeps the end of it.
-func (s *StderrTail) Write(p []byte) (int, error) {
-	_, _ = s.out.Write(p)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.tail = append(s.tail, p...)
-	if excess := len(s.tail) - s.keep; excess > 0 {
-		s.tail = append(s.tail[:0], s.tail[excess:]...)
-	}
-	return len(p), nil
-}
-
-// Finish returns the kept bytes. Call once the child has been stopped or
-// waited for, so the pipe has closed.
-func (s *StderrTail) Finish() []byte {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return bytes.Clone(s.tail)
 }

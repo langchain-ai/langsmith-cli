@@ -1,10 +1,9 @@
 [project]
 name = "shared"
 version = "1.0.0"
-dependencies = ["util"]
+dependencies = ["orjson"]
 
 [project.optional-dependencies]
 fast = ["orjson"]
 
 [tool.uv.sources]
-util = { path = "../util", editable = true }

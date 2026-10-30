@@ -3,14 +3,13 @@ package introspect
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/langchain-ai/langsmith-cli/internal/mda/project"
 )
 
 // Checks that discovered MCP and channel modules expose the export shape the
-// runtime collector requires, plus the channel ingress that decides whether the
-// identity gate applies (`compile/exports.rs`).
+// runtime collector requires, plus whether any channel declares the ingress
+// that makes the identity gate apply (`compile/exports.rs`).
 //
 // Channel discovery is name-agnostic. Modules without the required named
 // `channel` export are skipped so helpers and co-located unit tests are not
@@ -20,66 +19,15 @@ import (
 // module that fails to import is reported, never quietly skipped, or a typo'd
 // brace would drop a connector from the deployment without a word.
 
-// ingressChannelProviders are the first-party channel factories that mount
-// Events ingress.
-var ingressChannelProviders = []string{"slack", "github", "linear"}
-
-type channelIngressKind int
-
-const (
-	// ingressNone is a channel that is not a first-party ingress channel.
-	ingressNone channelIngressKind = iota
-	// ingressUnresolved is a channel whose provider is not known; treated as
-	// ingress, provider unknown.
-	ingressUnresolved
-	// ingressProvider is a first-party `channels.<provider>(...)` channel.
-	ingressProvider
-)
-
-// channelIngress is what the exported `channel` is, as far as introspection can
-// tell.
-type channelIngress struct {
-	kind     channelIngressKind
-	provider string
-}
-
-// parseChannelIngress reads the helper's ingress provider: null for a channel
-// that is not a first-party ingress channel.
-func parseChannelIngress(provider *string) channelIngress {
-	if provider == nil {
-		return channelIngress{kind: ingressNone}
-	}
-	if slices.Contains(ingressChannelProviders, *provider) {
-		return channelIngress{kind: ingressProvider, provider: *provider}
-	}
-	return channelIngress{kind: ingressUnresolved}
-}
-
-func (c channelIngress) isIngress() bool {
-	return c.kind != ingressNone
-}
-
-// needsPublicURL reports whether local delivery needs a public HTTPS URL.
-// GitHub and Linear channels do not run under `mda dev`, so only Slack (or an
-// unknown factory) counts.
-func (c channelIngress) needsPublicURL() bool {
-	return c.kind == ingressUnresolved || (c.kind == ingressProvider && c.provider == "slack")
-}
-
 // ChannelScan is the result of scanning `channels/` once for exports and
 // ingress.
 type ChannelScan struct {
 	// Entries are the modules with a named `channel` export.
 	Entries []string
-	// RequiresIdentity reports whether any exported module declares Events
-	// ingress.
+	// RequiresIdentity reports whether any exported module is a first-party
+	// ingress channel (`channels.slack(...)`, `channels.github(...)`, …), which
+	// mounts Events ingress.
 	RequiresIdentity bool
-	// NeedsPublicURL reports whether any exported module needs a public Events
-	// URL under `mda dev`.
-	NeedsPublicURL bool
-	// Providers are the first-party ingress providers declared by exported
-	// modules, sorted.
-	Providers []string
 }
 
 // ScanExportedConnectors lists the connector modules collected into
@@ -171,24 +119,8 @@ func ScanExportedChannels(ctx context.Context, p *project.Project) (ChannelScan,
 			}
 			continue
 		}
-		ingress := parseChannelIngress(fields.Ingress)
 		scan.Entries = append(scan.Entries, rel)
-		scan.RequiresIdentity = scan.RequiresIdentity || ingress.isIngress()
-		scan.NeedsPublicURL = scan.NeedsPublicURL || ingress.needsPublicURL()
-		if ingress.kind == ingressProvider && !slices.Contains(scan.Providers, ingress.provider) {
-			scan.Providers = append(scan.Providers, ingress.provider)
-		}
+		scan.RequiresIdentity = scan.RequiresIdentity || fields.Ingress != nil
 	}
-	slices.Sort(scan.Providers)
 	return scan, nil
-}
-
-// ProjectNeedsEventsPublicURL reports whether any channel declares Events
-// ingress that needs a public HTTPS URL (Slack) for local delivery.
-func ProjectNeedsEventsPublicURL(ctx context.Context, p *project.Project) (bool, error) {
-	scan, err := ScanExportedChannels(ctx, p)
-	if err != nil {
-		return false, err
-	}
-	return scan.NeedsPublicURL, nil
 }

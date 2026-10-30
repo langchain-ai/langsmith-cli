@@ -1,8 +1,6 @@
 package project
 
 import (
-	"encoding/json"
-	"fmt"
 	"slices"
 	"testing"
 
@@ -12,7 +10,7 @@ import (
 
 func TestEveryDependencyHasANameAndVersion(t *testing.T) {
 	assert.NotEmpty(t, UserRuntimePackage)
-	for _, dep := range slices.Concat(typescriptManaged, pythonManaged, pythonLocalDev) {
+	for _, dep := range slices.Concat(typescriptManaged, pythonManaged) {
 		assert.NotEmpty(t, dep.Name, "dependency name must not be empty")
 		assert.NotEmpty(t, dep.Version, "%s must declare a version", dep.Name)
 	}
@@ -21,16 +19,6 @@ func TestEveryDependencyHasANameAndVersion(t *testing.T) {
 		assert.NotEmpty(t, provider.npm.Name)
 		assert.NotEmpty(t, provider.pypi.Name)
 	}
-}
-
-func TestUserManifestOnlyListsManagedDeepagents(t *testing.T) {
-	assert.Equal(t, `"managed-deepagents": "1.2.3"`, PackageJSONEntries(0, "1.2.3"))
-	assert.Equal(t, `"managed-deepagents==1.2.3"`, PyprojectEntries(0, "1.2.3"))
-}
-
-func TestUserManagedDeepagentsIsPinnedToTheRuntimePackageVersion(t *testing.T) {
-	assert.Equal(t, `    "managed-deepagents": "0.0.3-dev.22"`, PackageJSONEntries(4, "0.0.3-dev.22"))
-	assert.Equal(t, `    "managed-deepagents==0.0.3-dev.22"`, PyprojectEntries(4, "0.0.3-dev.22"))
 }
 
 func TestDeepagentsIsInjectedByTheManagedStack(t *testing.T) {
@@ -47,13 +35,6 @@ func TestLanggraphSDKIsInjectedForTheManagedAuthHandler(t *testing.T) {
 	assert.Contains(t, names(typescriptManaged), "@langchain/langgraph-sdk")
 }
 
-func TestDevServerCLIIsInjectedForLocalDev(t *testing.T) {
-	assert.Contains(t, names(LocalDevDependencies(Python)), "langgraph-cli[inmem]")
-	// Thread state keeps interrupt `response_schema` from langgraph-api 0.16.
-	assert.Contains(t, LocalDevDependencies(Python), Dependency{Name: "langgraph-api", Version: ">=0.16.0"})
-	assert.Contains(t, names(LocalDevDependencies(TypeScript)), "@langchain/langgraph-cli")
-}
-
 func TestTypeScriptDevServerCLIUsesACompatibleRange(t *testing.T) {
 	assert.Equal(t, "^1.5.1", TypeScriptDevServerCLI.Version)
 }
@@ -64,15 +45,6 @@ func TestLanggraphStackUsesServerCompatibleFloors(t *testing.T) {
 	assert.Contains(t, typescriptManaged, Dependency{Name: "@langchain/langgraph", Version: "^1.4.18"})
 	assert.Contains(t, typescriptManaged, Dependency{Name: "@langchain/langgraph-checkpoint", Version: "^1.1.3"})
 	assert.Contains(t, typescriptManaged, Dependency{Name: "@langchain/langgraph-sdk", Version: "^1.12.0"})
-}
-
-func TestPackageJSONEntriesComposeIntoValidJSON(t *testing.T) {
-	manifest := fmt.Sprintf("{\n  \"dependencies\": {\n%s\n  }\n}", PackageJSONEntries(4, "0.4.0"))
-	var value struct {
-		Dependencies map[string]string `json:"dependencies"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(manifest), &value))
-	assert.Equal(t, map[string]string{"managed-deepagents": "0.4.0"}, value.Dependencies)
 }
 
 func TestProviderInferredFromExplicitPrefix(t *testing.T) {
@@ -158,22 +130,6 @@ func TestDeployModelAPIKeyRequirement(t *testing.T) {
 	} {
 		assert.Equal(t, want, DeployModelAPIKeyRequirement(model), model)
 	}
-}
-
-func TestProviderAPIKeyEnvsCoversRegistryKeys(t *testing.T) {
-	assert.Equal(t, []string{
-		"ANTHROPIC_API_KEY",
-		"COHERE_API_KEY",
-		"DEEPSEEK_API_KEY",
-		"FIREWORKS_API_KEY",
-		"GOOGLE_API_KEY",
-		"GROQ_API_KEY",
-		"MISTRAL_API_KEY",
-		"OPENAI_API_KEY",
-		"PPLX_API_KEY",
-		"TOGETHER_AI_API_KEY",
-		"XAI_API_KEY",
-	}, ProviderAPIKeyEnvs())
 }
 
 func TestRequiredAPIKeyEnvIsNoneForCredentialOrKeylessProviders(t *testing.T) {

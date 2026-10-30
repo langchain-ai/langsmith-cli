@@ -1,11 +1,7 @@
 package hostapi
 
-// LangSmith platform API endpoints for managed sandboxes.
-//
-// Used by `mda delete` to reclaim the sandboxes a deployment's runtime
-// created, and by deploy bake. Sandboxes carry no deployment reference of
-// their own, so attribution rides on the name: the runtimes name every sandbox
-// they create `{deployment}--{digest}`, and teardown matches on that prefix.
+// LangSmith platform API endpoints for managed sandboxes, used by deploy's
+// sandbox access check and recipe bake.
 //
 // Calls go to the platform API (`api.smith.langchain.com`), not the host
 // backend.
@@ -22,15 +18,7 @@ import (
 	"github.com/langchain-ai/langsmith-go/option"
 )
 
-// sandboxPageSize is the page size for sandbox listing. The API defaults to 50
-// and reports no total, so pagination runs until a short page comes back.
-const sandboxPageSize = 100
-
-// statusDeleting is the status of a sandbox that is already being torn down by
-// LangSmith.
-const statusDeleting = "deleting"
-
-// SandboxSummary is a sandbox as returned by the list endpoint.
+// SandboxSummary is a sandbox as LangSmith reports it.
 type SandboxSummary struct {
 	// Name is the display name, which is also the delete key.
 	Name string `json:"name"`
@@ -51,36 +39,6 @@ func (s *SandboxSummary) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*plain)(s))
 }
 
-// SandboxBatchDelete is the outcome of a batch delete: LangSmith reports
-// per-name results rather than failing the whole request.
-type SandboxBatchDelete struct {
-	// Deleted are the names LangSmith accepted for deletion.
-	Deleted []string `json:"deleted"`
-	// Skipped are the names LangSmith declined, with its reason.
-	Skipped []SandboxSkipped `json:"skipped"`
-}
-
-// SandboxSkipped is a sandbox the batch delete did not remove.
-type SandboxSkipped struct {
-	// Name is the name that was skipped.
-	Name string `json:"name"`
-	// Reason is LangSmith's explanation, when it supplied one.
-	Reason string `json:"reason"`
-}
-
-// UnmarshalJSON requires the name.
-func (s *SandboxSkipped) UnmarshalJSON(data []byte) error {
-	if err := requireFields(data, "name"); err != nil {
-		return err
-	}
-	type plain SandboxSkipped
-	return json.Unmarshal(data, (*plain)(s))
-}
-
-type sandboxListPage struct {
-	Sandboxes []SandboxSummary `json:"sandboxes"`
-}
-
 // EnsureSandboxAccess verifies that the current organization may use managed
 // sandboxes.
 //
@@ -97,67 +55,6 @@ func (c *Client) EnsureSandboxAccess(ctx context.Context) error {
 			return err
 		})
 	return err
-}
-
-// ListSandboxesWithPrefix lists sandboxes whose name starts with prefix,
-// excluding ones already being deleted.
-//
-// The API filter is `name_contains` (a substring match), so results are
-// narrowed server-side and then re-checked as a true prefix locally;
-// otherwise a deployment would adopt sandboxes that merely mention its name.
-func (c *Client) ListSandboxesWithPrefix(ctx context.Context, prefix string) ([]SandboxSummary, error) {
-	found := []SandboxSummary{}
-	offset := 0
-	for {
-		raw, err := c.sdkRequest(ctx, http.MethodGet, "/api/v2/sandboxes/boxes", requestOptions{},
-			func(ctx context.Context, opts ...option.RequestOption) error {
-				_, err := c.ls.SDK.Sandboxes.Boxes.List(ctx, langsmith.SandboxBoxListParams{
-					NameContains: langsmith.F(prefix),
-					Limit:        langsmith.F(int64(sandboxPageSize)),
-					Offset:       langsmith.F(int64(offset)),
-				}, opts...)
-				return err
-			})
-		if err != nil {
-			return nil, err
-		}
-		if raw == nil {
-			break
-		}
-		var page sandboxListPage
-		if err := json.Unmarshal(raw, &page); err != nil {
-			return nil, fmt.Errorf("failed to decode the sandbox list response: %w", err)
-		}
-		for _, sandbox := range page.Sandboxes {
-			if strings.HasPrefix(sandbox.Name, prefix) && sandbox.Status != statusDeleting {
-				found = append(found, sandbox)
-			}
-		}
-		if len(page.Sandboxes) < sandboxPageSize {
-			break
-		}
-		offset += len(page.Sandboxes)
-	}
-	return found, nil
-}
-
-// BatchDeleteSandboxes deletes sandboxes by name in one request.
-//
-// LangSmith reports per-name results instead of failing outright, so a
-// sandbox that vanished between listing and deleting is reported as skipped
-// rather than erroring the teardown.
-func (c *Client) BatchDeleteSandboxes(ctx context.Context, names []string) (SandboxBatchDelete, error) {
-	if len(names) == 0 {
-		return SandboxBatchDelete{}, nil
-	}
-	raw, err := c.request(ctx, c.PlatformBase(), http.MethodPost, "/v2/sandboxes/boxes/batch-delete", nil, map[string]any{"names": names})
-	if err != nil {
-		return SandboxBatchDelete{}, err
-	}
-	if raw == nil {
-		return SandboxBatchDelete{}, nil
-	}
-	return decodeBatchDelete(raw)
 }
 
 // CreateSandboxBox creates a sandbox box (bake builder) and waits until it is
@@ -238,26 +135,12 @@ type CreateSandboxBoxOptions struct {
 	IdleTTLSeconds uint64
 }
 
-// DefaultCreateSandboxBoxOptions are the default create options: a two-minute
-// ready timeout and a ten-minute idle TTL.
-func DefaultCreateSandboxBoxOptions() CreateSandboxBoxOptions {
-	return CreateSandboxBoxOptions{TimeoutSecs: 120, IdleTTLSeconds: 600}
-}
-
 // SandboxCommandResult is the result of a blocking dataplane `/execute` call.
 // A response without an exit code reads as -1.
 type SandboxCommandResult struct {
 	Stdout   string `json:"stdout"`
 	Stderr   string `json:"stderr"`
 	ExitCode int32  `json:"exit_code"`
-}
-
-func decodeBatchDelete(raw json.RawMessage) (SandboxBatchDelete, error) {
-	var outcome SandboxBatchDelete
-	if err := json.Unmarshal(raw, &outcome); err != nil {
-		return SandboxBatchDelete{}, fmt.Errorf("failed to decode the sandbox batch-delete response: %w", err)
-	}
-	return outcome, nil
 }
 
 // nullIfEmpty is raw, or JSON null for an empty body, so a struct decode of
