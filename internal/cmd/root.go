@@ -96,7 +96,7 @@ Quick start:
 	rootCmd.AddCommand(newInsightsCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newAppsCmd())
-	rootCmd.AddCommand(newDeployCmd())
+	rootCmd.AddCommand(deployCommand.Cobra())
 	rootCmd.AddCommand(newPromptCmd())
 	rootCmd.AddCommand(authCommand.Cobra())
 	rootCmd.AddCommand(newProfileCmd())

@@ -10,11 +10,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/deploy"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/deployment"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/hostapi"
 	"github.com/langchain-ai/langsmith-cli/internal/mda/proc"
+	"github.com/langchain-ai/langsmith-cli/internal/structured"
 )
 
 // maxWaitTimeoutSeconds is the largest --wait-timeout-seconds.
@@ -36,27 +38,23 @@ var contextStrategies = map[string]deploy.ContextStrategy{
 	"keep-hub":  deploy.ContextStrategyKeepHub,
 }
 
-// deployFlags are the flags of `langsmith deploy`.
-type deployFlags struct {
-	name             string
-	agentEnvironment string
-	deploymentType   string
-	hostURL          string
-	pushTo           string
-	// pushToSet tells `--push-to ""` from no --push-to.
-	pushToSet          bool
-	noWait             bool
-	contextStrategy    string
-	yes                bool
-	waitTimeoutSeconds uint64
+// deployInput is the flags of `langsmith deploy`.
+type deployInput struct {
+	Name               string
+	AgentEnvironment   string
+	DeploymentType     string
+	HostURL            string
+	PushTo             string
+	NoWait             bool
+	ContextStrategy    string
+	Yes                bool
+	WaitTimeoutSeconds uint64
 }
 
-func newDeployCmd() *cobra.Command {
-	var flags deployFlags
-	cmd := &cobra.Command{
-		Use:   "deploy [path]",
-		Short: "Build and deploy a Managed Deep Agent project to LangSmith",
-		Long: `Build a Managed Deep Agent project and deploy it to LangSmith Deployment.
+var deployCommand = structured.Command[*deployInput]{
+	Use:   "deploy [path]",
+	Short: "Build and deploy a Managed Deep Agent project to LangSmith",
+	Long: `Build a Managed Deep Agent project and deploy it to LangSmith Deployment.
 
 The project (default: the current directory) is a Deep Agent project with an
 agent.ts or agent.py entry and its dependencies installed (npm install or
@@ -74,70 +72,80 @@ Authentication:
   project's LANGSMITH_ENDPOINT names another one (--api-url beats it), deploy
   needs a LANGSMITH_API_KEY or a sign-in there. With no usable credential,
   deploy runs 'langsmith auth login' in a terminal. --workspace (or
-  LANGSMITH_WORKSPACE_ID in the shell or .env) selects the workspace.`,
-		Example: `  langsmith deploy
+  LANGSMITH_WORKSPACE_ID in the shell or .env) selects the workspace.
+
+Examples:
+  langsmith deploy
   langsmith deploy ./my-agent --name support-agent
   langsmith deploy --no-wait --yes --context-strategy keep-hub`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			path := "."
-			if len(args) == 1 {
-				path = args[0]
-			}
-			flags.pushToSet = cmd.Flags().Changed("push-to")
-			return runDeploy(cmd, path, flags)
-		},
-	}
-	cmd.Flags().StringVarP(&flags.name, "name", "n", "", "Deployment name (defaults to the agent's name)")
-	cmd.Flags().StringVar(&flags.agentEnvironment, "agent-environment", "", "Agent environment to target: development, staging, or production; the deployment name is used as the agent ID (requires agent mode enabled for the workspace)")
-	cmd.Flags().StringVar(&flags.deploymentType, "deployment-type", "dev", "Deployment type when creating: dev or prod")
-	cmd.Flags().StringVar(&flags.hostURL, "host-url", "", "Host backend URL override (advanced)")
-	_ = cmd.Flags().MarkHidden("host-url")
-	cmd.Flags().StringVar(&flags.pushTo, "push-to", "", "Build and push the image to `REPOSITORY[:TAG]` in a customer-managed registry, then deploy it (self-hosted LangSmith)")
-	cmd.Flags().BoolVar(&flags.noWait, "no-wait", false, "Trigger the build but do not wait for it to finish")
-	cmd.Flags().StringVar(&flags.contextStrategy, "context-strategy", "", "Resolve instructions/skills edited in Context Hub without prompting: overwrite or keep-hub")
-	cmd.Flags().BoolVarP(&flags.yes, "yes", "y", false, "Overwrite existing same-name resources on a first deploy without asking (does not resolve Context Hub edits; use --context-strategy for those)")
-	cmd.Flags().Uint64Var(&flags.waitTimeoutSeconds, "wait-timeout-seconds", 1800, "Maximum seconds to wait for the deployment to finish (1-3600)")
-	return cmd
+	Args: cobra.MaximumNArgs(1),
+	Input: func(cmd *cobra.Command) *deployInput {
+		in := &deployInput{DeploymentType: "dev", WaitTimeoutSeconds: 1800}
+		cmd.Flags().StringVarP(&in.Name, "name", "n", in.Name, "Deployment name (defaults to the agent's name)")
+		cmd.Flags().StringVar(&in.AgentEnvironment, "agent-environment", in.AgentEnvironment, "Agent environment to target: development, staging, or production; the deployment name is used as the agent ID (requires agent mode enabled for the workspace)")
+		cmd.Flags().StringVar(&in.DeploymentType, "deployment-type", in.DeploymentType, "Deployment type when creating: dev or prod")
+		cmd.Flags().StringVar(&in.HostURL, "host-url", in.HostURL, "Host backend URL override (advanced)")
+		_ = cmd.Flags().MarkHidden("host-url")
+		cmd.Flags().StringVar(&in.PushTo, "push-to", in.PushTo, "Build and push the image to `REPOSITORY[:TAG]` in a customer-managed registry, then deploy it (self-hosted LangSmith)")
+		cmd.Flags().BoolVar(&in.NoWait, "no-wait", in.NoWait, "Trigger the build but do not wait for it to finish")
+		cmd.Flags().StringVar(&in.ContextStrategy, "context-strategy", in.ContextStrategy, "Resolve instructions/skills edited in Context Hub without prompting: overwrite or keep-hub")
+		cmd.Flags().BoolVarP(&in.Yes, "yes", "y", in.Yes, "Overwrite existing same-name resources on a first deploy without asking (does not resolve Context Hub edits; use --context-strategy for those)")
+		cmd.Flags().Uint64Var(&in.WaitTimeoutSeconds, "wait-timeout-seconds", in.WaitTimeoutSeconds, "Maximum seconds to wait for the deployment to finish (1-3600)")
+		return in
+	},
+	// The deploy session draws its own output.
+	CustomOutput: true,
+	Action: func(ctx context.Context, cmd *cobra.Command, in *deployInput, args []string) (any, error) {
+		path := "."
+		if len(args) == 1 {
+			path = args[0]
+		}
+		opts, err := in.options(cmd, path)
+		if err != nil {
+			return nil, err
+		}
+		return nil, runDeploy(ctx, cmd, opts)
+	},
 }
 
 // options validates the flags and turns them into deploy options for the
 // project at path.
-func (f deployFlags) options(path string) (deploy.DeployOptions, error) {
+func (in *deployInput) options(cmd *cobra.Command, path string) (deploy.DeployOptions, error) {
 	opts := deploy.DeployOptions{
 		Path:        path,
-		Name:        f.name,
-		WorkspaceID: flagWorkspaceID,
-		HostURL:     f.hostURL,
-		Wait:        !f.noWait,
-		Yes:         f.yes,
+		Name:        in.Name,
+		WorkspaceID: cmd.Flag("workspace").Value.String(),
+		HostURL:     in.HostURL,
+		Wait:        !in.NoWait,
+		Yes:         in.Yes,
 	}
-	deploymentType, err := enumFlag("deployment-type", f.deploymentType, deploymentTypes, []string{"dev", "prod"})
+	deploymentType, err := enumFlag("deployment-type", in.DeploymentType, deploymentTypes, []string{"dev", "prod"})
 	if err != nil {
 		return opts, err
 	}
 	opts.DeploymentType = deploymentType
-	if f.pushToSet {
-		opts.PushTo = &f.pushTo
+	// `--push-to ""` is given, and refused later on LangSmith cloud.
+	if cmd.Flags().Changed("push-to") {
+		opts.PushTo = &in.PushTo
 	}
-	if f.agentEnvironment != "" {
-		environment, err := enumFlag("agent-environment", f.agentEnvironment, agentEnvironments, []string{"development", "staging", "production"})
+	if in.AgentEnvironment != "" {
+		environment, err := enumFlag("agent-environment", in.AgentEnvironment, agentEnvironments, []string{"development", "staging", "production"})
 		if err != nil {
 			return opts, err
 		}
 		opts.AgentEnvironment = &environment
 	}
-	if f.contextStrategy != "" {
-		strategy, err := enumFlag("context-strategy", f.contextStrategy, contextStrategies, []string{"overwrite", "keep-hub"})
+	if in.ContextStrategy != "" {
+		strategy, err := enumFlag("context-strategy", in.ContextStrategy, contextStrategies, []string{"overwrite", "keep-hub"})
 		if err != nil {
 			return opts, err
 		}
 		opts.ContextStrategy = &strategy
 	}
-	if f.waitTimeoutSeconds < 1 || f.waitTimeoutSeconds > maxWaitTimeoutSeconds {
-		return opts, fmt.Errorf("invalid --wait-timeout-seconds %d: must be between 1 and %d", f.waitTimeoutSeconds, maxWaitTimeoutSeconds)
+	if in.WaitTimeoutSeconds < 1 || in.WaitTimeoutSeconds > maxWaitTimeoutSeconds {
+		return opts, fmt.Errorf("invalid --wait-timeout-seconds %d: must be between 1 and %d", in.WaitTimeoutSeconds, maxWaitTimeoutSeconds)
 	}
-	opts.WaitTimeout = time.Duration(f.waitTimeoutSeconds) * time.Second
+	opts.WaitTimeout = time.Duration(in.WaitTimeoutSeconds) * time.Second
 	return opts, nil
 }
 
@@ -151,25 +159,22 @@ func enumFlag[T any](flag, value string, choices map[string]T, order []string) (
 	return choice, nil
 }
 
-func runDeploy(cmd *cobra.Command, path string, flags deployFlags) error {
-	opts, err := flags.options(path)
-	if err != nil {
-		return err
-	}
+// runDeploy runs the deploy session with the CLI's global flags, profiles and
+// sign-in.
+func runDeploy(ctx context.Context, cmd *cobra.Command, opts deploy.DeployOptions) error {
 	errOut := cmd.ErrOrStderr()
-	global := currentGlobalFlags()
 	cli := deployment.CLI{
-		APIURL: global.APIURL,
-		APIKey: global.APIKey,
+		APIURL: cmd.Flag("api-url").Value.String(),
+		APIKey: cmd.Flag("api-key").Value.String(),
 		Options: sync.OnceValues(func() (client.Options, error) {
-			return resolveClientOptionsFor(global)
+			return cmdutil.ResolveClientOptions(cmd)
 		}),
 		Login: func(ctx context.Context, platformAPIURL string) (client.Options, error) {
 			return loginAt(ctx, platformAPIURL, errOut)
 		},
 	}
 
-	ctx, stop := proc.InstallInterrupt(cmd.Context())
+	ctx, stop := proc.InstallInterrupt(ctx)
 	defer stop()
 	completion, err := deploy.Run(ctx, cli, opts)
 	proc.HandOverIfTerminating()
