@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.13](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.12...v0.3.13) (2026-10-30)
+
+
+### Features
+
+* **sandboxes:** AWS session tags on proxy role rules ([27c8d55](https://github.com/langchain-ai/langsmith-cli/commit/27c8d555942741f06852af6a61e6bc1bb4800e6b))
+
+
+### Documentation
+
+* **cli:** document calling Tool Gateway kits from custom apps ([a09decd](https://github.com/langchain-ai/langsmith-cli/commit/a09decde8c6548c3ec04b10ea3005c221aad4d25))
+
 ## [0.3.12](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.11...v0.3.12) (2026-10-29)
 
 
