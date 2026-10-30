@@ -147,3 +147,57 @@ func TestPromptCommits_ShowsDescription(t *testing.T) {
 		t.Fatalf("description in commits output = %v, want %q", d, "first commit via CLI")
 	}
 }
+
+// TestPromptDelete_AcceptsJSONAndNoContent verifies that delete succeeds whether
+// the API answers 200 with a JSON body or 204 No Content.
+func TestPromptDelete_AcceptsJSONAndNoContent(t *testing.T) {
+	tests := []struct {
+		name  string
+		write func(w http.ResponseWriter)
+	}{
+		{
+			name: "200 with JSON",
+			write: func(w http.ResponseWriter) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{}`))
+			},
+		},
+		{
+			name: "204 No Content",
+			write: func(w http.ResponseWriter) {
+				w.WriteHeader(http.StatusNoContent)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deleted := false
+			ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/repos/acme/my-prompt" {
+					http.NotFound(w, r)
+					return
+				}
+				deleted = true
+				tt.write(w)
+			})
+
+			out := captureStdout(t, func() {
+				if _, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL,
+					"prompt", "delete", "acme/my-prompt", "--yes"); err != nil {
+					t.Fatalf("delete command returned error: %v", err)
+				}
+			})
+
+			if !deleted {
+				t.Fatal("server never received the delete request")
+			}
+			var got map[string]any
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("unmarshaling output %q: %v", out, err)
+			}
+			if got["status"] != "deleted" || got["owner"] != "acme" || got["repo"] != "my-prompt" {
+				t.Fatalf("output = %v, want deleted acme/my-prompt", got)
+			}
+		})
+	}
+}

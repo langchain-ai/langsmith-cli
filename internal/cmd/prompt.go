@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 	"github.com/spf13/cobra"
 )
 
@@ -280,10 +282,14 @@ func newPromptDeleteCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			_, err = c.SDK.Repos.Delete(ctx, owner, repo)
+			// The API returns 200 with a JSON body or 204 No Content. Taking the raw
+			// response keeps the SDK from decoding a body that may be empty.
+			var res *http.Response
+			_, err = c.SDK.Repos.Delete(ctx, owner, repo, option.WithResponseBodyInto(&res))
 			if err != nil {
 				ExitErrorf("deleting prompt %s/%s: %v", owner, repo, err)
 			}
+			_ = res.Body.Close()
 			if err := output.OutputJSON(map[string]any{
 				"status": "deleted",
 				"owner":  owner,
