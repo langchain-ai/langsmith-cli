@@ -1,0 +1,21 @@
+[project]
+name = "inline"   # trailing comment
+version = "0.0.0"
+dependencies = [ "deepagents>=0.7.3" , "managed-deepagents @ file://$ROOT/.mda/build/__runtime__", "langchain[mcp]>=1.4.6,<2", "langgraph>=1.2.15,<2", "langgraph-prebuilt>=1.1.1,<2", "langgraph-checkpoint>=4.2.0", "langgraph-sdk>=0.4.6,<0.5", "pyjwt[crypto]>=2.8.0", "fastmcp>=4.0.10,<5", "mcp>=2.2.0,<3", "langsmith>=0.10.17", "langgraph-cli[inmem]>=0.4.36", "langgraph-api>=0.16.0", "langchain-anthropic>=1.5.4"]
+
+[tool.mda]
+python-version = "3.12"
+
+[tool.uv]
+sources = { other = { git = "https://example.com/other" } }
+
+[[tool.uv.index]]
+name = "internal"
+url = "https://pypi.example.com/simple"
+
+[tool.setuptools]
+py-modules = []
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

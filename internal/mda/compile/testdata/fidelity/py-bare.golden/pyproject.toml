@@ -1,0 +1,29 @@
+[project]
+name = "mda-agent"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.7.30,<1",
+    "langchain[mcp]>=1.4.6,<2",
+    "langgraph>=1.2.15,<2",
+    "langgraph-prebuilt>=1.1.1,<2",
+    "langgraph-checkpoint>=4.2.0",
+    "langgraph-sdk>=0.4.6,<0.5",
+    "pyjwt[crypto]>=2.8.0",
+    "fastmcp>=4.0.10,<5",
+    "mcp>=2.2.0,<3",
+    "langsmith>=0.10.17",
+    "langgraph-cli[inmem]>=0.4.36",
+    "langgraph-api>=0.16.0",
+    "langchain-openai>=1.4.2"
+, "managed-deepagents @ file://$ROOT/.mda/build/__runtime__"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool]
+uv = {}
+
+[tool.setuptools]
+py-modules = []

@@ -1,0 +1,10 @@
+{
+  "name": "managed-deepagents",
+  "version": "0.0.0-stub",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./runtime": "./runtime/index.js"
+  }
+}

@@ -1,0 +1,42 @@
+[project]
+name = "headers"
+version = "0.0.0"
+dependencies = [
+    "deepagents>=0.7.3",
+    "langchain[mcp]>=1.4.6,<2",
+    "langgraph>=1.2.15,<2",
+    "langgraph-prebuilt>=1.1.1,<2",
+    "langgraph-checkpoint>=4.2.0",
+    "langgraph-sdk>=0.4.6,<0.5",
+    "pyjwt[crypto]>=2.8.0",
+    "fastmcp>=4.0.10,<5",
+    "mcp>=2.2.0,<3",
+    "langsmith>=0.10.17",
+    "langgraph-cli[inmem]>=0.4.36",
+    "langgraph-api>=0.16.0",
+    "langchain-openai>=1.4.2"
+, "managed-deepagents @ file://$ROOT/.mda/build/__runtime__"]
+
+[ tool. ruff ]
+line-length = 100
+
+[tool]
+other = 1
+
+[tool. ruff.lint]
+select = ["E"]
+
+[[tool.uv.index]]
+name = "a"
+url = "https://a.example.com/simple"
+
+[[tool.uv.index]]
+name = "b"
+url = "https://b.example.com/simple"
+
+[tool.setuptools]
+py-modules = []
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

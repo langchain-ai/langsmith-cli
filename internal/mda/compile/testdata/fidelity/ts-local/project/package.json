@@ -1,0 +1,11 @@
+{
+  "name": "with-local",
+  "type": "module",
+  "dependencies": {
+    "shared": "file:../shared",
+    "managed-deepagents": "0.0.0-stub"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

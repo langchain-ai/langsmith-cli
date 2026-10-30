@@ -1,0 +1,26 @@
+{
+  "node_version": "22",
+  "_INTERNAL_docker_tag": "0.18.0.dev12-node22",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "support-bot": "./_mda_entry.ts:agent",
+    "support-bot--researcher": "./_mda_entry.ts:agent__researcher",
+    "support-bot--general-purpose": "./_mda_entry.ts:agent__general_purpose"
+  },
+  "env": ".env",
+  "auth": {
+    "path": "./_mda_auth.ts:auth",
+    "disable_studio_auth": true
+  },
+  "http": {
+    "configurable_headers": {
+      "includes": [
+        "x-mda-user-id"
+      ]
+    },
+    "middleware_order": "middleware_first",
+    "app": "./_mda_http.ts:app"
+  }
+}

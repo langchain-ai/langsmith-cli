@@ -449,6 +449,25 @@ Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's
 
 Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
 
+### `deploy` — Deploy a Managed Deep Agent to LangSmith
+
+Builds a Managed Deep Agent project (an `agent.ts` or `agent.py` entry with its dependencies installed) and deploys it to LangSmith Deployment, named after the agent unless `--name` is given. Before building it checks that the model provider key and other required secrets are in the project `.env` or the workspace's secrets; it then syncs `instructions.md` and `skills/` to Context Hub, compiles the project into `.mda/build`, uploads it, and waits for the revision to go live.
+
+Deploy reads the project by importing its modules, so code that runs at import time runs during the deploy, with the project `.env` in its environment (the shell's variables win). TypeScript projects need Node.js 20.6 or newer; on first use the CLI installs pinned tsx and esbuild into its cache directory. Python projects run with the project's interpreter: `.venv`, then `$VIRTUAL_ENV`, then the active conda environment (`$CONDA_PREFIX`). The project must have a `managed-deepagents` release from `>=0.10.0, <0.11.0` installed.
+
+```bash
+# Deploy the project in the current directory and wait until it is live
+langsmith deploy
+
+# Deploy another directory under a different name
+langsmith deploy ./my-agent --name support-agent
+
+# Unattended: overwrite same-name resources on a first deploy, keep Context Hub edits, don't wait
+langsmith deploy --yes --context-strategy keep-hub --no-wait
+```
+
+Deploy authenticates with `--api-key`, then a `LANGSMITH_API_KEY` from the shell or the project `.env`, then the selected profile's credential; with none, it runs `langsmith auth login` in a terminal. The CLI's own credentials are only sent to the LangSmith they belong to: when the project's `LANGSMITH_ENDPOINT` names another one (`--api-url` overrides it), deploy needs a `LANGSMITH_API_KEY` or a sign-in there, which it asks before doing. `--workspace` (or `LANGSMITH_WORKSPACE_ID`) selects the workspace. Self-hosted LangSmith needs `--push-to <repository[:tag]>` to build and push the image to your own registry.
+
 ### `tunnel` and `relay` — Serve private network connections
 
 A private network connection lets LangSmith reach a network it can't reach directly, through a connector running inside that network. These commands run the connector until interrupted. Create the connection in LangSmith first and pass its ID.

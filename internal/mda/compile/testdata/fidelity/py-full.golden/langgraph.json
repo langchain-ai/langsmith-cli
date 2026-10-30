@@ -1,0 +1,26 @@
+{
+  "python_version": "3.14",
+  "_INTERNAL_docker_tag": "0.18.0.dev12-py3.14",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "support-bot": "./_mda_entry.py:agent",
+    "support-bot--researcher": "./_mda_entry.py:agent__researcher",
+    "support-bot--general-purpose": "./_mda_entry.py:agent__general_purpose"
+  },
+  "env": ".env",
+  "auth": {
+    "path": "./_mda_auth.py:auth",
+    "disable_studio_auth": true
+  },
+  "http": {
+    "configurable_headers": {
+      "includes": [
+        "x-mda-user-id"
+      ]
+    },
+    "middleware_order": "middleware_first",
+    "app": "./_mda_http.py:app"
+  }
+}

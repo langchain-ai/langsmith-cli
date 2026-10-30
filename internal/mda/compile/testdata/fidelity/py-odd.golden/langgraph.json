@@ -1,0 +1,12 @@
+{
+  "python_version": "3.13",
+  "_INTERNAL_docker_tag": "0.18.0.dev12-py3.13",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "odd": "./_mda_entry.py:agent",
+    "odd--general-purpose": "./_mda_entry.py:agent__general_purpose"
+  },
+  "env": ".env"
+}
