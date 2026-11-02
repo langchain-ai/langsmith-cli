@@ -739,13 +739,19 @@ const devHostHTMLTemplate = `<!doctype html>
 
     if (msg.type === 'LS_NAVIGATE') {
       var href = '';
+      var externalHref = '';
       try {
         var base = new URL(webOrigin);
         var target = new URL(String(msg.url), base);
-        if (target.origin === base.origin) href = target.href;
+        var isWeb = target.protocol === 'https:' || target.protocol === 'http:';
+        if (isWeb && target.origin === base.origin) href = target.href;
+        else if (target.protocol === 'https:') externalHref = target.href;
       } catch (e) {}
-      if (!href) {
-        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith URL):', msg.url);
+      if (externalHref) {
+        // LangSmith asks the viewer first; locally it's the author's own app.
+        window.open(externalHref, '_blank', 'noopener,noreferrer');
+      } else if (!href) {
+        console.warn('[langsmith apps dev] openUrl blocked (not a LangSmith or https URL):', msg.url);
       } else if (msg.newTab) {
         window.open(href, '_blank', 'noopener,noreferrer');
       } else {

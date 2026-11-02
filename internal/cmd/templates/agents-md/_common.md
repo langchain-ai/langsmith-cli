@@ -120,8 +120,7 @@ if (reply.error || reply.result?.isError) {
   all connected.
 - When the viewer hasn't connected an account a tool needs, the call rejects
   with an error whose message contains "Authorize the linked servers, then
-  retry the MCP request". Ask them to connect it on the Tools page;
-  `window.langsmith.openUrl` opens LangSmith pages only.
+  retry the MCP request". Ask them to connect it on the Tools page.
 - A call times out after 10 seconds, and a timed-out tool call may still have
   run. Never retry a tool call automatically.
 - Under `langsmith apps dev`, calls use the CLI's configured credentials. Use a
@@ -174,12 +173,16 @@ and(eq(metadata_key, "ls_agent_purpose"), eq(metadata_value, "coding"))
 Combine with `and(...)` / `or(...)`; other examples: `has(tags, "prod")`,
 `eq(name, "ChatOpenAI")`, `eq(is_root, true)`.
 
-## Linking back to LangSmith
+## Opening links
 
 `window.langsmith.openUrl(url)` navigates LangSmith to a URL — pass an absolute
 URL or a path. Pass `{ newTab: true }` as a second argument to open it in a new
-tab instead. The app can't navigate on its own; the host resolves the URL and
-rejects anything outside LangSmith, so `<a href>` and `window.open` won't work.
+tab instead. An `https://` URL outside LangSmith, such as a Jira issue or a
+GitHub pull request, opens in a new tab after LangSmith shows the viewer the
+URL and they confirm (`langsmith apps dev` opens it without asking). Call
+`openUrl` from a click handler. The app can't navigate on its own, so
+`<a href>` and `window.open` won't work; the host resolves the URL and rejects
+anything else, including `http://` URLs outside LangSmith.
 
 For a run or trace, ask the API for the URL rather than building one:
 
