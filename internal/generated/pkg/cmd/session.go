@@ -56,7 +56,7 @@ var sessionsUpdate = cli.Command{
 
 var sessionsDashboard = requestflag.WithInnerFlags(cli.Command{
 	Name:    "dashboard",
-	Usage:   "Get a prebuilt dashboard for a tracing project.",
+	Usage:   "GET with body payload — no resources created. Returns the prebuilt dashboard for\nthe tracing project matching the query passed as the request payload.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
