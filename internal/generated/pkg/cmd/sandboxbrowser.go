@@ -16,9 +16,14 @@ import (
 
 var sandboxesBrowsersCreate = requestflag.WithInnerFlags(cli.Command{
 	Name:    "create",
-	Usage:   "Beta: create a browser sandbox, which runs one persistent Chrome that other\nsandboxes attach to. Logins made in it persist across restarts. It keeps its\nmemory when it stops and is never deleted automatically.",
+	Usage:   "Beta: create a browser sandbox, which runs one persistent Chrome that other\nsandboxes attach to. Logins made in it persist across restarts. It keeps its\nmemory when it stops. A stopped browser is deleted after the sandbox default,\nalong with its logins, unless delete_after_stop_seconds sets another delay or 0\nto keep it.",
 	Suggest: true,
 	Flags: []cli.Flag{
+		&requestflag.Flag[int64]{
+			Name:     "delete-after-stop-seconds",
+			Usage:    "DeleteAfterStopSeconds deletes the browser this long after it stops.\nDefaults to the sandbox default; 0 keeps a stopped browser until it is\ndeleted.",
+			BodyPath: "delete_after_stop_seconds",
+		},
 		&requestflag.Flag[bool]{
 			Name:     "hidpi",
 			Usage:    "HiDPI renders pages at twice the resolution, so the live view is sharp on\nHiDPI screens, at four times the pixels for the browser to render and\nstream. Off by default, and fixed once the browser is created.",

@@ -17,6 +17,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--api-key", "string",
 			"--tenant-id", "string",
 			"sandboxes:browsers", "create",
+			"--delete-after-stop-seconds", "0",
 			"--hidpi=true",
 			"--idle-ttl-seconds", "0",
 			"--mem-bytes", "0",
@@ -36,6 +37,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--api-key", "string",
 			"--tenant-id", "string",
 			"sandboxes:browsers", "create",
+			"--delete-after-stop-seconds", "0",
 			"--hidpi=true",
 			"--idle-ttl-seconds", "0",
 			"--mem-bytes", "0",
@@ -52,6 +54,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 	t.Run("piping data", func(t *testing.T) {
 		// Test piping YAML data over stdin
 		pipeData := []byte("" +
+			"delete_after_stop_seconds: 0\n" +
 			"hidpi: true\n" +
 			"idle_ttl_seconds: 0\n" +
 			"mem_bytes: 0\n" +
