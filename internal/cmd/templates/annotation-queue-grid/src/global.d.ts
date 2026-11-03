@@ -13,6 +13,11 @@ declare global {
         args?: { params?: Record<string, string | string[]>; body?: unknown }
       ) => Promise<unknown>;
       setData: (patch: Record<string, unknown>) => void;
+      download: (options: {
+        filename: string;
+        content: string | Blob | ArrayBuffer | ArrayBufferView;
+        mimeType?: string;
+      }) => Promise<{ status: 'started' }>;
       feedback: {
         create: (args: Record<string, unknown>) => Promise<unknown>;
       };

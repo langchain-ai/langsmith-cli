@@ -167,6 +167,22 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 }
 
 // Asserts on the template constant directly to avoid fighting HTML-escaping.
+// The message names are the wire contract with LangSmith's sandbox host.
+func TestDevHarnessImplementsDownloadContract(t *testing.T) {
+	for _, want := range []string{"type: 'LS_DOWNLOAD'", "'LS_DOWNLOAD_RESPONSE'", "download: download"} {
+		if !strings.Contains(sandboxInnerHTMLTemplate, want) {
+			t.Errorf("sandboxInnerHTMLTemplate missing %q", want)
+		}
+	}
+	// Without a JS engine here, check the host trims before the blocklist test,
+	// so "setup.exe. " is refused as LangSmith refuses it.
+	for _, want := range []string{"msg.type === 'LS_DOWNLOAD'", "type: 'LS_DOWNLOAD_RESPONSE'", "filename.replace(/[. ]+$/, '')"} {
+		if !strings.Contains(devHostHTMLTemplate, want) {
+			t.Errorf("devHostHTMLTemplate missing %q", want)
+		}
+	}
+}
+
 func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
 	for _, want := range []string{
 		"LANGSMITH_METADATA",

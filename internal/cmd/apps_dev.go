@@ -718,6 +718,51 @@ const devHostHTMLTemplate = `<!doctype html>
   if (lightBtn) lightBtn.addEventListener('click', function() { setMode('light'); });
   if (darkBtn) darkBtn.addEventListener('click', function() { setMode('dark'); });
 
+  // LangSmith's size and executable limits, so an app that saves here saves
+  // there too. LangSmith also cleans up filenames and asks the viewer to
+  // confirm each download; locally the developer is the viewer.
+  var MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+  var BLOCKED_DOWNLOAD_EXTENSIONS = ['app', 'appimage', 'application', 'appref-ms', 'appx', 'appxbundle', 'bat', 'chm', 'cmd', 'com', 'command', 'cpl', 'deb', 'dmg', 'exe', 'gadget', 'hta', 'img', 'inf', 'iso', 'jar', 'js', 'jse', 'lnk', 'mpkg', 'msc', 'msi', 'msix', 'msp', 'pif', 'pkg', 'ps1', 'psm1', 'reg', 'rpm', 'run', 'scf', 'scr', 'sh', 'tool', 'url', 'vbe', 'vbs', 'vhd', 'vhdx', 'wsf', 'wsh', 'xll'];
+
+  function parseDownload(msg) {
+    var filename = msg.filename;
+    if (typeof filename !== 'string' || !filename) return { error: 'download() needs a filename' };
+    // Windows drops trailing dots and spaces, so "setup.exe. " is an .exe too.
+    var checked = filename.replace(/[. ]+$/, '');
+    var dot = checked.lastIndexOf('.');
+    if (dot >= 0 && BLOCKED_DOWNLOAD_EXTENSIONS.indexOf(checked.slice(dot + 1).toLowerCase()) >= 0) {
+      return { error: "Custom apps can't download executable files (" + filename + ')' };
+    }
+    var tooLarge = { error: filename + ' is larger than the 50 MB download limit' };
+    var content = msg.content;
+    // A size that needs no copy, so an oversized file is refused before it's
+    // encoded or copied again. A string's UTF-8 bytes are never fewer than its length.
+    var minimum = typeof content === 'string' ? content.length
+      : content instanceof Blob ? content.size
+      : content instanceof ArrayBuffer || ArrayBuffer.isView(content) ? content.byteLength
+      : 0;
+    if (minimum > MAX_DOWNLOAD_BYTES) return tooLarge;
+    var type = typeof msg.mimeType === 'string' ? msg.mimeType : '';
+    var blob = null;
+    if (typeof content === 'string' || content instanceof ArrayBuffer) blob = new Blob([content], { type: type });
+    else if (content instanceof Blob) blob = type ? new Blob([content], { type: type }) : content;
+    else if (ArrayBuffer.isView(content)) blob = new Blob([new Uint8Array(content.buffer, content.byteOffset, content.byteLength).slice()], { type: type });
+    if (!blob) return { error: 'download() content must be a string, Blob, ArrayBuffer, or typed array' };
+    if (blob.size > MAX_DOWNLOAD_BYTES) return tooLarge;
+    return { filename: filename, blob: blob };
+  }
+
+  function saveDownload(file) {
+    var url = URL.createObjectURL(file.blob);
+    var anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = file.filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+  }
+
   window.addEventListener('message', function(event) {
     if (event.source !== iframe.contentWindow) return;
     var msg = event.data;
@@ -758,6 +803,17 @@ const devHostHTMLTemplate = `<!doctype html>
         // Prod soft-navigates in place; dev leaves the harness.
         console.log('[langsmith apps dev] openUrl navigating away:', href);
         window.location.assign(href);
+      }
+    }
+
+    if (msg.type === 'LS_DOWNLOAD' && typeof msg.callId === 'string') {
+      var file = parseDownload(msg);
+      if (file.error) {
+        console.warn('[langsmith apps dev] download refused:', file.error);
+        post({ type: 'LS_DOWNLOAD_RESPONSE', callId: msg.callId, error: file.error });
+      } else {
+        saveDownload(file);
+        post({ type: 'LS_DOWNLOAD_RESPONSE', callId: msg.callId, status: 'started' });
       }
     }
 
@@ -1009,10 +1065,39 @@ pre, code {
     }, '*');
   }
 
+  // The host validates and saves the file. LangSmith asks the viewer first
+  // and waits for their answer; the local harness saves straight away.
+  function download(options) {
+    var opts = options || {};
+    return new Promise(function(resolve, reject) {
+      var callId = 'ls_dl_' + String(Date.now()) + '_' + String((Math.random() * 1e9) | 0);
+      function handler(e) {
+        if (!e.data || e.data.type !== 'LS_DOWNLOAD_RESPONSE' || e.data.callId !== callId) return;
+        window.removeEventListener('message', handler);
+        if (e.data.error) reject(new Error(e.data.error)); else resolve({ status: e.data.status });
+      }
+      window.addEventListener('message', handler);
+      try {
+        window.parent.postMessage({
+          type: 'LS_DOWNLOAD',
+          callId: callId,
+          filename: opts.filename,
+          content: opts.content,
+          mimeType: opts.mimeType
+        }, '*');
+      } catch (err) {
+        // Content the browser can't clone, such as a function.
+        window.removeEventListener('message', handler);
+        reject(err);
+      }
+    });
+  }
+
   window.langsmith = {
     call: call,
     setData: setData,
     openUrl: openUrl,
+    download: download,
     feedback: {
       create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
     }

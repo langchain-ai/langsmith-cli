@@ -154,6 +154,27 @@ Other caps worth knowing: ~2,000 req/min per key overall (writes to `/runs` and
 https://docs.langchain.com/langsmith/usage-and-billing and
 https://docs.langchain.com/langsmith/export-traces#rate-limits
 
+## Downloading files
+
+The sandbox can't download files on its own, so `<a download>` won't work. Build
+the file in the app and hand it to `window.langsmith.download()`:
+
+```ts
+await window.langsmith.download({
+  filename: 'runs.json',
+  content: JSON.stringify(runs, null, 2),
+  mimeType: 'application/json',
+});
+```
+
+`content` is a string, `Blob`, `ArrayBuffer`, or typed array, so any format the
+app can build works: CSV (quote fields containing commas, quotes, or newlines),
+JSON, XLSX, PDF, images, ZIP. Files are capped at 50 MB, and executable types
+such as `.exe`, `.sh`, or `.dmg` are refused. LangSmith asks the viewer to
+confirm each download, and the call waits for their answer; `langsmith apps dev`
+saves straight away. The promise resolves `{ status: 'started' }` once the
+browser has the file and rejects with the reason otherwise.
+
 ## Theme
 
 `metadata.mode` is `"dark"` | `"light"`. `HostTheme` synchronizes Macaw's
