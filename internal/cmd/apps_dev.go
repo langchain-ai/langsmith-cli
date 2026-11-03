@@ -699,10 +699,36 @@ const devHostHTMLTemplate = `<!doctype html>
 
   var webOrigin = __LS_WEB_ORIGIN_JSON__;
 
+  // The app's route lives in ?appRoute=, as on the LangSmith app page, so a
+  // refresh, a rebuild reload and Back/Forward keep the app's view.
+  var ROUTE_PARAM = 'appRoute';
+  function fitsRouteLimit(route) {
+    return new TextEncoder().encode(route).length <= 2048;
+  }
+  function currentRoute() {
+    var route = new URLSearchParams(location.search).get(ROUTE_PARAM);
+    return route && fitsRouteLimit(route) ? route : '/';
+  }
+  function setRoute(next, replace) {
+    var route = next === '' ? '/' : next;
+    if (!fitsRouteLimit(route)) return;
+    var params = new URLSearchParams(location.search);
+    if (route === '/') params.delete(ROUTE_PARAM);
+    else params.set(ROUTE_PARAM, route);
+    var query = params.toString();
+    var search = query ? '?' + query : '';
+    if (search === location.search) return;
+    var url = location.pathname + search + location.hash;
+    if (replace || route === currentRoute()) history.replaceState(history.state, '', url);
+    else history.pushState(history.state, '', url);
+    // Writing the URL fires no popstate, so the app hears about it here.
+    postMetadata();
+  }
+
   function postMetadata() {
     post({
       type: 'LANGSMITH_METADATA',
-      metadata: { mode: mode, workspaceId: __LS_WORKSPACE_ID_JSON__, host: webOrigin },
+      metadata: { mode: mode, workspaceId: __LS_WORKSPACE_ID_JSON__, host: webOrigin, route: currentRoute() },
     });
   }
 
@@ -717,6 +743,7 @@ const devHostHTMLTemplate = `<!doctype html>
   applyModeToHost();
   if (lightBtn) lightBtn.addEventListener('click', function() { setMode('light'); });
   if (darkBtn) darkBtn.addEventListener('click', function() { setMode('dark'); });
+  window.addEventListener('popstate', postMetadata);
 
   // LangSmith's size and executable limits, so an app that saves here saves
   // there too. LangSmith also cleans up filenames and asks the viewer to
@@ -815,6 +842,10 @@ const devHostHTMLTemplate = `<!doctype html>
         saveDownload(file);
         post({ type: 'LS_DOWNLOAD_RESPONSE', callId: msg.callId, status: 'started' });
       }
+    }
+
+    if (msg.type === 'LS_SET_ROUTE' && typeof msg.route === 'string') {
+      setRoute(msg.route, msg.replace !== false);
     }
 
     if (msg.type === 'LS_LOG') {
@@ -1093,11 +1124,20 @@ pre, code {
     });
   }
 
+  function setRoute(route, options) {
+    window.parent.postMessage({
+      type: 'LS_SET_ROUTE',
+      route: String(route),
+      replace: !(options && options.replace === false)
+    }, '*');
+  }
+
   window.langsmith = {
     call: call,
     setData: setData,
     openUrl: openUrl,
     download: download,
+    setRoute: setRoute,
     feedback: {
       create: function(args) { return call('POST /api/v1/feedback', { body: args }); }
     }

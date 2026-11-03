@@ -198,6 +198,27 @@ func TestSandboxImplementsThemeMetadataContract(t *testing.T) {
 	}
 }
 
+// Wiring only: the sandbox exposes setRoute, and the host listens for it and
+// for Back/Forward. The route rules themselves were checked in a browser.
+func TestDevHarnessWiresSetRoute(t *testing.T) {
+	for _, want := range []string{
+		"type: 'LS_SET_ROUTE'",
+		"setRoute: setRoute",
+	} {
+		if !strings.Contains(sandboxInnerHTMLTemplate, want) {
+			t.Errorf("sandboxInnerHTMLTemplate missing %q", want)
+		}
+	}
+	for _, want := range []string{
+		"msg.type === 'LS_SET_ROUTE'",
+		"window.addEventListener('popstate', postMetadata)",
+	} {
+		if !strings.Contains(devHostHTMLTemplate, want) {
+			t.Errorf("devHostHTMLTemplate missing %q", want)
+		}
+	}
+}
+
 func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.T) {
 	dir := t.TempDir()
 	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
