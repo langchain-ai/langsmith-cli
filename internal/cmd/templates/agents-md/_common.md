@@ -30,8 +30,9 @@ requirement when changing the app's layout or purpose.
   to the missing behavior and use Macaw's `utils/chartColors` for chart colors.
 - For chat, use `Textarea`, `Button`/`IconButton`, `ThinkingState` for generation,
   `Spinner` for fetching or saving, and `Banner`/`ErrorState` for failures.
-- Preserve `src/index.css`'s Macaw stylesheet import, the Tailwind preset, and
-  `HostTheme` in `src/entry.tsx`. The stylesheet already includes the token CSS;
+- Preserve `src/index.css`'s Macaw setup (layer order, stylesheet import before
+  Tailwind, Macaw source scan, and Tailwind preset) and `HostTheme` in
+  `src/entry.tsx`. The stylesheet already includes the token CSS;
   do not import it twice. CSS and fonts must remain inlined in `dist/bundle.js`
   because the sandbox cannot load separate assets or use a CDN.
 - Run `npm run typecheck` and `npm run build`, then inspect the affected UI in

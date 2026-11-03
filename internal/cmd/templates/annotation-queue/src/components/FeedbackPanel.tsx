@@ -255,7 +255,7 @@ function RubricCard({
                       {label}
                     </span>
                     {description && (
-                      <span className="line-clamp-2 whitespace-normal break-words text-sm text-tertiary">
+                      <span className="line-clamp-2 whitespace-normal wrap-break-word text-sm text-tertiary">
                         {description}
                       </span>
                     )}
@@ -318,7 +318,6 @@ function RubricCard({
             <div className="flex gap-2">
               <Textarea
                 size="sm"
-                debounceMs={0}
                 aria-label={item.feedback_key}
                 value={comment}
                 onChange={(value) => setComment(value)}

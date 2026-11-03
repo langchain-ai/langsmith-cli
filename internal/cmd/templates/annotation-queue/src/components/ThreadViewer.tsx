@@ -85,7 +85,7 @@ export function ThreadViewer({ messages, threadId, loading }: Props) {
               {roleLabel(msg.role)}
               {msg.name ? ` · ${msg.name}` : ''}
             </Text>
-            <Text variant="sm" className="whitespace-pre-wrap break-words">
+            <Text variant="sm" className="whitespace-pre-wrap wrap-break-word">
               {text}
             </Text>
           </Card>

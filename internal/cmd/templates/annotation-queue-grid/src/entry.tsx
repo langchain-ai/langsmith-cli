@@ -2,7 +2,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { StrictMode } from 'react';
 import { App } from './App';
 import { HostTheme } from './lib/HostTheme';
-// `?inline` gets the fully-processed (Tailwind + autoprefixer) CSS as a plain
+// `?inline` gets the compiled, vendor-prefixed Tailwind CSS as a plain
 // string instead of Vite emitting a separate stylesheet asset — there's no
 // way to <link> a second file into this sandbox; everything has to be in the
 // one bundled entrypoint. See README.md.

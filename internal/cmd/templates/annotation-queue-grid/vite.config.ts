@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // Library-mode build: the sandbox this app runs in evaluates a single
 // dependency-free CJS file exporting { render(data, root, metadata) } — not a
 // self-mounting SPA. See src/entry.tsx and AGENTS.md.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   // Unlike Vite's normal app-mode build, library mode does NOT replace
   // process.env.NODE_ENV on its own — React/ReactDOM's bundled source still
   // references it internally. There's no `process` global in the sandboxed

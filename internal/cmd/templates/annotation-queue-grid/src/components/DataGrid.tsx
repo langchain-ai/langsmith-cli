@@ -574,7 +574,7 @@ export function DataGrid({
                             <div className="grid grid-cols-2 gap-4">
                               <div className="flex flex-col gap-1">
                                 <span className="text-xs font-medium text-tertiary">Inputs</span>
-                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
                                   {expandLoading && !item.inputs
                                     ? 'Loading…'
                                     : prettyIO(item.inputs ?? null)}
@@ -582,7 +582,7 @@ export function DataGrid({
                               </div>
                               <div className="flex flex-col gap-1">
                                 <span className="text-xs font-medium text-tertiary">Outputs</span>
-                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
+                                <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-surface-level-2 p-2 font-mono text-xs text-secondary">
                                   {expandLoading && !item.outputs
                                     ? 'Loading…'
                                     : prettyIO(item.outputs ?? null)}

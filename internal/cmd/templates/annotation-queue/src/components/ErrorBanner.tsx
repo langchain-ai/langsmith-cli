@@ -23,7 +23,7 @@ export function ErrorBanner({ error }: { error: string }) {
           ) : undefined
         }
       >
-        <span className={expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'}>
+        <span className={expanded ? 'whitespace-pre-wrap wrap-break-word' : 'line-clamp-1'}>
           {error}
         </span>
       </Banner>

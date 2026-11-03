@@ -913,6 +913,8 @@ const sandboxInnerHTMLTemplate = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style id="ls-theme">/* theme injected via postMessage */</style>
 <style>
+/* App styles, including layered Tailwind utilities, override host defaults. */
+@layer langsmith-sandbox {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -923,6 +925,7 @@ body {
 }
 pre, code {
   font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+}
 }
 </style>
 </head>

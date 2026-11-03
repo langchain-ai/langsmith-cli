@@ -47,7 +47,7 @@ function ToolCallItem({ toolCall }: { toolCall: NormalizedToolCall }) {
           {toolCall.id && <span className="font-mono text-xs text-quaternary">{toolCall.id}</span>}
         </div>
         <div className="px-4 pb-4">
-          <pre className="whitespace-pre-wrap break-words font-mono text-xs text-secondary">
+          <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs text-secondary">
             {toYamlish(toolCall.args)}
           </pre>
         </div>
@@ -93,7 +93,7 @@ function ToolMessageCard({ message }: { message: unknown }) {
         {toolCallId && <span className="font-mono text-xs text-quaternary">{toolCallId}</span>}
       </div>
       <div className="px-4 pb-4">
-        <pre className="whitespace-pre-wrap break-words font-mono text-xs text-secondary">
+        <pre className="whitespace-pre-wrap wrap-break-word font-mono text-xs text-secondary">
           {typeof parsedContent === 'string' ? parsedContent : toYamlish(parsedContent)}
         </pre>
       </div>
@@ -122,7 +122,7 @@ function MessageCard({ message }: { message: unknown }) {
         </div>
         <div className="px-4 pb-4">
           {text ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">
+            <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-primary">
               {text}
             </p>
           ) : (
@@ -156,11 +156,11 @@ function DataView({ data }: { data: Record<string, unknown> }) {
         <div key={key} className="flex flex-col gap-1">
           <span className="text-xs font-medium text-secondary">{key}</span>
           {typeof value === 'string' ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-primary">
+            <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-primary">
               {value}
             </p>
           ) : (
-            <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
+            <pre className="whitespace-pre-wrap wrap-break-word rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
               {JSON.stringify(value, null, 2)}
             </pre>
           )}
@@ -249,7 +249,7 @@ function CollapsibleSection({
           {!hasData ? (
             <p className="text-sm text-tertiary">—</p>
           ) : mode === 'raw' ? (
-            <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
+            <pre className="whitespace-pre-wrap wrap-break-word rounded-lg border border-secondary bg-secondary p-3 text-xs text-primary">
               {JSON.stringify(data, null, 2)}
             </pre>
           ) : (

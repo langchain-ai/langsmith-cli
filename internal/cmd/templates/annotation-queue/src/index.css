@@ -1,6 +1,20 @@
+@layer properties, theme, base, langchain-ds-base, components, langchain-ds-components, langchain-ds-utilities, utilities;
 @import '@langchain/macaw-components/styles.css';
+@import 'tailwindcss' source('./');
+/* Macaw's precompiled utilities share the `utilities` layer. Regenerating its
+   classes after the package stylesheet keeps one Tailwind-ordered set, so
+   variants such as `md:flex-row` still override base classes. */
+@source '../node_modules/@langchain/macaw-components/dist/**/*.js';
+@config '@langchain/macaw-components/tailwind-preset';
 
-@tailwind utilities;
+/* Older hosts reset spacing outside any layer. Keep this rule unlayered so
+   layered app styles can override that reset. */
+*,
+::before,
+::after {
+  margin: revert-layer;
+  padding: revert-layer;
+}
 
 body {
   margin: 0;

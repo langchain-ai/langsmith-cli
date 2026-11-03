@@ -251,7 +251,6 @@ func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
 		"AGENTS.md",
 		".gitignore",
 		"vite.config.ts",
-		"tailwind.config.js",
 		"tsconfig.json",
 		"src/entry.tsx",
 		"src/App.tsx",
@@ -836,7 +835,6 @@ func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {
 			}
 			for path, expected := range map[string]string{
 				"src/index.css":         "@langchain/macaw-components/styles.css",
-				"tailwind.config.js":    "@langchain/macaw-components/tailwind-preset",
 				"src/entry.tsx":         "mode: metadata.mode",
 				"src/lib/HostTheme.tsx": "storageKey={null}",
 				"AGENTS.md":             "Macaw is required for every UI change",
@@ -848,6 +846,9 @@ func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {
 				if !strings.Contains(content, expected) {
 					t.Errorf("%s is missing the Macaw integration %q", path, expected)
 				}
+			}
+			if !strings.Contains(read("src/index.css"), "@langchain/macaw-components/tailwind-preset") {
+				t.Error("starter must load the Macaw Tailwind preset")
 			}
 			if strings.Contains(read("src/index.css"), ":root") {
 				t.Error("starter must import tokens instead of copying their definitions")

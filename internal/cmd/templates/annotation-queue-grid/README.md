@@ -46,7 +46,7 @@ Read `AGENTS.md` before editing. Find the installed components with
 
 ## Develop
 
-Use Node.js 22.12 or newer. Run `npm run typecheck` and `npm run build`
+Use Node.js 26 or newer. Run `npm run typecheck` and `npm run build`
 before handing off changes.
 
 Install dependencies, then start the dev server (it builds on the first run):
