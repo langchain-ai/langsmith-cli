@@ -231,6 +231,70 @@ hardcode `smith.langchain.com`:
 The `/o/` segment is the workspace ID despite reading like an organization ID.
 Experiments have no standalone route — they're a compare view on their dataset.
 
+## Deep links
+
+Give an app with more than one view deep links, so a link, a refresh, or Back
+and Forward return to the view the viewer was on. LangSmith keeps the app's
+route in the page's `?appRoute=` parameter and passes it to `render()` as
+`metadata.route`; the app changes it with `window.langsmith.setRoute(route)`.
+The route's format is up to the app, such as `/runs/123?tab=feedback`;
+LangSmith never parses it.
+
+Deep links work only where `metadata.route` is a string and `setRoute`
+exists. Older hosts and CLIs send no route, older editor previews have no
+`setRoute`, and annotation queue views ignore it. This hook falls back to
+local navigation in all of those:
+
+```ts
+// src/lib/useAppRoute.ts
+import { useEffect, useState } from 'react';
+
+export function useAppRoute(hostRoute: string | undefined) {
+  const [route, setLocalRoute] = useState(hostRoute ?? '/');
+  // LangSmith's route wins when it sends one, including on Back and Forward.
+  useEffect(() => {
+    if (hostRoute !== undefined) setLocalRoute(hostRoute);
+  }, [hostRoute]);
+
+  function go(next: string, options?: { replace?: boolean }) {
+    const target = next === '' ? '/' : next;
+    // LangSmith ignores routes over 2,048 bytes, so don't show one it won't keep.
+    if (new TextEncoder().encode(target).byteLength > 2048) return;
+    setLocalRoute(target);
+    window.langsmith.setRoute?.(target, options);
+  }
+
+  return { route, go };
+}
+```
+
+```tsx
+const { route, go } = useAppRoute(metadata?.route);
+const runId = /^\/runs\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/.exec(route)?.[1];
+return runId ? (
+  <RunDetail runId={runId} />
+) : (
+  <RunList onOpen={(id) => go(`/runs/${id}`, { replace: false })} />
+);
+```
+
+- Call `go` only from event handlers, never while rendering or from an effect
+  that watches the route. For a route the app doesn't recognize, show the home
+  view or a not-found state instead of redirecting.
+- Pass `{ replace: false }` to open a new page, such as a list to a detail
+  view, so Back returns to the list. Filters and search use the default, which
+  replaces the current entry.
+- Treat the route as untrusted input: anyone can craft a link. It only chooses
+  what to show; opening a link never writes data, sends feedback, or calls a
+  tool. Validate ids from the route before they go into an API path.
+- Never put secrets in the route. It shows in the URL, the browser history, and
+  every link someone shares.
+- `setRoute('')` and `setRoute('/')` clear the route. A route over 2,048 UTF-8
+  bytes is ignored, never truncated.
+
+`langsmith apps dev` keeps the route in its own `?appRoute=`, so you can check
+links, refresh, and Back and Forward locally.
+
 <!-- TEMPLATE-SPECIFIC -->
 
 ## More of the LangSmith API (starting points, not exhaustive)
