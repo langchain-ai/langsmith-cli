@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -777,6 +778,34 @@ func TestEmbeddedTemplates_CarryNoStrayBuildArtifacts(t *testing.T) {
 		check(name, at.templateFS)
 	}
 	check("_shared", sharedFS)
+}
+
+// Every starter gets one shared copy of the window.langsmith declarations, so
+// a new bridge method is declared everywhere at once.
+func TestAppsInit_EveryTemplateGetsTheSharedBridgeDeclarations(t *testing.T) {
+	shared, err := sharedFS.ReadFile(sharedRoot + "/global.d.ts")
+	if err != nil {
+		t.Fatalf("read shared declarations: %v", err)
+	}
+	for name, app := range appTypes {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			written, err := scaffoldCustomAppStarter(dir, "test-app", "", app, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(written, "src/global.d.ts") {
+				t.Errorf("src/global.d.ts not reported as written: %v", written)
+			}
+			got, err := os.ReadFile(filepath.Join(dir, "src", "global.d.ts"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(shared) {
+				t.Error("src/global.d.ts differs from templates/_shared/global.d.ts")
+			}
+		})
+	}
 }
 
 func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {

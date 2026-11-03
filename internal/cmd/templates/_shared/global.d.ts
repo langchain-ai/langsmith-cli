@@ -1,12 +1,16 @@
 export {};
 
 declare global {
-  /** render()'s 3rd arg, an open/extensible dict. v1 has only `mode`
-   * ("dark"|"light"); the sandbox sets `html.dark` from it. */
-  type RenderMetadata = { mode: 'dark' | 'light' };
+  /** Metadata supplied as render()'s third argument by the host. */
+  type RenderMetadata = {
+    mode: 'dark' | 'light';
+    /** Empty when the workspace is unresolved. */
+    workspaceId: string;
+    host: string;
+  };
 
   interface Window {
-    /** Injected by the host page (LangSmith, or `langsmith apps dev` locally) — see AGENTS.md. */
+    /** Injected by the host page (LangSmith, or `langsmith apps dev` locally). See AGENTS.md. */
     langsmith: {
       call: (
         operation: string,
@@ -18,6 +22,7 @@ declare global {
         content: string | Blob | ArrayBuffer | ArrayBufferView;
         mimeType?: string;
       }) => Promise<{ status: 'started' }>;
+      openUrl: (url: string, options?: { newTab?: boolean }) => void;
       feedback: {
         create: (args: Record<string, unknown>) => Promise<unknown>;
       };

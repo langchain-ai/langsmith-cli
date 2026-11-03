@@ -324,8 +324,8 @@ func scaffoldCustomAppStarter(dir, name, description string, at appType, force b
 	return written, nil
 }
 
-// writeUsedSharedFiles copies whichever templates/_shared/ files this
-// template's source actually imports into dir/src/.
+// writeUsedSharedFiles copies into dir/src/ whichever templates/_shared/ files
+// this template's source imports, plus every shared declaration file.
 func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 	sharedPaths, err := allSharedFilePaths()
 	if err != nil {
@@ -342,7 +342,8 @@ func writeUsedSharedFiles(dir string, at appType) ([]string, error) {
 
 	var written []string
 	for _, relPath := range sharedPaths {
-		used := false
+		// Nothing imports a .d.ts, so every starter gets the shared declarations.
+		used := strings.HasSuffix(relPath, ".d.ts")
 		for _, spec := range sharedFileImportSpecifiers(relPath) {
 			if strings.Contains(src, "'"+spec+"'") || strings.Contains(src, "\""+spec+"\"") {
 				used = true
