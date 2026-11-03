@@ -806,7 +806,7 @@ func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {
 				t.Fatal("all starters must install matching Macaw components, tokens, and CLI versions")
 			}
 			for path, expected := range map[string]string{
-				"src/index.css":         "@langchain/macaw-components/styles.css",
+				"src/index.css":         "@tailwind utilities;",
 				"tailwind.config.js":    "@langchain/macaw-components/tailwind-preset",
 				"src/entry.tsx":         "mode: metadata.mode",
 				"src/lib/HostTheme.tsx": "storageKey={null}",
@@ -819,6 +819,9 @@ func TestAppsInit_MacawDefaultsForEveryTemplate(t *testing.T) {
 				if !strings.Contains(content, expected) {
 					t.Errorf("%s is missing the Macaw integration %q", path, expected)
 				}
+			}
+			if !strings.Contains(read("src/entry.tsx"), "@langchain/macaw-components/styles.css?inline") {
+				t.Error("starter must inject the precompiled Macaw stylesheet")
 			}
 			if strings.Contains(read("src/index.css"), ":root") {
 				t.Error("starter must import tokens instead of copying their definitions")

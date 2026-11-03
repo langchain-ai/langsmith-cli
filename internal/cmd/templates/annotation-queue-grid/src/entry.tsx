@@ -6,6 +6,7 @@ import { HostTheme } from './lib/HostTheme';
 // string instead of Vite emitting a separate stylesheet asset — there's no
 // way to <link> a second file into this sandbox; everything has to be in the
 // one bundled entrypoint. See README.md.
+import macawCss from '@langchain/macaw-components/styles.css?inline';
 import css from './index.css?inline';
 
 let styleInjected = false;
@@ -14,7 +15,7 @@ let root: Root | null = null;
 function ensureStyleInjected() {
   if (styleInjected) return;
   const style = document.createElement('style');
-  style.textContent = css;
+  style.textContent = macawCss + '\n' + css;
   document.head.appendChild(style);
   styleInjected = true;
 }

@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import macawCss from '@langchain/macaw-components/styles.css?inline';
 import css from './index.css?inline';
 import { App } from './App';
 import { HostTheme } from './lib/HostTheme';
@@ -10,7 +11,7 @@ let styleInjected = false;
 function ensureStyles() {
   if (styleInjected) return;
   const style = document.createElement('style');
-  style.textContent = css;
+  style.textContent = macawCss + '\n' + css;
   document.head.appendChild(style);
   styleInjected = true;
 }
