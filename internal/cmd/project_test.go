@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 )
 
@@ -67,5 +70,58 @@ func TestProjectListCmd_HasNoArgsValidator(t *testing.T) {
 	// project list takes no positional args — it should not set an Args validator
 	if cmd.Args != nil {
 		t.Error("expected no Args validator on project list (takes no positional args)")
+	}
+}
+
+// ==================== Output ====================
+
+func TestProjectList_TotalCostOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		apiCost string
+		want    any
+	}{
+		{"number", `0.25`, 0.25},
+		{"null", `null`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/sessions" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if off := r.URL.Query().Get("offset"); off != "" && off != "0" {
+					_, _ = io.WriteString(w, `[]`)
+					return
+				}
+				_, _ = io.WriteString(w, `[{"id":"019a0000-0000-7000-8000-000000000001","tenant_id":"019a0000-0000-7000-8000-000000000002","name":"p","start_time":"2026-10-26T00:00:00Z","total_cost":`+tt.apiCost+`}]`)
+			})
+			defer setupTestEnv(t, srv.URL)()
+			flagOutputFormat = "json"
+
+			out := captureStdout(t, func() {
+				cmd := newProjectCmd()
+				cmd.SetArgs([]string{"list"})
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("execute: %v", err)
+				}
+			})
+
+			var projects []map[string]any
+			if err := json.Unmarshal([]byte(out), &projects); err != nil {
+				t.Fatalf("output is not a JSON array: %v\n%s", err, out)
+			}
+			if len(projects) != 1 {
+				t.Fatalf("got %d projects, want 1:\n%s", len(projects), out)
+			}
+			got, ok := projects[0]["total_cost"]
+			if !ok {
+				t.Fatalf("total_cost missing from output:\n%s", out)
+			}
+			if got != tt.want {
+				t.Errorf("total_cost = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }

@@ -107,11 +107,6 @@ func newProjectListCmd() *cobra.Command {
 			} else {
 				var data []map[string]any
 				for _, p := range projects {
-					var totalCost any
-					if f, err := strconv.ParseFloat(p.TotalCost, 64); err == nil {
-						totalCost = f
-					}
-
 					entry := map[string]any{
 						"id":                  p.ID,
 						"name":                p.Name,
@@ -120,7 +115,7 @@ func newProjectListCmd() *cobra.Command {
 						"latency_p50":         nilFloat(p.LatencyP50),
 						"latency_p99":         nilFloat(p.LatencyP99),
 						"total_tokens":        p.TotalTokens,
-						"total_cost":          totalCost,
+						"total_cost":          projectTotalCost(p),
 						"error_rate":          nilFloat(p.ErrorRate),
 						"last_run_start_time": formatTimeISO(p.LastRunStartTime),
 						"start_time":          formatTimeISO(p.StartTime),
@@ -150,6 +145,20 @@ func nilStr(s string) any {
 
 func nilFloat(f float64) any {
 	if f == 0 {
+		return nil
+	}
+	return f
+}
+
+// projectTotalCost returns p's total cost as a number, or nil when the API
+// returned null. Older langsmith-go releases type the field as a string and
+// newer ones as a float64, so it is formatted with fmt.Sprint to read either.
+func projectTotalCost(p langsmith.TracerSession) any {
+	if p.JSON.TotalCost.IsNull() {
+		return nil
+	}
+	f, err := strconv.ParseFloat(fmt.Sprint(p.TotalCost), 64)
+	if err != nil {
 		return nil
 	}
 	return f

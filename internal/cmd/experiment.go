@@ -179,11 +179,8 @@ func newExperimentGetCmd() *cobra.Command {
 				"example_count": p.RunCount,
 			}
 
-			// Try to get total cost
-			if p.TotalCost != "" {
-				if f, err := strconv.ParseFloat(p.TotalCost, 64); err == nil {
-					data["run_stats"].(map[string]any)["total_cost"] = f
-				}
+			if cost := projectTotalCost(p); cost != nil {
+				data["run_stats"].(map[string]any)["total_cost"] = cost
 			}
 
 			fmt_ := GetFormat()
