@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -329,6 +330,34 @@ func TestHandleLsDevCall_ForwardsParamsAsQueryString(t *testing.T) {
 	}
 	if sawQuery != "page_size=50&status=needs_my_review" {
 		t.Errorf("expected query string forwarded, got %q", sawQuery)
+	}
+}
+
+func TestHandleLsDevCall_PassesBinaryResponseThrough(t *testing.T) {
+	// PNG signature plus bytes that are not valid UTF-8.
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00, 0xff, 0xfe, 0x80}
+	var sawPath, sawQuery string
+	upstream := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		sawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(png)
+	})
+	defer setupTestEnv(t, upstream.URL)()
+
+	rec := serveLsDevCall(t, `{"operation":"GET /public/download?jwt=signed.token-value_1"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if sawPath != "/public/download" || sawQuery != "jwt=signed.token-value_1" {
+		t.Errorf("expected upstream /public/download?jwt=signed.token-value_1, got %s?%s", sawPath, sawQuery)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("expected Content-Type image/png, got %q", ct)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), png) {
+		t.Errorf("expected PNG bytes unchanged, got %v", rec.Body.Bytes())
 	}
 }
 

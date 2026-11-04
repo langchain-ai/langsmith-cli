@@ -790,6 +790,14 @@ const devHostHTMLTemplate = `<!doctype html>
     setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
   }
 
+  // Mirrors smith-frontend fetcher.tsx: these responses resolve to a Blob.
+  var BINARY_CONTENT_TYPE = /^\s*(?:(?:image|audio|video)\/|application\/(?:pdf|octet-stream)\s*(?:;|$))/i;
+  function hasBinaryBody(r) {
+    return r.status !== 204 &&
+      r.headers.get('Content-Length') !== '0' &&
+      BINARY_CONTENT_TYPE.test(r.headers.get('Content-Type') || '');
+  }
+
   window.addEventListener('message', function(event) {
     if (event.source !== iframe.contentWindow) return;
     var msg = event.data;
@@ -863,6 +871,7 @@ const devHostHTMLTemplate = `<!doctype html>
         body: JSON.stringify({ operation: msg.operation, args: msg.args || {} }),
       })
         .then(function(r) {
+          if (r.ok && hasBinaryBody(r)) return r.blob();
           return r.text().then(function(text) {
             var parsed;
             try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = text; }

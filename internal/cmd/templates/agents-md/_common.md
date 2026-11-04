@@ -176,6 +176,48 @@ confirm each download, and the call waits for their answer; `langsmith apps dev`
 saves straight away. The promise resolves `{ status: 'started' }` once the
 browser has the file and rejects with the reason otherwise.
 
+## Showing a run's attachments
+
+`window.langsmith.call` resolves `image/*`, `audio/*`, `video/*`,
+`application/pdf`, and `application/octet-stream` responses to a `Blob`; other
+responses are parsed as JSON. Add `ATTACHMENTS` to `selects` on
+`GET /v2/runs/{run_id}` or `POST /v2/runs/query`, and the run's `attachments`
+maps each attachment name to a signed download URL (v1 runs carry it at
+`s3_urls["attachment.<name>"].presigned_url`). `call` takes a path, so strip the
+URL's origin and keep its query:
+
+```tsx
+function useAttachmentSrc(signedUrl: string | undefined) {
+  const [src, setSrc] = useState<string>();
+  useEffect(() => {
+    if (!signedUrl) return;
+    let objectUrl: string | undefined;
+    let cancelled = false;
+    const path = signedUrl.replace(/^https?:\/\/[^/]+/, '');
+    window.langsmith
+      .call(`GET ${path}`)
+      .then((blob) => {
+        if (cancelled || !(blob instanceof Blob)) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch((err) => console.error(err));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setSrc(undefined);
+    };
+  }, [signedUrl]);
+  return src;
+}
+```
+
+- Show it with `<img src={src} alt="…">`. The hook revokes the object URL when
+  the image goes away; do the same for any object URL you create.
+- Signed URLs expire. Fetch the run again for a fresh one rather than storing it.
+- The sandbox displays only images. Audio, video, and PDFs can't play or embed
+  there, so offer them through `window.langsmith.download({ filename, content: blob })`.
+
 ## Theme
 
 `metadata.mode` is `"dark"` | `"light"`. `HostTheme` synchronizes Macaw's

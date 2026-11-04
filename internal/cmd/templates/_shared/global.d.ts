@@ -14,6 +14,10 @@ declare global {
   interface Window {
     /** Injected by the host page (LangSmith, or `langsmith apps dev` locally). See AGENTS.md. */
     langsmith: {
+      /**
+       * Resolves to parsed JSON, or to a Blob for an image/*, audio/*, video/*,
+       * application/pdf or application/octet-stream response.
+       */
       call: (
         operation: string,
         args?: { params?: Record<string, string | string[]>; body?: unknown }
