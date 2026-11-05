@@ -10,8 +10,9 @@ function str(run: Run, key: string): string | undefined {
 
 export const UNKNOWN = 'unknown';
 
+// ls_git_repo is the current key; runs stored before it used repository_name.
 export function repoOf(run: Run): string {
-  return str(run, 'repository_name') ?? UNKNOWN;
+  return str(run, 'ls_git_repo') ?? str(run, 'repository_name') ?? UNKNOWN;
 }
 
 export function threadOf(run: Run): string | undefined {
