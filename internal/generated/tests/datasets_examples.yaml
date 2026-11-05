@@ -1,0 +1,107 @@
+# Tests for `langsmith datasets examples`. Contract cases run against a fake
+# API.
+resource: datasets:examples
+
+contract:
+  - name: update metadata with every operation type
+    op: update-metadata
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --example-id
+      - 22222222-2222-2222-2222-222222222222
+      - --example-id
+      - 33333333-3333-3333-3333-333333333333
+      - --operation
+      - "{key: reviewed, operation: SET, value: {by: alice, score: -1.5}}"
+      - --operation
+      - "{key: dataset_split, operation: ARRAY_ADD, values: [test, hard]}"
+      - --operation
+      - "{key: dataset_split, operation: ARRAY_REMOVE, values: [base]}"
+    response:
+      status: 207
+      body:
+        statuses:
+          - {id: 22222222-2222-2222-2222-222222222222, status: UPDATED}
+          - id: 33333333-3333-3333-3333-333333333333
+            status: NOT_FOUND
+            description: Example is not in this dataset or was deleted
+    want:
+      method: PATCH
+      path: /api/v1/platform/datasets/11111111-1111-1111-1111-111111111111/examples/metadata
+      body:
+        example_ids: [22222222-2222-2222-2222-222222222222, 33333333-3333-3333-3333-333333333333]
+        operations:
+          - {key: reviewed, operation: SET, value: {by: alice, score: -1.5}}
+          - {key: dataset_split, operation: ARRAY_ADD, values: [test, hard]}
+          - {key: dataset_split, operation: ARRAY_REMOVE, values: [base]}
+      stdout: NOT_FOUND
+
+  # Runs after the case above, so it also shows flag values do not carry over.
+  - name: update metadata with one example and one operation
+    op: update-metadata
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --example-id
+      - 22222222-2222-2222-2222-222222222222
+      - --operation
+      - "{key: reviewed, operation: SET, value: true}"
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      status: 207
+      body:
+        statuses: [{id: 22222222-2222-2222-2222-222222222222, status: UPDATED}]
+    want:
+      method: PATCH
+      path: /api/v1/platform/datasets/11111111-1111-1111-1111-111111111111/examples/metadata
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body:
+        example_ids: [22222222-2222-2222-2222-222222222222]
+        operations: [{key: reviewed, operation: SET, value: true}]
+      stdout: UPDATED
+
+  - name: update metadata reports a missing dataset
+    op: update-metadata
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --example-id
+      - 22222222-2222-2222-2222-222222222222
+      - --operation
+      - "{key: reviewed, operation: SET, value: true}"
+    response:
+      status: 404
+      body: {detail: Dataset not found}
+    want:
+      method: PATCH
+      path: /api/v1/platform/datasets/11111111-1111-1111-1111-111111111111/examples/metadata
+      body:
+        example_ids: [22222222-2222-2222-2222-222222222222]
+        operations: [{key: reviewed, operation: SET, value: true}]
+      exit_code: 1
+      stderr: 404 Not Found
+
+  - name: update metadata reports an invalid operation
+    op: update-metadata
+    args:
+      - --dataset-id
+      - 11111111-1111-1111-1111-111111111111
+      - --example-id
+      - 22222222-2222-2222-2222-222222222222
+      - --operation
+      - "{key: reviewed, operation: RENAME}"
+    response:
+      status: 400
+      body: {detail: "operation must be SET, ARRAY_ADD, or ARRAY_REMOVE"}
+    want:
+      method: PATCH
+      path: /api/v1/platform/datasets/11111111-1111-1111-1111-111111111111/examples/metadata
+      body:
+        example_ids: [22222222-2222-2222-2222-222222222222]
+        operations: [{key: reviewed, operation: RENAME}]
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle_skip: "Changes metadata on existing examples, which this command cannot create; examples are created with the hand-written examples commands."

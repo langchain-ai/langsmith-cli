@@ -167,6 +167,14 @@ func init() {
 				},
 			},
 			{
+				Name:     "datasets:examples",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&datasetsExamplesUpdateMetadata,
+				},
+			},
+			{
 				Name:     "datasets:versions",
 				Category: "API RESOURCE",
 				Suggest:  true,
