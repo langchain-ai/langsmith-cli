@@ -19,6 +19,7 @@ func TestOnlineEvaluatorsCreate(t *testing.T) {
 			"online-evaluators", "create",
 			"--code-evaluator", "{advanced_features_enabled: true, code: code, code_evaluator_input: thread, dependencies: dependencies, language: language, managed_code_evaluator_key: voice_metrics, managed_code_evaluator_settings: {foo: {is_enabled: true, key_name: key_name}}, require_attachments: true, workspace_secrets_keys: [string]}",
 			"--llm-evaluator", "{commit_hash_or_tag: commit_hash_or_tag, playground_settings_id: playground_settings_id, prompt_repo_handle: prompt_repo_handle, variable_mapping: {}}",
+			"--metadata", "{foo: bar}",
 			"--name", "name",
 			"--type", "llm",
 		)
@@ -47,6 +48,7 @@ func TestOnlineEvaluatorsCreate(t *testing.T) {
 			"--llm-evaluator.playground-settings-id", "playground_settings_id",
 			"--llm-evaluator.prompt-repo-handle", "prompt_repo_handle",
 			"--llm-evaluator.variable-mapping", "{}",
+			"--metadata", "{foo: bar}",
 			"--name", "name",
 			"--type", "llm",
 		)
@@ -74,6 +76,8 @@ func TestOnlineEvaluatorsCreate(t *testing.T) {
 			"  playground_settings_id: playground_settings_id\n" +
 			"  prompt_repo_handle: prompt_repo_handle\n" +
 			"  variable_mapping: {}\n" +
+			"metadata:\n" +
+			"  foo: bar\n" +
 			"name: name\n" +
 			"type: llm\n")
 		mocktest.TestRunMockTestWithPipeAndFlags(
@@ -96,6 +100,7 @@ func TestOnlineEvaluatorsUpdate(t *testing.T) {
 			"--evaluator-id", "evaluator_id",
 			"--code-evaluator", "{advanced_features_enabled: true, code: code, code_evaluator_input: thread, dependencies: dependencies, language: language, managed_code_evaluator_settings: {foo: {is_enabled: true, key_name: key_name}}, require_attachments: true, workspace_secrets_keys: [string]}",
 			"--llm-evaluator", "{commit_hash_or_tag: commit_hash_or_tag, num_few_shot_examples: 0, playground_settings_id: playground_settings_id, prompt_repo_handle: prompt_repo_handle, use_corrections_dataset: true, variable_mapping: {}}",
+			"--metadata", "{foo: bar}",
 			"--name", "name",
 		)
 	})
@@ -125,6 +130,7 @@ func TestOnlineEvaluatorsUpdate(t *testing.T) {
 			"--llm-evaluator.prompt-repo-handle", "prompt_repo_handle",
 			"--llm-evaluator.use-corrections-dataset=true",
 			"--llm-evaluator.variable-mapping", "{}",
+			"--metadata", "{foo: bar}",
 			"--name", "name",
 		)
 	})
@@ -152,6 +158,8 @@ func TestOnlineEvaluatorsUpdate(t *testing.T) {
 			"  prompt_repo_handle: prompt_repo_handle\n" +
 			"  use_corrections_dataset: true\n" +
 			"  variable_mapping: {}\n" +
+			"metadata:\n" +
+			"  foo: bar\n" +
 			"name: name\n")
 		mocktest.TestRunMockTestWithPipeAndFlags(
 			t, pipeData,

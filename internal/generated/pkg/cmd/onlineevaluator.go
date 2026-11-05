@@ -27,6 +27,10 @@ var onlineEvaluatorsCreate = requestflag.WithInnerFlags(cli.Command{
 			Name:     "llm-evaluator",
 			BodyPath: "llm_evaluator",
 		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "metadata",
+			BodyPath: "metadata",
+		},
 		&requestflag.Flag[string]{
 			Name:     "name",
 			BodyPath: "name",
@@ -121,6 +125,10 @@ var onlineEvaluatorsUpdate = requestflag.WithInnerFlags(cli.Command{
 		&requestflag.Flag[map[string]any]{
 			Name:     "llm-evaluator",
 			BodyPath: "llm_evaluator",
+		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "metadata",
+			BodyPath: "metadata",
 		},
 		&requestflag.Flag[string]{
 			Name:     "name",
