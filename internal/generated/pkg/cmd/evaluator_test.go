@@ -22,6 +22,7 @@ func TestEvaluatorsCreateDecisionModel(t *testing.T) {
 			"--model-base-url", "base_url",
 			"--dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--filter", "filter",
+			"--group-by", "thread_id",
 			"--max-retries", "0",
 			"--model", "model",
 			"--model-headers", "{foo: string}",
@@ -55,6 +56,7 @@ func TestEvaluatorsCreateDecisionModel(t *testing.T) {
 			"base_url: base_url\n" +
 			"dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
 			"filter: filter\n" +
+			"group_by: thread_id\n" +
 			"max_retries: 0\n" +
 			"model: model\n" +
 			"model_headers:\n" +

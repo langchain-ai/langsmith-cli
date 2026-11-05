@@ -52,6 +52,11 @@ var evaluatorsCreateDecisionModel = cli.Command{
 			Usage:    "Only evaluate runs that match this filter.",
 			BodyPath: "filter",
 		},
+		&requestflag.Flag[*string]{
+			Name:     "group-by",
+			Usage:    "Set to thread_id to evaluate each thread once it goes idle, instead of each run. Requires session_id. Decision models don't support trajectory_id.",
+			BodyPath: "group_by",
+		},
 		&requestflag.Flag[*int64]{
 			Name:     "max-retries",
 			Usage:    "How many times to retry a failed model call. openai_decisions only.",
