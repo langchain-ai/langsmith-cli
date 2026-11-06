@@ -1,0 +1,29 @@
+[project]
+name = 'odd'
+version = "0.0.0"
+requires-python = ">=3.11, <3.14"
+dependencies = [
+  # pinned
+  "deepagents >= 0.7",
+  'langgraph>=1.0',
+    "langchain[mcp]>=1.4.6,<2",
+    "langgraph-prebuilt>=1.1.1,<2",
+    "langgraph-checkpoint>=4.2.0",
+    "langgraph-sdk>=0.4.6,<0.5",
+    "pyjwt[crypto]>=2.8.0",
+    "fastmcp>=4.0.10,<5",
+    "mcp>=2.2.0,<3",
+    "langsmith>=0.10.17"
+]
+
+[tool]
+uv.managed = true
+
+[tool.setuptools]
+py-modules = []
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# trailing comment

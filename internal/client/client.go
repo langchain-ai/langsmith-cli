@@ -44,6 +44,14 @@ type Options struct {
 	APIURL           string
 	WorkspaceID      string
 	ProfileName      string
+	// Isolated makes these options the client's only credential and
+	// workspace. Otherwise the SDK layers its own defaults under them: the
+	// current profile's credential and workspace and the process
+	// LANGSMITH_API_KEY and LANGSMITH_WORKSPACE_ID, which the CLI's resolution
+	// reproduces but options resolved elsewhere (a project's .env) must not
+	// inherit. Isolated clients also print no auth hint: its advice is about
+	// those same CLI settings.
+	Isolated bool
 }
 
 // HasAuth reports whether the options carry credentials: an explicit API key or
@@ -74,6 +82,9 @@ func NewWithOptions(options Options) *Client {
 	normalized := NormalizeURL(options.APIURL)
 
 	var opts []option.RequestOption
+	if options.Isolated {
+		opts = append(opts, withoutAmbientCredential()...)
+	}
 	// Auth precedence mirrors resolveClientOptions. A resolved profile is routed
 	// through WithProfile so an explicit selection replaces the config's
 	// current_profile (clearing any inherited tenant/base URL); WithProfile
@@ -92,16 +103,24 @@ func NewWithOptions(options Options) *Client {
 		opts = append(opts, option.WithAPIKey(options.APIKey))
 	case options.OAuthAccessToken != "":
 		opts = append(opts, option.WithHeader("authorization", "Bearer "+options.OAuthAccessToken))
+	case options.Isolated:
+		opts = append(opts, option.WithMiddleware(stripCredentials))
 	}
 	// Only set base URL if not the default (the SDK reads LANGSMITH_ENDPOINT too).
 	if normalized != "" {
 		opts = append(opts, option.WithBaseURL(normalized))
 	}
-	if options.WorkspaceID != "" {
+	switch {
+	case options.WorkspaceID != "":
 		opts = append(opts, option.WithTenantID(options.WorkspaceID))
+	case options.Isolated:
+		opts = append(opts, option.WithHeaderDel(tenantHeader))
 	}
 
-	opts = append(opts, usage.Option(), processAuthHint.option())
+	opts = append(opts, usage.Option())
+	if !options.Isolated {
+		opts = append(opts, processAuthHint.option())
+	}
 
 	return &Client{
 		SDK:              langsmith.NewClient(opts...),
@@ -407,37 +426,45 @@ func (c *Client) doHTTP(ctx context.Context, method, path string, body io.Reader
 	if c.apiKey == "" && c.oauthAccessToken == "" && c.profileName == "" {
 		return c.doUnauthenticated(ctx, method, path, requestURL, body, extraHeaders)
 	}
+	return c.doAuthenticated(ctx, method, path, requestURL.String(), body, extraHeaders, sdkRetries)
+}
 
-	// Send through the SDK client so it attaches auth, refreshing OAuth
-	// profile tokens under a lock shared with other processes. Refreshing
-	// here instead raced other CLI processes on the single-use refresh token,
-	// and the server answers a replayed token by revoking every session for
-	// the user. requestURL is absolute, so the SDK sends it as-is rather than
-	// joining it onto its base URL.
-	opts := []option.RequestOption{
+// doAuthenticated sends a request to an absolute URL through the SDK client
+// so it attaches auth, refreshing OAuth profile tokens under a lock shared with
+// other processes. Refreshing here instead raced other CLI processes on the
+// single-use refresh token, and the server answers a replayed token by
+// revoking every session for the user. requestURL is absolute, so the SDK
+// sends it as-is rather than joining it onto its base URL. label names the
+// request in errors. opts apply after the defaults.
+func (c *Client) doAuthenticated(ctx context.Context, method, label, requestURL string, body io.Reader, extraHeaders http.Header, sdkRetries bool, opts ...option.RequestOption) (*httpResponse, error) {
+	reqOpts := []option.RequestOption{
 		option.WithRequestTimeout(rawRequestTimeout),
 		option.WithHeader("Content-Type", "application/json"),
 	}
 	if !sdkRetries {
-		opts = append(opts, option.WithMaxRetries(0))
+		reqOpts = append(reqOpts, option.WithMaxRetries(0))
 	}
 	for k, vals := range extraHeaders {
-		opts = append(opts, option.WithHeaderDel(k))
+		reqOpts = append(reqOpts, option.WithHeaderDel(k))
 		for _, v := range vals {
-			opts = append(opts, option.WithHeaderAdd(k, v))
+			reqOpts = append(reqOpts, option.WithHeaderAdd(k, v))
 		}
 	}
+	reqOpts = append(reqOpts, opts...)
 	var res *http.Response
-	opts = append(opts, option.WithResponseInto(&res))
+	reqOpts = append(reqOpts, option.WithResponseInto(&res))
 	var payload any
 	if body != nil {
 		payload = body
 	}
 	// A non-2xx comes back as an error, but res still holds the response and
 	// its body, which callers of the raw helpers inspect themselves.
-	err = c.SDK.Execute(ctx, method, requestURL.String(), payload, nil, opts...)
-	if res == nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	err := c.SDK.Execute(ctx, method, requestURL, payload, nil, reqOpts...)
+	// A transport error (a refused redirect, say) can leave res pointing at a
+	// response whose body is already closed.
+	var transportErr *url.Error
+	if res == nil || errors.As(err, &transportErr) {
+		return nil, fmt.Errorf("HTTP %s %s: %w", method, label, err)
 	}
 	return readHTTPResponse(res)
 }
@@ -504,6 +531,10 @@ func (c *Client) APIKey() string { return c.apiKey }
 
 // APIURL returns the client's normalized API URL.
 func (c *Client) APIURL() string { return c.apiURL }
+
+// WorkspaceID returns the workspace the client's requests are scoped to (sent
+// as X-Tenant-Id), or "" when unscoped.
+func (c *Client) WorkspaceID() string { return c.workspaceID }
 
 func (c *Client) rawRequest(ctx context.Context, method, path string, body any, result any, sdkRetries bool) error {
 	var bodyReader io.Reader

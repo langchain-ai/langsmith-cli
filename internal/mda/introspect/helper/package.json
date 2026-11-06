@@ -1,0 +1,10 @@
+{
+  "name": "langsmith-mda-introspect-helper",
+  "private": true,
+  "description": "Dependencies of the TypeScript introspection helper `langsmith deploy` runs. Installed into the CLI's cache, never into a project.",
+  "dependencies": {
+    "es-module-lexer": "3.0.4",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

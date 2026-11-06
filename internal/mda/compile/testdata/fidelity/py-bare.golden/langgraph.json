@@ -1,0 +1,13 @@
+{
+  "python_version": "3.14",
+  "_INTERNAL_docker_tag": "0.18.0.dev12-py3.14",
+  "dependencies": [
+    ".",
+    "./__runtime__"
+  ],
+  "graphs": {
+    "bare": "./_mda_entry.py:agent",
+    "bare--general-purpose": "./_mda_entry.py:agent__general_purpose"
+  },
+  "env": ".env"
+}

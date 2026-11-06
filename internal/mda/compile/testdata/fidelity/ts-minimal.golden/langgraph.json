@@ -1,0 +1,12 @@
+{
+  "node_version": "22",
+  "_INTERNAL_docker_tag": "0.18.0.dev12-node22",
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "minimal": "./_mda_entry.ts:agent",
+    "minimal--general-purpose": "./_mda_entry.ts:agent__general_purpose"
+  },
+  "env": ".env"
+}

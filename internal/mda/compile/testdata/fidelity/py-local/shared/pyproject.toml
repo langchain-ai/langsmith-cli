@@ -1,0 +1,11 @@
+[project]
+name = "shared"
+version = "1.0.0"
+dependencies = ["util"]
+
+[project.optional-dependencies]
+fast = ["orjson"]
+
+[tool.uv.sources]
+# The sibling package.
+util = { path = "../util", editable = false }

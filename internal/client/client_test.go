@@ -747,6 +747,225 @@ func TestRawDo_Returns4xxWithoutError(t *testing.T) {
 	}
 }
 
+func TestDoAbsolute_SendsCredentialsToAnotherHost(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("the API URL was called: %s %s", r.Method, r.URL)
+	}))
+	defer api.Close()
+	var got *http.Request
+	var gotBody string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"detail":"no active plan"}`))
+	}))
+	defer other.Close()
+
+	c := NewWithOptions(Options{APIKey: "my-key", APIURL: api.URL, WorkspaceID: "ws-1"})
+	resp, err := c.DoAbsolute(t.Context(), http.MethodPost, other.URL+"/v2/deployments?limit=1", strings.NewReader(`{"a":1}`), http.Header{"X-Auth-Scheme": {"langsmith"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusForbidden || string(resp.Body) != `{"detail":"no active plan"}` {
+		t.Fatalf("response = %d %q, want 403 with its body", resp.StatusCode, resp.Body)
+	}
+	if got.URL.String() != "/v2/deployments?limit=1" {
+		t.Errorf("request URL = %q, want /v2/deployments?limit=1", got.URL)
+	}
+	for name, want := range map[string]string{"X-Api-Key": "my-key", "X-Tenant-Id": "ws-1", "X-Auth-Scheme": "langsmith", "Content-Type": "application/json", "Authorization": ""} {
+		if v := got.Header.Get(name); v != want {
+			t.Errorf("%s = %q, want %q", name, v, want)
+		}
+	}
+	if gotBody != `{"a":1}` {
+		t.Errorf("body = %q, want {\"a\":1}", gotBody)
+	}
+}
+
+func TestDoAbsolute_SendsTheOAuthProfileToken(t *testing.T) {
+	var gotAuth, gotAPIKey string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("X-Api-Key")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer other.Close()
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	t.Setenv("LANGSMITH_API_KEY", "")
+	if err := os.WriteFile(path, []byte(`{"profiles": {"prod": {"oauth": {"access_token": "prod-access-token"}}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewWithOptions(Options{ProfileName: "prod", APIURL: "https://api.smith.langchain.com"})
+	resp, err := c.DoAbsolute(t.Context(), http.MethodGet, other.URL+"/runs/crons", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK || gotAuth != "Bearer prod-access-token" || gotAPIKey != "" {
+		t.Fatalf("status %d, Authorization %q, X-Api-Key %q; want 200 with the profile's bearer token only", resp.StatusCode, gotAuth, gotAPIKey)
+	}
+}
+
+func TestDoAbsolute_RejectsRelativeURLs(t *testing.T) {
+	c := New("my-key", "http://127.0.0.1:1")
+	_, err := c.DoAbsolute(t.Context(), http.MethodGet, "/v2/deployments", nil, nil)
+	if err == nil || err.Error() != `request URL "/v2/deployments" must be an absolute http(s) URL` {
+		t.Fatalf("err = %v, want the absolute URL error", err)
+	}
+}
+
+// isolateAmbientAuth gives the SDK a current profile signed in with OAuth
+// to workspace "profile-ws", and returns nothing else it could pick up.
+func isolateAmbientAuth(t *testing.T) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", path)
+	for _, key := range []string{"LANGSMITH_PROFILE", "LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID", "LANGSMITH_TENANT_ID", "LANGCHAIN_CUSTOM_HEADERS"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := `{"current_profile": "default", "profiles": {"default": {"workspace_id": "profile-ws", "oauth": {"access_token": "profile-token", "expires_at": "2099-01-01T00:00:00Z"}}}}`
+	if err := os.WriteFile(path, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recordingServer records the headers of the last request it received.
+func recordingServer(t *testing.T, status int) (*httptest.Server, *http.Header) {
+	t.Helper()
+	got := &http.Header{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*got = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(server.Close)
+	return server, got
+}
+
+func TestDoAbsolute_RefusesAClientWithoutItsOwnCredential(t *testing.T) {
+	isolateAmbientAuth(t)
+	t.Setenv("LANGSMITH_API_KEY", "shell-key")
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a request was sent with ambient credentials: %s", r.Header)
+	}))
+	defer other.Close()
+
+	c := NewWithOptions(Options{APIURL: other.URL})
+	_, err := c.DoAbsolute(t.Context(), http.MethodGet, other.URL+"/v1/agent-auth/connections", nil, nil)
+
+	want := "refusing to send a request to " + other.URL + ": the client has no LangSmith credential to send"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+func TestDoAbsolute_RefusesPlainHTTPToAnotherMachine(t *testing.T) {
+	c := NewWithOptions(Options{APIKey: "my-key", APIURL: "https://api.smith.langchain.com"})
+
+	_, err := c.DoAbsolute(t.Context(), http.MethodGet, "http://deployment.example.com/runs/crons/search?x=1", nil, nil)
+
+	want := "refusing to send LangSmith credentials over plain HTTP to http://deployment.example.com; use https"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+func TestDoAbsolute_RefusesARedirectToAnotherOrigin(t *testing.T) {
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("the redirect was followed with %s", r.Header)
+	}))
+	defer elsewhere.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/steal", http.StatusFound)
+	}))
+	defer redirecting.Close()
+
+	c := NewWithOptions(Options{APIKey: "my-key", APIURL: redirecting.URL, WorkspaceID: "ws-1"})
+	_, err := c.DoAbsolute(t.Context(), http.MethodGet, redirecting.URL+"/runs/crons", nil, nil)
+
+	want := "refusing to follow a redirect from " + redirecting.URL + " to another origin, " + elsewhere.URL
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want it to contain %q", err, want)
+	}
+}
+
+func TestDoAbsolute_SendsCustomHeadersOnlyToTheAPIOrigin(t *testing.T) {
+	isolateAmbientAuth(t)
+	t.Setenv("LANGCHAIN_CUSTOM_HEADERS", "X-Proxy-Token: proxy-secret")
+	api, gotAPI := recordingServer(t, http.StatusOK)
+	other, gotOther := recordingServer(t, http.StatusOK)
+
+	c := NewWithOptions(Options{APIKey: "my-key", APIURL: api.URL})
+	for _, target := range []string{api.URL, other.URL} {
+		if _, err := c.DoAbsolute(t.Context(), http.MethodGet, target+"/info", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if v := gotAPI.Get("X-Proxy-Token"); v != "proxy-secret" {
+		t.Errorf("API X-Proxy-Token = %q, want proxy-secret", v)
+	}
+	if v := gotOther.Get("X-Proxy-Token"); v != "" {
+		t.Errorf("other host X-Proxy-Token = %q, want none", v)
+	}
+	if v := gotOther.Get("X-Api-Key"); v != "my-key" {
+		t.Errorf("other host X-Api-Key = %q, want my-key", v)
+	}
+}
+
+func TestIsolatedOptionsIgnoreTheCurrentProfile(t *testing.T) {
+	isolateAmbientAuth(t)
+	t.Setenv("LANGSMITH_WORKSPACE_ID", "shell-ws")
+	var hint strings.Builder
+	defer func(previous *authHint) { processAuthHint = previous }(processAuthHint)
+	processAuthHint = &authHint{w: &hint}
+	server, got := recordingServer(t, http.StatusUnauthorized)
+
+	c := NewWithOptions(Options{APIKey: "project-key", APIURL: server.URL, Isolated: true})
+	_, err := c.SDK.Info.List(t.Context())
+
+	if err == nil {
+		t.Fatal("want the 401 as an error")
+	}
+	for name, want := range map[string]string{"X-Api-Key": "project-key", "Authorization": "", "X-Tenant-Id": ""} {
+		if v := got.Get(name); v != want {
+			t.Errorf("%s = %q, want %q", name, v, want)
+		}
+	}
+	if c.WorkspaceID() != "" {
+		t.Errorf("WorkspaceID() = %q, want none", c.WorkspaceID())
+	}
+	if hint.String() != "" {
+		t.Errorf("auth hint = %q, want none", hint.String())
+	}
+}
+
+func TestIsolatedOptionsWithoutACredentialSendNone(t *testing.T) {
+	isolateAmbientAuth(t)
+	server, got := recordingServer(t, http.StatusOK)
+
+	c := NewWithOptions(Options{APIURL: server.URL, Isolated: true})
+	if _, err := c.SDK.Info.List(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"X-Api-Key", "Authorization", "X-Tenant-Id"} {
+		if v := got.Get(name); v != "" {
+			t.Errorf("%s = %q, want none", name, v)
+		}
+	}
+}
+
 func TestIsNotFound_And_IsConflict_SeeThroughWrappedErrors(t *testing.T) {
 	for _, tc := range []struct {
 		status int

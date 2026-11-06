@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/mda/errs"
+	"github.com/langchain-ai/langsmith-cli/internal/mda/ui"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -155,62 +158,27 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		ctx = context.Background()
 	}
 
-	oauthMeta, err := client.ResolveOAuth(ctx, apiURL)
+	authorization := deviceAuthorization{
+		apiURL:    apiURL,
+		noBrowser: noBrowser,
+		timeout:   timeout,
+		signup:    signup,
+		out:       cmd.ErrOrStderr(),
+	}
+	oauthMeta, token, err := authorization.run(ctx)
 	if err != nil {
 		return err
 	}
 
-	device, err := requestDeviceCode(ctx, oauthMeta)
-	if err != nil {
-		return err
-	}
-
-	errOut := cmd.ErrOrStderr()
-	verificationURL, codeHint := device.instructions()
-	verificationURL = activationURL(verificationURL, signup)
-	if signup {
-		fmt.Fprintf(errOut, "Open this URL to create your LangSmith account and authorize the CLI:\n%s\n\n%s: %s\n\n", verificationURL, codeHint, device.UserCode)
-	} else {
-		fmt.Fprintf(errOut, "Open this URL to authorize the LangSmith CLI:\n%s\n\n%s: %s\n\nNo LangSmith account yet? You can sign up on that page.\n\n", verificationURL, codeHint, device.UserCode)
-	}
-	if !noBrowser {
-		if err := openBrowser(verificationURL); err != nil {
-			fmt.Fprintf(errOut, "Could not open a browser automatically: %v\n\n", err)
-		}
-	}
-	fmt.Fprintln(errOut, "Waiting for authorization...")
-
-	waitFor := timeout
-	if waitFor <= 0 {
-		waitFor = time.Duration(device.ExpiresIn+10) * time.Second
-	}
-	pollCtx, cancel := context.WithTimeout(ctx, waitFor)
-	defer cancel()
-
-	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
-	token, err := pollDeviceToken(pollCtx, oauthMeta, device.DeviceCode, interval)
-	if err != nil {
-		return err
-	}
-
-	profile := cfg.Profiles[profileName]
-	if profile.APIURL == "" || flagAPIURL != "" || strings.TrimSpace(profile.APIURL) != apiURL {
-		profile.APIURL = apiURL
-	}
 	if workspaceID == "" && promptWorkspace {
 		workspaceID, err = promptWorkspaceSelection(cmd, apiURL, token.AccessToken)
 		if err != nil {
 			return err
 		}
 	}
-	if workspaceID != "" {
-		profile.WorkspaceID = workspaceID
-	}
-	profile.OAuth.Issuer = oauthMeta.Issuer
-	applyTokenResponse(&profile, token, time.Now())
-	cfg.Profiles[profileName] = profile
 	cfg.CurrentProfile = profileName
-	if err := cfg.Save(); err != nil {
+	profile, err := saveOAuthLogin(cfg, profileName, apiURL, workspaceID, oauthMeta, token)
+	if err != nil {
 		return err
 	}
 
@@ -230,6 +198,91 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
+}
+
+// deviceAuthorization is one run of the OAuth device authorization flow
+// against a LangSmith API: it asks for a device code, tells the person where
+// to approve it, and waits for the tokens.
+type deviceAuthorization struct {
+	apiURL string
+	// noBrowser leaves opening the approval page to the person.
+	noBrowser bool
+	// timeout bounds the wait; zero waits until the device code expires.
+	timeout time.Duration
+	// signup opens the page on the create-account form.
+	signup bool
+	// out receives the instructions.
+	out io.Writer
+}
+
+// run signs in and returns the server's OAuth metadata and the tokens.
+func (d deviceAuthorization) run(ctx context.Context) (*client.OAuthMetadata, *oauthTokenResponse, error) {
+	oauthMeta, err := client.ResolveOAuth(ctx, d.apiURL)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	device, err := requestDeviceCode(ctx, oauthMeta)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	verificationURL, codeHint := device.instructions()
+	verificationURL = activationURL(verificationURL, d.signup)
+	if d.signup {
+		fmt.Fprintf(d.out, "Open this URL to create your LangSmith account and authorize the CLI:\n%s\n\n%s: %s\n\n", verificationURL, codeHint, device.UserCode)
+	} else {
+		fmt.Fprintf(d.out, "Open this URL to authorize the LangSmith CLI:\n%s\n\n%s: %s\n\nNo LangSmith account yet? You can sign up on that page.\n\n", verificationURL, codeHint, device.UserCode)
+	}
+	if !d.noBrowser {
+		if err := openBrowser(verificationURL); err != nil {
+			fmt.Fprintf(d.out, "Could not open a browser automatically: %v\n\n", err)
+		}
+	}
+	fmt.Fprintln(d.out, "Waiting for authorization...")
+
+	waitFor := d.timeout
+	if waitFor <= 0 {
+		waitFor = time.Duration(device.ExpiresIn+10) * time.Second
+	}
+	pollCtx, cancel := context.WithTimeout(ctx, waitFor)
+	defer cancel()
+
+	interval := normalizeDeviceCodePollInterval(time.Duration(device.Interval) * time.Second)
+	token, err := pollDeviceToken(pollCtx, oauthMeta, device.DeviceCode, interval)
+	if err != nil {
+		// The caller stopping the wait is not a timeout.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, ctxErr
+		}
+		return nil, nil, err
+	}
+	return oauthMeta, token, nil
+}
+
+// saveOAuthLogin stores a device login's tokens in profileName, pointed at
+// apiURL and, when workspaceID is set, that workspace. A workspace saved for
+// another LangSmith is dropped: it belongs to that installation.
+func saveOAuthLogin(cfg *lsconfig.Config, profileName, apiURL, workspaceID string, oauthMeta *client.OAuthMetadata, token *oauthTokenResponse) (lsconfig.Profile, error) {
+	profile := cfg.Profiles[profileName]
+	previousURL := strings.TrimSpace(profile.APIURL)
+	if previousURL == "" {
+		previousURL = lsconfig.DefaultAPIURL
+	}
+	if !client.SameOrigin(previousURL, apiURL) {
+		profile.WorkspaceID = ""
+	}
+	profile.APIURL = apiURL
+	if workspaceID != "" {
+		profile.WorkspaceID = workspaceID
+	}
+	profile.OAuth.Issuer = oauthMeta.Issuer
+	applyTokenResponse(&profile, token, time.Now())
+	cfg.Profiles[profileName] = profile
+	if err := cfg.Save(); err != nil {
+		return lsconfig.Profile{}, err
+	}
+	return profile, nil
 }
 
 func loginProfileName(cfg *lsconfig.Config) string {
@@ -525,4 +578,65 @@ func openBrowserDefault(rawURL string) error {
 
 func getenv(name string) string {
 	return strings.TrimSpace(os.Getenv(name))
+}
+
+// loginAt signs in with the device flow at apiURL, the way `langsmith auth
+// login` does, writing the instructions to out, and saves the tokens to the
+// selected profile; the returned options authenticate with it. The profile
+// becomes the current one only when there is none.
+//
+// apiURL can come from the project being deployed rather than from the CLI's
+// own settings. Signing in anywhere but where `langsmith auth login` would
+// opens a page that server names and repoints the profile there, so it is
+// confirmed first, naming both; without a terminal to ask on, it fails
+// with the `langsmith auth login` command that does it.
+func loginAt(ctx context.Context, apiURL string, out io.Writer) (client.Options, error) {
+	cfg, err := lsconfig.Load()
+	if err != nil {
+		return client.Options{}, err
+	}
+	profileName := loginProfileName(cfg)
+	if err := validateProfileName(profileName); err != nil {
+		return client.Options{}, err
+	}
+	apiURL = client.NormalizeURL(apiURL)
+	if configured := loginAPIURL(cfg, profileName); !client.SameOrigin(configured, apiURL) {
+		if err := confirmLoginElsewhere(ctx, profileName, configured, apiURL); err != nil {
+			return client.Options{}, err
+		}
+	}
+	fmt.Fprintf(out, "Signing in to LangSmith at %s\n\n", apiURL)
+	oauthMeta, token, err := deviceAuthorization{apiURL: apiURL, out: out}.run(ctx)
+	if err != nil {
+		return client.Options{}, err
+	}
+	if cfg.CurrentProfile == "" {
+		cfg.CurrentProfile = profileName
+	}
+	profile, err := saveOAuthLogin(cfg, profileName, apiURL, "", oauthMeta, token)
+	if err != nil {
+		return client.Options{}, err
+	}
+	return client.Options{APIURL: apiURL, ProfileName: profileName, WorkspaceID: profile.WorkspaceID}, nil
+}
+
+// confirmLoginElsewhere asks before signing profileName in at apiURL instead
+// of configured, the LangSmith it is set up for. Declining cancels.
+func confirmLoginElsewhere(ctx context.Context, profileName, configured, apiURL string) error {
+	confirmed, err := ui.Confirm(fmt.Sprintf(
+		"Sign in to LangSmith at %s? Profile '%s' is set up for %s and will point at %s instead.",
+		apiURL, profileName, configured, apiURL)).
+		InitialValue(false).
+		Interact(ctx)
+	switch {
+	case errors.Is(err, ui.ErrNotInteractive):
+		return fmt.Errorf("profile '%s' is set up for %s, not %s; run `langsmith auth login --api-url %s` to sign in there",
+			profileName, configured, apiURL, apiURL)
+	case err != nil:
+		return err
+	case !confirmed:
+		return errs.ErrCancelled
+	default:
+		return nil
+	}
 }
