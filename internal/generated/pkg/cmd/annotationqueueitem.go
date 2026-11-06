@@ -26,7 +26,7 @@ var annotationQueuesItemsCreate = requestflag.WithInnerFlags(cli.Command{
 		},
 		&requestflag.Flag[bool]{
 			Name:      "extend-trace-retention",
-			Usage:     "Extend trace retention for added run items",
+			Usage:     "Defaults to false. When true, upgrade the traces of added runs from base to extended retention. Thread items are not upgraded.",
 			QueryPath: "extend_trace_retention",
 		},
 		&requestflag.Flag[[]map[string]any]{
