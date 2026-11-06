@@ -51,16 +51,14 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 			Usage:    "New description.",
 			BodyPath: "description",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[bool]{
 			Name:     "enable-reservations",
 			Usage:    "Whether a reviewer reserves a run while reviewing it, so others skip it.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "enable_reservations",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "metadata",
 			Usage:    "Metadata to store on the queue. Replaces the existing metadata.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "metadata",
 		},
 		&requestflag.Flag[*string]{
@@ -68,16 +66,14 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 			Usage:    "New name for the queue.",
 			BodyPath: "name",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[*int64]{
 			Name:     "num-reviewers-per-item",
 			Usage:    "How many reviewers must review each run.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "num_reviewers_per_item",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[*int64]{
 			Name:     "reservation-minutes",
 			Usage:    "How long a reservation lasts, in minutes.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "reservation_minutes",
 		},
 		&requestflag.Flag[*string]{
@@ -130,7 +126,7 @@ var annotationQueuesUpdate = requestflag.WithInnerFlags(cli.Command{
 			InnerField:            "is_required",
 			OuterIsArrayOfObjects: true,
 		},
-		&requestflag.InnerFlag[any]{
+		&requestflag.InnerFlag[*string]{
 			Name:                  "rubric-item.regex-validator",
 			InnerField:            "regex_validator",
 			OuterIsArrayOfObjects: true,

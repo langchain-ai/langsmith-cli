@@ -185,6 +185,7 @@ func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, ar
 	if err != nil {
 		return err
 	}
+	rest = renameGeneratedFlags(resource, rest)
 	rest, jq, err := extractGeneratedJQ(rest)
 	if err != nil {
 		return err
@@ -207,6 +208,38 @@ func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, ar
 		}
 	}
 	return runGenerated(cmd, resource, rest, flags, jq)
+}
+
+// generatedFlagRenames maps an old flag name of a generated operation to its
+// current one, keyed by "<resource> <operation>", so commands written for an
+// earlier CLI release keep working.
+var generatedFlagRenames = map[string]map[string]string{
+	"datasets update": {"--transformations": "--transformation"},
+}
+
+// renameGeneratedFlags rewrites old flag names in args, in both the
+// `--flag value` and `--flag=value` forms.
+func renameGeneratedFlags(resource *cli.Command, args []string) []string {
+	renames := generatedFlagRenames[resource.Name+" "+operationName(resource, args, generatedValueFlags())]
+	if len(renames) == 0 {
+		return args
+	}
+	renamed := make([]string, len(args))
+	for i, arg := range args {
+		if arg == "--" {
+			copy(renamed[i:], args[i:])
+			break
+		}
+		name, value, hasValue := strings.Cut(arg, "=")
+		if to, ok := renames[name]; ok {
+			arg = to
+			if hasValue {
+				arg += "=" + value
+			}
+		}
+		renamed[i] = arg
+	}
+	return renamed
 }
 
 // shadowedGeneratedOperations lists generated operation names and aliases a

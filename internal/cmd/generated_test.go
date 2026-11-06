@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -360,6 +361,48 @@ func TestGeneratedDeleteConfirmsAfterGeneratedValueFlags(t *testing.T) {
 			if len(requests) != 0 {
 				t.Errorf("sent %d requests without confirmation", len(requests))
 			}
+		})
+	}
+}
+
+// The old --transformations flag of `datasets update` is kept by
+// generatedFlagRenames, which the generated contract cases cannot cover: CI
+// runs them against langsmith-cli main, before this code is exported there.
+func TestGeneratedDatasetsUpdateAcceptsOldTransformationsFlag(t *testing.T) {
+	isolateGeneratedAuth(t)
+	const value = "[{path: [inputs, messages], transformation_type: convert_to_openai_message}]"
+	for _, tt := range []struct {
+		name string
+		flag []string
+	}{
+		{"flag and value", []string{"--transformations", value}},
+		{"flag=value", []string{"--transformations=" + value}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests []recordedRequest
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				requests = append(requests, recordedRequest{method: r.Method, path: r.URL.Path, body: body})
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte("{}"))
+			}))
+			defer ts.Close()
+			const path = "/api/v1/datasets/11111111-1111-1111-1111-111111111111"
+			args := []string{"--api-url", ts.URL, "--api-key", "k", "datasets", "update",
+				"--dataset-id", "11111111-1111-1111-1111-111111111111"}
+			stderr, exitCode, err := runGeneratedCommand(t, "", append(args, tt.flag...)...)
+			if err != nil || exitCode != 0 {
+				t.Fatalf("err = %v, exit code = %d\nstderr: %s", err, exitCode, stderr)
+			}
+			if len(requests) != 1 {
+				t.Fatalf("sent %d requests, want 1", len(requests))
+			}
+			if got := requests[0]; got.method != http.MethodPatch || got.path != path {
+				t.Errorf("request = %s %s, want PATCH %s", got.method, got.path, path)
+			}
+			assertJSONBody(t, requests[0].body, map[string]any{"transformations": []any{
+				map[string]any{"path": []any{"inputs", "messages"}, "transformation_type": "convert_to_openai_message"},
+			}})
 		})
 	}
 }

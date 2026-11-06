@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/mocktest"
+	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/requestflag"
 )
 
 func TestDatasetsUpdate(t *testing.T) {
@@ -18,13 +19,36 @@ func TestDatasetsUpdate(t *testing.T) {
 			"datasets", "update",
 			"--dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--baseline-experiment-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
-			"--description", "string",
+			"--description", "description",
 			"--inputs-schema-definition", "{foo: bar}",
 			"--metadata", "{foo: bar}",
-			"--name", "string",
+			"--name", "name",
 			"--outputs-schema-definition", "{foo: bar}",
 			"--patch-examples", "{foo: {attachments_operations: {rename: {foo: string}, retain: [string]}, dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, inputs: {foo: bar}, metadata: {foo: bar}, outputs: {foo: bar}, overwrite: true, split: [string]}}",
-			"--transformations", "[{path: [string], transformation_type: convert_to_openai_message}]",
+			"--transformation", "[{path: [string], transformation_type: convert_to_openai_message}]",
+		)
+	})
+
+	t.Run("inner flags", func(t *testing.T) {
+		// Check that inner flags have been set up correctly
+		requestflag.CheckInnerFlags(datasetsUpdate)
+
+		// Alternative argument passing style using inner flags
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"datasets", "update",
+			"--dataset-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--baseline-experiment-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
+			"--description", "description",
+			"--inputs-schema-definition", "{foo: bar}",
+			"--metadata", "{foo: bar}",
+			"--name", "name",
+			"--outputs-schema-definition", "{foo: bar}",
+			"--patch-examples", "{foo: {attachments_operations: {rename: {foo: string}, retain: [string]}, dataset_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, inputs: {foo: bar}, metadata: {foo: bar}, outputs: {foo: bar}, overwrite: true, split: [string]}}",
+			"--transformation.path", "[string]",
+			"--transformation.transformation-type", "convert_to_openai_message",
 		)
 	})
 
@@ -32,12 +56,12 @@ func TestDatasetsUpdate(t *testing.T) {
 		// Test piping YAML data over stdin
 		pipeData := []byte("" +
 			"baseline_experiment_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
-			"description: string\n" +
+			"description: description\n" +
 			"inputs_schema_definition:\n" +
 			"  foo: bar\n" +
 			"metadata:\n" +
 			"  foo: bar\n" +
-			"name: string\n" +
+			"name: name\n" +
 			"outputs_schema_definition:\n" +
 			"  foo: bar\n" +
 			"patch_examples:\n" +

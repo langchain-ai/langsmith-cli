@@ -14,7 +14,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var datasetsUpdate = cli.Command{
+var datasetsUpdate = requestflag.WithInnerFlags(cli.Command{
 	Name:    "update",
 	Usage:   "Update a dataset.",
 	Suggest: true,
@@ -24,40 +24,34 @@ var datasetsUpdate = cli.Command{
 			Required:  true,
 			PathParam: "dataset_id",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[*string]{
 			Name:     "baseline-experiment-id",
 			Usage:    "ID of the experiment used as the baseline when comparing experiments on this dataset. Must be an experiment run on this dataset, otherwise returns 400. Null clears it. Omit to keep the current baseline.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "baseline_experiment_id",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[*string]{
 			Name:     "description",
 			Usage:    "New dataset description. Null clears it. Omit to keep the current description.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "description",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "inputs-schema-definition",
 			Usage:    "JSON Schema that example inputs must match. Replaces the current inputs schema as a whole; null removes it, which returns 400 while transformations still point into inputs. Only key-value datasets support schemas. Every existing example must match the new schema, otherwise the request returns 400 with the IDs of the examples that do not, and nothing is changed. Omit to keep the current schema.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "inputs_schema_definition",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "metadata",
 			Usage:    "Dataset metadata as a JSON object. Replaces the current metadata as a whole; keys are not merged. Send an empty object to clear it. Omit to keep the current metadata.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "metadata",
 		},
-		&requestflag.Flag[any]{
+		&requestflag.Flag[*string]{
 			Name:     "name",
 			Usage:    "New dataset name. Must be unique in the workspace; a name already used by another dataset returns 409. Null returns 400. Omit to keep the current name.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "name",
 		},
 		&requestflag.Flag[map[string]any]{
 			Name:     "outputs-schema-definition",
 			Usage:    "JSON Schema that example outputs must match. Replaces the current outputs schema as a whole; null removes it, which returns 400 while transformations still point into outputs. Only key-value datasets support schemas. Every existing example must match the new schema, otherwise the request returns 400 with the IDs of the examples that do not, and nothing is changed. Omit to keep the current schema.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "outputs_schema_definition",
 		},
 		&requestflag.Flag[map[string]any]{
@@ -66,15 +60,28 @@ var datasetsUpdate = cli.Command{
 			BodyPath: "patch_examples",
 		},
 		&requestflag.Flag[any]{
-			Name:     "transformations",
+			Name:     "transformation",
 			Usage:    "Transformations applied to new examples, each a path into inputs or outputs and a transformation type. Replaces the whole current list; null or an empty list removes all of them. Existing examples are not transformed. Requires a schema on the inputs or outputs the path points into, otherwise returns 400. Omit to keep the current list.",
-			Default:  map[string]interface{}{"__missing__": "__missing__"},
 			BodyPath: "transformations",
 		},
 	},
 	Action:          handleDatasetsUpdate,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"transformation": {
+		&requestflag.InnerFlag[[]string]{
+			Name:                  "transformation.path",
+			InnerField:            "path",
+			OuterIsArrayOfObjects: true,
+		},
+		&requestflag.InnerFlag[string]{
+			Name:                  "transformation.transformation-type",
+			Usage:                 "Enum for dataset transformation types.\nOrdering determines the order in which transformations are applied if there are multiple transformations on the same path.",
+			InnerField:            "transformation_type",
+			OuterIsArrayOfObjects: true,
+		},
+	},
+})
 
 var datasetsClone = cli.Command{
 	Name:    "clone",

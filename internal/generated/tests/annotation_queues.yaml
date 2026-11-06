@@ -14,8 +14,7 @@ contract:
       - New description
       - --default-dataset
       - 22222222-2222-2222-2222-222222222222
-      - --enable-reservations
-      - "false"
+      - --enable-reservations=false
       - --metadata
       - "{team: support}"
       - --num-reviewers-per-item
@@ -54,6 +53,39 @@ contract:
       method: PATCH
       path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
       body: {name: renamed-again}
+
+  - name: update takes a bare boolean flag
+    op: update
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111, --enable-reservations]
+    response:
+      body: {}
+    want:
+      method: PATCH
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      body: {enable_reservations: true}
+
+  - name: update rejects a non-integer reviewer count
+    op: update
+    args: [--queue-id, 11111111-1111-1111-1111-111111111111, --num-reviewers-per-item, two]
+    want:
+      requests: 0
+      exit_code: 1
+
+  - name: update sends a numeric-looking regex validator as a string
+    op: update
+    args:
+      - --queue-id
+      - 11111111-1111-1111-1111-111111111111
+      - --rubric-item.feedback-key
+      - code
+      - --rubric-item.regex-validator
+      - "2024"
+    response:
+      body: {}
+    want:
+      method: PATCH
+      path: /api/v1/annotation-queues/11111111-1111-1111-1111-111111111111
+      body: {rubric_items: [{feedback_key: code, regex_validator: "2024"}]}
 
   - name: retrieve
     op: retrieve

@@ -59,7 +59,7 @@ contract:
       - --outputs-schema-definition
       - "{type: object, properties: {answer: {type: string}}}"
       # Nullable list and map flags take a YAML literal.
-      - --transformations
+      - --transformation
       - "[{path: [inputs, messages], transformation_type: convert_to_openai_message}]"
       - --metadata
       - "{team: support, version: 2}"
