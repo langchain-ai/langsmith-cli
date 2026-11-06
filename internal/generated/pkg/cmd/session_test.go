@@ -22,6 +22,7 @@ func TestSessionsUpdate(t *testing.T) {
 			"--description", "description",
 			"--end-time", "'2019-12-27T18:11:19.117Z'",
 			"--extra", "{foo: bar}",
+			"--longlived-ttl-days", "0",
 			"--name", "name",
 			"--trace-tier", "longlived",
 		)
@@ -35,6 +36,7 @@ func TestSessionsUpdate(t *testing.T) {
 			"end_time: '2019-12-27T18:11:19.117Z'\n" +
 			"extra:\n" +
 			"  foo: bar\n" +
+			"longlived_ttl_days: 0\n" +
 			"name: name\n" +
 			"trace_tier: longlived\n")
 		mocktest.TestRunMockTestWithPipeAndFlags(
