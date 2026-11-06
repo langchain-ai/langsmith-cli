@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +32,7 @@ Results are sorted newest-first by start time.
 
 Examples:
   langsmith traces list --project my-app --limit 5
-  langsmith traces get <trace-id> --project my-app --full
+  langsmith traces get <trace-id> --full
   langsmith traces export ./traces --project my-app --limit 20 --full`,
 	}
 
@@ -207,12 +209,16 @@ func newTraceGetCmd() *cobra.Command {
 		Short: "Fetch every run in a single trace",
 		Long: `Fetch every run in a single trace.
 
-LangSmith Cloud and self-hosted >= 0.16 read the trace through
-/v2/traces/{trace_id}/runs, which requires --project or --project-id.
-Older self-hosted deployments read it through the v1 runs query, where the
-project is optional: without --project, --project-id or $LANGSMITH_PROJECT,
-the trace is looked up by ID across the current workspace. The v1 query only
-returns runs from the last 7 days unless --since or --last-n-minutes is set.`,
+--project and --project-id are optional. Without them (or $LANGSMITH_PROJECT)
+the trace is looked up by ID across the current workspace, through the runs
+query. That lookup only finds traces whose root run started in the last 7 days
+unless --since or --last-n-minutes is set; pass the project to skip it, and
+on deployments that serve runs only from SmithDB, where the lookup is
+unavailable.
+
+LangSmith Cloud and self-hosted >= 0.16 then read the whole trace through
+/v2/traces/{trace_id}/runs. Older self-hosted deployments read it through the
+v1 runs query, which keeps the same 7-day default window.`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			traceID := args[0]
@@ -229,22 +235,7 @@ returns runs from the last 7 days unless --since or --last-n-minutes is set.`,
 
 			c := MustGetClient()
 			ctx := context.Background()
-			useV2, err := c.UseV2API(ctx)
-			if err != nil {
-				ExitErrorf("%v", err)
-			}
-			sessionID, err := traceGetSessionID(ctx, c, project, projectID, useV2)
-			if err != nil {
-				ExitErrorf("%v", err)
-			}
-
-			// v2 finds the trace without a window, so it only bounds the runs
-			// when a window was asked for; v1 keeps its 7-day default.
-			var v2Since time.Time
-			if since != "" || lastNMinutes > 0 {
-				v2Since = resolveStartTime(since, lastNMinutes)
-			}
-			runs, err := fetchTraceRuns(ctx, c, sessionID, traceID, resolveStartTime(since, lastNMinutes), v2Since,
+			runs, err := traceGetRuns(ctx, c, project, projectID, traceID, since, lastNMinutes,
 				buildRunSelect(includeIO, includeFeedback), buildRunSelectV2(includeIO, includeFeedback))
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -279,14 +270,98 @@ returns runs from the last 7 days unless --since or --last-n-minutes is set.`,
 	return cmd
 }
 
-// traceGetSessionID resolves the project for trace get. /v2/traces/{trace_id}/runs
-// requires one; the v1 runs query accepts a trace filter alone, so on v1 the
-// project is optional and returns "" when none is given.
-func traceGetSessionID(ctx context.Context, c *client.Client, project, projectID string, useV2 bool) (string, error) {
-	if !useV2 && projectID == "" && ResolveProject(project) == "" {
+// traceGetRuns returns every run in traceID, oldest first, or an error when the
+// trace has no runs in scope. Without a project it searches the current
+// workspace. The v1 runs query filters by trace alone; every v2 runs and trace
+// endpoint needs a project, so on v2 the trace's project is first read from the
+// v1 runs query (see traceProjectID) and the trace is then fetched from
+// /v2/traces/{trace_id}/runs.
+func traceGetRuns(ctx context.Context, c *client.Client, project, projectID, traceID, since string, lastNMinutes int, v1Select []langsmith.RunQueryParamsSelect, v2Selects []langsmith.RunSelectField) ([]langsmith.RunSchema, error) {
+	useV2, err := c.UseV2API(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v1Start := resolveStartTime(since, lastNMinutes)
+	// v2 finds the trace without a window, so it only bounds the runs when a
+	// window was asked for; v1 and the workspace lookup keep the 7-day default.
+	var v2Since time.Time
+	if since != "" || lastNMinutes > 0 {
+		v2Since = v1Start
+	}
+
+	var sessionID string
+	inProject := projectID != "" || ResolveProject(project) != ""
+	if inProject {
+		if sessionID, err = resolveSessionID(ctx, c, project, projectID, "trace get"); err != nil {
+			return nil, err
+		}
+	} else if useV2 {
+		if sessionID, err = traceProjectID(ctx, c, traceID, v1Start); err != nil {
+			return nil, err
+		}
+		if sessionID == "" {
+			return nil, traceNotFound(traceID, false, v1Start)
+		}
+	}
+
+	runs, err := fetchTraceRuns(ctx, c, sessionID, traceID, v1Start, v2Since, v1Select, v2Selects)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) == 0 {
+		window := v1Start
+		if useV2 && inProject {
+			window = v2Since
+		}
+		return nil, traceNotFound(traceID, inProject, window)
+	}
+	return runs, nil
+}
+
+// traceProjectID returns the project (session) ID of traceID from its root
+// run, searching the whole workspace; "" when the root run did not start at or
+// after start.
+//
+// It uses the v1 runs query because no v2 endpoint looks a run or trace up
+// without a project. That endpoint is deprecated with a 2027-01-31 sunset, so
+// this lookup needs a v2 replacement before then. The server ignores limit
+// when filtering by trace, so is_root keeps the response to one row instead of
+// the whole trace. Deployments without ClickHouse querying (SmithDB only)
+// reject the v1 query with 501; the error then asks for the project, which
+// lets the v2 read run without this lookup.
+func traceProjectID(ctx context.Context, c *client.Client, traceID string, start time.Time) (string, error) {
+	params := langsmith.RunQueryParams{
+		Trace:     langsmith.F(traceID),
+		IsRoot:    langsmith.F(true),
+		StartTime: langsmith.F(start),
+		Limit:     langsmith.F(int64(1)),
+		Select:    langsmith.F([]langsmith.RunQueryParamsSelect{langsmith.RunQueryParamsSelectSessionID}),
+	}
+	runs, err := queryRuns(ctx, c, params, "", 1, 0)
+	if isHTTPStatus(err, http.StatusNotImplemented) {
+		return "", fmt.Errorf("this deployment cannot look up trace %s without a project; pass --project or --project-id", traceID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("looking up trace %s in the workspace: %w", traceID, err)
+	}
+	if len(runs) == 0 {
 		return "", nil
 	}
-	return resolveSessionID(ctx, c, project, projectID, "trace get")
+	return runs[0].SessionID, nil
+}
+
+// traceNotFound explains where trace get searched. since is zero when the
+// search had no start-time bound.
+func traceNotFound(traceID string, inProject bool, since time.Time) error {
+	scope := "the current workspace"
+	if inProject {
+		scope = "the given project"
+	}
+	if since.IsZero() {
+		return fmt.Errorf("trace %s not found in %s", traceID, scope)
+	}
+	return fmt.Errorf("trace %s not found in %s among runs since %s; pass --since with an earlier time if the trace is older",
+		traceID, scope, since.UTC().Format(time.RFC3339))
 }
 
 func newTraceExportCmd() *cobra.Command {

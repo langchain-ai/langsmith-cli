@@ -83,7 +83,7 @@ langsmith projects list
 langsmith traces list --project my-app --limit 5
 
 # Get a specific trace with full detail
-langsmith traces get <trace-id> --project my-app --full
+langsmith traces get <trace-id> --full
 
 # List LLM calls with token counts
 langsmith runs list --project my-app --run-type llm --include-metadata
@@ -203,7 +203,7 @@ langsmith traces list --project my-app --full               # All fields (metada
 langsmith traces list --project my-app --show-hierarchy --limit 3
 
 # Get a specific trace
-langsmith traces get <trace-id> --project my-app --full
+langsmith traces get <trace-id> --full
 
 # Export traces to JSONL files (one per trace)
 langsmith traces export ./traces --project my-app --limit 20 --full
@@ -239,7 +239,7 @@ langsmith runs get <run-id> --full
 langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 ```
 
-> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`, which requires a project. On v1, `trace get` can omit `--project` / `--project-id` and look the trace up by ID in the current workspace. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
+> **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`, which requires a project. `trace get` can omit `--project` / `--project-id` on both: it looks the trace's root run up by ID in the current workspace through the v1 runs query (last 7 days unless `--since` or `--last-n-minutes` is set), then reads the trace. Deployments that serve runs only from SmithDB can't do that lookup, so pass the project there. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
 ### `thread` — Query conversation threads
 

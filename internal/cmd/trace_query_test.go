@@ -114,7 +114,7 @@ func TestTraceGet_V2SinceSendsBothBounds(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		query = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"items":[]}`))
+		_, _ = w.Write([]byte(`{"items":[{"id":"a","start_time":"2026-01-02T00:00:00Z"}]}`))
 	})
 
 	runTraceCmdJSON(t, ts.URL, "get", traceID, "--project-id", testProjectID, "--since", "2026-01-01T00:00:00Z")
