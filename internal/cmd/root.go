@@ -10,7 +10,9 @@ import (
 	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	"github.com/langchain-ai/langsmith-cli/internal/cmd/api"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	"github.com/spf13/cobra"
 )
@@ -54,12 +56,22 @@ Quick start:
 
 	Output:
 	  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).
-	  --format json    Machine-readable JSON for agents and scripts.`,
+	  --format json    Machine-readable JSON for agents and scripts.
+	  --jq EXPR        Filter JSON output with a jq expression (implies --format json).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       displayVersion,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			usage.SetCommand(cmd)
+			// Reject a bad --jq before the command does any work.
+			expr := cmdutil.ResolveJQ(cmd)
+			if expr != "" {
+				if _, err := output.CompileJQ(expr); err != nil {
+					return err
+				}
+			}
+			output.SetJQ(expr)
+			return nil
 		},
 	}
 	usage.SetVersion(rawVersion)
@@ -103,6 +115,7 @@ Quick start:
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
 	rootCmd.AddCommand(api.NewCmd())
 	addGeneratedCommands(rootCmd)
+	cmdutil.AddJQFlags(rootCmd)
 
 	return rootCmd
 }
@@ -143,8 +156,11 @@ func GetWorkspaceID() string {
 	return opts.WorkspaceID
 }
 
-// GetFormat returns the output format.
+// GetFormat returns the output format. --jq filters JSON, so it implies json.
 func GetFormat() string {
+	if output.JQ() != "" {
+		return "json"
+	}
 	return flagOutputFormat
 }
 

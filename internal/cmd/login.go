@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -227,9 +228,7 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 		writeLoginSuccess(cmd.OutOrStdout(), apiURL, profileName)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return output.WriteJSON(cmd.OutOrStdout(), result)
 }
 
 func loginProfileName(cfg *lsconfig.Config) string {

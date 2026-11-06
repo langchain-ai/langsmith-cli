@@ -11,6 +11,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 )
@@ -389,7 +390,5 @@ func reportCodexSetup(cmd *cobra.Command, credPath, tomlPath, project, apiURL, s
 	if !noInstall && !added && addErr != nil {
 		result["install_error"] = addErr.Error()
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return output.WriteJSON(cmd.OutOrStdout(), result)
 }

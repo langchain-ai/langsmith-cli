@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -77,8 +76,7 @@ Examples:
 				}
 				fmt.Fprintf(w, "(%d endpoints)\n", len(endpoints))
 			} else {
-				data, _ := json.MarshalIndent(endpoints, "", "  ")
-				fmt.Fprintln(w, string(data))
+				return output.WriteJSON(w, endpoints)
 			}
 
 			return nil

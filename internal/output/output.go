@@ -44,7 +44,12 @@ func NewTable(w io.Writer, columns []string) *tablewriter.Table {
 
 // OutputJSON writes data as indented JSON to stdout or a file.
 // If filePath is non-empty, writes to file and prints status to stderr.
+// Stdout output goes through the active --jq expression; files keep the
+// full data.
 func OutputJSON(data any, filePath string) error {
+	if filePath == "" && activeJQ != "" {
+		return RenderJQ(os.Stdout, data, activeJQ)
+	}
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode JSON: %w", err)
@@ -70,6 +75,12 @@ func OutputJSONL(items []map[string]any, filePath string) error {
 		fmt.Fprintf(os.Stderr, `{"status": "written", "path": %q, "count": %d}`+"\n", filePath, len(items))
 	} else {
 		for _, item := range items {
+			if activeJQ != "" {
+				if err := RenderJQ(os.Stdout, item, activeJQ); err != nil {
+					return err
+				}
+				continue
+			}
 			line, err := json.Marshal(item)
 			if err != nil {
 				return fmt.Errorf("encode JSONL item: %w", err)
@@ -183,7 +194,7 @@ func addChildren(node treeprint.Tree, parentID string, childrenMap map[string][]
 
 // PrintOutput dispatches to JSON or pretty output.
 func PrintOutput(data any, format string, filePath string) error {
-	if format == "pretty" {
+	if format == "pretty" && (activeJQ == "" || filePath != "") {
 		// Pretty mode: just pretty-print JSON to stdout
 		jsonBytes, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {

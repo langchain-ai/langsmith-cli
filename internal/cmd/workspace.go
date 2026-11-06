@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -46,9 +45,7 @@ func newWorkspaceListCmd() *cobra.Command {
 				renderWorkspaceTable(cmd, *workspaces)
 				return
 			}
-			enc := json.NewEncoder(cmd.OutOrStdout())
-			enc.SetIndent("", "  ")
-			if err := enc.Encode(workspaces); err != nil {
+			if err := output.WriteJSON(cmd.OutOrStdout(), workspaces); err != nil {
 				ExitErrorf("encoding workspaces: %v", err)
 			}
 		},

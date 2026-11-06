@@ -111,12 +111,14 @@ func TestPropertyListRenderTextCaption(t *testing.T) {
 func TestRenderJQFiltersModel(t *testing.T) {
 	var out bytes.Buffer
 	cmd := testCmd("pretty", &out)
-	require.NoError(t, cmd.Flags().Set("jq", ".name"))
+	require.NoError(t, cmd.Flags().Set("jq", ".name, .cost, .latency, .count, .big"))
 
-	err := Render(cmd, map[string]any{"name": "sandbox"}, Template(`ignored`))
+	err := Render(cmd, map[string]any{
+		"name": "sandbox", "cost": 0.000123, "latency": 1.23456, "count": 3, "big": 1e21,
+	}, Template(`ignored`))
 
 	require.NoError(t, err)
-	require.Equal(t, "sandbox\n", out.String())
+	require.Equal(t, "sandbox\n0.000123\n1.23456\n3\n1e+21\n", out.String())
 }
 
 func TestRenderJQEncodesObjects(t *testing.T) {
@@ -190,4 +192,15 @@ func TestTableRenderTextMissingRowsPath(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `rows path ".Missing"`)
+}
+
+func TestRenderJQRejectsInvalidExpression(t *testing.T) {
+	var out bytes.Buffer
+	cmd := testCmd("pretty", &out)
+	require.NoError(t, cmd.Flags().Set("jq", ".items | map(.name"))
+
+	err := Render(cmd, map[string]any{"items": []any{}}, Template(`ignored`))
+
+	require.ErrorContains(t, err, "failed to parse jq expression (line 1, column 19)")
+	require.Empty(t, out.String())
 }

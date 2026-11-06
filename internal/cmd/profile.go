@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -201,9 +200,7 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 	if workspaceID != "" {
 		result["workspace_id"] = workspaceID
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return output.WriteJSON(cmd.OutOrStdout(), result)
 }
 
 func profileCreateAPIKey() string {
@@ -254,9 +251,7 @@ func runProfileShow(cmd *cobra.Command, profileName string) error {
 		renderProfileShowTable(cmd, item)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(item)
+	return output.WriteJSON(cmd.OutOrStdout(), item)
 }
 
 func runProfileDelete(cmd *cobra.Command, profileName string) error {
@@ -279,9 +274,7 @@ func runProfileDelete(cmd *cobra.Command, profileName string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Deleted profile %q\n", profileName)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]string{
+	return output.WriteJSON(cmd.OutOrStdout(), map[string]string{
 		"status":  "deleted",
 		"profile": profileName,
 	})
@@ -304,9 +297,7 @@ func runProfileUse(cmd *cobra.Command, profileName string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Using profile %q\n", profileName)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]string{
+	return output.WriteJSON(cmd.OutOrStdout(), map[string]string{
 		"status":  "switched",
 		"profile": profileName,
 	})
@@ -341,9 +332,7 @@ func runProfileList(cmd *cobra.Command) error {
 		renderProfileTable(cmd, items)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(items)
+	return output.WriteJSON(cmd.OutOrStdout(), items)
 }
 
 func profileAuthType(profile lsconfig.Profile) string {
@@ -428,9 +417,7 @@ func runProfileSetWorkspace(cmd *cobra.Command, workspaceID string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Set default workspace for profile %q\n", profileName)
 		return nil
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]string{
+	return output.WriteJSON(cmd.OutOrStdout(), map[string]string{
 		"status":       "workspace_set",
 		"profile":      profileName,
 		"workspace_id": workspaceID,

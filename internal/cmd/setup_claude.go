@@ -11,6 +11,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -268,7 +269,5 @@ func reportClaudeSetup(cmd *cobra.Command, settingsPath, project, apiURL, scope,
 	if !noInstall && !installed && installErr != nil {
 		result["install_error"] = installErr.Error()
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return output.WriteJSON(cmd.OutOrStdout(), result)
 }

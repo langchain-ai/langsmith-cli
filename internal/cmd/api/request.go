@@ -12,12 +12,17 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/langchain-ai/langsmith-go/option"
 )
 
 // runRequest executes an HTTP request and writes the response to w.
 // Returns the HTTP status code and any transport-level error.
 func runRequest(c *client.Client, method, path, body, input string, params map[string]any, headers []string, include bool, w, errW io.Writer) (int, error) {
+	// --jq output must be consumable as-is, so headers can't share stdout with it.
+	if include && output.JQ() != "" {
+		return 0, fmt.Errorf("--include cannot be combined with --jq")
+	}
 	apiURL := c.APIURL()
 	fullURL := resolveEndpoint(apiURL, path)
 	if len(params) > 0 && strings.EqualFold(method, "GET") {
@@ -98,6 +103,14 @@ func runRequest(c *client.Client, method, path, body, input string, params map[s
 			}
 		}
 		fmt.Fprintln(w)
+	}
+
+	if expr := output.JQ(); expr != "" {
+		var data any
+		if err := json.Unmarshal(respBody, &data); err != nil {
+			return statusCode, fmt.Errorf("--jq needs JSON output, but the response is not JSON: %w", err)
+		}
+		return statusCode, output.RenderJQ(w, data, expr)
 	}
 
 	// Pretty-print JSON if possible, otherwise print raw

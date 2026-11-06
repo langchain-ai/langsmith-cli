@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	langsmith "github.com/langchain-ai/langsmith-go"
 	"github.com/langchain-ai/langsmith-go/option"
 	"github.com/spf13/cobra"
@@ -94,7 +94,7 @@ func writeProductFeedbackResult(w io.Writer, format string, response *langsmith.
 		_, err := fmt.Fprintf(w, "Feedback submitted\nID: %s\nCreated: %s\n", response.ID, response.CreatedAt.Format("2006-01-02T15:04:05Z07:00"))
 		return err
 	}
-	return json.NewEncoder(w).Encode(map[string]any{
+	return output.WriteJSONLine(w, map[string]any{
 		"id":         response.ID,
 		"created_at": response.CreatedAt,
 	})

@@ -10,6 +10,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -126,6 +127,7 @@ func executeCommandContext(t *testing.T, ctx context.Context, args ...string) (s
 		flagProfile = oldProfile
 		flagWorkspaceID = oldWorkspace
 		flagOutputFormat = oldFormat
+		output.SetJQ("")
 	}()
 
 	cmd := NewRootCmd("test", "test")

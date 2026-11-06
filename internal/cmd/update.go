@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -84,11 +85,10 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 		if format == "pretty" {
 			fmt.Printf("langsmith is already up to date (v%s)\n", currentVersion)
 		} else {
-			out, _ := json.Marshal(map[string]string{
+			return output.WriteJSONLine(os.Stdout, map[string]string{
 				"status":          "up-to-date",
 				"current_version": currentVersion,
 			})
-			fmt.Println(string(out))
 		}
 		return nil
 	}
@@ -97,12 +97,11 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 		if format == "pretty" {
 			fmt.Printf("Update available: v%s → v%s (dry run, no changes made)\n", currentVersion, latest)
 		} else {
-			out, _ := json.Marshal(map[string]string{
+			return output.WriteJSONLine(os.Stdout, map[string]string{
 				"status":          "update-available",
 				"current_version": currentVersion,
 				"latest_version":  latest,
 			})
-			fmt.Println(string(out))
 		}
 		return nil
 	}
@@ -150,12 +149,11 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 	if format == "pretty" {
 		fmt.Printf("Updated langsmith from v%s to v%s\n", currentVersion, latest)
 	} else {
-		out, _ := json.Marshal(map[string]string{
+		return output.WriteJSONLine(os.Stdout, map[string]string{
 			"status":           "updated",
 			"previous_version": currentVersion,
 			"new_version":      latest,
 		})
-		fmt.Println(string(out))
 	}
 	return nil
 }
@@ -175,12 +173,11 @@ func reportManagedExternally(method installMethod, command, format string) error
 		fmt.Printf("langsmith was installed with %s, which manages updates for you.\n"+
 			"To update, run:\n\n    %s\n\n(Use --force to update in place anyway.)\n", mgr.display, command)
 	} else {
-		out, _ := json.Marshal(map[string]string{
+		return output.WriteJSONLine(os.Stdout, map[string]string{
 			"status":         "managed-externally",
 			"install_method": mgr.label,
 			"update_command": command,
 		})
-		fmt.Println(string(out))
 	}
 	return nil
 }

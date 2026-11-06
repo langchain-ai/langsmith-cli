@@ -53,8 +53,12 @@ func ResolveAPIURL(cmd *cobra.Command) string {
 	return "https://api.smith.langchain.com"
 }
 
-// ResolveFormat reads the output format from cobra's flag tree.
+// ResolveFormat reads the output format from cobra's flag tree. --jq filters
+// JSON, so it implies json.
 func ResolveFormat(cmd *cobra.Command) string {
+	if ResolveJQ(cmd) != "" {
+		return "json"
+	}
 	v := getFlagString(cmd, "format")
 	if v == "" {
 		return "pretty"
@@ -164,4 +168,23 @@ func ResolveClientOptions(cmd *cobra.Command) (client.Options, error) {
 	}
 
 	return opts, nil
+}
+
+// NoJSONOutputAnnotation marks a command that never prints JSON, such as an
+// interactive session, so AddJQFlags leaves it without --jq.
+const NoJSONOutputAnnotation = "langsmith/no-json-output"
+
+// JQFlagUsage is the help text of every --jq flag.
+const JQFlagUsage = "Filter JSON output using a jq expression"
+
+// AddJQFlags gives --jq to every runnable command under root that prints JSON
+// and does not define the flag itself. Commands that hand their arguments to
+// another parser (DisableFlagParsing) document their own.
+func AddJQFlags(root *cobra.Command) {
+	if root.Runnable() && !root.DisableFlagParsing && root.Annotations[NoJSONOutputAnnotation] == "" && root.Flags().Lookup("jq") == nil {
+		root.Flags().String("jq", "", JQFlagUsage)
+	}
+	for _, c := range root.Commands() {
+		AddJQFlags(c)
+	}
 }

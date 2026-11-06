@@ -220,7 +220,7 @@ Examples:
 		cmd.Flags().StringVar(&in.Shell, "shell", in.Shell, "Shell to use for --console (default: sandbox default, usually /bin/bash)")
 		cmd.Flags().BoolVar(&in.ForwardSSHAgent, "forward-ssh-agent", in.ForwardSSHAgent, "Forward the local SSH agent (SSH_AUTH_SOCK) into the --console session")
 		cmd.Flags().StringArrayVar(&in.Env, "env", nil, "Additional environment variable for the --console session (KEY or KEY=VALUE, repeatable)")
-		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
+		cmd.Flags().String("jq", "", cmdutil.JQFlagUsage)
 		return in
 	},
 	CustomOutput: true,

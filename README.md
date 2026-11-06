@@ -126,6 +126,13 @@ langsmith --format=json trace list --project my-app
 langsmith traces list --project my-app -o traces.json
 ```
 
+Every command that prints JSON takes `--jq` to filter it with a jq expression, so you don't need `jq` installed. `--jq` implies `--format=json`; strings, numbers and booleans print bare, objects and arrays as compact JSON. An invalid expression fails before the command does anything. Files written with `-o` keep the full output.
+
+```bash
+langsmith traces list --project my-app --jq '.[].trace_id'
+langsmith agents list --jq 'map(select(.name == "support")) | .[0].id'
+```
+
 ## Selecting a project
 
 Every command that operates on a project takes either `--project <name>` or

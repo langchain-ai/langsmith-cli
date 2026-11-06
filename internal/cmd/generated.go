@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	generated "github.com/langchain-ai/langsmith-cli/internal/generated/pkg/cmd"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/langchain-ai/langsmith-cli/internal/usage"
 	"github.com/langchain-ai/langsmith-go"
 	"github.com/spf13/cobra"
@@ -70,6 +72,7 @@ func addGeneratedCommands(root *cobra.Command) {
 	generated.Command.Commands = resources
 	renameGeneratedOperations(resources)
 	addGeneratedProjectFlags(resources)
+	addGeneratedJQFlags(resources)
 	mountGeneratedResources(root, resources)
 }
 
@@ -141,10 +144,11 @@ func mountPoint(parent *cobra.Command, name string, resource *cli.Command) *cobr
 		return c
 	}
 	group := &cobra.Command{
-		Use:   name,
-		Short: manageShort(name),
-		Args:  cobra.NoArgs,
-		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+		Use:         name,
+		Short:       manageShort(name),
+		Args:        cobra.NoArgs,
+		RunE:        func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+		Annotations: map[string]string{cmdutil.NoJSONOutputAnnotation: "true"},
 	}
 	parent.AddCommand(group)
 	return group
@@ -181,6 +185,11 @@ func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, ar
 	if err != nil {
 		return err
 	}
+	rest, jq, err := extractGeneratedJQ(rest)
+	if err != nil {
+		return err
+	}
+	args, _, _ = extractValueFlag(args, "--jq")
 	// --yes belongs to delete operations only; elsewhere the generated tree
 	// rejects it as an unknown flag.
 	if isDeleteInvocation(resource, rest, generatedValueFlags()) {
@@ -197,7 +206,7 @@ func forwardGenerated(cmd *cobra.Command, resource *cli.Command, path string, ar
 			}
 		}
 	}
-	return runGenerated(cmd, resource, rest, flags)
+	return runGenerated(cmd, resource, rest, flags, jq)
 }
 
 // shadowedGeneratedOperations lists generated operation names and aliases a
@@ -366,9 +375,10 @@ func extractFlag(args []string, flag string) ([]string, bool) {
 // authenticates with OAuth is selected through LANGSMITH_PROFILE and the SDK
 // loads its token; the explicit --base-url still pins the host the token is
 // sent to.
-func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flags globalFlags) error {
+func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flags globalFlags, jq string) error {
 	argv := []string{"langsmith"}
-	if !isHelpInvocation(rest) {
+	help := isHelpInvocation(rest)
+	if !help {
 		opts, err := resolveAuthenticatedOptions(flags)
 		if err != nil {
 			return err
@@ -389,6 +399,13 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 			return err
 		}
 	}
+	if help {
+		jq = ""
+	}
+	list := jq != "" && isGeneratedListOperation(resource, rest)
+	if jq != "" {
+		rest = withJQOutputFlags(rest)
+	}
 	argv = append(argv, resource.Name)
 	argv = append(argv, rest...)
 
@@ -396,7 +413,15 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 	defer client.WrapDefaultTransportWithAuthHint()()
 
 	generated.CommandErrorBuffer.Reset()
-	if err := generated.Command.Run(cmd.Context(), argv); err != nil {
+	run := func() error { return generated.Command.Run(cmd.Context(), argv) }
+	var out []byte
+	var err error
+	if jq != "" {
+		out, err = captureGeneratedStdout(run)
+	} else {
+		err = run()
+	}
+	if err != nil {
 		printGeneratedError(cmd.ErrOrStderr(), err)
 		code := 1
 		var exitErr cli.ExitCoder
@@ -404,8 +429,16 @@ func runGenerated(cmd *cobra.Command, resource *cli.Command, rest []string, flag
 			code = exitErr.ExitCode()
 		}
 		exitGenerated(code)
+		return nil
 	}
-	return nil
+	if jq == "" {
+		return nil
+	}
+	model, err := jqModel(out, list)
+	if err != nil {
+		return err
+	}
+	return output.RenderJQ(os.Stdout, model, jq)
 }
 
 // isHelpInvocation reports whether args only ask for help, which needs no

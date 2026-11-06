@@ -6,6 +6,7 @@ import (
 
 	"github.com/langchain-ai/langsmith-cli/internal/cache"
 	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
+	"github.com/langchain-ai/langsmith-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -71,8 +72,7 @@ Examples:
 					fmt.Fprintf(w, "  %s\n", b)
 				}
 			} else {
-				data, _ := json.MarshalIndent(detail, "", "  ")
-				fmt.Fprintln(w, string(data))
+				return output.WriteJSON(w, detail)
 			}
 
 			return nil

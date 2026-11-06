@@ -3,6 +3,7 @@ package structured
 import (
 	"context"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -38,8 +39,10 @@ func (c Command[I]) Cobra() *cobra.Command {
 	if c.Input != nil {
 		input = c.Input(cmd)
 	}
-	if !c.CustomOutput {
-		cmd.Flags().String("jq", "", "Filter JSON output using a jq expression")
+	if c.CustomOutput {
+		cmd.Annotations = map[string]string{cmdutil.NoJSONOutputAnnotation: "true"}
+	} else {
+		cmd.Flags().String("jq", "", cmdutil.JQFlagUsage)
 	}
 	return cmd
 }
