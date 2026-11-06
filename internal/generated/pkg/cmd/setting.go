@@ -15,7 +15,7 @@ import (
 
 var settingsList = cli.Command{
 	Name:            "list",
-	Usage:           "Get settings.",
+	Usage:           "Get the current workspace.",
 	Suggest:         true,
 	Flags:           []cli.Flag{},
 	Action:          handleSettingsList,
