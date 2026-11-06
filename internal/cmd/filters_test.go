@@ -306,15 +306,17 @@ func TestAddCommonFilterFlags_WithoutRunType(t *testing.T) {
 	}
 }
 
-func TestAddCommonFilterFlags_CursorOnlyOnTraceMessages(t *testing.T) {
+// --cursor is on the commands that page with a server cursor, not on the
+// exports, which always fetch everything up to --limit.
+func TestCursorFlagOnlyOnPagedListCommands(t *testing.T) {
 	tests := []struct {
 		name       string
 		cmd        *cobra.Command
 		wantCursor bool
 	}{
-		{name: "run list", cmd: newRunListCmd()},
+		{name: "run list", cmd: newRunListCmd(), wantCursor: true},
 		{name: "run export", cmd: newRunExportCmd()},
-		{name: "trace list", cmd: newTraceListCmd()},
+		{name: "trace list", cmd: newTraceListCmd(), wantCursor: true},
 		{name: "trace export", cmd: newTraceExportCmd()},
 		{name: "trace messages", cmd: newTraceMessagesCmd(), wantCursor: true},
 	}

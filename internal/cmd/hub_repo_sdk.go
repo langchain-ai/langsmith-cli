@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	langsmith "github.com/langchain-ai/langsmith-go"
+	"github.com/langchain-ai/langsmith-go/option"
 )
 
 func isHTTPStatus(err error, statusCode int) bool {
@@ -130,4 +132,30 @@ func ensureHubRepo(ctx context.Context, c *client.Client, owner, name, repoType 
 		return fmt.Errorf("creating %s/%s: %w", owner, name, err)
 	}
 	return nil
+}
+
+// listReposPage lists hub repos matching params from cursor (or startOffset
+// when cursor is empty), up to limit (0 for all), and returns the cursor that
+// resumes after the last repo, with the server's total match count. params
+// carries filters only; this sets the paging fields.
+func listReposPage(ctx context.Context, c *client.Client, params langsmith.RepoListParams, cursor string, startOffset, limit int, opts ...option.RequestOption) ([]langsmith.RepoWithLookups, int64, string, error) {
+	var total int64
+	repos, next, err := collectHubPages(cursor, startOffset, limit, func(q hubPageQuery) ([]langsmith.RepoWithLookups, string, error) {
+		p := params
+		p.Limit = langsmith.F(int64(q.PageSize))
+		if q.Offset > 0 {
+			p.Offset = langsmith.F(int64(q.Offset))
+		}
+		pageOpts := opts
+		if q.Cursor != "" {
+			pageOpts = append(slices.Clip(opts), option.WithQuery("cursor", q.Cursor))
+		}
+		page, err := c.SDK.Repos.List(ctx, p, pageOpts...)
+		if err != nil {
+			return nil, "", err
+		}
+		total = page.Total
+		return page.Repos, page.JSON.RawJSON(), nil
+	})
+	return repos, total, next, err
 }

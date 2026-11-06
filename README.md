@@ -173,7 +173,7 @@ langsmith projects delete --project-id 519bb9dd-079b-4488-8610-e330951ea3e4
 
 A trace is a tree of runs representing one end-to-end invocation of your application.
 
-Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time. By default, only traces from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
+Results are **paginated** — by default, only the first **20** traces are returned (use `--limit` to change). Traces are sorted **newest-first** by start time. By default, only traces from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window. To page deterministically, pass `--cursor ""` on the first call: the JSON output becomes `{"traces": [...], "cursors": {"next": "..."}}`, and passing `cursors.next` back as `--cursor` resumes right after the last item. `cursors.next` is absent on the last page.
 
 ```bash
 # List recent traces (default: 20 results, newest first)
@@ -209,7 +209,7 @@ langsmith traces export ./traces --project my-app --filename-pattern "{name}_{tr
 
 A run is a single step within a trace (LLM call, tool call, chain step, etc.).
 
-Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **newest-first** by start time. By default, only runs from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window.
+Results are **paginated** — by default, only the first **50** runs are returned (use `--limit` to change). Runs are sorted **newest-first** by start time. By default, only runs from the **last 7 days** are returned; use `--since` or `--last-n-minutes` to change the time window. To page deterministically, pass `--cursor ""` on the first call: the JSON output becomes `{"runs": [...], "cursors": {"next": "..."}}`, and passing `cursors.next` back as `--cursor` resumes right after the last item. `cursors.next` is absent on the last page.
 
 ```bash
 # List LLM calls (default: 50 results, oldest first)

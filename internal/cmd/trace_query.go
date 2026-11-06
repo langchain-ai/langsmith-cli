@@ -21,17 +21,28 @@ const traceRunsV1Limit = 1000
 // params is the canonical v1 query from BuildRunQueryParams; setV2 applies only
 // to the v2 request.
 func queryTracesAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, setV2 ...func(*langsmith.TraceQueryParams)) ([]langsmith.RunSchema, error) {
-	useV2, err := c.UseV2API(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !useV2 {
-		return queryRuns(ctx, c, params, sessionID, limit, minTokens)
-	}
-	return queryTracesV2(ctx, c, params, v2Selects, sessionID, limit, minTokens, setV2...)
+	runs, _, err := queryTracesAutoPage(ctx, c, params, v2Selects, sessionID, "", limit, minTokens, setV2...)
+	return runs, err
 }
 
-func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, setV2 ...func(*langsmith.TraceQueryParams)) ([]langsmith.RunSchema, error) {
+// queryTracesAutoPage is queryTracesAuto starting at cursor; it also returns
+// the cursor that resumes after the last trace returned ("" when there are no
+// more).
+func queryTracesAutoPage(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID, cursor string, limit, minTokens int, setV2 ...func(*langsmith.TraceQueryParams)) ([]langsmith.RunSchema, string, error) {
+	useV2, err := c.UseV2API(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	if !useV2 {
+		return queryRunsPage(ctx, c, params, sessionID, cursor, limit, minTokens)
+	}
+	return queryTracesV2(ctx, c, params, v2Selects, sessionID, cursor, limit, minTokens, setV2...)
+}
+
+// maxTracePageSize is the largest page_size /v2/traces/query accepts.
+const maxTracePageSize = 100
+
+func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, selects []langsmith.RunSelectField, sessionID, cursor string, limit, minTokens int, setV2 ...func(*langsmith.TraceQueryParams)) ([]langsmith.RunSchema, string, error) {
 	if params.Error.Present {
 		if params.Error.Value {
 			addFilterClause(&params, `eq(status, "error")`)
@@ -47,7 +58,6 @@ func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQu
 	query := langsmith.TraceQueryParams{
 		ProjectID: langsmith.F(sessionID),
 		Selects:   langsmith.F(selects),
-		PageSize:  langsmith.F(int64(min(limit, 100))),
 	}
 	if params.StartTime.Present {
 		query.MinStartTime = langsmith.F(params.StartTime.Value)
@@ -65,16 +75,22 @@ func queryTracesV2(ctx context.Context, c *client.Client, params langsmith.RunQu
 		set(&query)
 	}
 
-	var runs []langsmith.RunSchema
-	iter := c.SDK.Traces.QueryAutoPaging(ctx, query)
-	for len(runs) < limit && iter.Next() {
-		trace := iter.Current()
-		runs = append(runs, withTraceAggregates(runV2ToSchema(trace.RootRun), trace.TraceAggregates))
+	fetch := func(cursor string, pageSize int) ([]langsmith.RunSchema, string, error) {
+		query.PageSize = langsmith.F(int64(pageSize))
+		if cursor != "" {
+			query.Cursor = langsmith.F(cursor)
+		}
+		page, err := c.SDK.Traces.Query(ctx, query)
+		if err != nil {
+			return nil, "", withQueryHint(fmt.Errorf("querying traces (v2): %w", err), len(query.TraceIDs.Value) > 0)
+		}
+		runs := make([]langsmith.RunSchema, len(page.Items))
+		for i, t := range page.Items {
+			runs[i] = withTraceAggregates(runV2ToSchema(t.RootRun), t.TraceAggregates)
+		}
+		return runs, page.NextCursor, nil
 	}
-	if err := iter.Err(); err != nil {
-		return nil, withQueryHint(fmt.Errorf("querying traces (v2): %w", err), len(query.TraceIDs.Value) > 0)
-	}
-	return runs, nil
+	return collectPages(cursor, limit, maxTracePageSize, fetch, nil)
 }
 
 // traceFeedbackWindow sets the feedback modified-at window on a

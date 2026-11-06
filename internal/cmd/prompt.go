@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -69,6 +70,7 @@ func newPromptListCmd() *cobra.Command {
 		tags       []string
 		publicOnly bool
 		sortBy     string
+		cursor     string
 		outputFile string
 	)
 
@@ -79,13 +81,7 @@ func newPromptListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			pageSize := int64(20)
-			if limit > 0 && int64(limit) < pageSize {
-				pageSize = int64(limit)
-			}
-			params := langsmith.RepoListParams{
-				Limit: langsmith.F(pageSize),
-			}
+			params := langsmith.RepoListParams{}
 			if query != "" {
 				params.Query = langsmith.F(query)
 			}
@@ -114,15 +110,8 @@ func newPromptListCmd() *cobra.Command {
 				}
 			}
 
-			var repos []langsmith.RepoWithLookups
-			pager := c.SDK.Repos.ListAutoPaging(ctx, params)
-			for pager.Next() {
-				repos = append(repos, pager.Current())
-				if limit > 0 && len(repos) >= limit {
-					break
-				}
-			}
-			if err := pager.Err(); err != nil {
+			repos, _, next, err := listReposPage(ctx, c, params, cursor, 0, limit)
+			if err != nil {
 				ExitErrorf("listing prompts: %v", err)
 			}
 
@@ -145,12 +134,17 @@ func newPromptListCmd() *cobra.Command {
 					})
 				}
 				output.OutputTable(columns, rows, "Prompts")
+				printNextCursorHint(next)
 			} else {
 				var data []map[string]any
 				for _, r := range repos {
 					data = append(data, repoToMap(r))
 				}
-				if err := output.OutputJSON(data, outputFile); err != nil {
+				var out any = data
+				if cmd.Flags().Changed("cursor") {
+					out = map[string]any{"repos": data, "cursors": cursorsField(next)}
+				}
+				if err := output.OutputJSON(out, outputFile); err != nil {
 					ExitErrorf("%v", err)
 				}
 			}
@@ -162,6 +156,7 @@ func newPromptListCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&tags, "tags", nil, "Filter by tags (comma-separated)")
 	cmd.Flags().BoolVar(&publicOnly, "public", false, "Show only public repos")
 	cmd.Flags().StringVar(&sortBy, "sort-by", "", "Sort by: likes, downloads, views, updated")
+	addCursorFlag(cmd, &cursor)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 
 	return cmd
@@ -436,6 +431,7 @@ func newPromptPushCmd() *cobra.Command {
 func newPromptCommitsCmd() *cobra.Command {
 	var (
 		limit      int
+		cursor     string
 		outputFile string
 	)
 
@@ -452,22 +448,27 @@ func newPromptCommitsCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			pageSize := int64(20)
-			if limit > 0 && int64(limit) < pageSize {
-				pageSize = int64(limit)
-			}
-
-			var commits []langsmith.CommitWithLookups
-			pager := c.SDK.Commits.ListAutoPaging(ctx, owner, repo, langsmith.CommitListParams{
-				Limit: langsmith.F(pageSize),
-			})
-			for pager.Next() {
-				commits = append(commits, pager.Current())
-				if limit > 0 && len(commits) >= limit {
-					break
+			commits, next, err := collectHubPages(cursor, 0, limit, func(q hubPageQuery) ([]langsmith.CommitWithLookups, string, error) {
+				var params langsmith.CommitListParams
+				var opts []option.RequestOption
+				if q.Cursor != "" {
+					// The server rejects limit or offset next to a cursor.
+					opts = append(opts,
+						option.WithQuery("page_size", strconv.Itoa(q.PageSize)),
+						option.WithQuery("cursor", q.Cursor))
+				} else {
+					params.Limit = langsmith.F(int64(q.PageSize))
+					if q.Offset > 0 {
+						params.Offset = langsmith.F(int64(q.Offset))
+					}
 				}
-			}
-			if err := pager.Err(); err != nil {
+				page, err := c.SDK.Commits.List(ctx, owner, repo, params, opts...)
+				if err != nil {
+					return nil, "", err
+				}
+				return page.Commits, page.JSON.RawJSON(), nil
+			})
+			if err != nil {
 				ExitErrorf("listing commits: %v", err)
 			}
 
@@ -490,6 +491,7 @@ func newPromptCommitsCmd() *cobra.Command {
 					})
 				}
 				output.OutputTable(columns, rows, fmt.Sprintf("Commits for %s/%s", owner, repo))
+				printNextCursorHint(next)
 			} else {
 				var data []map[string]any
 				for _, c := range commits {
@@ -504,7 +506,11 @@ func newPromptCommitsCmd() *cobra.Command {
 						"created_at":         formatTimeISO(c.CreatedAt),
 					})
 				}
-				if err := output.OutputJSON(data, outputFile); err != nil {
+				var out any = data
+				if cmd.Flags().Changed("cursor") {
+					out = map[string]any{"commits": data, "cursors": cursorsField(next)}
+				}
+				if err := output.OutputJSON(out, outputFile); err != nil {
 					ExitErrorf("%v", err)
 				}
 			}
@@ -512,6 +518,7 @@ func newPromptCommitsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&limit, "limit", "n", 25, "Maximum number of commits to return")
+	addCursorFlag(cmd, &cursor)
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
 }

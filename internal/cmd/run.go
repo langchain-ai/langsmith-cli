@@ -71,7 +71,7 @@ func newRunListCmd() *cobra.Command {
 				params.Select = langsmith.F(sel)
 			}
 			setFeedbackWindow := feedbackWindowOption(ctx, c, &ff)
-			runs, err := queryRunsAuto(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Limit, ff.MinTokens, setFeedbackWindow)
+			runs, next, err := queryRunsAutoPage(ctx, c, params, buildRunSelectV2(includeIO, includeFeedback), sessionID, ff.Cursor, ff.Limit, ff.MinTokens, setFeedbackWindow)
 			if err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -81,8 +81,12 @@ func newRunListCmd() *cobra.Command {
 			if fmt_ == "pretty" {
 				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 				output.PrintRunsTable(os.Stdout, data, includeMetadata, "Runs")
+				printNextCursorHint(next)
 			} else {
-				data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
+				var data any = extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
+				if cmd.Flags().Changed("cursor") {
+					data = map[string]any{"runs": data, "cursors": cursorsField(next)}
+				}
 				if err := output.OutputJSON(data, outputFile); err != nil {
 					ExitErrorf("%v", err)
 				}
@@ -92,6 +96,7 @@ func newRunListCmd() *cobra.Command {
 
 	addCommonFilterFlags(cmd, &ff, true)
 	addFeedbackWindowFlags(cmd, &ff)
+	addCursorFlag(cmd, &ff.Cursor)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")

@@ -91,7 +91,10 @@ func newTraceListCmd() *cobra.Command {
 				}
 				fallback = !ok
 			}
-			var runs []langsmith.RunSchema
+			var (
+				runs []langsmith.RunSchema
+				next string
+			)
 			if fallback {
 				// /v2/traces/query on this server ignores the feedback window, so
 				// the roots come from /v2/runs/query and the trace totals are
@@ -99,12 +102,12 @@ func newTraceListCmd() *cobra.Command {
 				if ff.MinTokens > 0 {
 					ExitErrorf("--min-tokens cannot be combined with --feedback-since or --feedback-before on this deployment (needs LangSmith 0.18.15 or later)")
 				}
-				runs, err = queryRunsAuto(ctx, c, params, v2Select, sessionID, ff.Limit, 0, feedbackWindowOption(ctx, c, &ff))
+				runs, next, err = queryRunsAutoPage(ctx, c, params, v2Select, sessionID, ff.Cursor, ff.Limit, 0, feedbackWindowOption(ctx, c, &ff))
 				if err == nil {
 					err = hydrateTraceAggregates(ctx, c, sessionID, runs)
 				}
 			} else {
-				runs, err = queryTracesAuto(ctx, c, params, v2Select, sessionID, ff.Limit, ff.MinTokens, traceFeedbackWindow(since, before))
+				runs, next, err = queryTracesAutoPage(ctx, c, params, v2Select, sessionID, ff.Cursor, ff.Limit, ff.MinTokens, traceFeedbackWindow(since, before))
 			}
 			if err != nil {
 				ExitErrorf("%v", err)
@@ -134,7 +137,14 @@ func newTraceListCmd() *cobra.Command {
 					data := extractRunsToMaps(runs, includeMetadata, includeIO, includeFeedback)
 					output.PrintRunsTable(os.Stdout, data, includeMetadata, "Traces")
 				}
+				printNextCursorHint(next)
 			} else {
+				withCursors := func(items any) any {
+					if !cmd.Flags().Changed("cursor") {
+						return items
+					}
+					return map[string]any{"traces": items, "cursors": cursorsField(next)}
+				}
 				if showHierarchy {
 					baseSelect := buildRunSelect(includeIO, includeFeedback)
 					var result []map[string]any
@@ -149,7 +159,7 @@ func newTraceListCmd() *cobra.Command {
 							"runs":      extractRunsToMaps(allRuns, includeMetadata, includeIO, includeFeedback),
 						})
 					}
-					if err := output.OutputJSON(result, outputFile); err != nil {
+					if err := output.OutputJSON(withCursors(result), outputFile); err != nil {
 						ExitErrorf("%v", err)
 					}
 				} else {
@@ -157,7 +167,7 @@ func newTraceListCmd() *cobra.Command {
 					if flaggedByTrace != nil {
 						annotateFlagged(data, flaggedByTrace)
 					}
-					if err := output.OutputJSON(data, outputFile); err != nil {
+					if err := output.OutputJSON(withCursors(data), outputFile); err != nil {
 						ExitErrorf("%v", err)
 					}
 				}
@@ -167,6 +177,7 @@ func newTraceListCmd() *cobra.Command {
 
 	addCommonFilterFlags(cmd, &ff, false)
 	addFeedbackWindowFlags(cmd, &ff)
+	addCursorFlag(cmd, &ff.Cursor)
 	cmd.Flags().BoolVar(&includeMetadata, "include-metadata", false, "Add status, duration_ms, first_token_time, token_usage, costs, tags, custom_metadata (incl. revision_id)")
 	cmd.Flags().BoolVar(&includeIO, "include-io", false, "Add inputs, outputs, error, and events fields")
 	cmd.Flags().BoolVar(&includeFeedback, "include-feedback", false, "Add feedback_stats field")

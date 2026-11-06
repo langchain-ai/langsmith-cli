@@ -261,6 +261,55 @@ func TestRunListCmd_Execute_WithProject_Succeeds(t *testing.T) {
 	}
 }
 
+// With --cursor, run list resumes from that cursor and wraps its JSON as
+// {runs, cursors} so the next cursor has a stable place; without it the output
+// stays a bare array.
+func TestRunListCmd_Cursor(t *testing.T) {
+	var bodies []map[string]any
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items":       []map[string]any{{"id": "run-3"}, {"id": "run-4"}},
+			"next_cursor": "c-next",
+		})
+	})
+	defer setupTestEnv(t, ts.URL)()
+	flagOutputFormat = "json"
+
+	run := func(args ...string) string {
+		cmd := newRunListCmd()
+		cmd.SetArgs(append([]string{"--project-id", "018e4c7e-a9fb-7ef0-a5b6-6ea3a82e9327", "--limit", "2"}, args...))
+		return captureStdout(t, func() {
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+		})
+	}
+
+	out := run("--cursor", "c-prev")
+	if len(bodies) != 1 || bodies[0]["cursor"] != "c-prev" || bodies[0]["page_size"] != float64(2) {
+		t.Errorf("request bodies = %v, want one with cursor c-prev and page_size 2", bodies)
+	}
+	var wrapped struct {
+		Runs    []map[string]any `json:"runs"`
+		Cursors map[string]any   `json:"cursors"`
+	}
+	if err := json.Unmarshal([]byte(out), &wrapped); err != nil {
+		t.Fatalf("parsing %q: %v", out, err)
+	}
+	if len(wrapped.Runs) != 2 || wrapped.Runs[0]["run_id"] != "run-3" || wrapped.Cursors["next"] != "c-next" {
+		t.Errorf("output = %+v, want run-3, run-4 and cursors.next c-next", wrapped)
+	}
+
+	var bare []map[string]any
+	if out := run(); json.Unmarshal([]byte(out), &bare) != nil || len(bare) != 2 {
+		t.Errorf("without --cursor the output should stay a bare array, got %q", out)
+	}
+}
+
 func TestRunListCmd_Execute_WithEnvProject_Succeeds(t *testing.T) {
 	ts := newRunTestServer(t,
 		map[string]string{"env-project": "session-456"},

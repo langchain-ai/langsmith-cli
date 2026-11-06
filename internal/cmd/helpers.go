@@ -53,68 +53,67 @@ func validateProjectID(projectID string) (string, error) {
 // The caller is responsible for resolving sessionID (see resolveSessionID).
 // minTokens > 0 enables client-side filtering by total_tokens (not supported server-side).
 func queryRuns(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+	runs, _, err := queryRunsPage(ctx, c, params, sessionID, "", limit, minTokens)
+	return runs, err
+}
+
+// maxV1PageSize is the largest limit the v1 run query accepts per request.
+const maxV1PageSize = 100
+
+// queryRunsPage is queryRuns starting at cursor; it also returns the cursor
+// that resumes after the last run returned ("" when there are no more).
+func queryRunsPage(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, sessionID, cursor string, limit int, minTokens int) ([]langsmith.RunSchema, string, error) {
 	if sessionID != "" {
 		params.Session = langsmith.F([]string{sessionID})
 	}
-
-	var allRuns []langsmith.RunSchema
-	remaining := limit
-
-	for {
+	fetch := func(cursor string, pageSize int) ([]langsmith.RunSchema, string, error) {
+		params.Limit = langsmith.F(int64(pageSize))
+		if cursor != "" {
+			params.Cursor = langsmith.F(cursor)
+		}
 		resp, err := c.SDK.Runs.Query(ctx, params)
 		if err != nil {
-			return nil, withQueryHint(fmt.Errorf("querying runs: %w", err), len(params.ID.Value) > 0 || params.Trace.Present)
+			return nil, "", withQueryHint(fmt.Errorf("querying runs: %w", err), len(params.ID.Value) > 0 || params.Trace.Present)
 		}
-
-		for _, run := range resp.Runs {
-			if remaining <= 0 {
-				return allRuns, nil
-			}
-			// Client-side token filter
-			if minTokens > 0 && run.TotalTokens < int64(minTokens) {
-				continue
-			}
-			allRuns = append(allRuns, run)
-			remaining--
-		}
-
-		// Check for next cursor
-		if resp.Cursors.Next == "" || remaining <= 0 {
-			break
-		}
-		params.Cursor = langsmith.F(resp.Cursors.Next)
+		return resp.Runs, resp.Cursors.Next, nil
 	}
-
-	return allRuns, nil
+	return collectPages(cursor, limit, maxV1PageSize, fetch, minTokensFilter(minTokens))
 }
 
-// queryRunsV2 queries runs against the v2 (SmithDB) endpoint, resolves the
-// project name to a session UUID, paginates on next_cursor, and normalizes
-// each v2 Run back into v1's RunSchema so downstream rendering is unchanged.
-// minTokens > 0 enables client-side filtering by total_tokens.
-func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQueryV2Params, sessionID string, limit int, minTokens int) ([]langsmith.RunSchema, error) {
+// minTokensFilter keeps runs with at least minTokens total tokens; nil when
+// minTokens is unset.
+func minTokensFilter(minTokens int) func(langsmith.RunSchema) bool {
+	if minTokens <= 0 {
+		return nil
+	}
+	return func(r langsmith.RunSchema) bool { return r.TotalTokens >= int64(minTokens) }
+}
+
+// queryRunsV2 queries runs against the v2 (SmithDB) endpoint starting at
+// cursor, paginates on next_cursor, and normalizes each v2 Run back into v1's
+// RunSchema so downstream rendering is unchanged. It also returns the cursor
+// that resumes after the last run returned. minTokens > 0 enables client-side
+// filtering by total_tokens.
+func queryRunsV2(ctx context.Context, c *client.Client, params langsmith.RunQueryV2Params, sessionID, cursor string, limit int, minTokens int) ([]langsmith.RunSchema, string, error) {
 	if sessionID != "" {
 		params.ProjectIDs = langsmith.F([]string{sessionID})
 	}
-
-	var allRuns []langsmith.RunSchema
-
-	iter := c.SDK.Runs.QueryV2AutoPaging(ctx, params)
-	for iter.Next() {
-		if len(allRuns) >= limit {
-			break
+	fetch := func(cursor string, pageSize int) ([]langsmith.RunSchema, string, error) {
+		params.PageSize = langsmith.F(int64(pageSize))
+		if cursor != "" {
+			params.Cursor = langsmith.F(cursor)
 		}
-		run := runV2ToSchema(iter.Current())
-		if minTokens > 0 && run.TotalTokens < int64(minTokens) {
-			continue
+		page, err := c.SDK.Runs.QueryV2(ctx, params)
+		if err != nil {
+			return nil, "", withQueryHint(fmt.Errorf("querying runs (v2): %w", err), len(params.IDs.Value) > 0)
 		}
-		allRuns = append(allRuns, run)
+		runs := make([]langsmith.RunSchema, len(page.Items))
+		for i, r := range page.Items {
+			runs[i] = runV2ToSchema(r)
+		}
+		return runs, page.NextCursor, nil
 	}
-	if err := iter.Err(); err != nil {
-		return nil, withQueryHint(fmt.Errorf("querying runs (v2): %w", err), len(params.IDs.Value) > 0)
-	}
-
-	return allRuns, nil
+	return collectPages(cursor, limit, maxV2PageSize, fetch, minTokensFilter(minTokens))
 }
 
 // withQueryHint tells the agent how to recover from a query the API timed out
@@ -187,9 +186,18 @@ func feedbackWindowOption(ctx context.Context, c *client.Client, f *FilterFlags)
 // supports it, else v1. params is the canonical v1 query; always pass a base
 // v2Selects set (see buildRunSelectV2) or v2 returns only run IDs.
 func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID string, limit, minTokens int, setV2 ...func(*langsmith.RunQueryV2Params)) ([]langsmith.RunSchema, error) {
+	runs, _, err := queryRunsAutoPage(ctx, c, params, v2Selects, sessionID, "", limit, minTokens, setV2...)
+	return runs, err
+}
+
+// queryRunsAutoPage is queryRunsAuto starting at cursor; it also returns the
+// cursor that resumes after the last run returned ("" when there are no
+// more). A cursor is only valid on the backend that issued it, which a given
+// deployment always picks the same way.
+func queryRunsAutoPage(ctx context.Context, c *client.Client, params langsmith.RunQueryParams, v2Selects []langsmith.RunSelectField, sessionID, cursor string, limit, minTokens int, setV2 ...func(*langsmith.RunQueryV2Params)) ([]langsmith.RunSchema, string, error) {
 	useV2, err := c.UseV2API(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if useV2 {
 		// total_tokens is filterable on the v2 (SmithDB) path, so push the bound
@@ -206,9 +214,9 @@ func queryRunsAuto(ctx context.Context, c *client.Client, params langsmith.RunQu
 		for _, set := range setV2 {
 			set(&v2)
 		}
-		return queryRunsV2(ctx, c, v2, sessionID, limit, minTokens)
+		return queryRunsV2(ctx, c, v2, sessionID, cursor, limit, minTokens)
 	}
-	return queryRuns(ctx, c, params, sessionID, limit, minTokens)
+	return queryRunsPage(ctx, c, params, sessionID, cursor, limit, minTokens)
 }
 
 // addFilterClause ANDs clause into params.Filter, preserving anything already
@@ -251,10 +259,6 @@ func toV2Params(p langsmith.RunQueryParams, selects []langsmith.RunSelectField) 
 	}
 	if len(p.ID.Value) > 0 {
 		v2.IDs = langsmith.F(p.ID.Value)
-	}
-	if p.Limit.Present {
-		// The API rejects larger pages; auto-paging fetches the rest up to the limit.
-		v2.PageSize = langsmith.F(min(p.Limit.Value, maxV2PageSize))
 	}
 	return v2
 }

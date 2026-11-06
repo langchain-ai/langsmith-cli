@@ -568,7 +568,6 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 		EndTime:   langsmith.F(end),
 		Filter:    langsmith.F(`eq(name, "x")`),
 		ID:        langsmith.F([]string{"id-1", "id-2"}),
-		Limit:     langsmith.F(int64(25)),
 		Order:     langsmith.F(langsmith.RunQueryParamsOrderDesc), // dropped
 	}
 	sel := []langsmith.RunSelectField{langsmith.RunSelectFieldID}
@@ -599,18 +598,8 @@ func TestToV2Params_TranslatesFields(t *testing.T) {
 	if len(v2.IDs.Value) != 2 {
 		t.Errorf("IDs = %v, want 2 entries", v2.IDs.Value)
 	}
-	if v2.PageSize.Value != 25 {
-		t.Errorf("PageSize = %d, want 25", v2.PageSize.Value)
-	}
 	if !v2.Selects.Present {
 		t.Error("Selects not set")
-	}
-}
-
-func TestToV2Params_CapsPageSize(t *testing.T) {
-	v2 := toV2Params(langsmith.RunQueryParams{Limit: langsmith.F(int64(2500))}, nil)
-	if v2.PageSize.Value != maxV2PageSize {
-		t.Errorf("PageSize = %d, want %d", v2.PageSize.Value, maxV2PageSize)
 	}
 }
 
@@ -691,20 +680,43 @@ func TestQueryRunsV2_SDKAutoPagerSendsCursorInBody(t *testing.T) {
 	cleanup := setupTestEnv(t, ts.URL)
 	defer cleanup()
 
-	runs, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 100, 0)
+	ids := func(runs []langsmith.RunSchema) string {
+		var got []string
+		for _, run := range runs {
+			got = append(got, run.ID)
+		}
+		return strings.Join(got, ",")
+	}
+
+	runs, next, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", "", 100, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	var got []string
-	for _, run := range runs {
-		got = append(got, run.ID)
-	}
-	if strings.Join(got, ",") != "run-1,run-2,run-3,run-4,run-5" {
+	if got := ids(runs); got != "run-1,run-2,run-3,run-4,run-5" {
 		t.Errorf("runs = %v, want each of run-1..run-5 exactly once", got)
+	}
+	if next != "" {
+		t.Errorf("next = %q after the last page, want empty", next)
 	}
 	if strings.Join(bodyCursors, ",") != ",cursor-2,cursor-3" {
 		t.Errorf("body cursors = %v, want [\"\", cursor-2, cursor-3]", bodyCursors)
+	}
+
+	// Stopping at --limit on a page boundary returns the cursor that resumes
+	// there, and resuming from it neither skips nor repeats runs.
+	runs, next, err = queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", "", 2, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := ids(runs); got != "run-1,run-2" || next != "cursor-2" {
+		t.Errorf("first page = %v, next %q; want run-1,run-2 and cursor-2", got, next)
+	}
+	runs, next, err = queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", next, 100, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := ids(runs); got != "run-3,run-4,run-5" || next != "" {
+		t.Errorf("resumed = %v, next %q; want run-3,run-4,run-5 and no cursor", got, next)
 	}
 }
 
@@ -768,7 +780,7 @@ func TestQueryRunsV2_HintsOnTimeoutAndRateLimit(t *testing.T) {
 			cleanup := setupTestEnv(t, ts.URL)
 			defer cleanup()
 
-			_, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", 10, 0)
+			_, _, err := queryRunsV2(context.Background(), MustGetClient(), langsmith.RunQueryV2Params{}, "", "", 10, 0)
 			if err == nil {
 				t.Fatal("want an error")
 			}

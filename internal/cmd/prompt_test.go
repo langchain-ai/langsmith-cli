@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -145,6 +146,46 @@ func TestPromptCommits_ShowsDescription(t *testing.T) {
 	}
 	if d := got[0]["description"]; d != "first commit via CLI" {
 		t.Fatalf("description in commits output = %v, want %q", d, "first commit via CLI")
+	}
+}
+
+// TestPromptCommits_Cursor verifies --cursor sends page_size and cursor without
+// limit or offset (the server rejects the mix) and adds cursors.next to the
+// output.
+func TestPromptCommits_Cursor(t *testing.T) {
+	var got []url.Values
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.Query())
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total":       5,
+			"commits":     []map[string]any{{"commit_hash": "abc123"}, {"commit_hash": "def456"}},
+			"next_cursor": "c-next",
+		})
+	})
+
+	out := captureStdout(t, func() {
+		if _, err := executeCommand(t, "--api-key", "test-key", "--api-url", ts.URL,
+			"prompt", "commits", "acme/my-prompt", "--format", "json", "--limit", "2", "--cursor", "c-prev"); err != nil {
+			t.Fatalf("commits command returned error: %v", err)
+		}
+	})
+
+	if len(got) != 1 {
+		t.Fatalf("want one request, got %v", got)
+	}
+	if q := got[0]; q.Get("cursor") != "c-prev" || q.Get("page_size") != "2" || q.Has("limit") || q.Has("offset") {
+		t.Errorf("query = %v, want cursor=c-prev, page_size=2 and no limit/offset", q)
+	}
+	var body struct {
+		Commits []map[string]any `json:"commits"`
+		Cursors map[string]any   `json:"cursors"`
+	}
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatalf("parsing %q: %v", out, err)
+	}
+	if len(body.Commits) != 2 || body.Cursors["next"] != "c-next" {
+		t.Errorf("output = %+v, want 2 commits and cursors.next c-next", body)
 	}
 }
 

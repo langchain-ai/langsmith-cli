@@ -18,15 +18,17 @@ func newHubListCmd() *cobra.Command {
 		publicOnly bool
 		limit      int
 		offset     int
+		cursor     string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List hub repos (optionally filtered by type)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cursor != "" && offset != 0 {
+				return fmt.Errorf("--cursor and --offset cannot be combined")
+			}
 			params := langsmith.RepoListParams{
-				Limit:      langsmith.F(int64(limit)),
-				Offset:     langsmith.F(int64(offset)),
 				IsArchived: langsmith.F(langsmith.RepoListParamsIsArchivedFalse),
 			}
 			opts := make([]option.RequestOption, 0, 1)
@@ -57,12 +59,12 @@ func newHubListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			resp, err := c.SDK.Repos.List(ctx, params, opts...)
+			sdkRepos, total, next, err := listReposPage(ctx, c, params, cursor, offset, limit, opts...)
 			if err != nil {
 				return fmt.Errorf("listing hub repos: %w", err)
 			}
-			repos := make([]hubRepo, 0, len(resp.Repos))
-			for _, repo := range resp.Repos {
+			repos := make([]hubRepo, 0, len(sdkRepos))
+			for _, repo := range sdkRepos {
 				repos = append(repos, sdkRepoToHubRepo(repo))
 			}
 
@@ -83,11 +85,13 @@ func newHubListCmd() *cobra.Command {
 					})
 				}
 				output.OutputTable(columns, rows, "Hub repos")
+				printNextCursorHint(next)
 				return nil
 			}
 			if err := output.OutputJSON(map[string]any{
-				"total": int(resp.Total),
-				"repos": repos,
+				"total":   int(total),
+				"repos":   repos,
+				"cursors": cursorsField(next),
 			}, ""); err != nil {
 				ExitErrorf("%v", err)
 			}
@@ -100,6 +104,7 @@ func newHubListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&query, "query", "", "Filter by name substring")
 	cmd.Flags().BoolVar(&publicOnly, "public", false, "Filter by public/private")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 100, "Maximum number of repos to return")
-	cmd.Flags().IntVar(&offset, "offset", 0, "Offset for pagination")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Number of repos to skip; prefer --cursor")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Resume after the last repo of a previous call by passing its cursors.next")
 	return cmd
 }
