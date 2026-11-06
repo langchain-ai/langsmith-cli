@@ -161,6 +161,7 @@ allows and what headers to inject. Format:
       "name": "openai",
       "match_hosts": ["api.openai.com"],
       "match_paths": [],
+      "match_headers": [],
       "headers": [
         {"name": "Authorization", "type": "opaque", "value": "Bearer sk-..."},
         {"name": "X-Key", "type": "workspace_secret", "value": "Bearer {OPENAI_API_KEY}"}
@@ -177,6 +178,12 @@ allows and what headers to inject. Format:
 
 Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
+
+A rule's "match_headers" limits it to requests carrying every listed header,
+each written "name: value" with a lowercase name and an exact value. Give
+several rules the same host, each matching a different placeholder (e.g.
+"authorization: Bearer account-b") and injecting that account's real header,
+to use multiple accounts on one host. The first matching rule wins.
 
 A rule's "env_vars" are plaintext variables set for every command in the sandbox
 while the rule is enabled, for tools that refuse to run without a credential
