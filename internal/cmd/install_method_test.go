@@ -15,6 +15,7 @@ func TestDetectInstallMethod(t *testing.T) {
 		gobin    string
 		gopath   string
 		home     string
+		wheel    wheelInstall
 		want     installMethod
 	}{
 		{
@@ -142,11 +143,110 @@ func TestDetectInstallMethod(t *testing.T) {
 			// exec is in GOPATH/bin, but GOBIN is set and differs → not the go bin dir
 			want: methodManaged,
 		},
+		{
+			name:     "pip into a venv",
+			execPath: "/Users/me/proj/.venv/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "darwin",
+			home:     "/Users/me",
+			wheel:    wheelInstall{installer: "pip", sitePackages: "/Users/me/proj/.venv/lib/python3.12/site-packages"},
+			want:     methodPip,
+		},
+		{
+			name:     "pip --user shares install.sh's ~/.local/bin",
+			execPath: "/home/me/.local/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "linux",
+			home:     "/home/me",
+			wheel:    wheelInstall{installer: "pip", sitePackages: "/home/me/.local/lib/python3.11/site-packages"},
+			want:     methodPip,
+		},
+		{
+			name:     "pipx venv",
+			execPath: "/home/me/.local/share/pipx/venvs/langsmith-cli/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "linux",
+			home:     "/home/me",
+			wheel:    wheelInstall{installer: "pip", sitePackages: "/home/me/.local/share/pipx/venvs/langsmith-cli/lib/python3.12/site-packages"},
+			want:     methodPipx,
+		},
+		{
+			name:     "pipx venv on windows",
+			execPath: `C:\Users\me\pipx\venvs\langsmith-cli\Scripts\langsmith.exe`,
+			version:  "0.3.9",
+			goos:     "windows",
+			home:     `C:\Users\me`,
+			wheel:    wheelInstall{installer: "pip", sitePackages: `C:\Users\me\pipx\venvs\langsmith-cli\Lib\site-packages`},
+			want:     methodPipx,
+		},
+		{
+			name:     "uv tool",
+			execPath: "/Users/me/.local/share/uv/tools/langsmith-cli/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "darwin",
+			home:     "/Users/me",
+			wheel:    wheelInstall{installer: "uv", sitePackages: "/Users/me/.local/share/uv/tools/langsmith-cli/lib/python3.12/site-packages"},
+			want:     methodUVTool,
+		},
+		{
+			name:     "uv tool on windows",
+			execPath: `C:\Users\me\AppData\Roaming\uv\data\tools\langsmith-cli\Scripts\langsmith.exe`,
+			version:  "0.3.9",
+			goos:     "windows",
+			home:     `C:\Users\me`,
+			wheel:    wheelInstall{installer: "uv", sitePackages: `C:\Users\me\AppData\Roaming\uv\data\tools\langsmith-cli\Lib\site-packages`},
+			want:     methodUVTool,
+		},
+		{
+			name:     "uv pip into a venv",
+			execPath: "/Users/me/proj/.venv/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "darwin",
+			home:     "/Users/me",
+			wheel:    wheelInstall{installer: "uv", sitePackages: "/Users/me/proj/.venv/lib/python3.12/site-packages"},
+			want:     methodUVPip,
+		},
+		{
+			name:     "windows pipx copy in .local\\bin, found under the pipx root",
+			execPath: `C:\Users\me\.local\bin\langsmith.exe`,
+			version:  "0.3.9",
+			goos:     "windows",
+			home:     `C:\Users\me`,
+			wheel:    wheelInstall{installer: "pip", sitePackages: `D:\pipxhome\venvs\langsmith-cli\Lib\site-packages`, tool: toolPipx},
+			want:     methodPipx,
+		},
+		{
+			name:     "windows uv tool copy in .local\\bin, found under the uv tool root",
+			execPath: `C:\Users\me\.local\bin\langsmith.exe`,
+			version:  "0.3.9",
+			goos:     "windows",
+			home:     `C:\Users\me`,
+			wheel:    wheelInstall{installer: "uv", sitePackages: `D:\uvtools\langsmith-cli\Lib\site-packages`, tool: toolUV},
+			want:     methodUVTool,
+		},
+		{
+			name:     "uv project venv",
+			execPath: "/Users/me/proj/.venv/bin/langsmith",
+			version:  "0.3.9",
+			goos:     "darwin",
+			home:     "/Users/me",
+			wheel:    wheelInstall{installer: "uv", sitePackages: "/Users/me/proj/.venv/lib/python3.12/site-packages", uvProject: "/Users/me/proj"},
+			want:     methodUVProject,
+		},
+		{
+			name:     "wheel with a dev version is still a wheel install",
+			execPath: "/Users/me/proj/.venv/bin/langsmith",
+			version:  "dev",
+			goos:     "darwin",
+			home:     "/Users/me",
+			wheel:    wheelInstall{installer: "pip", sitePackages: "/Users/me/proj/.venv/lib/python3.12/site-packages"},
+			want:     methodPip,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectInstallMethod(tt.execPath, tt.version, tt.goos, tt.gobin, tt.gopath, tt.home)
+			got := detectInstallMethod(tt.execPath, tt.version, tt.goos, tt.gobin, tt.gopath, tt.home, tt.wheel)
 			if got != tt.want {
 				t.Errorf("detectInstallMethod() = %v, want %v", got, tt.want)
 			}
@@ -156,9 +256,14 @@ func TestDetectInstallMethod(t *testing.T) {
 
 func TestExternalManagers(t *testing.T) {
 	want := map[installMethod]struct{ label, command string }{
-		methodHomebrew: {"homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
-		methodScoop:    {"scoop", "scoop update langsmith-cli"},
-		methodGo:       {"go", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+		methodHomebrew:  {"homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
+		methodScoop:     {"scoop", "scoop update langsmith-cli"},
+		methodGo:        {"go", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+		methodPip:       {"pip", "pip install --upgrade " + pypiPackageName},
+		methodPipx:      {"pipx", "pipx upgrade " + pypiPackageName},
+		methodUVTool:    {"uv-tool", "uv tool upgrade " + pypiPackageName},
+		methodUVPip:     {"uv-pip", "uv pip install --upgrade " + pypiPackageName},
+		methodUVProject: {"uv-project", "uv lock --upgrade-package " + pypiPackageName + " && uv sync"},
 	}
 	for method, exp := range want {
 		mgr, ok := externalManagers[method]
@@ -196,6 +301,12 @@ func TestShouldDeferToManager(t *testing.T) {
 		{methodScoop, true, false},
 		{methodGo, false, true},
 		{methodGo, true, false},
+		{methodPip, false, true},
+		{methodPip, true, false},
+		{methodPipx, false, true},
+		{methodUVTool, false, true},
+		{methodUVPip, false, true},
+		{methodUVProject, false, true},
 		{methodManaged, false, false},
 		{methodManaged, true, false},
 		{methodDev, false, false},
@@ -214,7 +325,7 @@ func TestReportManagedExternally_JSON(t *testing.T) {
 	defer func() { flagOutputFormat = oldFmt }()
 
 	output := captureStdout(t, func() {
-		if err := reportManagedExternally(methodHomebrew, "json"); err != nil {
+		if err := reportManagedExternally(methodHomebrew, externalManagers[methodHomebrew].command, "json"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -236,7 +347,7 @@ func TestReportManagedExternally_JSON(t *testing.T) {
 
 func TestReportManagedExternally_Pretty(t *testing.T) {
 	output := captureStdout(t, func() {
-		if err := reportManagedExternally(methodScoop, "pretty"); err != nil {
+		if err := reportManagedExternally(methodScoop, externalManagers[methodScoop].command, "pretty"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

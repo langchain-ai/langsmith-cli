@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// pypiPackageName is the PyPI distribution that ships the langsmith binary as
+// platform wheels. The name is not final yet; every pip/pipx/uv message and the
+// dist-info lookup derive from this constant.
+const pypiPackageName = "langsmith-cli"
+
 // installMethod identifies how the langsmith binary was installed, which
 // determines whether self-update may replace the binary in place.
 type installMethod int
@@ -23,6 +28,18 @@ const (
 	// internal build from the monorepo (<release>-internal-<sha>) that ships
 	// inside an image, such as the sandbox rootfs, and is updated with it.
 	methodDev
+	// methodPip means a Python wheel installed by pip, into a venv, the user
+	// site, or a system prefix.
+	methodPip
+	// methodPipx means a Python wheel installed by `pipx install`.
+	methodPipx
+	// methodUVTool means a Python wheel installed by `uv tool install`.
+	methodUVTool
+	// methodUVPip means a Python wheel installed by `uv pip install`.
+	methodUVPip
+	// methodUVProject means a Python wheel in the environment of a uv project
+	// (`uv add`, `uv sync`), whose uv.lock decides the installed version.
+	methodUVProject
 )
 
 // externalManagers describes installs owned by a package manager: how to name
@@ -35,9 +52,14 @@ var externalManagers = map[installMethod]struct {
 	display string // human-readable name, for the pretty message
 	command string // the command the user should run to update
 }{
-	methodHomebrew: {"homebrew", "Homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
-	methodScoop:    {"scoop", "Scoop", "scoop update langsmith-cli"},
-	methodGo:       {"go", "`go install`", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+	methodHomebrew:  {"homebrew", "Homebrew", "brew upgrade langchain-ai/tap/langsmith-cli"},
+	methodScoop:     {"scoop", "Scoop", "scoop update langsmith-cli"},
+	methodGo:        {"go", "`go install`", "go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest"},
+	methodPip:       {"pip", "pip", "pip install --upgrade " + pypiPackageName},
+	methodPipx:      {"pipx", "pipx", "pipx upgrade " + pypiPackageName},
+	methodUVTool:    {"uv-tool", "`uv tool`", "uv tool upgrade " + pypiPackageName},
+	methodUVPip:     {"uv-pip", "uv", "uv pip install --upgrade " + pypiPackageName},
+	methodUVProject: {"uv-project", "a uv project", "uv lock --upgrade-package " + pypiPackageName + " && uv sync"},
 }
 
 // detectInstallMethod classifies the install method from the resolved executable
@@ -48,10 +70,31 @@ var externalManagers = map[installMethod]struct {
 //     Homebrew's bin symlinks point at the Cellar.
 //   - goos is runtime.GOOS.
 //   - gobin/gopath/home come from $GOBIN, $GOPATH, and the user's home dir.
-func detectInstallMethod(execPath, version, goos, gobin, gopath, home string) installMethod {
+//   - wheel describes the Python wheel whose RECORD lists the running binary
+//     (see findWheelInstall); its zero value means no wheel owns it.
+func detectInstallMethod(execPath, version, goos, gobin, gopath, home string, wheel wheelInstall) installMethod {
 	// Normalize both separators to "/" so a single "/segment/" check works for
 	// Windows paths regardless of the OS this code runs on (matters for tests).
 	lower := strings.ToLower(strings.ReplaceAll(execPath, `\`, "/"))
+
+	// A wheel's RECORD listing this file is the only reliable signal: pip --user
+	// scripts land in ~/.local/bin, the same default as install.sh. Where the
+	// wheel lives then picks which front end to name.
+	if wheel.installer != "" {
+		sp := strings.ToLower(strings.ReplaceAll(wheel.sitePackages, `\`, "/"))
+		switch {
+		case wheel.tool == toolPipx || strings.Contains(sp, "/pipx/venvs/"):
+			return methodPipx
+		case wheel.tool == toolUV || strings.Contains(sp, "/uv/tools/") || strings.Contains(sp, "/uv/data/tools/"):
+			return methodUVTool
+		case wheel.uvProject != "":
+			return methodUVProject
+		case wheel.installer == "uv":
+			return methodUVPip
+		default:
+			return methodPip
+		}
+	}
 
 	if strings.Contains(lower, "/cellar/") {
 		return methodHomebrew

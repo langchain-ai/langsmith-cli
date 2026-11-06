@@ -40,7 +40,7 @@ func newUpdateCmd(rawVersion string) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Check for updates without installing")
-	cmd.Flags().BoolVar(&force, "force", false, "Replace the binary in place even if a package manager (brew, scoop, go) manages this install")
+	cmd.Flags().BoolVar(&force, "force", false, "Replace the binary in place even if a package manager (brew, scoop, go, pip, pipx, uv) manages this install")
 
 	return cmd
 }
@@ -58,7 +58,9 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 	}
 
 	home, _ := os.UserHomeDir()
-	method := detectInstallMethod(execPath, currentVersion, runtime.GOOS, os.Getenv("GOBIN"), os.Getenv("GOPATH"), home)
+	pipxDirs, uvDirs := toolLocations(home, os.Getenv)
+	wheel := findWheelInstall(execPath, pipxDirs, uvDirs)
+	method := detectInstallMethod(execPath, currentVersion, runtime.GOOS, os.Getenv("GOBIN"), os.Getenv("GOPATH"), home, wheel)
 
 	if method == methodDev {
 		return fmt.Errorf("cannot update a development build; install from a release")
@@ -67,7 +69,7 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 	// For package-manager-owned installs, refuse to touch the binary and point
 	// the user at the right command instead. --force overrides this.
 	if shouldDeferToManager(method, force) {
-		return reportManagedExternally(method, GetFormat())
+		return reportManagedExternally(method, wheelUpdateCommand(method, wheel, runtime.GOOS), GetFormat())
 	}
 
 	latest, err := fetchLatestVersion(ctx)
@@ -161,7 +163,7 @@ func runUpdate(ctx context.Context, currentVersion string, dryRun, force bool) e
 // reportManagedExternally informs the user that their install is managed by a
 // package manager and prints the command to update it, without modifying the
 // binary. It returns nil (a successful, informational outcome).
-func reportManagedExternally(method installMethod, format string) error {
+func reportManagedExternally(method installMethod, command, format string) error {
 	mgr, ok := externalManagers[method]
 	if !ok {
 		// Programming error: only externally-managed methods should reach here
@@ -171,12 +173,12 @@ func reportManagedExternally(method installMethod, format string) error {
 
 	if format == "pretty" {
 		fmt.Printf("langsmith was installed with %s, which manages updates for you.\n"+
-			"To update, run:\n\n    %s\n\n(Use --force to update in place anyway.)\n", mgr.display, mgr.command)
+			"To update, run:\n\n    %s\n\n(Use --force to update in place anyway.)\n", mgr.display, command)
 	} else {
 		out, _ := json.Marshal(map[string]string{
 			"status":         "managed-externally",
 			"install_method": mgr.label,
-			"update_command": mgr.command,
+			"update_command": command,
 		})
 		fmt.Println(string(out))
 	}
