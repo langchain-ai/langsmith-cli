@@ -123,7 +123,7 @@ var agentsList = cli.Command{
 		},
 		&requestflag.Flag[string]{
 			Name:      "name",
-			Usage:     "Case-insensitive partial Agent name",
+			Usage:     "Deprecated: use search. Case-insensitive partial Agent name. Ignored when search is provided.",
 			QueryPath: "name",
 		},
 		&requestflag.Flag[int64]{
@@ -133,8 +133,13 @@ var agentsList = cli.Command{
 			QueryPath: "page_size",
 		},
 		&requestflag.Flag[string]{
+			Name:      "search",
+			Usage:     "Case-insensitive partial Agent name or ID, ignoring hyphens and spaces. When provided, name is ignored.",
+			QueryPath: "search",
+		},
+		&requestflag.Flag[string]{
 			Name:      "sort-by",
-			Usage:     "Field to sort by. When name is set, exact name matches still come first.",
+			Usage:     "Field to sort by. When name or search is set, exact matches still come first.",
 			Default:   "last_run_start_time",
 			QueryPath: "sort_by",
 		},

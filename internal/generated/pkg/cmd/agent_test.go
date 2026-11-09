@@ -101,6 +101,7 @@ func TestAgentsList(t *testing.T) {
 			"--cursor", "cursor",
 			"--name", "name",
 			"--page-size", "1",
+			"--search", "search",
 			"--sort-by", "last_run_start_time",
 			"--sort-order", "asc",
 			"--source-type", "LSD",

@@ -57,13 +57,13 @@ contract:
 
   - name: list scoped to a workspace with filters and cursor
     op: list
-    args: [--workspace, 44444444-4444-4444-4444-444444444444, --id, example-agent, --name, Example, --source-type, EXTERNAL, --sort-by, name, --sort-order, asc, --page-size, "2", --cursor, opaque-cursor]
+    args: [--workspace, 44444444-4444-4444-4444-444444444444, --id, example-agent, --name, Example, --search, exampleagent, --source-type, EXTERNAL, --sort-by, name, --sort-order, asc, --page-size, "2", --cursor, opaque-cursor]
     response:
       body: {items: [*agent], next_cursor: null}
     want:
       method: GET
       path: /api/v1/agents
-      query: {id: example-agent, name: Example, source_type: EXTERNAL, sort_by: name, sort_order: asc, page_size: "2", cursor: opaque-cursor}
+      query: {id: example-agent, name: Example, search: exampleagent, source_type: EXTERNAL, sort_by: name, sort_order: asc, page_size: "2", cursor: opaque-cursor}
       headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
       stdout: example-agent
 
