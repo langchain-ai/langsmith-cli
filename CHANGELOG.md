@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.4.0](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.13...v0.4.0) (2026-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** hide the Missing sentinel from annotation queue and chart PATCH schemas
+
+### Features
+
+* add evaluator metadata field ([60a3b8d](https://github.com/langchain-ai/langsmith-cli/commit/60a3b8d4f5ac69ffc0a3ce8e9b6f5ec3fb2119f3))
+* **cli:** add --jq to every structured command [closes ADX-17] ([663c357](https://github.com/langchain-ai/langsmith-cli/commit/663c35793beaa486d16d610de8ba85fecda1d5ad))
+* **cli:** add langsmith datasets:examples update-metadata ([f2180c1](https://github.com/langchain-ai/langsmith-cli/commit/f2180c17848b4f2398c7aa0f322e6f66a683fb19))
+* **cli:** cursor pagination on list commands ([b518fa9](https://github.com/langchain-ai/langsmith-cli/commit/b518fa9ea73e90a8e55af315150c0a7177f0b785))
+* **cli:** deep links under langsmith apps dev ([4484a5c](https://github.com/langchain-ai/langsmith-cli/commit/4484a5cf430296877468fc6c35d5427e27555ec4))
+* **cli:** defer self-update to pip, pipx and uv for wheel installs ([c86ccbe](https://github.com/langchain-ai/langsmith-cli/commit/c86ccbe84a5fab8d684989fd46e06abe53245292))
+* **cli:** expose SQL queries with the released Go SDK ([4a04187](https://github.com/langchain-ai/langsmith-cli/commit/4a04187055ae7ec4fbb71a86e162cbacbb1678d0))
+* **cli:** trace get works without --project on Cloud too ([13646f5](https://github.com/langchain-ai/langsmith-cli/commit/13646f52a91e7f4d4dc64f009e0311d4b0409962))
+* **coding-agents:** GitLab merge requests as outcomes via Engine's GitLab connection ([84ce9ad](https://github.com/langchain-ai/langsmith-cli/commit/84ce9ad09722ac1d1ed441e46136c5293c9d3b89))
+* **custom-apps:** deep-link guidance for app authors and Polly ([4fd4433](https://github.com/langchain-ai/langsmith-cli/commit/4fd4433561d248f7eef2819469b18ed5e163e7e0))
+* **custom-apps:** let apps download files through the host ([bda7a7a](https://github.com/langchain-ai/langsmith-cli/commit/bda7a7a4a66fc5960f4197cb83f672fbf4f46de2))
+* **custom-apps:** open external https links from custom apps ([1e5a822](https://github.com/langchain-ai/langsmith-cli/commit/1e5a8224b43adf6b6fc3230204f9238401e61607))
+* **custom-apps:** return binary responses from window.langsmith.call as a Blob ([0ff3ad4](https://github.com/langchain-ai/langsmith-cli/commit/0ff3ad4c39123abadaf885ae6ca9a7c96adfd2a8))
+* **run-rules:** thread-level decision-model rules ([3563aec](https://github.com/langchain-ai/langsmith-cli/commit/3563aec7b89d2be3cfad7f80f204c61a5a6694be))
+* **sandboxes:** apply the sandbox delete-after-stop default to browsers ([24ac2a2](https://github.com/langchain-ai/langsmith-cli/commit/24ac2a2762c1c2ec66c9a0da3d998a1910131a61))
+* search agents by normalized name or ID ([8e5d634](https://github.com/langchain-ai/langsmith-cli/commit/8e5d634b7aaa612a4d0e484737cd6d7dd1cdf64c))
+* **sessions:** accept longlived_ttl_days on POST and PATCH /sessions ([44c27e3](https://github.com/langchain-ai/langsmith-cli/commit/44c27e336cde473c8c69becc157f69eb0729182d))
+* **ttl:** make the allowed long-lived retention days configurable ([98e2f7a](https://github.com/langchain-ai/langsmith-cli/commit/98e2f7a3b2dae14f14f448918822f4ea3ed053a5))
+
+
+### Bug Fixes
+
+* **api:** hide the Missing sentinel from annotation queue and chart PATCH schemas ([3f3b0fe](https://github.com/langchain-ai/langsmith-cli/commit/3f3b0fe475b70c253ae3cb38f80c4fc116f7f296))
+* **api:** return the canonical workspace model from GET /api/v1/settings ([a8d51ff](https://github.com/langchain-ai/langsmith-cli/commit/a8d51ffe097c166fc236e7f21f8f148ba34f6c69))
+* **cli:** read project total_cost as a string or a number ([9739a8b](https://github.com/langchain-ai/langsmith-cli/commit/9739a8b2ba10be5800f442fac55e11fa06198305))
+* **custom-apps:** share one window.langsmith declaration across starters ([150c1b3](https://github.com/langchain-ai/langsmith-cli/commit/150c1b3e033a19a4cb5a67e4cbda74d5db960895))
+* expose session dashboards in Python and TypeScript SDKs ([63a13ab](https://github.com/langchain-ai/langsmith-cli/commit/63a13abcaa327905a74caf9d9a49883dcc22b39b))
+* **sdks:** accept 204 No Content from delete endpoints ([f86eac1](https://github.com/langchain-ai/langsmith-cli/commit/f86eac15876f87f0f6b008b093dbd3099798f605))
+
+
+### Performance Improvements
+
+* **engine:** speed up historical replay prefetch ([1d43f7c](https://github.com/langchain-ai/langsmith-cli/commit/1d43f7ca4d1d206ffec56eb71d8b706ffa4b3f93))
+
+
+### Documentation
+
+* **annotation-queues:** document extend_trace_retention default on add items ([eef429e](https://github.com/langchain-ai/langsmith-cli/commit/eef429e29837830f5dbc3b477bf1a80fdbe73213))
+
+
+### Build System
+
+* **custom-apps:** upgrade starters to Macaw 1.3.5 and Tailwind 4 ([c34fb74](https://github.com/langchain-ai/langsmith-cli/commit/c34fb74720bcb503543c216a8784904eb3a1a65d))
+
 ## [0.3.13](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.12...v0.3.13) (2026-10-30)
 
 
