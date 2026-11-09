@@ -1,0 +1,57 @@
+resource: sql
+
+contract:
+  - name: query multiple projects in a workspace
+    op: query
+    args:
+      - --project-id
+      - 11111111-1111-1111-1111-111111111111
+      - --project-id
+      - 22222222-2222-2222-2222-222222222222
+      - --query
+      - SELECT name FROM runs WHERE start_time > now() - INTERVAL '1 day'
+      - --workspace
+      - 44444444-4444-4444-4444-444444444444
+    response:
+      body:
+        columns: [{name: name, data_type: string}]
+        rows: [[example], [null]]
+        row_count: 2
+        is_truncated: false
+        truncation_reason: null
+        execution_time_ms: 1.5
+        warnings: []
+    want:
+      method: POST
+      path: /v2/sql/query
+      headers: {X-Tenant-Id: 44444444-4444-4444-4444-444444444444}
+      body:
+        project_ids: [11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222]
+        query: SELECT name FROM runs WHERE start_time > now() - INTERVAL '1 day'
+      stdout: '"row_count": 2'
+
+  - name: query one project without leaking previous flags
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --query, SELECT 1]
+    response:
+      body: {columns: [{name: value, data_type: integer}], rows: [[1]], row_count: 1, is_truncated: false, truncation_reason: null, execution_time_ms: 0.5, warnings: []}
+    want:
+      method: POST
+      path: /v2/sql/query
+      body: {project_ids: [11111111-1111-1111-1111-111111111111], query: SELECT 1}
+      stdout: '"row_count": 1'
+
+  - name: query reports API errors
+    op: query
+    args: [--project-id, 11111111-1111-1111-1111-111111111111, --query, invalid SQL]
+    response:
+      status: 400
+      body: {detail: invalid SQL query}
+    want:
+      method: POST
+      path: /v2/sql/query
+      body: {project_ids: [11111111-1111-1111-1111-111111111111], query: invalid SQL}
+      exit_code: 1
+      stderr: 400 Bad Request
+
+lifecycle_skip: "Requires a SQL-enabled workspace and an existing tracing project; this read-only resource cannot provision its own project."

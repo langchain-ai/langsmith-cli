@@ -7,3 +7,9 @@ issues:
   # generator's input instead of its output.
   exclude-dirs:
     - internal/generated
+  exclude-rules:
+    # Keep v1 session listing compatible with self-hosted deployments that lack v2.
+    - path: internal/(client/(client|auth_hint_test)|cmd/(experiment|project))\.go
+      linters:
+        - staticcheck
+      text: 'SA1019: .*Sessions\.List(AutoPaging)? is deprecated:'

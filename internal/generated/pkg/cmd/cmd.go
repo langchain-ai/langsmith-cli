@@ -89,6 +89,14 @@ func init() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:     "sql",
+				Category: "API RESOURCE",
+				Suggest:  true,
+				Commands: []*cli.Command{
+					&sqlQuery,
+				},
+			},
+			{
 				Name:     "product-feedback",
 				Category: "API RESOURCE",
 				Suggest:  true,
