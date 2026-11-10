@@ -48,8 +48,11 @@ func (s *fullReplaceRuleServer) handler(t *testing.T) http.HandlerFunc {
 		defer s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.URL.Path == "/api/v1/datasets" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": replaceTargetDS, "name": "eval-set"}})
+		case r.URL.Path == "/api/v2/datasets" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items":       []map[string]any{{"id": replaceTargetDS, "name": "eval-set"}},
+				"next_cursor": nil,
+			})
 		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
 			_ = json.NewEncoder(w).Encode([]map[string]any{s.rule})
 		case r.URL.Path == "/api/v1/runs/rules/"+replaceRuleID && r.Method == http.MethodPatch:

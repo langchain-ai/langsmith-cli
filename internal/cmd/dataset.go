@@ -58,26 +58,19 @@ func newDatasetListCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			pageSize := int64(20)
+			pageSize := int64(100)
 			if limit > 0 && int64(limit) < pageSize {
 				pageSize = int64(limit)
 			}
-			params := langsmith.DatasetListParams{
-				Limit: langsmith.F(pageSize),
+			params := langsmith.DatasetListV2Params{
+				PageSize: langsmith.F(pageSize),
 			}
 			if nameContains != "" {
 				params.NameContains = langsmith.F(nameContains)
 			}
 
-			var datasets []langsmith.Dataset
-			pager := c.SDK.Datasets.ListAutoPaging(ctx, params)
-			for pager.Next() {
-				datasets = append(datasets, pager.Current())
-				if limit > 0 && len(datasets) >= limit {
-					break
-				}
-			}
-			if err := pager.Err(); err != nil {
+			datasets, err := listDatasets(ctx, c, params, limit)
+			if err != nil {
 				ExitErrorf("listing datasets: %v", err)
 			}
 			fmt_ := GetFormat()

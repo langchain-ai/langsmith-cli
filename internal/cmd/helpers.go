@@ -506,17 +506,47 @@ func resolveDataset(ctx context.Context, c *client.Client, nameOrID string) (*la
 		return ds, nil
 	}
 	// Fall back to name lookup
-	resp, err := c.SDK.Datasets.List(ctx, langsmith.DatasetListParams{
-		Name:  langsmith.F(nameOrID),
-		Limit: langsmith.F(int64(1)),
-	})
+	datasets, err := listDatasets(ctx, c, langsmith.DatasetListV2Params{
+		Name:     langsmith.F(nameOrID),
+		PageSize: langsmith.F(int64(1)),
+	}, 1)
 	if err != nil {
 		return nil, fmt.Errorf("searching dataset by name: %w", err)
 	}
-	if len(resp.Items) == 0 {
+	if len(datasets) == 0 {
 		return nil, fmt.Errorf("dataset not found: %s", nameOrID)
 	}
-	return &resp.Items[0], nil
+	return &datasets[0], nil
+}
+
+// listDatasets returns up to limit datasets matching params, or all of them
+// when limit is 0. A self-hosted server that predates GET /api/v2/datasets
+// answers it with 404, so the same filters are sent to GET /api/v1/datasets.
+func listDatasets(ctx context.Context, c *client.Client, params langsmith.DatasetListV2Params, limit int) ([]langsmith.Dataset, error) {
+	var datasets []langsmith.Dataset
+	pager := c.SDK.Datasets.ListV2AutoPaging(ctx, params)
+	for pager.Next() {
+		datasets = append(datasets, pager.Current())
+		if limit > 0 && len(datasets) >= limit {
+			return datasets, nil
+		}
+	}
+	if err := pager.Err(); err == nil || len(datasets) > 0 || !isHTTP404(err) {
+		return datasets, err
+	}
+
+	v1 := c.SDK.Datasets.ListAutoPaging(ctx, langsmith.DatasetListParams{
+		Limit:        params.PageSize,
+		Name:         params.Name,
+		NameContains: params.NameContains,
+	})
+	for v1.Next() {
+		datasets = append(datasets, v1.Current())
+		if limit > 0 && len(datasets) >= limit {
+			return datasets, nil
+		}
+	}
+	return datasets, v1.Err()
 }
 
 // formatTimedelta formats a duration as a human-readable string.

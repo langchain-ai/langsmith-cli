@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +74,169 @@ func TestDatasetListCmd_UseField(t *testing.T) {
 	cmd := newDatasetListCmd()
 	if cmd.Use != "list" {
 		t.Errorf("expected Use=list, got %q", cmd.Use)
+	}
+}
+
+// datasetPagesServer serves GET /api/v2/datasets as two pages of two datasets
+// and records each request's query.
+func datasetPagesServer(t *testing.T, queries *[]map[string][]string) string {
+	t.Helper()
+	pages := map[string]map[string]any{
+		"": {
+			"items":       []map[string]any{{"id": "11111111-1111-1111-1111-111111111111", "name": "first"}, {"id": "22222222-2222-2222-2222-222222222222", "name": "second"}},
+			"next_cursor": "page-2",
+		},
+		"page-2": {
+			"items":       []map[string]any{{"id": "33333333-3333-3333-3333-333333333333", "name": "third"}, {"id": "44444444-4444-4444-4444-444444444444", "name": "fourth"}},
+			"next_cursor": nil,
+		},
+	}
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/datasets" || r.Method != http.MethodGet {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		*queries = append(*queries, r.URL.Query())
+		page, ok := pages[r.URL.Query().Get("cursor")]
+		if !ok {
+			t.Errorf("unexpected cursor %q", r.URL.Query().Get("cursor"))
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(page)
+	})
+	return ts.URL
+}
+
+func TestDatasetListFollowsCursorUpToLimit(t *testing.T) {
+	var queries []map[string][]string
+	defer setupTestEnv(t, datasetPagesServer(t, &queries))()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newDatasetListCmd()
+		cmd.SetArgs([]string{"--limit", "3", "--name-contains", "set"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decoding output: %v\n%s", err, out)
+	}
+	var names []string
+	for _, ds := range got {
+		names = append(names, ds["name"].(string))
+	}
+	if strings.Join(names, ",") != "first,second,third" {
+		t.Errorf("listed %v, want the first three datasets", names)
+	}
+	if len(queries) != 2 {
+		t.Fatalf("made %d requests, want 2", len(queries))
+	}
+	for i, q := range queries {
+		if q["page_size"][0] != "3" || q["name_contains"][0] != "set" {
+			t.Errorf("request %d query %v, want page_size=3 and name_contains=set", i, q)
+		}
+	}
+	if q := queries[1]["cursor"]; len(q) != 1 || q[0] != "page-2" {
+		t.Errorf("second request cursor %v, want the first page's next_cursor", q)
+	}
+}
+
+func TestResolveDatasetByNameReadsOnePage(t *testing.T) {
+	var queries []map[string][]string
+	defer setupTestEnv(t, datasetPagesServer(t, &queries))()
+
+	ds, err := resolveDataset(context.Background(), MustGetClient(), "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.Name != "first" {
+		t.Errorf("resolved %q, want first", ds.Name)
+	}
+	if len(queries) != 1 || queries[0]["name"][0] != "first" || queries[0]["page_size"][0] != "1" {
+		t.Errorf("queries %v, want one request with name=first and page_size=1", queries)
+	}
+}
+
+// datasetV1OnlyServer answers like a server without GET /api/v2/datasets: a
+// 404 there and the v1 list, as one page of two datasets, at /api/v1/datasets.
+// It records the path and query of each request.
+func datasetV1OnlyServer(t *testing.T, requests *[]string) string {
+	t.Helper()
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		*requests = append(*requests, r.URL.Path+"?"+r.URL.RawQuery)
+		if r.URL.Path != "/api/v1/datasets" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "11111111-1111-1111-1111-111111111111", "name": "first"},
+			{"id": "22222222-2222-2222-2222-222222222222", "name": "second"},
+		})
+	})
+	return ts.URL
+}
+
+func TestDatasetListFallsBackToV1(t *testing.T) {
+	var requests []string
+	defer setupTestEnv(t, datasetV1OnlyServer(t, &requests))()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newDatasetListCmd()
+		cmd.SetArgs([]string{"--limit", "2", "--name-contains", "set"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decoding output: %v\n%s", err, out)
+	}
+	if len(got) != 2 || got[0]["name"] != "first" || got[1]["name"] != "second" {
+		t.Errorf("listed %v, want first and second", got)
+	}
+	if len(requests) != 2 || !strings.HasPrefix(requests[0], "/api/v2/datasets?") ||
+		!strings.HasPrefix(requests[1], "/api/v1/datasets?") ||
+		!strings.Contains(requests[1], "limit=2") || !strings.Contains(requests[1], "name_contains=set") {
+		t.Errorf("requests %v, want v2 then v1 with limit=2 and name_contains=set", requests)
+	}
+}
+
+func TestResolveDatasetByNameFallsBackToV1(t *testing.T) {
+	var requests []string
+	defer setupTestEnv(t, datasetV1OnlyServer(t, &requests))()
+
+	ds, err := resolveDataset(context.Background(), MustGetClient(), "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.Name != "first" {
+		t.Errorf("resolved %q, want first", ds.Name)
+	}
+	if len(requests) != 2 || !strings.Contains(requests[1], "name=first") || !strings.Contains(requests[1], "limit=1") {
+		t.Errorf("requests %v, want the v1 lookup with name=first and limit=1", requests)
+	}
+}
+
+func TestResolveDatasetReportsOtherErrors(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/datasets" {
+			t.Errorf("fell back to v1 after a non-404 error")
+		}
+		http.Error(w, `{"detail":"boom"}`, http.StatusInternalServerError)
+	})
+	defer setupTestEnv(t, ts.URL)()
+
+	if _, err := resolveDataset(context.Background(), MustGetClient(), "first"); err == nil {
+		t.Fatal("want an error")
 	}
 }
 
