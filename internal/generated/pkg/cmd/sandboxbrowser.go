@@ -98,7 +98,7 @@ var sandboxesBrowsersRetrieve = cli.Command{
 
 var sandboxesBrowsersLoadExtensions = cli.Command{
 	Name:    "load-extensions",
-	Usage:   "Beta: load the unpacked extensions placed in the browser's\n/var/lib/browserd/extensions (one per directory) that its Chrome does not have\nyet. Chrome loads them while running, so windows, tabs and connections are left\nas they are. Extensions already loaded stay loaded, even if removed from the\ndirectory, until Chrome next launches.",
+	Usage:   "Beta: bring the browser's Chrome in line with the unpacked extensions in its\n/var/lib/browserd/extensions (one per directory). Of several with the same\nmanifest name, only the highest manifest version is loaded, so a newer version\ninstalled beside an older one replaces it. Extensions placed there that Chrome\ndoes not have yet are loaded while it runs, so windows, tabs and connections are\nleft as they are. When an extension Chrome has was removed or replaced, Chrome\ncannot unload it while running, so it is relaunched instead with the directory's\nextensions: logins stay, open tabs close and connections drop, and the call\nreturns once every window is back.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
