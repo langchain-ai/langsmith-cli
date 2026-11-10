@@ -23,6 +23,7 @@ vendor/
 
 # Build artifacts
 dist/
+wheels/
 
 # IDE
 .idea/

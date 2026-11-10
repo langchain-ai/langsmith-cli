@@ -8,7 +8,7 @@
 - `internal/cmd/`: commands, flags, and command tests.
 - `internal/client/`: shared LangSmith client setup.
 - `internal/output/`: JSON, table, and tree output helpers.
-- `scripts/`: installation scripts.
+- `scripts/`: installation scripts, and `build_wheels.py`, which repackages release archives as PyPI wheels (`make test-wheels` tests it).
 - `README.md`: installation, authentication, command, local-development, and release documentation.
 
 ## Development

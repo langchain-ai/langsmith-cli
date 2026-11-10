@@ -505,11 +505,11 @@ binary in place — it points you at the right command instead:
 | Homebrew | `brew upgrade langchain-ai/tap/langsmith-cli` |
 | Scoop | `scoop update langsmith-cli` |
 | `go install` | `go install github.com/langchain-ai/langsmith-cli/cmd/langsmith@latest` |
-| pip | `pip install --upgrade langsmith-cli` (in a venv, that venv's `python -m pip`) |
-| pipx | `pipx upgrade langsmith-cli` |
-| `uv tool install` | `uv tool upgrade langsmith-cli` |
-| `uv pip install` | `uv pip install --python <venv python> --upgrade langsmith-cli` |
-| uv project (`uv add`, `uv sync`) | `uv lock --upgrade-package langsmith-cli && uv sync` |
+| pip | `pip install --upgrade langchain-langsmith-cli` (in a venv, that venv's `python -m pip`) |
+| pipx | `pipx upgrade langchain-langsmith-cli` |
+| `uv tool install` | `uv tool upgrade langchain-langsmith-cli` |
+| `uv pip install` | `uv pip install --python <venv python> --upgrade langchain-langsmith-cli` |
+| uv project (`uv add`, `uv sync`) | `uv lock --upgrade-package langchain-langsmith-cli && uv sync` |
 
 Installs from the `install.sh`/`install.ps1` scripts or a direct GitHub Releases download
 are updated in place as usual. Pass `--force` to update in place regardless of how

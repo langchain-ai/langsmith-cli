@@ -6,9 +6,9 @@ import (
 )
 
 // pypiPackageName is the PyPI distribution that ships the langsmith binary as
-// platform wheels. The name is not final yet; every pip/pipx/uv message and the
-// dist-info lookup derive from this constant.
-const pypiPackageName = "langsmith-cli"
+// platform wheels (langsmith-cli on PyPI is an unrelated project). Every
+// pip/pipx/uv message and the dist-info lookup derive from this constant.
+const pypiPackageName = "langchain-langsmith-cli"
 
 // installMethod identifies how the langsmith binary was installed, which
 // determines whether self-update may replace the binary in place.
