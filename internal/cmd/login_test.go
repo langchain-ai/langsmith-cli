@@ -146,6 +146,23 @@ func TestLoginDeviceFlowSavesOAuthProfile(t *testing.T) {
 	}
 }
 
+func TestLoginRefusesKeychainProfile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(configPath, []byte(`{"profiles": {"prod": {"secret_store": "keychain"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldProfile := flagProfile
+	t.Cleanup(func() { flagProfile = oldProfile })
+
+	_, err := executeCommand(t, "auth", "login", "--profile", "prod", "--no-browser")
+	if err == nil || !strings.Contains(err.Error(), "OAuth login does not support yet") {
+		t.Fatalf("expected login to a keychain profile to be refused, got %v", err)
+	}
+}
+
 func TestLoginOpensVerificationURIComplete(t *testing.T) {
 	for _, tc := range []struct {
 		command     string

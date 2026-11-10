@@ -65,6 +65,18 @@ langsmith profiles create prod --api-key-env PROD_LANGSMITH_API_KEY
 langsmith profiles create prod --api-key-cmd 'op read "op://Private/LangSmith/credential"'
 ```
 
+Or save the key in the OS keychain (macOS Keychain, Windows Credential Manager,
+or the Linux Secret Service). `LANGSMITH_SECRET_STORE=keychain` does this for
+every profile and moves keys already in the file the next time the CLI saves
+the config, for example on `langsmith profiles use <name>`. Without a keychain,
+the key stays in the file with a warning. `auth login` does not use the
+keychain yet and refuses a keychain profile. The Go SDK reads keychain
+profiles; the Python, JavaScript, and Java SDKs do not yet.
+
+```bash
+langsmith profiles create prod --keychain
+```
+
 `langsmith auth info` shows where the active profile's key comes from.
 
 Other settings can be passed as flags:

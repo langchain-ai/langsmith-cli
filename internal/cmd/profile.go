@@ -53,6 +53,7 @@ func newProfileCreateCmd() *cobra.Command {
 		setCurrent bool
 		keyEnv     string
 		keyCmd     string
+		keychain   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create NAME",
@@ -63,18 +64,30 @@ By default the key from --api-key or LANGSMITH_API_KEY is saved in the config
 file. To keep it out of the file, name where it lives instead: --api-key-env
 reads it from an environment variable, and --api-key-cmd runs a command that
 prints it, such as a password manager lookup. The variable is read, or the
-command run, each time the profile is used.`,
+command run, each time the profile is used.
+
+--keychain saves the key in the OS keychain (macOS Keychain, Windows Credential
+Manager, or the Linux Secret Service) instead of the file. Setting
+LANGSMITH_SECRET_STORE=keychain does the same for every profile the CLI saves,
+which also moves keys already in the file the next time the config is saved.
+Where no keychain is available, such as on a headless Linux machine, the key
+is saved in the file with a warning. The LangSmith Go SDK reads keychain
+profiles; the Python, JavaScript, and Java SDKs do not yet.`,
 		Example: `  langsmith profile create prod --api-key-env PROD_LANGSMITH_API_KEY
-  langsmith profile create prod --api-key-cmd 'op read "op://Private/LangSmith/credential"'`,
+  langsmith profile create prod --api-key-cmd 'op read "op://Private/LangSmith/credential"'
+  langsmith profile create prod --api-key "$KEY" --keychain`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProfileCreate(cmd, args[0], flagWorkspaceID, setCurrent, keyEnv, keyCmd)
+			return runProfileCreate(cmd, args[0], flagWorkspaceID, setCurrent, keyEnv, keyCmd, keychain)
 		},
 	}
 	cmd.Flags().BoolVar(&setCurrent, "set-current", false, "Set the new profile as the current profile")
 	cmd.Flags().StringVar(&keyEnv, "api-key-env", "", "Read the API key from this environment variable instead of saving it")
 	cmd.Flags().StringVar(&keyCmd, "api-key-cmd", "", "Run this command to get the API key instead of saving it")
+	cmd.Flags().BoolVar(&keychain, "keychain", false, "Save the API key in the OS keychain instead of the config file")
 	cmd.MarkFlagsMutuallyExclusive("api-key-env", "api-key-cmd")
+	cmd.MarkFlagsMutuallyExclusive("api-key-env", "keychain")
+	cmd.MarkFlagsMutuallyExclusive("api-key-cmd", "keychain")
 	return cmd
 }
 
@@ -133,7 +146,7 @@ func newProfileSetWorkspaceCmd() *cobra.Command {
 	}
 }
 
-func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool, keyEnv, keyCmd string) error {
+func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCurrent bool, keyEnv, keyCmd string, keychain bool) error {
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}
@@ -170,6 +183,9 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 		if profile.APIKey == "" {
 			return fmt.Errorf("api key required; pass --api-key, --api-key-env, or --api-key-cmd, or set LANGSMITH_API_KEY")
 		}
+		if keychain {
+			profile.SecretStore = lsconfig.SecretStoreKeychain
+		}
 	}
 	apiURL := profile.APIURL
 
@@ -199,6 +215,9 @@ func runProfileCreate(cmd *cobra.Command, profileName, workspaceID string, setCu
 	}
 	if workspaceID != "" {
 		result["workspace_id"] = workspaceID
+	}
+	if store := cfg.Profiles[profileName].SecretStore; store != "" {
+		result["secret_store"] = store
 	}
 	return output.WriteJSON(cmd.OutOrStdout(), result)
 }
@@ -262,12 +281,22 @@ func runProfileDelete(cmd *cobra.Command, profileName string) error {
 	if _, ok := cfg.Profiles[profileName]; !ok {
 		return fmt.Errorf("profile %q not found", profileName)
 	}
+	keychain := cfg.Profiles[profileName].SecretStore == lsconfig.SecretStoreKeychain
 	delete(cfg.Profiles, profileName)
 	if cfg.CurrentProfile == profileName {
 		cfg.CurrentProfile = ""
 	}
 	if err := cfg.Save(); err != nil {
 		return err
+	}
+	if keychain {
+		path, err := lsconfig.DefaultConfigPath()
+		if err == nil {
+			err = lsconfig.DeleteKeychainEntry(path, profileName)
+		}
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not remove profile %q API key from the OS keychain: %v\n", profileName, err)
+		}
 	}
 
 	if GetFormat() == "pretty" {

@@ -662,6 +662,62 @@ func TestProfileCreateWithAPIKeyReference(t *testing.T) {
 	}
 }
 
+func TestProfileCreateWithKeychain(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_API_KEY", "")
+	t.Setenv("LANGSMITH_ENDPOINT", "")
+	t.Setenv("LANGSMITH_PROFILE", "")
+	oldKey := flagAPIKey
+	t.Cleanup(func() { flagAPIKey = oldKey })
+
+	stdout, err := executeCommand(t, "--format=json", "profile", "create", "prod", "--api-key", "keychain-api-key-secret", "--keychain")
+	if err != nil {
+		t.Fatalf("profile create returned error: %v\nstdout: %s", err, stdout)
+	}
+	var created map[string]any
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if created["secret_store"] != lsconfig.SecretStoreKeychain {
+		t.Fatalf("expected secret_store keychain, got %+v", created)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "keychain-api-key-secret") {
+		t.Fatalf("config saved the API key although --keychain was given: %s", raw)
+	}
+	flagAPIKey = ""
+
+	stdout, err = executeCommand(t, "--format=json", "profile", "show", "prod")
+	if err != nil {
+		t.Fatalf("profile show returned error: %v", err)
+	}
+	var shown profileShowItem
+	if err := json.Unmarshal([]byte(stdout), &shown); err != nil {
+		t.Fatalf("stdout was not JSON: %v\n%s", err, stdout)
+	}
+	if shown.Auth != "api_key" || shown.APIKey != lsconfig.MaskSecret("keychain-api-key-secret") {
+		t.Fatalf("unexpected profile show: %+v", shown)
+	}
+
+	if _, err := executeCommand(t, "profile", "delete", "prod"); err != nil {
+		t.Fatalf("profile delete returned error: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"profiles": {"prod": {"secret_store": "keychain"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := lsconfig.LoadFrom(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.Profiles["prod"].ResolveAPIKey(); err == nil {
+		t.Fatal("expected profile delete to remove the keychain entry")
+	}
+}
+
 func TestProfileCreateRejectsMultipleAPIKeySources(t *testing.T) {
 	t.Setenv("LANGSMITH_CONFIG_FILE", filepath.Join(t.TempDir(), "config.json"))
 	t.Setenv("LANGSMITH_API_KEY", "")
@@ -670,6 +726,7 @@ func TestProfileCreateRejectsMultipleAPIKeySources(t *testing.T) {
 	for _, args := range [][]string{
 		{"--api-key", "saved-key", "--api-key-env", "PROD_KEY"},
 		{"--api-key-env", "PROD_KEY", "--api-key-cmd", "echo key"},
+		{"--api-key-env", "PROD_KEY", "--keychain"},
 	} {
 		_, err := executeCommand(t, append([]string{"profile", "create", "prod"}, args...)...)
 		if err == nil {

@@ -28,13 +28,28 @@ const (
 // Instead of storing the API key, a profile can name where it lives:
 // APIKeyEnv is an environment variable and APIKeyCmd a shell command that
 // prints the key. APIKey wins over APIKeyEnv, which wins over APIKeyCmd.
+//
+// A SecretStore of "keychain" keeps APIKey in the OS keychain instead of the
+// file, along with OAuth tokens the Go SDK moved there. Load reads them into
+// the profile and Save writes them back where they came from, so the rest of
+// the CLI sees them wherever they are stored. OAuth tokens in the file stay
+// there: the Go SDK release the CLI uses refreshes tokens only from the file.
 type Profile struct {
 	APIKey      string `json:"api_key,omitempty"`
 	APIKeyEnv   string `json:"api_key_env,omitempty"`
 	APIKeyCmd   string `json:"api_key_cmd,omitempty"`
 	APIURL      string `json:"api_url,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
+	SecretStore string `json:"secret_store,omitempty"`
 	OAuth       OAuth  `json:"oauth,omitempty"`
+
+	// keychainErr is why a keychain-backed profile's secrets could not be read.
+	keychainErr error
+	// accessInKeychain and refreshInKeychain report that each OAuth token
+	// was read from the keychain rather than the file, so Save writes it back
+	// to the same place.
+	accessInKeychain  bool
+	refreshInKeychain bool
 }
 
 // OAuth stores OAuth tokens written by `langsmith auth login`.
@@ -92,6 +107,25 @@ func LoadFrom(path string) (*Config, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]Profile)
 	}
+	for name, p := range cfg.Profiles {
+		if p.SecretStore != SecretStoreKeychain {
+			continue
+		}
+		secrets, err := loadKeychainSecrets(path, name)
+		p.keychainErr = err
+		if p.APIKey == "" {
+			p.APIKey = secrets.APIKey
+		}
+		if p.OAuth.AccessToken == "" && secrets.AccessToken != "" {
+			p.OAuth.AccessToken = secrets.AccessToken
+			p.accessInKeychain = true
+		}
+		if p.OAuth.RefreshToken == "" && secrets.RefreshToken != "" {
+			p.OAuth.RefreshToken = secrets.RefreshToken
+			p.refreshInKeychain = true
+		}
+		cfg.Profiles[name] = p
+	}
 	warnIfGroupOrWorldReadable(path)
 	return cfg, nil
 }
@@ -126,7 +160,14 @@ func (c *Config) Save() error {
 	return c.SaveTo(path)
 }
 
-// SaveTo writes the config to path with owner-only permissions.
+// SaveTo writes the config to path with owner-only permissions. A
+// keychain-backed profile's API key, and each OAuth token that was read from
+// the keychain, are written to the OS keychain rather than the file; an OAuth
+// token read from the file stays in the file. LANGSMITH_SECRET_STORE=keychain makes
+// every API-key profile keychain-backed, leaving OAuth profiles alone. When the
+// keychain cannot be written, the secrets stay in the file and a warning says
+// so. A profile whose keychain could not be read is saved as it was loaded,
+// so a save never replaces credentials it could not see.
 func (c *Config) SaveTo(path string) error {
 	if c.Profiles == nil {
 		c.Profiles = make(map[string]Profile)
@@ -134,11 +175,46 @@ func (c *Config) SaveTo(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
+	// Write through a symlinked config to its target, as the Go SDK does, so
+	// the link survives and keychain entries keep the name they were saved
+	// under.
+	path = canonicalConfigPath(path)
+
+	onDisk := Config{CurrentProfile: c.CurrentProfile, Profiles: make(map[string]Profile, len(c.Profiles))}
+	for name, p := range c.Profiles {
+		if p.APIKey != "" && !p.HasOAuthTokens() && KeychainRequested() {
+			p.SecretStore = SecretStoreKeychain
+		}
+		if p.SecretStore == SecretStoreKeychain && p.keychainErr == nil {
+			secrets := keychainSecrets{APIKey: p.APIKey}
+			if p.accessInKeychain {
+				secrets.AccessToken = p.OAuth.AccessToken
+			}
+			if p.refreshInKeychain {
+				secrets.RefreshToken = p.OAuth.RefreshToken
+			}
+			if err := saveKeychainSecrets(path, name, secrets); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not save profile %q credentials in the OS keychain (%v); saved them in %s instead\n", name, err, path)
+				p.SecretStore = ""
+			}
+		}
+		c.Profiles[name] = p
+		if p.SecretStore == SecretStoreKeychain && p.keychainErr == nil {
+			p.APIKey = ""
+			if p.accessInKeychain {
+				p.OAuth.AccessToken = ""
+			}
+			if p.refreshInKeychain {
+				p.OAuth.RefreshToken = ""
+			}
+		}
+		onDisk.Profiles[name] = p
+	}
 
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(c); err != nil {
+	if err := enc.Encode(onDisk); err != nil {
 		return fmt.Errorf("encoding config JSON: %w", err)
 	}
 
@@ -207,6 +283,11 @@ func (c *Config) ResolveProfile(flagProfile, envProfile string) (string, Profile
 	return name, p, ok
 }
 
+// HasOAuthTokens reports whether the profile holds OAuth tokens from a login.
+func (p Profile) HasOAuthTokens() bool {
+	return p.OAuth.AccessToken != "" || p.OAuth.RefreshToken != ""
+}
+
 // AccessToken returns the OAuth access token to use for bearer auth.
 func (p Profile) AccessToken() string {
 	return p.OAuth.AccessToken
@@ -215,13 +296,15 @@ func (p Profile) AccessToken() string {
 // HasAPIKey reports whether the profile stores an API key or names where one
 // lives.
 func (p Profile) HasAPIKey() bool {
-	return p.APIKey != "" || p.APIKeyEnv != "" || p.APIKeyCmd != ""
+	return p.APIKey != "" || p.APIKeyEnv != "" || p.APIKeyCmd != "" || p.keychainErr != nil
 }
 
 // APIKeySource describes where the profile's API key comes from, for display:
-// "config", "$NAME" for an environment variable, or "$(command)".
+// "config", "keychain", "$NAME" for an environment variable, or "$(command)".
 func (p Profile) APIKeySource() string {
 	switch {
+	case p.SecretStore == SecretStoreKeychain && (p.APIKey != "" || p.keychainErr != nil):
+		return "keychain"
 	case p.APIKey != "":
 		return "config"
 	case p.APIKeyEnv != "":
@@ -234,11 +317,13 @@ func (p Profile) APIKeySource() string {
 }
 
 // ResolveAPIKey returns the profile's API key, reading api_key_env or running
-// api_key_cmd when the key is not stored in the config.
+// api_key_cmd when the key is not stored in the config or the keychain.
 func (p Profile) ResolveAPIKey() (string, error) {
 	switch {
 	case p.APIKey != "":
 		return p.APIKey, nil
+	case p.keychainErr != nil:
+		return "", p.keychainErr
 	case p.APIKeyEnv != "":
 		if key := strings.TrimSpace(os.Getenv(p.APIKeyEnv)); key != "" {
 			return key, nil

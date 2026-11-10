@@ -149,6 +149,13 @@ func runLogin(cmd *cobra.Command, noBrowser bool, timeout time.Duration, workspa
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}
+	// The CLI hands OAuth refresh to a Go SDK release that reads tokens only
+	// from the config file, so a login cannot be stored in the keychain yet,
+	// and keeping it in the file would leave a keychain profile's tokens in
+	// plaintext.
+	if cfg.Profiles[profileName].SecretStore == lsconfig.SecretStoreKeychain {
+		return fmt.Errorf("profile %q keeps its credentials in the OS keychain, which OAuth login does not support yet; log in to another profile with --profile, or run 'langsmith profile delete %s' first", profileName, profileName)
+	}
 	apiURL := loginAPIURL(cfg, profileName)
 
 	ctx := cmd.Context()
