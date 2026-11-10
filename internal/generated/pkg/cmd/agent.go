@@ -73,7 +73,7 @@ var agentsRetrieve = cli.Command{
 
 var agentsUpdate = cli.Command{
 	Name:    "update",
-	Usage:   "Updates an Agent's name, source_type, agent_type, or owner_id. Omitted fields\nkeep their values. Changing or clearing owner_id additionally requires\nworkspaces:manage; assigning an owner also requires workspaces:read and active\nworkspace membership. Fleet ownership cannot be changed through this endpoint.\nChanging agent_type requires workspaces:manage in addition to project update\naccess; repeating the current type is a no-op. Source type can change only for\nan EXTERNAL Agent without runtime bindings. The id is immutable and is rejected\nwhen present. Requires update permission on every environment project.",
+	Usage:   "Updates an Agent's name, source_type, agent_type, or owner_id. Omitted fields\nkeep their values. Changing or clearing owner_id additionally requires\nworkspaces:manage; assigning an owner also requires workspaces:read and active\nworkspace membership. Owner changes update the Agent registry only; Fleet\nruntime ownership, access, and connected accounts are unchanged. Changing\nagent_type requires workspaces:manage in addition to project update access;\nrepeating the current type is a no-op. Source type can change only for an\nEXTERNAL Agent without runtime bindings. The id is immutable and is rejected\nwhen present. Requires update permission on every environment project.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
