@@ -22,7 +22,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--idle-ttl-seconds", "0",
 			"--mem-bytes", "0",
 			"--name", "name",
-			"--proxy-config", "{access_control: {allow_list: [string], deny_list: [string]}, callbacks: [{match_hosts: [string], ttl_seconds: 60, url: url, full_request: true, request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}], description: description, no_proxy: [string], rules: [{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]}",
+			"--proxy-config", "{access_control: {allow_list: [string], deny_list: [string]}, callbacks: [{ttl_seconds: 60, url: url, attribution_headers: [string], full_request: true, match_hosts: [string], request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}], description: description, no_proxy: [string], rules: [{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]}",
 			"--vcpus", "0",
 		)
 	})
@@ -43,7 +43,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--mem-bytes", "0",
 			"--name", "name",
 			"--proxy-config.access-control", "{allow_list: [string], deny_list: [string]}",
-			"--proxy-config.callbacks", "[{match_hosts: [string], ttl_seconds: 60, url: url, full_request: true, request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}]",
+			"--proxy-config.callbacks", "[{ttl_seconds: 60, url: url, attribution_headers: [string], full_request: true, match_hosts: [string], request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}]",
 			"--proxy-config.description", "description",
 			"--proxy-config.no-proxy", "[string]",
 			"--proxy-config.rules", "[{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]",
@@ -66,11 +66,13 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"    deny_list:\n" +
 			"      - string\n" +
 			"  callbacks:\n" +
-			"    - match_hosts:\n" +
-			"        - string\n" +
-			"      ttl_seconds: 60\n" +
+			"    - ttl_seconds: 60\n" +
 			"      url: url\n" +
+			"      attribution_headers:\n" +
+			"        - string\n" +
 			"      full_request: true\n" +
+			"      match_hosts:\n" +
+			"        - string\n" +
 			"      request_headers:\n" +
 			"        - name: name\n" +
 			"          type: plaintext\n" +

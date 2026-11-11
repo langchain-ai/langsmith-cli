@@ -8,9 +8,14 @@
         {"name": "Authorization", "type": "opaque", "value": "Bearer sk-test"}
       ],
       "enabled": true
+    },
+    {
+      "name": "attribution",
+      "type": "attribution",
+      "headers": [{"name": "X-Cost-Center", "type": "plaintext", "value": "engineering"}],
+      "enabled": true
     }
   ],
-  "no_proxy": ["internal.example.com"],
   "access_control": {
     "allow_list": ["*.openai.com"]
   }

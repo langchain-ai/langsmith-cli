@@ -643,12 +643,29 @@ func TestLoadJSONArg_FileValid(t *testing.T) {
 		t.Fatalf("result is not valid JSON: %v", err)
 	}
 	rules, ok := parsed["rules"].([]interface{})
-	if !ok || len(rules) != 1 {
-		t.Errorf("expected 1 rule, got %v", parsed["rules"])
+	if !ok || len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %v", parsed["rules"])
 	}
-	noProxy, ok := parsed["no_proxy"].([]interface{})
-	if !ok || len(noProxy) != 1 {
-		t.Errorf("expected 1 no_proxy entry, got %v", parsed["no_proxy"])
+	rule := rules[1].(map[string]interface{})
+	require.Equal(t, "attribution", rule["type"])
+	require.NotContains(t, parsed, "attribution_headers")
+	headers, ok := rule["headers"].([]interface{})
+	if !ok || len(headers) != 1 {
+		t.Fatalf("expected 1 attribution header, got %v", rule["headers"])
+	}
+	header, ok := headers[0].(map[string]interface{})
+	if !ok || header["name"] != "X-Cost-Center" || header["type"] != "plaintext" || header["value"] != "engineering" {
+		t.Errorf("unexpected attribution header: %v", headers[0])
+	}
+	for _, params := range []any{
+		langsmith.SandboxBoxNewParams{ProxyConfig: langsmith.Raw[langsmith.ProxyConfigParam](raw)},
+		langsmith.SandboxBoxUpdateParams{ProxyConfig: langsmith.Raw[langsmith.ProxyConfigParam](raw)},
+	} {
+		encoded, err := json.Marshal(params)
+		require.NoError(t, err)
+		var body map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(encoded, &body))
+		assert.JSONEq(t, string(raw), string(body["proxy_config"]))
 	}
 }
 

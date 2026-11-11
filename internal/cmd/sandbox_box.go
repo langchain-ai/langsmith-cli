@@ -167,8 +167,14 @@ allows and what headers to inject. Format:
       ],
       "env_vars": {"OPENAI_API_KEY": "proxy-injected"},
       "enabled": true
+    }, {
+      "name": "attribution",
+      "type": "attribution",
+      "headers": [
+        {"name": "X-Cost-Center", "type": "plaintext", "value": "engineering"}
+      ],
+      "enabled": true
     }],
-    "no_proxy": ["internal.example.com"],
     "access_control": {
       "allow_list": ["*.openai.com", "*.anthropic.com"],
       "deny_list": []
@@ -177,6 +183,16 @@ allows and what headers to inject. Format:
 
 Header types: "plaintext" (literal value), "opaque" (encrypted, hidden in API
 responses), "workspace_secret" (resolved from workspace secrets via {KEY}).
+
+An optional type: "attribution" rule discloses literal non-sensitive metadata to
+all proxy-handled destinations, independently of credential rules. At most one
+attribution rule is allowed, with up to 16 plaintext X- headers and no matching,
+provider, relay, rewrite or environment fields. Credentials, reserved names and
+templates are rejected, even when disabled. Enabled nonempty attribution cannot
+be combined with a nonempty no_proxy list. Never include secrets or personal data.
+This is not an egress-enforcement guarantee: direct-IP/nonstandard-port paths,
+non-HTTP traffic and previously established opaque tunnels are not covered.
+Omit the rule, set enabled to false, or send headers: [] to disable attribution.
 
 A rule's "env_vars" are plaintext variables set for every command in the sandbox
 while the rule is enabled, for tools that refuse to run without a credential
