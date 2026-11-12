@@ -386,19 +386,13 @@ func TestSandboxCreateParams_IncludesSnapshotIDWhenSet(t *testing.T) {
 
 func TestSandboxCreateParams_AccessDelegation(t *testing.T) {
 	tests := []struct {
-		name  string
-		in    sandboxCreateInput
-		want  any
-		error string
+		name string
+		in   sandboxCreateInput
+		want any
 	}{
 		{
-			name: "omitted without either flag",
+			name: "omitted without the flag",
 			in:   sandboxCreateInput{},
-		},
-		{
-			name: "delegate-access is inherit",
-			in:   sandboxCreateInput{DelegateAccess: true},
-			want: map[string]any{"mode": "INHERIT"},
 		},
 		{
 			name: "delegate-permission is explicit",
@@ -418,23 +412,11 @@ func TestSandboxCreateParams_AccessDelegation(t *testing.T) {
 				"permissions": []any{"datasets:read", "tracer_sessions:read"},
 			},
 		},
-		{
-			name: "both flags is an error",
-			in: sandboxCreateInput{
-				DelegateAccess:      true,
-				DelegatePermissions: []string{"datasets:read"},
-			},
-			error: "not both",
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			params, err := sandboxCreateParams("my-vm", &tc.in)
-			if tc.error != "" {
-				require.ErrorContains(t, err, tc.error)
-				return
-			}
 			require.NoError(t, err)
 
 			raw, err := json.Marshal(params)
