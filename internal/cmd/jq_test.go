@@ -20,6 +20,7 @@ import (
 // they take no --jq. Every other command must accept it.
 var commandsWithoutJSONOutput = []string{
 	"langsmith connector run",
+	"langsmith docs agents",
 	"langsmith relay connect",
 	"langsmith sandboxes console",
 	"langsmith sandboxes exec",

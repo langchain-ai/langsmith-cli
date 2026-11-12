@@ -1,0 +1,211 @@
+# Curated text for `langsmith docs agents`. Command paths, flags and examples
+# are checked against the command tree when the reference is rendered, and the
+# usage lines, flag descriptions and command index come from the tree. After
+# editing, run `make agent-docs`.
+title: LangSmith CLI reference for coding agents
+intro: |
+  How to use the `langsmith` CLI from a coding agent (Claude Code, Codex, Cursor and others) to read and manage LangSmith data. Sections are organized by task; the [All commands](#all-commands) table at the end lists everything this version supports. Every command and flag below exists in this version of the CLI, and `langsmith <command> --help` shows the rest.
+
+  Rules of thumb:
+
+  - Pass `--format json` (or `--jq`) on every call and parse the JSON. The default `pretty` output is for humans and may change.
+  - Start narrow: set `--limit` and a time window (`--last-n-minutes` or `--since`), then widen.
+  - Never run a delete without the user's explicit approval. See [Safety](#safety).
+basics:
+  - title: Authentication
+    text: |
+      Set `LANGSMITH_API_KEY` in the environment; it is the most reliable option for agents and CI because it needs no browser or saved state. `langsmith auth login` opens a browser for OAuth and suits people, not agents. Check what the CLI will use with `langsmith auth info --format json`.
+
+      For a self-hosted or regional instance, also set `LANGSMITH_ENDPOINT` (or pass `--api-url`). If the key can reach more than one workspace, set `LANGSMITH_WORKSPACE_ID` (or pass `--workspace`). Set `LANGSMITH_PROJECT` to give trace and run commands a default project.
+
+      Don't print API keys, and don't put them on the command line where they end up in shell history.
+  - title: Output
+    text: |
+      - `--format json` prints machine-readable JSON. Lists print a JSON array.
+      - `--jq EXPR` filters the JSON output with a jq expression and implies `--format json`, e.g. `--jq '.[].id'`. No separate `jq` install is needed.
+      - Many read commands take `-o FILE` (`--output`) to write the JSON to a file instead of stdout, which keeps large payloads out of the agent's context.
+      - Trace and run commands return compact rows by default. Add `--include-io` for inputs, outputs and errors, `--include-metadata` for status, latency, tokens and costs, `--include-feedback` for feedback scores, or `--full` for all three.
+      - Errors go to stderr and the exit code is non-zero.
+  - title: Paging and time windows
+    text: |
+      List commands return a bounded page; set the size with `--limit` (`-n`). Trace and run queries cover the last 7 days unless you pass `--since`, `--before` or `--last-n-minutes`. To read further back, page with `--before` set to the oldest `start_time` you have seen.
+
+      These commands page with `--cursor`: {cursor_commands}. Passing `--cursor ""` on the first call adds `cursors.next` to the JSON output (list commands then wrap their items in an object); pass that value to `--cursor` to get the next page. A missing `cursors.next` means there are no more results.
+  - title: Safety
+    text: |
+      Get the user's explicit approval before running any delete. Some deletes run immediately with no prompt.
+
+      Deletes marked *confirms* in [All commands](#all-commands) print a warning to stderr and wait for `y` on stdin; without an answer they abort. Do not answer the prompt or pipe `y` into it: stop and ask the user. Only after the user approves that specific deletion, rerun the command with `--yes`.
+
+      Commands that create or update resources (datasets, examples, prompts, evaluator rules, annotation queues) change shared workspace data. Confirm the target with a `get` or `list` first, and prefer IDs over names when you build a command line.
+sections:
+  - title: Find traces and runs
+    intro: |
+      A trace is one top-level agent invocation and its tree of runs; a run is one step (LLM call, tool call, chain). Find the project first, then query traces or runs in it. Pass `--project-id` rather than `--project` when you have the UUID.
+    commands:
+      - path: projects list
+        flags: [--name-contains, --limit]
+        examples:
+          - langsmith projects list --name-contains my-app --format json
+      - path: traces list
+        flags: [--project, --project-id, --limit, --last-n-minutes, --since, --before, --error, --filter, --metadata, --tags, --full, --show-hierarchy]
+        examples:
+          - langsmith traces list --project my-app --last-n-minutes 60 --limit 10 --format json
+          - langsmith traces list --project my-app --metadata user_id=u_123 --include-metadata --format json
+      - path: runs list
+        flags: [--project, --run-type, --name, --limit, --last-n-minutes, --error, --min-latency, --min-tokens, --filter, --trace-ids, --full]
+        examples:
+          - langsmith runs list --project my-app --run-type llm --min-latency 5 --limit 20 --format json
+          - langsmith runs list --project my-app --run-type tool --error --include-io --format json
+      - path: threads list
+        flags: [--project, --limit, --last-n-minutes, --filter]
+        note: Threads group traces that share a thread ID (a multi-turn conversation).
+        examples:
+          - langsmith threads list --project my-app --limit 10 --format json
+      - path: traces stats
+        flags: [--project, --since, --last-n-minutes, --filter, --compare-last-n-minutes]
+        note: Use stats for "how many / how slow / how expensive" questions instead of listing every trace.
+        examples:
+          - langsmith traces stats --project my-app --last-n-minutes 1440 --compare-last-n-minutes 1440 --format json
+  - title: Debug a failure
+    intro: |
+      List failed traces, open one with its inputs, outputs and errors, then drill into the failing run. For a conversation, read the thread's messages.
+    commands:
+      - path: traces get
+        flags: [--project, --full, --include-io, --output]
+        note: Prints every run in the trace. Use `-o` for large traces and read the file.
+        examples:
+          - langsmith traces list --project my-app --error --last-n-minutes 60 --format json --jq '.[].trace_id'
+          - langsmith traces get 0190a3c4-1234-7abc-8def-0123456789ab --project my-app --full -o trace.json
+      - path: runs get
+        flags: [--full, --include-io, --output]
+        examples:
+          - langsmith runs get 0190a3c4-1234-7abc-8def-0123456789ab --full --format json
+      - path: threads messages
+        flags: [--project, --limit, --cursor]
+        examples:
+          - langsmith threads messages my-thread-id --project my-app --format json
+      - path: traces export
+        flags: [--project, --limit, --error, --full, --filename-pattern]
+        note: Writes one JSONL file per trace, for offline analysis of many traces.
+        examples:
+          - langsmith traces export ./failed-traces --project my-app --error --limit 50 --full
+  - title: Datasets and examples
+    intro: |
+      Datasets hold examples (inputs and reference outputs) for offline evaluation. Most dataset commands take a name or a UUID.
+    commands:
+      - path: datasets list
+        flags: [--name-contains, --limit]
+        examples:
+          - langsmith datasets list --name-contains qa --format json
+      - path: datasets get
+        examples:
+          - langsmith datasets get my-dataset --format json
+      - path: datasets create
+        flags: [--name, --description]
+        examples:
+          - langsmith datasets create --name my-dataset --description "Support questions" --format json
+      - path: datasets upload
+        flags: [--name, --description]
+        examples:
+          - langsmith datasets upload examples.json --name my-dataset --format json
+      - path: datasets export
+        flags: [--limit]
+        examples:
+          - langsmith datasets export my-dataset examples.json --limit 1000
+      - path: examples list
+        flags: [--dataset, --split, --limit, --offset]
+        examples:
+          - langsmith examples list --dataset my-dataset --limit 50 --format json
+      - path: examples create
+        flags: [--dataset, --inputs, --outputs, --metadata, --split]
+        examples:
+          - "langsmith examples create --dataset my-dataset --inputs '{\"question\":\"What is LangSmith?\"}' --outputs '{\"answer\":\"An observability and evaluation platform\"}'"
+      - path: examples update
+        flags: [--example-id, --inputs, --outputs, --metadata, --split]
+        note: Each of `--inputs`, `--outputs` and `--metadata` replaces the whole field; omit a flag to keep its current value.
+  - title: Experiments
+    intro: |
+      An experiment is one evaluation run over a dataset. List the experiments on a dataset, then read one for its per-example results and feedback scores.
+    commands:
+      - path: experiments list
+        flags: [--dataset, --limit]
+        examples:
+          - langsmith experiments list --dataset my-dataset --format json
+      - path: experiments get
+        flags: [--output]
+        examples:
+          - langsmith experiments get my-experiment -o experiment.json
+  - title: Prompts
+    intro: |
+      Prompts live in Prompt Hub repos named `OWNER/REPO`. Each push creates a commit; tags point at commits.
+    commands:
+      - path: prompt list
+        flags: [--query, --limit, --cursor]
+        examples:
+          - langsmith prompt list --query support --format json
+      - path: prompt pull
+        flags: [--commit, --output]
+        examples:
+          - langsmith prompt pull my-org/support-agent:production --format json
+      - path: prompt push
+        flags: [--file, --description]
+        examples:
+          - langsmith prompt push my-org/support-agent --file manifest.json --description "Tighten refusal wording"
+      - path: prompt create
+        flags: [--name, --description, --public, --tags]
+      - path: prompt tag update
+  - title: Evaluators and rules
+    intro: |
+      An evaluator scores runs. A rule attaches an evaluator to a tracing project (online evaluation) or a dataset (offline evaluation), with a sampling rate and filter.
+    commands:
+      - path: evaluators list
+        flags: [--name-contains, --type]
+        examples:
+          - langsmith evaluators list --type llm --format json
+      - path: evaluators get
+        examples:
+          - langsmith evaluators get correctness --format json
+      - path: evaluators create-llm
+        flags: [--name, --project, --dataset, --prompt, --hub-ref, --model-config, --schema, --variable-mapping, --sampling-rate, --trace-filter, --replace]
+        note: "`--replace` updates the existing rule with the same `--name` on that target and asks for confirmation unless `--yes` is passed."
+      - path: evaluators upload
+        flags: [--name, --function, --project, --dataset, --sampling-rate, --replace]
+        examples:
+          - langsmith evaluators upload evaluators.py --function exact_match --name exact-match --dataset my-dataset
+      - path: evaluators rule list
+        flags: [--project, --dataset, --evaluator-id, --all]
+        examples:
+          - langsmith evaluators rule list --project my-app --format json
+  - title: Feedback
+    intro: |
+      Feedback is a score, value or comment attached to a run, by a person or an evaluator. Read it alongside runs with `--include-feedback`, and filter on it with `--filter`.
+    commands:
+      - path: runs list
+        flags: [--include-feedback, --filter, --feedback-since]
+        examples:
+          - "langsmith runs list --project my-app --filter 'and(eq(feedback_key, \"correctness\"), eq(feedback_score, 0))' --include-feedback --format json"
+      - path: feedback retrieve
+        flags: [--feedback-id]
+        examples:
+          - langsmith feedback retrieve --feedback-id 0190a3c4-1234-7abc-8def-0123456789ab --format json
+      - path: feedback update
+        flags: [--feedback-id, --score, --value, --comment, --correction]
+  - title: Annotation queues
+    intro: |
+      Annotation queues hold runs and threads for people to review. Find the queues a run is in, read a queue's items, or add items from an experiment.
+    commands:
+      - path: annotation-queues retrieve-queues
+        flags: [--run-id]
+        examples:
+          - langsmith annotation-queues retrieve-queues --run-id 0190a3c4-1234-7abc-8def-0123456789ab --format json
+      - path: annotation-queues retrieve
+        flags: [--queue-id]
+      - path: annotation-queues items list
+        flags: [--queue-id, --status, --item-type, --page-size, --cursor]
+        examples:
+          - langsmith annotation-queues items list --queue-id 0190a3c4-1234-7abc-8def-0123456789ab --status needs_my_review --format json
+      - path: annotation-queues items create
+        flags: [--queue-id, --item]
+      - path: annotation-queues populate
+        flags: [--queue-id, --session-id]

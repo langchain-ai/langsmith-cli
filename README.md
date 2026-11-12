@@ -149,6 +149,10 @@ langsmith datasets list
 langsmith experiments list --dataset my-eval-set
 ```
 
+## For coding agents
+
+[docs/agent-reference.md](docs/agent-reference.md) is a task-oriented reference for coding agents (Claude Code, Codex, Cursor and others): which commands to use for traces, datasets, experiments, prompts, evaluators, feedback and annotation queues, with key flags, JSON output, paging and safety notes. It is generated from the command tree, so it matches this version of the CLI; `langsmith docs agents` prints the same reference for the installed binary.
+
 ## Product feedback
 
 Submit feedback about the CLI directly from the terminal:

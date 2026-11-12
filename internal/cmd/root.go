@@ -113,6 +113,7 @@ Quick start:
 	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newWorkspaceCmd())
 	rootCmd.AddCommand(newUpdateCmd(rawVersion))
+	rootCmd.AddCommand(newDocsCmd())
 	rootCmd.AddCommand(api.NewCmd())
 	addGeneratedCommands(rootCmd)
 	cmdutil.AddJQFlags(rootCmd)
