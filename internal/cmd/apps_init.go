@@ -59,7 +59,7 @@ var appTypes = map[string]appType{
 	"blank": {
 		templateFS:   blankStarterFS,
 		templateRoot: "templates/blank",
-		agentsMD:     "",
+		agentsMD:     "blank",
 	},
 	"annotation-queue": {
 		templateFS:   annotationQueueStarterFS,

@@ -292,7 +292,7 @@ func TestAppsInit_ScaffoldsBlankFiles(t *testing.T) {
 	for _, w := range written {
 		writtenSet[w] = true
 	}
-	for _, want := range []string{"package.json", "README.md", "AGENTS.md", ".gitignore", "src/App.tsx", "src/entry.tsx"} {
+	for _, want := range []string{"package.json", "README.md", "AGENTS.md", ".gitignore", "src/App.tsx", "src/entry.tsx", "src/blocks/index.ts"} {
 		if !writtenSet[want] {
 			t.Errorf("expected %q to be written, got %v", want, written)
 		}
@@ -400,6 +400,9 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	if !strings.Contains(string(blankAgents), "window.langsmith.call") {
 		t.Errorf("expected the blank template's AGENTS.md, got:\n%s", blankAgents)
 	}
+	if !strings.Contains(string(blankAgents), "## Building blocks (`src/blocks`)") {
+		t.Errorf("expected the blank template's AGENTS.md to document its building blocks, got:\n%s", blankAgents)
+	}
 
 	aqTarget := filepath.Join(dir, "aq-app")
 	if _, err := scaffoldCustomAppStarter(aqTarget, "aq-app", "", appTypes["annotation-queue"], false); err != nil {
@@ -411,6 +414,9 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	}
 	if !strings.Contains(string(aqAgents), "3-pane") {
 		t.Errorf("expected the annotation-queue template's AGENTS.md, got:\n%s", aqAgents)
+	}
+	if strings.Contains(string(aqAgents), "src/blocks") {
+		t.Errorf("only the blank template ships src/blocks, but the annotation-queue AGENTS.md mentions it:\n%s", aqAgents)
 	}
 }
 
