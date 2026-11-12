@@ -22,7 +22,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--idle-ttl-seconds", "0",
 			"--mem-bytes", "0",
 			"--name", "name",
-			"--proxy-config", "{access_control: {allow_list: [string], deny_list: [string]}, callbacks: [{ttl_seconds: 60, url: url, attribution_headers: [string], full_request: true, match_hosts: [string], request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}], description: description, no_proxy: [string], rules: [{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]}",
+			"--proxy-config", "{access_control: {allow_list: [string], deny_list: [string]}, callbacks: [{ttl_seconds: 60, url: url, attribution_headers: [string], full_request: true, match_hosts: [string], request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}], description: description, no_proxy: [string], rules: [{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], match_port: 1, match_scheme: https, relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]}",
 			"--vcpus", "0",
 		)
 	})
@@ -46,7 +46,7 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"--proxy-config.callbacks", "[{ttl_seconds: 60, url: url, attribution_headers: [string], full_request: true, match_hosts: [string], request_headers: [{name: name, type: plaintext, is_set: true, value: value}]}]",
 			"--proxy-config.description", "description",
 			"--proxy-config.no-proxy", "[string]",
-			"--proxy-config.rules", "[{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]",
+			"--proxy-config.rules", "[{name: name, aws: {role_arn: x, session_tags: {foo: string}, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, azure: {client_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, tenant_id: E1CB97d8-Ddf3-aAae-0Afa-1A3C33cFaADc, resources: [https://storage.azure.com], subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, description: description, enabled: true, env_vars: {foo: string}, gcp: {workload_identity_provider: x, scopes: [string], service_account_email: service_account_email, subject_scope: tag:2fdcD1Dc-bbDb-2BBD-0Afa-1A3C33cFaADc}, headers: [{name: name, type: plaintext, is_set: true, value: value}], match_headers: [string], match_hosts: [string], match_paths: [string], match_port: 1, match_scheme: https, relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e, rewrite: {port: 1, credentials: strip, host: host, sandbox: sandbox}, type: type}]",
 			"--vcpus", "0",
 		)
 	})
@@ -115,6 +115,8 @@ func TestSandboxesBrowsersCreate(t *testing.T) {
 			"        - string\n" +
 			"      match_paths:\n" +
 			"        - string\n" +
+			"      match_port: 1\n" +
+			"      match_scheme: https\n" +
 			"      relay_id: 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +
 			"      rewrite:\n" +
 			"        port: 1\n" +
