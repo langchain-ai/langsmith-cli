@@ -1,0 +1,18 @@
+[project]
+name = "langsmith-cli-agent-evals"
+version = "0.1.0"
+description = "Fixed task set an agent runs through the LangSmith CLI on every release"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.75",
+    "langsmith>=0.4.40",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

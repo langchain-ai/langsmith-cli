@@ -641,6 +641,10 @@ chmod +x ~/.local/bin/langsmith
 
 Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands like `langsmith sandboxes list` and SSH ProxyCommand entries work without manually sourcing `.env` each time.
 
+### Agent evals
+
+`evals/` holds a fixed task set that an agent runs through the CLI on every release, scored for task success, made-up commands, and tokens. See [evals/README.md](evals/README.md).
+
 ### Requirements
 
 - Go 1.23+
