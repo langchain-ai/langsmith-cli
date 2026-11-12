@@ -121,6 +121,12 @@ var agentsList = cli.Command{
 			Usage:     "Opaque pagination cursor",
 			QueryPath: "cursor",
 		},
+		&requestflag.Flag[bool]{
+			Name:      "include-count",
+			Usage:     "Include the total number of visible Agents matching the filters, independent of pagination",
+			Default:   false,
+			QueryPath: "include_count",
+		},
 		&requestflag.Flag[string]{
 			Name:      "name",
 			Usage:     "Deprecated: use search. Case-insensitive partial Agent name. Ignored when search is provided.",

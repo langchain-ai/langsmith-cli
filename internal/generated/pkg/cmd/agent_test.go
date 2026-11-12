@@ -99,6 +99,7 @@ func TestAgentsList(t *testing.T) {
 			"--max-items", "10",
 			"--id", "string",
 			"--cursor", "cursor",
+			"--include-count=true",
 			"--name", "name",
 			"--page-size", "1",
 			"--search", "search",
