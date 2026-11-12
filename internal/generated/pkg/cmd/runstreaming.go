@@ -19,7 +19,7 @@ var runsStreamingQueryV2 = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "ai-search",
-			Usage:    "`ai_search` is a plain-language criterion evaluated against the messages from the agent trajectory scoped to the run.\nAND-ed with the ordinary filters. Requires semantic filtering enabled for the deployment.\nMust contain nonempty text of at most 2000 UTF-8 bytes. Not supported on public dataset queries.",
+			Usage:    "`ai_search` translates natural language into structured filters, semantic criteria and time bounds.\nCannot be combined with sem_filter. With full AI search enabled, also cannot be combined with explicit filter expressions; otherwise retains legacy semantic-only behavior.\nMust contain nonempty text of at most 2000 UTF-8 bytes. Not supported on public dataset queries.",
 			BodyPath: "ai_search",
 		},
 		&requestflag.Flag[string]{
@@ -103,6 +103,11 @@ var runsStreamingQueryV2 = cli.Command{
 			Name:     "select",
 			Usage:    "`selects` lists which properties to include on each returned run. If omitted, only `id` is returned. Properties not listed are omitted from each run object.",
 			BodyPath: "selects",
+		},
+		&requestflag.Flag[string]{
+			Name:     "sem-filter",
+			Usage:    "SemFilter evaluates a plain-language criterion against trajectory messages, AND-ed with structured filters.",
+			BodyPath: "sem_filter",
 		},
 		&requestflag.Flag[string]{
 			Name:     "trace-filter",

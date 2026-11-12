@@ -32,6 +32,7 @@ func TestTracesQuery(t *testing.T) {
 			"--select", "TOTAL_TOKENS",
 			"--select", "TOTAL_COST",
 			"--select", "FIRST_TOKEN_TIME",
+			"--sem-filter", "x",
 			"--trace-filter", `eq(status, "error")`,
 			"--trace-id", "182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e",
 			"--tree-filter", `has(tags, "production")`,
@@ -57,6 +58,7 @@ func TestTracesQuery(t *testing.T) {
 			"  - TOTAL_TOKENS\n" +
 			"  - TOTAL_COST\n" +
 			"  - FIRST_TOKEN_TIME\n" +
+			"sem_filter: x\n" +
 			"trace_filter: eq(status, \"error\")\n" +
 			"trace_ids:\n" +
 			"  - 182bd5e5-6e1a-4fe4-a799-aa6d9a6ab26e\n" +

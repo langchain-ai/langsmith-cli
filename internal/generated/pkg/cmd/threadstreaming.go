@@ -19,7 +19,7 @@ var threadsStreamingQuery = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "ai-search",
-			Usage:    "`ai_search` is a plain-language criterion evaluated against the messages from the agent trajectory scoped to the thread.\nAND-ed with the ordinary filters. Requires semantic filtering enabled for the deployment.\nMust contain nonempty text of at most 2000 UTF-8 bytes.",
+			Usage:    "`ai_search` translates natural language into structured filters, semantic criteria and time bounds.\nCannot be combined with sem_filter. With full AI search enabled, also cannot be combined with explicit filter expressions; otherwise retains legacy semantic-only behavior.\nMust contain nonempty text of at most 2000 UTF-8 bytes.",
 			BodyPath: "ai_search",
 		},
 		&requestflag.Flag[string]{
@@ -52,6 +52,11 @@ var threadsStreamingQuery = cli.Command{
 			Name:     "project-id",
 			Usage:    "`project_id` is the tracing project UUID.",
 			BodyPath: "project_id",
+		},
+		&requestflag.Flag[string]{
+			Name:     "sem-filter",
+			Usage:    "SemFilter evaluates a plain-language criterion against trajectory messages, AND-ed with structured filters.",
+			BodyPath: "sem_filter",
 		},
 		&requestflag.Flag[string]{
 			Name:     "thread-filter",

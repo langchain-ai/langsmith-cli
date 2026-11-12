@@ -21,7 +21,7 @@ var tracesQuery = cli.Command{
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
 			Name:     "ai-search",
-			Usage:    "`ai_search` is a plain-language criterion evaluated against the messages from the agent trajectory scoped to the trace.\nAND-ed with the ordinary filters. Requires semantic filtering enabled for the deployment.\nMust contain nonempty text of at most 2000 UTF-8 bytes.",
+			Usage:    "`ai_search` translates natural language into structured filters, semantic criteria and time bounds.\nCannot be combined with sem_filter. With full AI search enabled, also cannot be combined with explicit filter expressions; otherwise retains legacy semantic-only behavior.\nMust contain nonempty text of at most 2000 UTF-8 bytes.",
 			BodyPath: "ai_search",
 		},
 		&requestflag.Flag[string]{
@@ -64,6 +64,11 @@ var tracesQuery = cli.Command{
 			Name:     "select",
 			Usage:    "`selects` lists which properties to include on each returned trace. Properties listed here are routed to the appropriate sub-object on each item: `total_tokens`, `total_cost`, and `first_token_time` appear under `trace_aggregates`; everything else appears under `root_run`. If omitted, only `id` is returned on `root_run`.",
 			BodyPath: "selects",
+		},
+		&requestflag.Flag[string]{
+			Name:     "sem-filter",
+			Usage:    "SemFilter evaluates a plain-language criterion against trajectory messages, AND-ed with structured filters.",
+			BodyPath: "sem_filter",
 		},
 		&requestflag.Flag[string]{
 			Name:     "trace-filter",

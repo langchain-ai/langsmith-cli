@@ -42,6 +42,7 @@ func TestRunsStreamingQueryV2(t *testing.T) {
 			"--select", "START_TIME",
 			"--select", "RUN_TYPE",
 			"--select", "STATUS",
+			"--sem-filter", "x",
 			"--trace-filter", `eq(status, "success")`,
 			"--trace-id", "f47ac10b-58cc-4372-a567-0e02b2c3d479",
 			"--tree-filter", `has(tags, "production")`,
@@ -81,6 +82,7 @@ func TestRunsStreamingQueryV2(t *testing.T) {
 			"  - START_TIME\n" +
 			"  - RUN_TYPE\n" +
 			"  - STATUS\n" +
+			"sem_filter: x\n" +
 			"trace_filter: eq(status, \"success\")\n" +
 			"trace_id: f47ac10b-58cc-4372-a567-0e02b2c3d479\n" +
 			"tree_filter: has(tags, \"production\")\n")

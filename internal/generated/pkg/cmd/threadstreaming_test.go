@@ -24,6 +24,7 @@ func TestThreadsStreamingQuery(t *testing.T) {
 			"--min-start-time", "'2019-12-27T18:11:19.117Z'",
 			"--page-size", "20",
 			"--project-id", "0190a1b2-c3d4-7ef0-a5b6-6ea3a82e9328",
+			"--sem-filter", "x",
 			"--thread-filter", "gte(turn_count, 3)",
 			"--trace-filter", `eq(status, "error")`,
 			"--tree-filter", `has(tags, "production")`,
@@ -40,6 +41,7 @@ func TestThreadsStreamingQuery(t *testing.T) {
 			"min_start_time: '2019-12-27T18:11:19.117Z'\n" +
 			"page_size: 20\n" +
 			"project_id: 0190a1b2-c3d4-7ef0-a5b6-6ea3a82e9328\n" +
+			"sem_filter: x\n" +
 			"thread_filter: gte(turn_count, 3)\n" +
 			"trace_filter: eq(status, \"error\")\n" +
 			"tree_filter: has(tags, \"production\")\n")
