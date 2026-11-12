@@ -20,15 +20,57 @@ Windows (PowerShell):
 irm https://cli.langsmith.com/install.ps1 | iex
 ```
 
+### Homebrew
+
+```bash
+brew install langchain-ai/tap/langsmith-cli
+```
+
+### Scoop
+
+```powershell
+scoop install langsmith-cli
+```
+
+### PyPI
+
+The CLI is published to PyPI as `langchain-langsmith-cli`, with a wheel per platform that contains the same binary as the other install methods. No Python code runs when you use it.
+
+```bash
+# As a standalone tool (recommended)
+uv tool install langchain-langsmith-cli
+pipx install langchain-langsmith-cli
+
+# Into the current environment
+pip install langchain-langsmith-cli
+```
+
+Any PyPI proxy works, such as a JFrog Artifactory PyPI remote repository or a Nexus PyPI proxy, so you can install it where only an internal package index is reachable.
+
+> [!WARNING]
+> `pip install langsmith-cli` installs a different, third-party package. The LangSmith CLI's package is `langchain-langsmith-cli`.
+
+### GitHub releases
+
+Download the latest binary for your platform from [GitHub Releases](https://github.com/langchain-ai/langsmith-cli/releases).
+
 ### Upgrade
 
 ```bash
 langsmith self-update
 ```
 
-### GitHub releases
+This updates install script and GitHub Releases installs in place. For an install from a package manager, it prints the command to run instead:
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/langchain-ai/langsmith-cli/releases).
+| Installed with | Update with |
+| --- | --- |
+| Homebrew | `brew upgrade langchain-ai/tap/langsmith-cli` |
+| Scoop | `scoop update langsmith-cli` |
+| `uv tool install` | `uv tool upgrade langchain-langsmith-cli` |
+| pipx | `pipx upgrade langchain-langsmith-cli` |
+| pip | `python -m pip install --upgrade langchain-langsmith-cli`, using the Python of the environment it's installed in |
+
+See [`self-update`](#self-update--update-langsmith-to-the-latest-version) for the full list.
 
 ## Authentication
 
