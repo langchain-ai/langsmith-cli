@@ -34,7 +34,10 @@ scoop install langsmith-cli
 
 ### PyPI
 
-The CLI is published to PyPI as `langchain-langsmith-cli`, with a wheel per platform that contains the same binary as the other install methods. No Python code runs when you use it.
+> [!NOTE]
+> PyPI publishing is coming soon: `langchain-langsmith-cli` is not on PyPI yet. Until the first release there, use one of the other install methods.
+
+The CLI will be published to PyPI as `langchain-langsmith-cli`, with a wheel per platform that contains the same binary as the other install methods. No Python code runs when you use it.
 
 ```bash
 # As a standalone tool (recommended)
