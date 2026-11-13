@@ -113,6 +113,8 @@ func detectAgent(getenv func(string) string) string {
 		return "codex"
 	case getenv("CURSOR_AGENT") != "":
 		return "cursor"
+	case getenv("DCODE") != "":
+		return "dcode"
 	default:
 		return "none"
 	}

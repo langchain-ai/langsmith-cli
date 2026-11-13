@@ -81,6 +81,7 @@ func TestDetectAgent(t *testing.T) {
 		{map[string]string{"CLAUDECODE": "1"}, "claude-code"},
 		{map[string]string{"CODEX_SANDBOX": "seatbelt"}, "codex"},
 		{map[string]string{"CURSOR_AGENT": "1"}, "cursor"},
+		{map[string]string{"DCODE": "1"}, "dcode"},
 		{nil, "none"},
 	}
 	for _, tt := range tests {
