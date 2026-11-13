@@ -162,7 +162,48 @@ langsmith traces stats --project my-app --last-n-minutes 1440 --compare-last-n-m
 
 ## Debug a failure
 
-List failed traces, open one with its inputs, outputs and errors, then drill into the failing run. For a conversation, read the thread's messages.
+Start with `investigate`: one call returns the project's health against a baseline, failures grouped by step and error with evidence trace IDs, related open issues, and the next commands to run (`.next`). After a fix ships, `verify` checks that those failures stopped. To dig in by hand, list failed traces, open one with its inputs, outputs and errors, then drill into the failing run. For a conversation, read the thread's messages.
+
+### `langsmith investigate`
+
+Diagnose a project: health vs baseline, failures grouped by error, evidence traces
+
+Usage: `langsmith investigate [flags]`
+
+| Flag | Description |
+|---|---|
+| `--project-id string` | Project (session) UUID; skips the name lookup. Mutually exclusive with --project; overrides $LANGSMITH_PROJECT |
+| `--last-n-minutes int` | Window = the last N minutes (overrides --since) |
+| `--since string` | Window start, RFC 3339 or YYYY-MM-DD (default: 24h before --before) |
+| `--baseline string` | Length of the baseline window that ends where the window starts, e.g. 24h, 7d |
+| `--filter string` | LangSmith filter DSL, e.g. 'and(eq(run_type, "llm"), gte(latency, 5))'. Match metadata with 'and(eq(metadata_key, "user_id"), eq(metadata_value, "u1"))', and inputs or outputs with input_key/input_value or output_key/output_value; metadata.x and inputs.x paths are not supported. Applied to every read |
+
+Window defaults to the last 24h and the baseline to the 7d before it. Findings come from the newest `--sample` failed runs; `coverage.truncated` says when there were more.
+
+```bash
+langsmith investigate --project my-app --format json
+langsmith investigate --project my-app --last-n-minutes 60 --baseline 24h --format json
+```
+
+### `langsmith verify`
+
+Check that failures seen before a fix stopped after it
+
+Usage: `langsmith verify [flags]`
+
+| Flag | Description |
+|---|---|
+| `--project-id string` | Project (session) UUID; skips the name lookup. Mutually exclusive with --project; overrides $LANGSMITH_PROJECT |
+| `--since string` | When the fix went live, RFC 3339 or YYYY-MM-DD (required) |
+| `--match string` | Only verify failures whose step, error type or message contains this text |
+| `--baseline string` | Length of the before-fix window that ends at --since, e.g. 24h, 7d |
+| `--filter string` | LangSmith filter DSL, e.g. 'and(eq(run_type, "llm"), gte(latency, 5))'. Match metadata with 'and(eq(metadata_key, "user_id"), eq(metadata_value, "u1"))', and inputs or outputs with input_key/input_value or output_key/output_value; metadata.x and inputs.x paths are not supported. Applied to every read |
+
+`--since` is when the fix went live. Each targeted failure is still_failing, fixed, inconclusive (too few runs to tell) or no_traffic; rerun an inconclusive check later.
+
+```bash
+langsmith verify --project my-app --since 2026-11-10T14:00:00Z --match RateLimitError --format json
+```
 
 ### `langsmith traces get`
 
@@ -745,6 +786,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith insights get` | Get a detailed insight report including clusters and analysis |
 | `langsmith insights list` | List insight reports for a project |
 | `langsmith insights run` | Run an existing Insights job configuration now |
+| `langsmith investigate` | Diagnose a project: health vs baseline, failures grouped by error, evidence traces |
 | `langsmith online-evaluators bulk-delete` | Delete multiple evaluators by their IDs. *(confirms)* |
 | `langsmith online-evaluators create` | Create a new LLM or code evaluator for the current workspace. |
 | `langsmith online-evaluators spend` | Returns per-day LLM evaluator spend for the requested 7-day period, grouped by evaluator, resource, or run rule. |
@@ -863,6 +905,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith traces stats` | Aggregate stats for traces in a project (token usage, latency, costs, feedback) |
 | `langsmith traces streaming query` | Returns a paginated list of traces (root runs) for a single tracing project. |
 | `langsmith tunnel connect` | Serve a private network tunnel from this machine |
+| `langsmith verify` | Check that failures seen before a fix stopped after it |
 | `langsmith workspaces create` | Create a new workspace. |
 | `langsmith workspaces delete` | Delete a workspace and its data. *(confirms)* |
 | `langsmith workspaces list` | List workspaces visible to the current profile |

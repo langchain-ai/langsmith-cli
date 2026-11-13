@@ -69,8 +69,19 @@ sections:
           - langsmith traces stats --project my-app --last-n-minutes 1440 --compare-last-n-minutes 1440 --format json
   - title: Debug a failure
     intro: |
-      List failed traces, open one with its inputs, outputs and errors, then drill into the failing run. For a conversation, read the thread's messages.
+      Start with `investigate`: one call returns the project's health against a baseline, failures grouped by step and error with evidence trace IDs, related open issues, and the next commands to run (`.next`). After a fix ships, `verify` checks that those failures stopped. To dig in by hand, list failed traces, open one with its inputs, outputs and errors, then drill into the failing run. For a conversation, read the thread's messages.
     commands:
+      - path: investigate
+        flags: [--project-id, --last-n-minutes, --since, --baseline, --filter]
+        note: Window defaults to the last 24h and the baseline to the 7d before it. Findings come from the newest `--sample` failed runs; `coverage.truncated` says when there were more.
+        examples:
+          - langsmith investigate --project my-app --format json
+          - langsmith investigate --project my-app --last-n-minutes 60 --baseline 24h --format json
+      - path: verify
+        flags: [--project-id, --since, --match, --baseline, --filter]
+        note: "`--since` is when the fix went live. Each targeted failure is still_failing, fixed, inconclusive (too few runs to tell) or no_traffic; rerun an inconclusive check later."
+        examples:
+          - langsmith verify --project my-app --since 2026-11-10T14:00:00Z --match RateLimitError --format json
       - path: traces get
         flags: [--project, --full, --include-io, --output]
         note: Prints every run in the trace. Use `-o` for large traces and read the file.

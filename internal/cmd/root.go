@@ -108,6 +108,8 @@ Quick start:
 	rootCmd.AddCommand(newRelayCmd())
 	rootCmd.AddCommand(newConnectorCmd(rawVersion, displayVersion))
 	rootCmd.AddCommand(newInsightsCmd())
+	rootCmd.AddCommand(newInvestigateCmd())
+	rootCmd.AddCommand(newVerifyCmd())
 	rootCmd.AddCommand(newHubCmd())
 	rootCmd.AddCommand(newAppsCmd())
 	rootCmd.AddCommand(newPromptCmd())

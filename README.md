@@ -305,6 +305,21 @@ langsmith runs export llm_calls.jsonl --project my-app --run-type llm --full
 
 > **Query backend:** the CLI selects the runs query API automatically from the deployment reported by `/info` — LangSmith Cloud and self-hosted `>= 0.16` use the v2 (SmithDB) API; older self-hosted uses v1. No flag is needed. On v2, `trace list` and `trace export` select traces through `/v2/traces/query`, and `trace get`, `trace export` and `--show-hierarchy` read each trace through `/v2/traces/{trace_id}/runs`, which requires a project. `trace get` can omit `--project` / `--project-id` on both: it looks the trace's root run up by ID in the current workspace through the v1 runs query (last 7 days unless `--since` or `--last-n-minutes` is set), then reads the trace. Deployments that serve runs only from SmithDB can't do that lookup, so pass the project there. A few v2-only features (`trace messages`, `thread messages`) are unavailable on self-hosted `< 0.16`.
 
+### `investigate` and `verify` — Diagnose failures and check fixes
+
+Workflow commands run a fixed set of reads and return one compact report, so an agent makes one call instead of chaining `traces stats`, `runs list` and `projects issues list` itself. Pass `--format json` for the machine-readable report; every suggested follow-up command is in `.next`.
+
+`investigate` compares the window (default: last 24h) with a baseline just before it (`--baseline`, default `7d`): root-trace count, error rate, p50/p99 latency and cost; the newest failed runs (`--sample`, default 200) grouped by step and normalized error, each with a likely cause, trace count, first-seen time, NEW or ongoing status, and evidence trace IDs; and open Issues Board issues that mention a finding. LangGraph interrupts are excluded.
+
+`verify` checks that failures stopped after a fix. `--since` is when the fix went live; failures in the window before it (`--baseline`, default `24h`) are the targets, narrowed with `--match`. Each target is `still_failing` if the error recurred, `fixed` if it did not and at least `--min-expected` (default 3) failures were expected at the baseline rate, `inconclusive` if there were too few runs to tell, or `no_traffic`. Errors that appear only after the fix are listed as `new_failures`.
+
+```bash
+langsmith investigate --project my-app
+langsmith investigate --project my-app --last-n-minutes 60 --baseline 24h --format json
+
+langsmith verify --project my-app --since 2026-11-10T14:00:00Z --match RateLimitError
+```
+
 ### `thread` — Query conversation threads
 
 A thread groups multiple root runs sharing a thread_id (multi-turn conversations).
