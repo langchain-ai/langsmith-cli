@@ -48,7 +48,7 @@ var publicRunsRetrieve = cli.Command{
 
 var publicRunsQuery = cli.Command{
 	Name:    "query",
-	Usage:   "Returns all runs within the trace identified by the share token. The share token\nsupplies the tenant, project, and trace scope.",
+	Usage:   "GET with body payload — no resources created. Returns all runs within the trace\nidentified by the share token. The share token supplies the tenant, project, and\ntrace scope.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
