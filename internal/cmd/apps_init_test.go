@@ -15,7 +15,7 @@ func TestAppsInit_WritesPartialAppLinkForImmediateAppsDevUse(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 
@@ -38,7 +38,7 @@ func TestAppsInit_BlankAlsoWritesPartialAppLink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["blank"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["blank"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestAppsInit_ScaffoldsAnnotationQueueGridFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue-grid"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["annotation-queue-grid"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestAppsInit_ScaffoldsCodingAgentDashboardFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["coding-agent-dashboard"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["coding-agent-dashboard"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestAppsInit_ScaffoldsExperimentComparisonFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["experiment-comparison"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["experiment-comparison"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
 	gridTarget := filepath.Join(dir, "grid-app")
-	if _, err := scaffoldCustomAppStarter(gridTarget, "grid-app", "", appTypes["annotation-queue-grid"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(gridTarget, "grid-app", "", "", appTypes["annotation-queue-grid"], false); err != nil {
 		t.Fatalf("scaffold grid: %v", err)
 	}
 	gridAgents, err := os.ReadFile(filepath.Join(gridTarget, "AGENTS.md"))
@@ -217,7 +217,7 @@ func TestAppsInit_GridGetsDistinctAgentsMD(t *testing.T) {
 	}
 
 	paneTarget := filepath.Join(dir, "pane-app")
-	if _, err := scaffoldCustomAppStarter(paneTarget, "pane-app", "", appTypes["annotation-queue"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(paneTarget, "pane-app", "", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold 3-pane: %v", err)
 	}
 	paneAgents, err := os.ReadFile(filepath.Join(paneTarget, "AGENTS.md"))
@@ -236,7 +236,7 @@ func TestAppsInit_ScaffoldsAnnotationQueueFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "Does the thing", appTypes["annotation-queue"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "Does the thing", "", appTypes["annotation-queue"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestAppsInit_ScaffoldsBlankFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["blank"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["blank"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestAppsInit_CopiesNonTemplatedFilesVerbatim(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 
@@ -336,7 +336,7 @@ func TestAppsInit_DefaultsDescription(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	if _, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
 	readme, err := os.ReadFile(filepath.Join(target, "README.md"))
@@ -353,7 +353,7 @@ func TestAppsInit_RejectsNonEmptyDirWithoutForce(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	_, err := scaffoldCustomAppStarter(dir, "my-app", "", appTypes["annotation-queue"], false)
+	_, err := scaffoldCustomAppStarter(dir, "my-app", "", "", appTypes["annotation-queue"], false)
 	if err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Errorf("expected not-empty error, got %v", err)
 	}
@@ -364,7 +364,7 @@ func TestAppsInit_ForceWritesOverNonEmpty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", appTypes["annotation-queue"], true); err != nil {
+	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", "", appTypes["annotation-queue"], true); err != nil {
 		t.Fatalf("scaffold with force: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
@@ -374,14 +374,14 @@ func TestAppsInit_ForceWritesOverNonEmpty(t *testing.T) {
 
 func TestAppsInit_RequiresName(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := scaffoldCustomAppStarter(filepath.Join(dir, "app"), "", "", appTypes["annotation-queue"], false); err == nil {
+	if _, err := scaffoldCustomAppStarter(filepath.Join(dir, "app"), "", "", "", appTypes["annotation-queue"], false); err == nil {
 		t.Fatal("expected error when --name is empty")
 	}
 }
 
 func TestAppsInit_RequiresValidType(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", appType{}, false); err == nil {
+	if _, err := scaffoldCustomAppStarter(dir, "my-app", "", "", appType{}, false); err == nil {
 		t.Fatal("expected error for a zero-value (invalid) app type")
 	}
 }
@@ -390,7 +390,7 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	dir := t.TempDir()
 
 	blankTarget := filepath.Join(dir, "blank-app")
-	if _, err := scaffoldCustomAppStarter(blankTarget, "blank-app", "", appTypes["blank"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(blankTarget, "blank-app", "", "", appTypes["blank"], false); err != nil {
 		t.Fatalf("scaffold blank: %v", err)
 	}
 	blankAgents, err := os.ReadFile(filepath.Join(blankTarget, "AGENTS.md"))
@@ -405,7 +405,7 @@ func TestAppsInit_WritesTemplateSpecificAgentsMD(t *testing.T) {
 	}
 
 	aqTarget := filepath.Join(dir, "aq-app")
-	if _, err := scaffoldCustomAppStarter(aqTarget, "aq-app", "", appTypes["annotation-queue"], false); err != nil {
+	if _, err := scaffoldCustomAppStarter(aqTarget, "aq-app", "", "", appTypes["annotation-queue"], false); err != nil {
 		t.Fatalf("scaffold annotation-queue: %v", err)
 	}
 	aqAgents, err := os.ReadFile(filepath.Join(aqTarget, "AGENTS.md"))
@@ -703,7 +703,7 @@ func TestAppsInit_PullsInEverySharedFileATemplateImports(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["annotation-queue-grid"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["annotation-queue-grid"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
@@ -738,7 +738,7 @@ func TestAppsInit_OnlyPullsInSharedFilesActuallyImported(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "my-app")
 
-	written, err := scaffoldCustomAppStarter(target, "my-app", "", appTypes["experiment-comparison"], false)
+	written, err := scaffoldCustomAppStarter(target, "my-app", "", "", appTypes["experiment-comparison"], false)
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}

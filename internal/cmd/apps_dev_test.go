@@ -54,7 +54,7 @@ func TestPrepareAppsDevServer_ServesRealSandboxedIframe(t *testing.T) {
 		t.Fatalf("seed .env: %v", err)
 	}
 
-	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js", devContext{})
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestPrepareAppsDevServer_DoesNotClearRootBeforeSuccessfulRender(t *testing.
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(d, r) { r.textContent = 'ok'; } }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js", devContext{})
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestPrepareAppsDevServer_ServesModeToggle(t *testing.T) {
 	dir := t.TempDir()
 	seedDevApp(t, dir, "module.exports = { render: function(){} }")
 
-	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js", devContext{})
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestDevHarnessWiresSetRoute(t *testing.T) {
 
 func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js", devContext{})
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestPrepareAppsDevServer_ServesWaitingPageWhenEntrypointMissing(t *testing.
 
 func TestPrepareAppsDevServer_MtimeReflectsFileState(t *testing.T) {
 	dir := t.TempDir()
-	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js")
+	srv, ln, previewURL, err := prepareAppsDevServer(nil, dir, "dist/bundle.js", devContext{})
 	if err != nil {
 		t.Fatalf("prepareAppsDevServer: %v", err)
 	}
@@ -659,7 +659,7 @@ func TestRunAppsDev_ExitsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- runAppsDev(ctx, nil, dir, "dist/bundle.js", true)
+		errCh <- runAppsDev(ctx, nil, dir, "dist/bundle.js", devContext{}, true)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
