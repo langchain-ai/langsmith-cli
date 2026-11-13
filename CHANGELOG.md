@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.5.0](https://github.com/langchain-ai/langsmith-cli/compare/v0.4.0...v0.5.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sandboxes:** require explicit permissions for sandbox access delegation
+* **sandboxes:** add literal and callback proxy attribution
+
+### Features
+
+* **cli,sdk-go:** store profile secrets in the OS keychain ([edd4941](https://github.com/langchain-ai/langsmith-cli/commit/edd4941bb6928aa61ab495fa73bcbca692ece785))
+* **cli:** add `langsmith setup` to install LangSmith skills and MCP into coding agents ([a38c362](https://github.com/langchain-ai/langsmith-cli/commit/a38c36291a067a49b75e2af02fd045792fc55ab2))
+* **cli:** add deprecation warnings for commands, aliases and flags ([8d9490d](https://github.com/langchain-ai/langsmith-cli/commit/8d9490d72dd0931a2464240a4784cb60a405fe96))
+* **cli:** add investigate and verify workflow commands ([aa2488a](https://github.com/langchain-ai/langsmith-cli/commit/aa2488a04a382310bef03853afca2e4c0a66528c))
+* **cli:** count dcode as a CLI calling agent ([13d0e8e](https://github.com/langchain-ai/langsmith-cli/commit/13d0e8ebc64a7538cc27c022e44a69d685b6ab76))
+* **cli:** expose feedback list and create ([83f45a3](https://github.com/langchain-ai/langsmith-cli/commit/83f45a3c71a40dbd3476f1e9d19014d4b06f0a36))
+* **cli:** generate an agent reference from the command tree ([f44b6bd](https://github.com/langchain-ai/langsmith-cli/commit/f44b6bd8522489d88d6b36a62b394d3710402322))
+* **cli:** list datasets through GET /api/v2/datasets ([449e5fc](https://github.com/langchain-ai/langsmith-cli/commit/449e5fc6ddaf12feeee8842b9327f05d8b962248))
+* **custom-apps:** ship building blocks in the blank starter ([4b4a905](https://github.com/langchain-ai/langsmith-cli/commit/4b4a905c66766196a3e2eb42eba43d9c97e7fd0d))
+* parse AI search in query endpoints ([7f4b77a](https://github.com/langchain-ai/langsmith-cli/commit/7f4b77ac050bc998aff40b25662ebdb07f651ea3))
+* **sandboxes:** add literal and callback proxy attribution ([d39ec99](https://github.com/langchain-ai/langsmith-cli/commit/d39ec9981ffa4170ba7618a1d9ca86097b086b87))
+* **sandboxes:** require explicit permissions for sandbox access delegation ([62f39c7](https://github.com/langchain-ai/langsmith-cli/commit/62f39c7a8aa193057912d9cc23b2a134266f4719))
+* **sandboxes:** restrict header rules to an exact scheme and port ([bb4de49](https://github.com/langchain-ai/langsmith-cli/commit/bb4de494cc2914c2a1d6d9ca98cf41c7cfd66496))
+* show total agent count in the table header ([9006758](https://github.com/langchain-ai/langsmith-cli/commit/9006758418d642190d2869592f1c5995278e989e))
+
+
+### Bug Fixes
+
+* enable changing Studio no-code agent owners ([9a9462f](https://github.com/langchain-ai/langsmith-cli/commit/9a9462f2a2ef827ac5c76990856d76d1de355ccb))
+* **sandboxes:** relaunch Chrome when an extension it launched with is removed ([758544c](https://github.com/langchain-ai/langsmith-cli/commit/758544c5770e697e18ef3a93acfc030f3e6bde43))
+
+
+### Chores
+
+* **deps:** bump the minor-and-patch group in /cli with 5 updates ([7eb85af](https://github.com/langchain-ai/langsmith-cli/commit/7eb85aff716703b9915e5119795e19fe92b53ea0))
+
+
+### Documentation
+
+* clarify public trace query read semantics ([fcda6d9](https://github.com/langchain-ai/langsmith-cli/commit/fcda6d9145fa9785b3050afb06640433e7ec6e90))
+* **cli:** document installing the CLI from PyPI ([e1afad3](https://github.com/langchain-ai/langsmith-cli/commit/e1afad3e574f4724daca25795cd7ee9253062187))
+* **cli:** note that the PyPI package is not published yet ([6478db9](https://github.com/langchain-ai/langsmith-cli/commit/6478db9338dceec4fcde507364506da12fb592f8))
+
+
+### Build System
+
+* **cli:** build PyPI platform wheels from the GoReleaser archives ([d1d3f80](https://github.com/langchain-ai/langsmith-cli/commit/d1d3f804a2a81036211ce3e989cc70b66be77bea))
+
 ## [0.4.0](https://github.com/langchain-ai/langsmith-cli/compare/v0.3.13...v0.4.0) (2026-11-09)
 
 
