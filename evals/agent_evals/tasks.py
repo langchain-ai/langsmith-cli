@@ -280,9 +280,9 @@ _PREAMBLE = """You are working in LangSmith through its command-line tool, `lang
 TASKS: list[Task] = [
     Task(
         "what-broke",
-        "Find what broke this week",
+        "Find what broke recently",
         """
-In the tracing project `{project}`, find what broke in the last 7 days: how many traces failed, and which error message was the most common.
+In the tracing project `{project}`, find what broke in the last 12 hours: how many traces failed, and which error message was the most common.
 Finish with one line of JSON: {{"failed_traces": <number>, "top_error": "<most common error message>"}}
 """,
         _answer(_what_broke),
@@ -292,7 +292,7 @@ Finish with one line of JSON: {{"failed_traces": <number>, "top_error": "<most c
         "slowest-trace",
         "Find the slowest trace",
         """
-Which trace in the tracing project `{project}` took the longest in the last 7 days?
+Which trace in the tracing project `{project}` took the longest in the last 12 hours?
 Finish with one line of JSON: {{"trace_id": "<id>"}}
 """,
         _answer(_slowest),
@@ -312,7 +312,7 @@ Finish with one line of JSON: {{"total_tokens": <number>}}
         "failures-by-metadata",
         "Filter failures by metadata",
         """
-In the tracing project `{project}`, how many traces from the last 7 days failed for users whose metadata has `user_tier` set to `pro`?
+In the tracing project `{project}`, how many traces from the last 12 hours failed for users whose metadata has `user_tier` set to `pro`?
 Finish with one line of JSON: {{"count": <number>}}
 """,
         _answer(_pro_failures),

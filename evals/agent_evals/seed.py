@@ -57,10 +57,12 @@ class Seed:
 
 
 # Questions sent to the seeded support agent: (question, error, user_tier, latency_s,
-# tags, llm_total_tokens, days_ago). The error column decides which traces failed.
+# tags, llm_total_tokens, hours_ago). The error column decides which traces failed.
+# LangSmith only accepts runs that start within 24 hours of now, so every seeded
+# trace is from the last day; "recent" means the last 12 hours.
 _TRACES = [
-    ("How do I reset my password?", None, "free", 2.1, [], 900, 1),
-    ("Can I get a refund for order 7731?", None, "pro", 41.5, [], 2400, 2),
+    ("How do I reset my password?", None, "free", 2.1, [], 900, 2),
+    ("Can I get a refund for order 7731?", None, "pro", 41.5, [], 2400, 4),
     (
         "Why was I charged twice this month?",
         "RateLimitError: 429 Too Many Requests from model provider",
@@ -68,9 +70,9 @@ _TRACES = [
         3.2,
         ["needs-review"],
         1100,
-        1,
+        2,
     ),
-    ("Change the email on my account", None, "free", 1.4, [], 700, 3),
+    ("Change the email on my account", None, "free", 1.4, [], 700, 6),
     (
         "My invoice shows the wrong company name",
         "RateLimitError: 429 Too Many Requests from model provider",
@@ -78,9 +80,9 @@ _TRACES = [
         2.8,
         [],
         1000,
-        2,
+        4,
     ),
-    ("Summarize my last five support tickets", None, "pro", 7.9, [], 18000, 4),
+    ("Summarize my last five support tickets", None, "pro", 7.9, [], 18000, 7),
     (
         "Cancel my subscription",
         "RateLimitError: 429 Too Many Requests from model provider",
@@ -88,9 +90,9 @@ _TRACES = [
         3.0,
         ["needs-review"],
         950,
-        5,
+        9,
     ),
-    ("What plans do you offer?", None, "free", 1.1, [], 600, 1),
+    ("What plans do you offer?", None, "free", 1.1, [], 600, 2),
     (
         "Look up order status",
         "ValueError: missing order_id in tool call lookup_order",
@@ -98,13 +100,13 @@ _TRACES = [
         0.9,
         ["needs-review"],
         500,
-        3,
+        6,
     ),
-    ("Do you ship to Canada?", None, "free", 1.6, [], 650, 6),
-    ("Export my data", None, "pro", 5.5, [], 1500, 2),
-    ("How do I add a teammate?", None, "free", 1.3, [], 800, 6),
+    ("Do you ship to Canada?", None, "free", 1.6, [], 650, 10),
+    ("Export my data", None, "pro", 5.5, [], 1500, 4),
+    ("How do I add a teammate?", None, "free", 1.3, [], 800, 10),
 ]
-# Failures outside the 7-day window, which "this week" questions must leave out.
+# Failures from before the 12-hour window, which "recent" questions must leave out.
 _OLD_TRACES = [
     (
         "Translate this FAQ",
@@ -113,7 +115,7 @@ _OLD_TRACES = [
         30.0,
         [],
         1200,
-        12,
+        20,
     ),
     (
         "Translate the docs",
@@ -122,7 +124,7 @@ _OLD_TRACES = [
         30.0,
         [],
         1200,
-        12,
+        20,
     ),
     (
         "Translate the blog",
@@ -131,7 +133,7 @@ _OLD_TRACES = [
         30.0,
         [],
         1200,
-        11,
+        19,
     ),
     (
         "Translate the terms",
@@ -140,9 +142,10 @@ _OLD_TRACES = [
         30.0,
         [],
         1200,
-        11,
+        19,
     ),
 ]
+RECENT_HOURS = 12
 # A three-turn conversation sharing one thread_id.
 _THREAD = [
     "I ordered a desk last week",
@@ -243,8 +246,8 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
 
     runs: list[dict] = []
     root_ids: dict[str, str] = {}
-    for q, err, tier, lat, tags, tok, days in _TRACES + _OLD_TRACES:
-        start = now - dt.timedelta(days=days, hours=1)
+    for q, err, tier, lat, tags, tok, hours_ago in _TRACES + _OLD_TRACES:
+        start = now - dt.timedelta(hours=hours_ago)
         rid, rs = _trace(s.project, q, err, tier, lat, tags, tok, start)
         root_ids[q] = rid
         runs += rs
@@ -274,7 +277,7 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
         client, s.project, expected_roots=len(_TRACES) + len(_OLD_TRACES) + len(_THREAD)
     )
 
-    # User ratings: two thumbs-down, the rest of this week's successes thumbs-up.
+    # User ratings: two thumbs-down, the rest of the recent successes thumbs-up.
     down = ["Export my data", "How do I reset my password?"]
     s.thumbs_down_trace_ids = sorted(root_ids[q] for q in down)
     for q, err, *_ in _TRACES:
