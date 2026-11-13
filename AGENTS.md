@@ -51,6 +51,17 @@ If an endpoint is missing from the Go SDK, expose and configure it through the p
 
 `internal/generated/` is generated in langchainplus from the OpenAPI spec and the CLI tests, and Copybara pushes that tree to langsmith-cli main. Never edit it, and don't open PRs that add generated resources by hand. `internal/cmd/generated.go` mounts every generated resource as a `langsmith` command. `generated_contract_test.go` runs each resource's contract cases and fails when an operation has none; `generated_integration_test.go` (`-tags=integration`) runs each lifecycle against a live API.
 
+## Breaking changes
+
+Agents and scripts depend on command names, flags, and output, so the CLI follows the SDK v1 deprecation rules.
+
+- Additive changes ship right away: new commands, new optional flags, new output fields.
+- Breaking changes are removing or renaming a command, alias, or flag; changing the output shape (renaming, removing, or retyping a field, or switching between an object, array, and JSONL); and changing pagination, defaults, or exit codes. A breaking change ships only in a major version, after at least 3 months of deprecation warnings in released versions. Removals in 1.0 (April 1, 2027) must start warning by January 1, 2027.
+- Deprecate with `deprecateCommand`, `deprecateAlias`, or `deprecateFlag` (`internal/cmd/deprecation.go`), naming the major version that removes it and the replacement. Deprecated commands and flags are hidden from help and keep working. Each use writes a warning to stderr, as one JSON object per warning with `"deprecated": true` under `--format json` or `--jq`, so stdout stays parseable.
+- These helpers cover langsmith's own commands and flags, including global flags on generated commands. A generated operation's flags come from the API schema: rename one with `generatedFlagRenames` in `internal/cmd/generated.go` so the old name keeps working, and change or remove the field through the API's deprecation process.
+- Keep the old behavior working next to the new one during the window: add the new flag or command and deprecate the old one, rather than changing what the old one does.
+- Update `README.md`, the templates in `internal/cmd/templates/agents-md/`, and any agent skill that uses the command in the same PR as the deprecation or change.
+
 ## Releasing
 
 release-please keeps a release PR open on langsmith-cli; merging it tags the release and publishes the binaries. There is no version file to edit, and the changelog comes from conventional commit titles. See [Releasing](README.md#releasing).

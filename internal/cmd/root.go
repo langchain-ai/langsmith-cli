@@ -71,6 +71,7 @@ Quick start:
 				}
 			}
 			output.SetJQ(expr)
+			warnDeprecated(cmd.ErrOrStderr(), cmd, args, os.Args[1:], GetFormat() == "json")
 			return nil
 		},
 	}
