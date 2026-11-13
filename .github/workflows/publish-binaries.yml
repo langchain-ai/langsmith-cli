@@ -51,6 +51,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Repackages the release archives as platform wheels and publishes them to
+  # PyPI as langchain-langsmith-cli through Trusted Publishing, configured for
+  # this repo, this workflow and the pypi environment. skip-existing lets a run
+  # that failed partway through be rerun.
+  pypi:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release download "$RELEASE_TAG" --dir dist --pattern 'langsmith_*' --pattern checksums.txt
+
+      - name: Build wheels
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/build_wheels.py --dist dist --version "$RELEASE_TAG" --out wheels
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: wheels/
+          skip-existing: true
+
   bump-tap:
     needs: goreleaser
     runs-on: ubuntu-latest
