@@ -767,7 +767,9 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith experiments get` | Get detailed results for a specific experiment |
 | `langsmith experiments list` | List experiments, optionally filtered by dataset (default: 20) |
 | `langsmith feedback configs delete` | Soft delete one feedback config by id, or every config of a feedback key. *(confirms)* |
+| `langsmith feedback create` | Create a new feedback. |
 | `langsmith feedback delete` | Delete a feedback. *(confirms)* |
+| `langsmith feedback list` | List feedback, newest first. |
 | `langsmith feedback retrieve` | Get a specific feedback. |
 | `langsmith feedback tokens create` | Create a new feedback ingest token. |
 | `langsmith feedback tokens update` | Submit feedback for the token's run and key. |
