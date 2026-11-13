@@ -706,16 +706,22 @@ func TestSetupCodexInlinePluginTable(t *testing.T) {
 	}
 }
 
-func TestSetupRootCommandRemoved(t *testing.T) {
-	claudeDir, _ := hermeticSetupEnv(t)
-	stubRunSetupCommand(t)
+// Root `setup` installs skills and MCP config; it must not write the tracing
+// settings that `trace setup` owns.
+func TestRootSetupDoesNotConfigureTracing(t *testing.T) {
+	home := hermeticAgentSetupEnv(t, "claude")
+	calls := stubRunSetupCommand(t)
 
-	out, err := executeCommand(t, "setup")
-	if err == nil {
-		t.Fatalf("expected root setup command to be unavailable, got output: %q", out)
+	if _, err := executeCommand(t, "--format=json", "setup", "--agent", "claude-code", "--yes"); err != nil {
+		t.Fatalf("setup: %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(claudeDir, "settings.json")); !os.IsNotExist(statErr) {
-		t.Fatal("removed setup command must not write settings.json")
+	if _, statErr := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(statErr) {
+		t.Fatal("root setup must not write tracing settings.json")
+	}
+	for _, c := range *calls {
+		if strings.Contains(strings.Join(c, " "), claudePluginName) {
+			t.Fatalf("root setup must not install the tracing plugin: %v", c)
+		}
 	}
 }
 

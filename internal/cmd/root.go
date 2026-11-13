@@ -94,6 +94,7 @@ Quick start:
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
 	rootCmd.AddCommand(newTraceCmd())
+	rootCmd.AddCommand(newAgentSetupCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newChartCmd())
 	rootCmd.AddCommand(newThreadCmd())

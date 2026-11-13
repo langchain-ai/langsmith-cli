@@ -23,6 +23,11 @@ var runSetupCommand = runSetupCommandDefault
 func runSetupCommandDefault(ctx context.Context, name string, args ...string) error {
 	c := exec.CommandContext(ctx, name, args...)
 	c.Stdout = os.Stdout
+	if GetFormat() != "pretty" {
+		// Keep stdout a single JSON document; the agent CLI's own output goes
+		// to stderr.
+		c.Stdout = os.Stderr
+	}
 	c.Stderr = os.Stderr
 	return c.Run()
 }

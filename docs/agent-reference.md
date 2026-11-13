@@ -840,6 +840,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith sandboxes update` | Update sandbox resources (takes effect on next start) |
 | `langsmith self-update` | Update langsmith to the latest version |
 | `langsmith settings list` | Get the current workspace. |
+| `langsmith setup` | Install LangSmith skills and the LangSmith MCP server into your coding agents |
 | `langsmith sql query` | Beta: may change without notice. |
 | `langsmith threads aggregate-stats` | Returns aggregate statistics for threads in a tracing project. |
 | `langsmith threads get` | Fetch all runs (turns) in a single conversation thread |
