@@ -62,6 +62,10 @@ Agents and scripts depend on command names, flags, and output, so the CLI follow
 - Keep the old behavior working next to the new one during the window: add the new flag or command and deprecate the old one, rather than changing what the old one does.
 - Update `README.md`, the templates in `internal/cmd/templates/agents-md/`, and any agent skill that uses the command in the same PR as the deprecation or change.
 
+Leave authentication to the SDK client. Build clients with `GetClient`/`getClient`, which resolve `--api-key`, `LANGSMITH_API_KEY`, and profiles and hand the result to the SDK, as an API key or through `langsmith.WithProfile`. The SDK applies it to every request, including the raw helpers, and refreshes a profile's OAuth tokens under a lock shared by every process using the config. Do not read tokens from the config file, set `Authorization` or `X-API-Key` headers yourself, or call the OAuth token endpoint outside `auth login`. Refreshing in the CLI once raced parallel commands on the single-use refresh token, and the server answers a replayed token by revoking every session for the user. The raw helpers send requests through `SDK.Execute` for the same reason, so do not give them their own HTTP client. The one exception is the credential-free client the `api` command uses for other hosts. If a command needs a credential as a string, as `auth token` does, use `Client.AuthHeaders`.
+
+If the SDK's auth or request handling is missing something, fix it in the SDK instead of working around it here. Hand-written SDK code lands in `langchain-ai/langsmith-go-staging`, not `langsmith-go`, and reaches this repository through an SDK release.
+
 ## Releasing
 
 release-please keeps a release PR open on langsmith-cli; merging it tags the release and publishes the binaries. There is no version file to edit, and the changelog comes from conventional commit titles. See [Releasing](README.md#releasing).
