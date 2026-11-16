@@ -14,8 +14,11 @@ func newAppsShareCmd() *cobra.Command {
 		Short: "Share a custom app with the whole organization",
 		Long: `Share one of this workspace's custom apps with its organization.
 
-Shared apps are visible from every workspace in the organization. Other
-workspaces can copy one into their own with "langsmith apps claim".`,
+Shared apps are visible from every workspace in the organization. Any
+workspace with permission to update custom apps can move a shared app into
+its own scope with "langsmith apps claim". Claim does not create a copy:
+other workspaces lose access, and their annotation queues have this app
+cleared as the active selection. The queues themselves are kept.`,
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

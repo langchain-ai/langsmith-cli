@@ -13,8 +13,13 @@ func newAppsClaimCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "claim APP_ID_OR_NAME",
-		Short: "Claim an organization-shared custom app into this workspace",
-		Long: `Claim a custom app shared with your organization into this workspace.
+		Short: "Move an organization-shared custom app into this workspace",
+		Long: `Move a custom app shared with your organization into this workspace.
+
+Claim moves the existing app; it does not create a copy. Other workspaces
+lose access, and their annotation queues have this app cleared as the active
+selection. The queues themselves are kept. This workspace's queue selections
+are preserved.
 
 Only org-shared apps can be claimed — this workspace's own apps already
 belong to it. Pass --as to claim it under a different name, which is what
