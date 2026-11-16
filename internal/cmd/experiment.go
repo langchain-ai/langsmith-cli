@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/langchain-ai/langsmith-cli/internal/output"
@@ -138,17 +140,21 @@ func newExperimentGetCmd() *cobra.Command {
 			c := MustGetClient()
 			ctx := context.Background()
 
-			var p langsmith.TracerSession
-
+			var data map[string]any
 			// Try UUID first (direct GET), fall back to name search
 			if _, err := uuid.Parse(nameOrID); err == nil {
-				session, err := c.SDK.Sessions.Get(ctx, nameOrID, langsmith.SessionGetParams{
+				session, err := c.SDK.Sessions.GetV2(ctx, nameOrID, langsmith.SessionGetV2Params{
 					IncludeStats: langsmith.F(true),
 				})
 				if err != nil {
 					ExitErrorf("fetching experiment by ID: %v", err)
 				}
-				p = *session
+				var totalCost any
+				if !session.JSON.TotalCost.IsNull() {
+					totalCost = session.TotalCost
+				}
+				data = experimentData(session.ID, session.Name, lowerFeedbackStatTypes(session.JSON.FeedbackStats.Raw()),
+					session.LatencyP50, session.TotalTokens, session.ErrorRate, session.RunCount, totalCost)
 			} else {
 				params := langsmith.SessionListParams{
 					Name:          langsmith.F(nameOrID),
@@ -163,24 +169,9 @@ func newExperimentGetCmd() *cobra.Command {
 				if len(resp.Items) == 0 {
 					ExitErrorf("experiment not found: %s", nameOrID)
 				}
-				p = resp.Items[0]
-			}
-
-			// Build output
-			data := map[string]any{
-				"id":             p.ID,
-				"name":           p.Name,
-				"feedback_stats": p.FeedbackStats,
-				"run_stats": map[string]any{
-					"latency":     p.LatencyP50,
-					"token_count": p.TotalTokens,
-					"error_rate":  p.ErrorRate,
-				},
-				"example_count": p.RunCount,
-			}
-
-			if cost := projectTotalCost(p); cost != nil {
-				data["run_stats"].(map[string]any)["total_cost"] = cost
+				p := resp.Items[0]
+				data = experimentData(p.ID, p.Name, p.FeedbackStats,
+					p.LatencyP50, p.TotalTokens, p.ErrorRate, p.RunCount, projectTotalCost(p))
 			}
 
 			fmt_ := GetFormat()
@@ -198,4 +189,39 @@ func newExperimentGetCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write JSON output to a file")
 	return cmd
+}
+
+func experimentData(id, name string, feedbackStats map[string]any, latency float64, tokens int64, errorRate float64, runCount int64, totalCost any) map[string]any {
+	runStats := map[string]any{
+		"latency":     latency,
+		"token_count": tokens,
+		"error_rate":  errorRate,
+	}
+	if totalCost != nil {
+		runStats["total_cost"] = totalCost
+	}
+	return map[string]any{
+		"id":             id,
+		"name":           name,
+		"feedback_stats": feedbackStats,
+		"run_stats":      runStats,
+		"example_count":  runCount,
+	}
+}
+
+// lowerFeedbackStatTypes decodes a v2 feedback_stats object. The v2 API
+// returns each stat's type in upper case; it is printed in lower case.
+func lowerFeedbackStatTypes(raw string) map[string]any {
+	var stats map[string]any
+	if json.Unmarshal([]byte(raw), &stats) != nil {
+		return nil
+	}
+	for _, v := range stats {
+		if stat, ok := v.(map[string]any); ok {
+			if t, ok := stat["type"].(string); ok {
+				stat["type"] = strings.ToLower(t)
+			}
+		}
+	}
+	return stats
 }

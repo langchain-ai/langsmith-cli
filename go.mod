@@ -11,11 +11,12 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/itchyny/json2yaml v0.1.5
-	github.com/langchain-ai/langsmith-go v0.31.0
+	github.com/langchain-ai/langsmith-go v0.32.0
 	github.com/muesli/reflow v0.3.0
 	github.com/olekukonko/tablewriter v1.1.5
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.20.1
 	github.com/tidwall/pretty v1.2.2
@@ -63,7 +64,6 @@ require (
 	github.com/olekukonko/ll v0.1.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

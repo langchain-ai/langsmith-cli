@@ -41,7 +41,7 @@ Don't print API keys, and don't put them on the command line where they end up i
 
 List commands return a bounded page; set the size with `--limit` (`-n`). Trace and run queries cover the last 7 days unless you pass `--since`, `--before` or `--last-n-minutes`. To read further back, page with `--before` set to the oldest `start_time` you have seen.
 
-These commands page with `--cursor`: `langsmith hub list`, `langsmith prompt commits`, `langsmith prompt list`, `langsmith runs list`, `langsmith threads messages`, `langsmith traces list`, `langsmith traces messages`. Passing `--cursor ""` on the first call adds `cursors.next` to the JSON output (list commands then wrap their items in an object); pass that value to `--cursor` to get the next page. A missing `cursors.next` means there are no more results.
+These commands page with `--cursor`: `langsmith evaluators rule list`, `langsmith hub list`, `langsmith prompt commits`, `langsmith prompt list`, `langsmith runs list`, `langsmith threads messages`, `langsmith traces list`, `langsmith traces messages`. Passing `--cursor ""` on the first call adds `cursors.next` to the JSON output (list commands then wrap their items in an object); pass that value to `--cursor` to get the next page. A missing `cursors.next` means there are no more results.
 
 ### Safety
 

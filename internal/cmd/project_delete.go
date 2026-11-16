@@ -26,7 +26,7 @@ func newProjectDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			project, err := c.SDK.Sessions.Get(ctx, id, langsmith.SessionGetParams{
+			project, err := c.SDK.Sessions.GetV2(ctx, id, langsmith.SessionGetV2Params{
 				IncludeStats: langsmith.F(true),
 			})
 			if err != nil {

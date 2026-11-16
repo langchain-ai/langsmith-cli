@@ -10,9 +10,9 @@ import (
 	langsmith "github.com/langchain-ai/langsmith-go"
 )
 
-func decodeRule(t *testing.T, rule map[string]any) langsmith.Evaluator {
+func decodeRule(t *testing.T, rule map[string]any) langsmith.Rule {
 	t.Helper()
-	var r langsmith.Evaluator
+	var r langsmith.Rule
 	if err := json.Unmarshal([]byte(mustJSON(t, rule)), &r); err != nil {
 		t.Fatalf("decoding rule: %v", err)
 	}
@@ -21,7 +21,7 @@ func decodeRule(t *testing.T, rule map[string]any) langsmith.Evaluator {
 
 func TestRuleActions(t *testing.T) {
 	base := func(extra map[string]any) map[string]any {
-		rule := map[string]any{"id": testRuleID, "display_name": "r", "session_id": testSessionID}
+		rule := map[string]any{"id": testRuleID, "display_name": "r", "project_id": testSessionID}
 		for k, v := range extra {
 			rule[k] = v
 		}
@@ -73,22 +73,22 @@ func TestMaskWebhookURL(t *testing.T) {
 
 func TestEvaluatorRuleGet_ShowsActionDetails(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" && r.URL.Query().Get("id") == testRuleID {
+		if r.URL.Path == "/api/v2/runs/rules" && r.URL.Query().Get("id") == testRuleID {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": testRuleID, "display_name": "notify", "session_id": testSessionID, "session_name": "my-app",
+			_ = writeRulePage(w, []map[string]any{{
+				"id": testRuleID, "display_name": "notify", "project_id": testSessionID, "project_name": "my-app",
 				"sampling_rate": 0.1, "is_enabled": true,
 				"evaluator_id": testEvaluatorID, "evaluator_name": "accuracy",
 				"filter": "eq(is_root, true)", "trace_filter": "eq(name, \"agent\")", "tree_filter": "eq(run_type, \"llm\")",
-				"group_by": "thread_id",
+				"group_by": "THREAD_ID",
 				"webhooks": []any{map[string]any{
 					"url":     "https://user:pw-secret@example.com/hooks/path-secret?token=query-secret",
 					"headers": map[string]any{"Authorization": "Bearer header-secret"},
 				}},
 				"add_to_dataset_id": replaceDatasetID, "add_to_dataset_name": "corrections", "add_to_dataset_prefer_correction": true,
 				"add_to_annotation_queue_id": replaceQueueID, "add_to_annotation_queue_name": "review",
-				"alerts":      []any{map[string]any{"routing_key": "routing-secret", "type": "pagerduty", "severity": "critical", "summary": "bad score"}},
-				"spend_limit": map[string]any{"limit_usd": "25.00", "window": "weekly"},
+				"alerts":      []any{map[string]any{"routing_key": "routing-secret", "type": "PAGERDUTY", "severity": "CRITICAL", "summary": "bad score"}},
+				"spend_limit": map[string]any{"limit_usd": "25.00", "window": "WEEKLY"},
 			}})
 			return
 		}
@@ -146,9 +146,9 @@ func TestEvaluatorRuleGet_OmitsUnsetActions(t *testing.T) {
 
 func TestEvaluatorRuleList_ShowsActions(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" {
+		if r.URL.Path == "/api/v2/runs/rules" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
+			_ = writeRulePage(w, []map[string]any{
 				{"id": testRuleID, "display_name": "graded", "evaluator_id": testEvaluatorID,
 					"webhooks": []any{map[string]any{"url": "https://example.com/hook?token=secret"}}},
 				{"id": testRuleID2, "display_name": "queue", "add_to_annotation_queue_id": replaceQueueID},

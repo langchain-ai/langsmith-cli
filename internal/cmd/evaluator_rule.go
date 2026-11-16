@@ -49,27 +49,50 @@ func newRulesAliasCmd() *cobra.Command {
 
 func newEvaluatorRuleListCmd() *cobra.Command {
 	var (
-		outputFile  string
-		project     string
-		projectID   string
-		dataset     string
-		evaluatorID string
-		all         bool
+		outputFile   string
+		project      string
+		projectID    string
+		dataset      string
+		evaluatorID  string
+		nameContains string
+		targetType   string
+		limit        int
+		cursor       string
+		all          bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List evaluator rules, optionally for one project, dataset, or evaluator",
-		Long: `List evaluator rules, optionally for one project, dataset, or evaluator.
-Webhook, add-to-dataset, and annotation-queue rules are hidden unless --all is set.
+		Long: `List evaluator rules, newest change first, optionally for one project,
+dataset, or evaluator. Filters combine. Webhook, add-to-dataset, and
+annotation-queue rules are hidden unless --all is set.
 Each rule's actions field lists what it does: evaluator, webhook, add_to_dataset,
-add_to_annotation_queue, or alert. 'rule get' shows the details.`,
+add_to_annotation_queue, or alert. 'rule get' shows the details.
+
+Examples:
+  langsmith evaluator rule list --project my-app
+  langsmith evaluator rule list --type dataset --name-contains accuracy
+  langsmith evaluator rule list --limit 20 --cursor ""`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if evaluatorID != "" {
 				if _, err := uuid.Parse(evaluatorID); err != nil {
 					return fmt.Errorf("invalid --evaluator-id %q: must be a UUID", evaluatorID)
 				}
+			}
+			var sourceType langsmith.EvaluatorListV2ParamsType
+			switch strings.ToLower(targetType) {
+			case "":
+			case "project":
+				sourceType = langsmith.EvaluatorListV2ParamsTypeProject
+			case "dataset":
+				sourceType = langsmith.EvaluatorListV2ParamsTypeDataset
+			default:
+				return fmt.Errorf("invalid --type %q: must be project or dataset", targetType)
+			}
+			if limit < 0 {
+				return fmt.Errorf("--limit must not be negative")
 			}
 			c, err := getClient()
 			if err != nil {
@@ -87,18 +110,17 @@ add_to_annotation_queue, or alert. 'rule get' shows the details.`,
 			if evaluatorID != "" {
 				params.EvaluatorID = langsmith.F(evaluatorID)
 			}
-			resp, err := c.SDK.Evaluators.List(ctx, params)
+			if nameContains != "" {
+				params.NameContains = langsmith.F(nameContains)
+			}
+			if sourceType != "" {
+				params.Type = langsmith.F(sourceType)
+			}
+			keep := func(r langsmith.Rule) bool { return all || isEvaluatorRule(r) }
+			rules, next, err := listRulesPage(ctx, c, params, cursor, limit, keep)
 			if err != nil {
 				return fmt.Errorf("listing evaluator rules: %w", err)
 			}
-			// The API applies only one of dataset_id, session_id, and evaluator_id,
-			// so the evaluator filter is reapplied when a target is also set.
-			rules := slices.DeleteFunc(*resp, func(r langsmith.Evaluator) bool {
-				if evaluatorID != "" && r.EvaluatorID != evaluatorID {
-					return true
-				}
-				return !all && !isEvaluatorRule(r)
-			})
 
 			if GetFormat() == "pretty" {
 				columns := []string{"Rule", "Evaluator", "Target", "Actions", "Sampling Rate", "Enabled", "Rule ID"}
@@ -114,13 +136,18 @@ add_to_annotation_queue, or alert. 'rule get' shows the details.`,
 					})
 				}
 				output.OutputTable(columns, rows, "Evaluator Rules")
+				printNextCursorHint(next)
 				return nil
 			}
 			data := make([]map[string]any, 0, len(rules))
 			for _, r := range rules {
 				data = append(data, ruleEntry(r))
 			}
-			return output.OutputJSON(data, outputFile)
+			var out any = data
+			if cmd.Flags().Changed("cursor") {
+				out = map[string]any{"rules": data, "cursors": cursorsField(next)}
+			}
+			return output.OutputJSON(out, outputFile)
 		},
 	}
 
@@ -128,6 +155,10 @@ add_to_annotation_queue, or alert. 'rule get' shows the details.`,
 	addProjectFlags(cmd, &project, &projectID)
 	cmd.Flags().StringVar(&dataset, "dataset", "", "Only rules on this dataset (name or ID)")
 	cmd.Flags().StringVar(&evaluatorID, "evaluator-id", "", "Only rules that use this evaluator")
+	cmd.Flags().StringVar(&nameContains, "name-contains", "", "Only rules whose name contains this text (case-insensitive; _ matches any single character and % any sequence)")
+	cmd.Flags().StringVar(&targetType, "type", "", "Only rules on a project or a dataset: project or dataset")
+	cmd.Flags().IntVarP(&limit, "limit", "n", 0, "Maximum number of rules to return (0 for all)")
+	addCursorFlag(cmd, &cursor)
 	cmd.Flags().BoolVar(&all, "all", false, "Include webhook, add-to-dataset, and annotation-queue rules")
 	return cmd
 }
@@ -191,7 +222,7 @@ Examples:
 			}
 			ctx := context.Background()
 
-			var rule *langsmith.Evaluator
+			var rule *langsmith.Rule
 			if isID {
 				rule, err = getRule(ctx, c, nameOrID)
 			} else {
@@ -236,29 +267,29 @@ Examples:
 	return cmd
 }
 
-func getRule(ctx context.Context, c *client.Client, id string) (*langsmith.Evaluator, error) {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{ID: langsmith.F([]string{id})})
+func getRule(ctx context.Context, c *client.Client, id string) (*langsmith.Rule, error) {
+	rules, err := listRules(ctx, c, langsmith.EvaluatorListV2Params{ID: langsmith.F([]string{id})})
 	if err != nil {
 		return nil, fmt.Errorf("fetching evaluator rule %s: %w", id, err)
 	}
-	for i := range *rules {
-		if (*rules)[i].ID == id {
-			return &(*rules)[i], nil
+	for i := range rules {
+		if rules[i].ID == id {
+			return &rules[i], nil
 		}
 	}
 	return nil, fmt.Errorf("evaluator rule %s not found", id)
 }
 
-func findRuleByName(ctx context.Context, c *client.Client, name, project, projectID, dataset string) (*langsmith.Evaluator, error) {
+func findRuleByName(ctx context.Context, c *client.Client, name, project, projectID, dataset string) (*langsmith.Rule, error) {
 	target, err := resolveEvaluatorTarget(ctx, c, dataset, project, projectID)
 	if err != nil {
 		return nil, err
 	}
-	rules, err := c.SDK.Evaluators.List(ctx, target.ruleListParams())
+	rules, err := listRules(ctx, c, target.ruleListParams())
 	if err != nil {
 		return nil, fmt.Errorf("listing evaluator rules: %w", err)
 	}
-	matches := slices.DeleteFunc(findEvaluators(*rules, name, target.datasetID, target.projectID), func(r langsmith.Evaluator) bool {
+	matches := slices.DeleteFunc(findEvaluators(rules, name, target.datasetID, target.projectID), func(r langsmith.Rule) bool {
 		return !isEvaluatorRule(r)
 	})
 	switch len(matches) {
@@ -275,16 +306,44 @@ func findRuleByName(ctx context.Context, c *client.Client, name, project, projec
 	}
 }
 
+// maxRulePageSize is the largest page the rule list accepts.
+const maxRulePageSize = 100
+
+// listRules returns every rule matching params.
+func listRules(ctx context.Context, c *client.Client, params langsmith.EvaluatorListV2Params) ([]langsmith.Rule, error) {
+	rules, _, err := listRulesPage(ctx, c, params, "", 0, nil)
+	return rules, err
+}
+
+// listRulesPage returns up to limit rules (all when limit is 0) matching
+// params, starting at cursor, with the cursor for the next page. keep, when
+// non-nil, drops rules client-side.
+func listRulesPage(ctx context.Context, c *client.Client, params langsmith.EvaluatorListV2Params, cursor string, limit int, keep func(langsmith.Rule) bool) ([]langsmith.Rule, string, error) {
+	fetch := func(cursor string, pageSize int) ([]langsmith.Rule, string, error) {
+		page := params
+		page.PageSize = langsmith.F(int64(pageSize))
+		if cursor != "" {
+			page.Cursor = langsmith.F(cursor)
+		}
+		res, err := c.SDK.Evaluators.ListV2(ctx, page)
+		if err != nil {
+			return nil, "", err
+		}
+		return res.Items, res.NextCursor, nil
+	}
+	return collectPages(cursor, limit, maxRulePageSize, fetch, keep)
+}
+
 // isEvaluatorRule reports whether a rule runs an evaluator. The rules API also
 // holds webhook, add-to-dataset, and annotation-queue rules, and older rules
 // embed their evaluator inline instead of setting evaluator_id.
-func isEvaluatorRule(r langsmith.Evaluator) bool {
+func isEvaluatorRule(r langsmith.Rule) bool {
 	return r.EvaluatorID != "" || len(r.Evaluators) > 0 || len(r.CodeEvaluators) > 0
 }
 
 // ruleSideActions describes what a rule does besides running its evaluator.
 // Deleting the rule deletes these too.
-func ruleSideActions(r langsmith.Evaluator) []string {
+func ruleSideActions(r langsmith.Rule) []string {
 	var actions []string
 	if n := len(r.Webhooks); n > 0 {
 		actions = append(actions, fmt.Sprintf("%d webhook(s)", n))
@@ -310,7 +369,7 @@ func nameOrID(name, id string) string {
 
 // ruleActions names what a rule does to each sampled run: evaluator, webhook,
 // add_to_dataset, add_to_annotation_queue, and alert.
-func ruleActions(r langsmith.Evaluator) []string {
+func ruleActions(r langsmith.Rule) []string {
 	actions := []string{}
 	if isEvaluatorRule(r) {
 		actions = append(actions, "evaluator")
@@ -345,14 +404,14 @@ func maskWebhookURL(raw string) string {
 	return masked
 }
 
-func ruleEntry(r langsmith.Evaluator) map[string]any {
+func ruleEntry(r langsmith.Rule) map[string]any {
 	return map[string]any{
 		"rule_id":        r.ID,
 		"rule_name":      r.DisplayName,
 		"evaluator_id":   nilStr(r.EvaluatorID),
 		"evaluator_name": nilStr(r.EvaluatorName),
-		"session_id":     nilStr(r.SessionID),
-		"project":        nilStr(r.SessionName),
+		"session_id":     nilStr(r.ProjectID),
+		"project":        nilStr(r.ProjectName),
 		"dataset_id":     nilStr(r.DatasetID),
 		"dataset":        nilStr(r.DatasetName),
 		"sampling_rate":  r.SamplingRate,
@@ -361,13 +420,15 @@ func ruleEntry(r langsmith.Evaluator) map[string]any {
 	}
 }
 
-func ruleDetail(r langsmith.Evaluator) map[string]any {
+// ruleDetail adds a rule's settings to its list entry. The rules API returns
+// enum values in upper case; they are printed in lower case.
+func ruleDetail(r langsmith.Rule) map[string]any {
 	entry := ruleEntry(r)
 	for key, value := range map[string]string{
 		"filter":       r.Filter,
 		"trace_filter": r.TraceFilter,
 		"tree_filter":  r.TreeFilter,
-		"group_by":     string(r.GroupBy),
+		"group_by":     strings.ToLower(string(r.GroupBy)),
 	} {
 		if value != "" {
 			entry[key] = value
@@ -399,8 +460,8 @@ func ruleDetail(r langsmith.Evaluator) map[string]any {
 		alerts := make([]map[string]any, 0, len(r.Alerts))
 		for _, a := range r.Alerts {
 			alerts = append(alerts, map[string]any{
-				"type":     nilStr(string(a.Type)),
-				"severity": nilStr(string(a.Severity)),
+				"type":     nilStr(strings.ToLower(string(a.Type))),
+				"severity": nilStr(strings.ToLower(string(a.Severity))),
 				"summary":  nilStr(a.Summary),
 			})
 		}
@@ -409,12 +470,12 @@ func ruleDetail(r langsmith.Evaluator) map[string]any {
 	if r.SpendLimit.LimitUsd != "" {
 		entry["spend_limit"] = map[string]any{
 			"limit_usd": r.SpendLimit.LimitUsd,
-			"window":    string(r.SpendLimit.Window),
+			"window":    strings.ToLower(string(r.SpendLimit.Window)),
 		}
 	}
 	if len(r.CodeEvaluators) > 0 {
 		entry["type"] = "code"
-		entry["language"] = string(r.CodeEvaluators[0].Language)
+		entry["language"] = strings.ToLower(string(r.CodeEvaluators[0].Language))
 		entry["code"] = r.CodeEvaluators[0].Code
 	} else if len(r.Evaluators) > 0 {
 		entry["type"] = "llm"
@@ -426,8 +487,8 @@ func ruleDetail(r langsmith.Evaluator) map[string]any {
 	return entry
 }
 
-func ruleTarget(r langsmith.Evaluator) string {
-	if label := targetLabel(r.SessionName, r.SessionID, r.DatasetName, r.DatasetID); label != "" {
+func ruleTarget(r langsmith.Rule) string {
+	if label := targetLabel(r.ProjectName, r.ProjectID, r.DatasetName, r.DatasetID); label != "" {
 		return label
 	}
 	return "all runs"

@@ -219,15 +219,12 @@ Examples:
 // rulesSideActionsNotice lists the webhooks, add-to-dataset and annotation-queue
 // actions, and alerts on the evaluator's rules, which are deleted with them.
 func rulesSideActionsNotice(ctx context.Context, c *client.Client, evaluatorID string) string {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{EvaluatorID: langsmith.F(evaluatorID)})
+	rules, err := listRules(ctx, c, langsmith.EvaluatorListV2Params{EvaluatorID: langsmith.F(evaluatorID)})
 	if err != nil {
 		return "\nCould not check the rules for webhooks, add-to-dataset or annotation-queue actions, or alerts; any they have are deleted too."
 	}
 	var lines []string
-	for _, r := range *rules {
-		if r.EvaluatorID != evaluatorID {
-			continue
-		}
+	for _, r := range rules {
 		if actions := ruleSideActions(r); len(actions) > 0 {
 			lines = append(lines, fmt.Sprintf("  rule %q (%s): %s", r.DisplayName, ruleTarget(r), strings.Join(actions, ", ")))
 		}
@@ -293,7 +290,7 @@ func resolveOnlineEvaluatorID(ctx context.Context, c *client.Client, nameOrID st
 // shows only evaluator names, so a name taken from rule output may refer to a
 // different evaluator. Lookup failures yield no hints.
 func ruleNameHints(ctx context.Context, c *client.Client, name string, excludeIDs []string) []string {
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{})
+	rules, err := listRules(ctx, c, langsmith.EvaluatorListV2Params{NameContains: langsmith.F(name)})
 	if err != nil {
 		return nil
 	}
@@ -302,7 +299,7 @@ func ruleNameHints(ctx context.Context, c *client.Client, name string, excludeID
 		seen[id] = true
 	}
 	var hints []string
-	for _, r := range *rules {
+	for _, r := range rules {
 		if r.DisplayName != name || r.EvaluatorID == "" || seen[r.EvaluatorID] {
 			continue
 		}
@@ -750,8 +747,8 @@ func renameJSFunction(source string, funcName string) string {
 // evaluator name is name. A rule keeps its name when its evaluator is renamed in
 // the UI, so matching the rule name alone would miss the evaluator and create a
 // second one on the same target.
-func findRuleForReplace(rules []langsmith.Evaluator, name, datasetID, projectID string) (*langsmith.Evaluator, error) {
-	var matches []langsmith.Evaluator
+func findRuleForReplace(rules []langsmith.Rule, name, datasetID, projectID string) (*langsmith.Rule, error) {
+	var matches []langsmith.Rule
 	for _, rule := range rules {
 		if !isEvaluatorRule(rule) || !ruleOnTarget(rule, datasetID, projectID) {
 			continue
@@ -775,8 +772,8 @@ func findRuleForReplace(rules []langsmith.Evaluator, name, datasetID, projectID 
 }
 
 // findEvaluators returns every rule with this name on the given dataset or project.
-func findEvaluators(rules []langsmith.Evaluator, name, datasetID, projectID string) []langsmith.Evaluator {
-	var matches []langsmith.Evaluator
+func findEvaluators(rules []langsmith.Rule, name, datasetID, projectID string) []langsmith.Rule {
+	var matches []langsmith.Rule
 	for _, rule := range rules {
 		if rule.DisplayName == name && ruleOnTarget(rule, datasetID, projectID) {
 			matches = append(matches, rule)
@@ -785,6 +782,6 @@ func findEvaluators(rules []langsmith.Evaluator, name, datasetID, projectID stri
 	return matches
 }
 
-func ruleOnTarget(rule langsmith.Evaluator, datasetID, projectID string) bool {
-	return (datasetID != "" && rule.DatasetID == datasetID) || (projectID != "" && rule.SessionID == projectID)
+func ruleOnTarget(rule langsmith.Rule, datasetID, projectID string) bool {
+	return (datasetID != "" && rule.DatasetID == datasetID) || (projectID != "" && rule.ProjectID == projectID)
 }

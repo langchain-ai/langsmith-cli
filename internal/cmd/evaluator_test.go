@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -11,14 +15,14 @@ import (
 )
 
 // testRule is a minimal JSON-serializable struct used by mock server handlers
-// to produce responses that the SDK can decode into langsmith.Evaluator.
+// to produce responses that the SDK can decode into langsmith.Rule.
 type testRule struct {
 	ID             string         `json:"id"`
 	DisplayName    string         `json:"display_name"`
 	SamplingRate   float64        `json:"sampling_rate"`
 	IsEnabled      bool           `json:"is_enabled"`
 	DatasetID      string         `json:"dataset_id,omitempty"`
-	SessionID      string         `json:"session_id,omitempty"`
+	ProjectID      string         `json:"project_id,omitempty"`
 	CodeEvaluators []testCodeEval `json:"code_evaluators,omitempty"`
 	Evaluators     []testLLMEval  `json:"evaluators,omitempty"`
 }
@@ -313,14 +317,14 @@ func TestRenameJSFunction_AsyncArrowFunction(t *testing.T) {
 // ---------- findRuleForReplace ----------
 
 func TestFindRuleForReplace(t *testing.T) {
-	code := []langsmith.CodeEvaluatorTopLevel{{Code: "x"}}
-	rules := []langsmith.Evaluator{
-		{ID: "renamed", DisplayName: "test", EvaluatorID: "ev-1", EvaluatorName: "ready_for_task_grade", SessionID: "proj-1"},
+	code := []langsmith.RuleCodeEvaluator{{Code: "x"}}
+	rules := []langsmith.Rule{
+		{ID: "renamed", DisplayName: "test", EvaluatorID: "ev-1", EvaluatorName: "ready_for_task_grade", ProjectID: "proj-1"},
 		{ID: "legacy", DisplayName: "accuracy", CodeEvaluators: code, DatasetID: "ds-1"},
 		{ID: "other-target", DisplayName: "accuracy", CodeEvaluators: code, DatasetID: "ds-2"},
-		{ID: "webhook", DisplayName: "notify", SessionID: "proj-1"},
-		{ID: "dup-a", DisplayName: "dup", EvaluatorID: "ev-2", EvaluatorName: "dup", SessionID: "proj-2"},
-		{ID: "dup-b", DisplayName: "dup-rule", EvaluatorID: "ev-3", EvaluatorName: "dup", SessionID: "proj-2"},
+		{ID: "webhook", DisplayName: "notify", ProjectID: "proj-1"},
+		{ID: "dup-a", DisplayName: "dup", EvaluatorID: "ev-2", EvaluatorName: "dup", ProjectID: "proj-2"},
+		{ID: "dup-b", DisplayName: "dup-rule", EvaluatorID: "ev-3", EvaluatorName: "dup", ProjectID: "proj-2"},
 	}
 	tests := []struct {
 		name, match, datasetID, projectID string
@@ -635,14 +639,14 @@ func TestEvaluatorUploadReplacePatchesExistingCodeEvaluator(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "project-1", "name": "my-project"},
 			})
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]testRule{
+		case r.URL.Path == "/api/v2/runs/rules" && r.Method == "GET":
+			_ = writeRulePage(w, []testRule{
 				{
 					ID:           "existing-rule",
 					DisplayName:  "accuracy",
 					SamplingRate: 0.25,
 					IsEnabled:    true,
-					SessionID:    "project-1",
+					ProjectID:    "project-1",
 					CodeEvaluators: []testCodeEval{
 						{Code: "def perform_eval(run, example):\n    return {\"score\": 0}", Language: "python"},
 					},
@@ -739,14 +743,14 @@ func TestEvaluatorCreateLLMReplacePatchesExistingEvaluator(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"id": "project-1", "name": "my-project"},
 			})
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == "GET":
-			_ = json.NewEncoder(w).Encode([]testRule{
+		case r.URL.Path == "/api/v2/runs/rules" && r.Method == "GET":
+			_ = writeRulePage(w, []testRule{
 				{
 					ID:           "existing-rule",
 					DisplayName:  "relevance",
 					SamplingRate: 0.25,
 					IsEnabled:    true,
-					SessionID:    "project-1",
+					ProjectID:    "project-1",
 					Evaluators: []testLLMEval{
 						{Structured: testLLMStructured{HubRef: "my-org/old:latest"}},
 					},
@@ -922,10 +926,10 @@ func TestEvaluatorGet_RuleNamePointsToItsEvaluator(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/platform/evaluators":
 			serveEvaluatorPage(w, r, nil)
-		case "/api/v1/runs/rules":
+		case "/api/v2/runs/rules":
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+			_ = writeRulePage(w, []map[string]any{{
+				"id": testRuleID, "display_name": "test", "project_id": testSessionID,
 				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
 			}})
 		default:
@@ -1051,12 +1055,12 @@ func TestEvaluatorDelete_DeletesEvaluatorAndRules(t *testing.T) {
 func TestEvaluatorRuleList_ShowsRuleAndEvaluatorNames(t *testing.T) {
 	var sessionFilter string
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
-			sessionFilter = r.URL.Query().Get("session_id")
+		if r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet {
+			sessionFilter = r.URL.Query().Get("project_id")
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
+			_ = writeRulePage(w, []map[string]any{{
 				"id": testRuleID, "display_name": "test", "sampling_rate": 1.0, "is_enabled": true,
-				"session_id": testSessionID, "session_name": "vanta-agent",
+				"project_id": testSessionID, "project_name": "vanta-agent",
 				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
 				"evaluator_version": 3,
 			}})
@@ -1077,7 +1081,7 @@ func TestEvaluatorRuleList_ShowsRuleAndEvaluatorNames(t *testing.T) {
 	})
 
 	if sessionFilter != testSessionID {
-		t.Errorf("expected session_id filter %s, got %q", testSessionID, sessionFilter)
+		t.Errorf("expected project_id filter %s, got %q", testSessionID, sessionFilter)
 	}
 	var result []map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
@@ -1107,9 +1111,9 @@ func TestEvaluatorGet_DuplicateNamesAlsoPointsToRuleEvaluator(t *testing.T) {
 				{"id": testEvaluatorID, "name": "test", "type": "code"},
 				{"id": testEvaluatorID2, "name": "test", "type": "code"},
 			})
-		case "/api/v1/runs/rules":
+		case "/api/v2/runs/rules":
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
+			_ = writeRulePage(w, []map[string]any{
 				{"id": testRuleID, "display_name": "test", "evaluator_id": testEvaluatorID, "evaluator_name": "test"},
 				{"id": testRuleID2, "display_name": "test", "evaluator_id": ruleEvaluatorID, "evaluator_name": "ready_for_task_grade"},
 			})
@@ -1135,16 +1139,14 @@ func TestEvaluatorGet_DuplicateNamesAlsoPointsToRuleEvaluator(t *testing.T) {
 	}
 }
 
-func TestEvaluatorRuleList_EvaluatorFilterWithTarget(t *testing.T) {
-	var evaluatorFilter string
+func TestEvaluatorRuleList_SendsFilters(t *testing.T) {
+	var query url.Values
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
-			evaluatorFilter = r.URL.Query().Get("evaluator_id")
-			// The API applies session_id and ignores evaluator_id when both are set.
+		if r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet {
+			query = r.URL.Query()
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": testRuleID, "display_name": "test", "session_id": testSessionID, "evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade"},
-				{"id": testRuleID2, "display_name": "other", "session_id": testSessionID, "evaluator_id": testEvaluatorID2, "evaluator_name": "other"},
+			_ = writeRulePage(w, []map[string]any{
+				{"id": testRuleID, "display_name": "test", "project_id": testSessionID, "evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade"},
 			})
 			return
 		}
@@ -1158,31 +1160,122 @@ func TestEvaluatorRuleList_EvaluatorFilterWithTarget(t *testing.T) {
 		cmd := newEvaluatorRuleListCmd()
 		_ = cmd.Flags().Set("project-id", testSessionID)
 		_ = cmd.Flags().Set("evaluator-id", testEvaluatorID)
+		_ = cmd.Flags().Set("name-contains", "te")
+		_ = cmd.Flags().Set("type", "project")
 		if err := runTestCommand(t, cmd, nil); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
 
-	if evaluatorFilter != testEvaluatorID {
-		t.Errorf("expected evaluator_id filter %s, got %q", testEvaluatorID, evaluatorFilter)
+	for key, want := range map[string]string{
+		"project_id":    testSessionID,
+		"evaluator_id":  testEvaluatorID,
+		"name_contains": "te",
+		"type":          "PROJECT",
+	} {
+		if got := query.Get(key); got != want {
+			t.Errorf("expected %s=%q, got %q", key, want, got)
+		}
 	}
 	var result []map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
 	}
-	if len(result) != 1 || result[0]["rule_id"] != testRuleID {
-		t.Fatalf("expected only rule %s, got %v", testRuleID, result)
+	if len(result) != 1 || result[0]["rule_id"] != testRuleID || result[0]["session_id"] != testSessionID {
+		t.Fatalf("expected rule %s on project %s, got %v", testRuleID, testSessionID, result)
 	}
+}
+
+func TestEvaluatorRuleList_RejectsUnknownType(t *testing.T) {
+	cmd := newEvaluatorRuleListCmd()
+	_ = cmd.Flags().Set("type", "thread")
+	err := runTestCommand(t, cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "--type") {
+		t.Fatalf("expected a --type error, got %v", err)
+	}
+}
+
+func TestEvaluatorRuleList_PagesWithLimitAndCursor(t *testing.T) {
+	ids := []string{testRuleID, testRuleID2, testEvaluatorID, testEvaluatorID2}
+	var cursors, pageSizes []string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/runs/rules" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		cursor, pageSize := r.URL.Query().Get("cursor"), r.URL.Query().Get("page_size")
+		cursors, pageSizes = append(cursors, cursor), append(pageSizes, pageSize)
+		start := 0
+		if cursor != "" {
+			start, _ = strconv.Atoi(strings.TrimPrefix(cursor, "c"))
+		}
+		size, _ := strconv.Atoi(pageSize)
+		end := min(start+size, len(ids))
+		var page []map[string]any
+		for _, id := range ids[start:end] {
+			page = append(page, map[string]any{"id": id, "display_name": id, "evaluator_id": testEvaluatorID})
+		}
+		var next any
+		if end < len(ids) {
+			next = fmt.Sprintf("c%d", end)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": page, "next_cursor": next})
+	})
+	cleanup := setupTestEnv(t, ts.URL)
+	defer cleanup()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newEvaluatorRuleListCmd()
+		_ = cmd.Flags().Set("limit", "3")
+		_ = cmd.Flags().Set("cursor", "c1")
+		if err := runTestCommand(t, cmd, nil); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	if !slices.Equal(cursors, []string{"c1"}) || !slices.Equal(pageSizes, []string{"3"}) {
+		t.Errorf("expected one request at cursor c1 for 3 rules, got cursors %v sizes %v", cursors, pageSizes)
+	}
+	var got struct {
+		Rules   []map[string]any `json:"rules"`
+		Cursors map[string]any   `json:"cursors"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if len(got.Rules) != 3 || got.Rules[0]["rule_id"] != testRuleID2 || got.Cursors["next"] != nil {
+		t.Errorf("expected the last 3 rules and no next cursor, got %v", got)
+	}
+
+	cursors, pageSizes = nil, nil
+	out = captureStdout(t, func() {
+		if err := runTestCommand(t, newEvaluatorRuleListCmd(), nil); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	var all []map[string]any
+	if err := json.Unmarshal([]byte(out), &all); err != nil {
+		t.Fatalf("failed to parse output JSON: %v\noutput: %s", err, out)
+	}
+	if len(all) != len(ids) || !slices.Equal(pageSizes, []string{"100"}) {
+		t.Errorf("expected every rule from one 100-rule page, got %d rules with page sizes %v", len(all), pageSizes)
+	}
+}
+
+// writeRulePage writes a one-page GET /api/v2/runs/rules response.
+func writeRulePage(w http.ResponseWriter, items any) error {
+	return json.NewEncoder(w).Encode(map[string]any{"items": items, "next_cursor": nil})
 }
 
 func TestEvaluatorRuleGet_ShowsCodeEvaluator(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" && r.URL.Query().Get("id") == testRuleID {
+		if r.URL.Path == "/api/v2/runs/rules" && r.URL.Query().Get("id") == testRuleID {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
+			_ = writeRulePage(w, []map[string]any{{
 				"id": testRuleID, "display_name": "accuracy", "dataset_id": "ds-1",
 				"evaluator_id": testEvaluatorID, "evaluator_name": "accuracy_v2",
-				"code_evaluators": []map[string]any{{"code": "def perform_eval(run, example):\n  return {}", "language": "python"}},
+				"code_evaluators": []map[string]any{{"code": "def perform_eval(run, example):\n  return {}", "language": "PYTHON"}},
 			}})
 			return
 		}
@@ -1235,11 +1328,11 @@ func TestEvaluatorRuleDelete_RefusesAmbiguousName(t *testing.T) {
 		if r.Method == http.MethodDelete {
 			sawDelete = true
 		}
-		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+		if r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": testRuleID, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID},
-				{"id": testRuleID2, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID2},
+			_ = writeRulePage(w, []map[string]any{
+				{"id": testRuleID, "display_name": "accuracy", "project_id": testSessionID, "evaluator_id": testEvaluatorID},
+				{"id": testRuleID2, "display_name": "accuracy", "project_id": testSessionID, "evaluator_id": testEvaluatorID2},
 			})
 			return
 		}
@@ -1264,11 +1357,11 @@ func TestEvaluatorRuleDelete_DeletesSingleMatch(t *testing.T) {
 	var deletedPath string
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
+		case r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": testRuleID, "display_name": "accuracy", "session_id": testSessionID, "evaluator_id": testEvaluatorID},
-				{"id": testRuleID2, "display_name": "toxicity", "session_id": testSessionID},
+			_ = writeRulePage(w, []map[string]any{
+				{"id": testRuleID, "display_name": "accuracy", "project_id": testSessionID, "evaluator_id": testEvaluatorID},
+				{"id": testRuleID2, "display_name": "toxicity", "project_id": testSessionID},
 			})
 		case r.Method == http.MethodDelete:
 			deletedPath = r.URL.Path
@@ -1303,9 +1396,9 @@ func TestEvaluatorRuleDelete_DeletesSingleMatch(t *testing.T) {
 
 func TestEvaluatorRuleList_HidesNonEvaluatorRulesUnlessAll(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/runs/rules" {
+		if r.URL.Path == "/api/v2/runs/rules" {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
+			_ = writeRulePage(w, []map[string]any{
 				{"id": testRuleID, "display_name": "test", "evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade"},
 				{"id": testRuleID2, "display_name": "legacy", "code_evaluators": []map[string]any{{"code": "x", "language": "python"}}},
 				{"id": "1a2b3c4d-0000-4000-8000-000000000001", "display_name": "notify", "webhooks": []map[string]any{{"url": "https://example.com"}}},
@@ -1353,10 +1446,10 @@ func TestEvaluatorRuleDelete_RefusesNonEvaluatorRule(t *testing.T) {
 		if r.Method == http.MethodDelete {
 			sawDelete = true
 		}
-		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+		if r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": testRuleID, "display_name": "notify", "session_id": testSessionID, "webhooks": []map[string]any{{"url": "https://example.com"}}},
+			_ = writeRulePage(w, []map[string]any{
+				{"id": testRuleID, "display_name": "notify", "project_id": testSessionID, "webhooks": []map[string]any{{"url": "https://example.com"}}},
 			})
 			return
 		}
@@ -1388,9 +1481,9 @@ func TestEvaluatorUploadReplaceMatchesRenamedEvaluator(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+		case r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet:
+			_ = writeRulePage(w, []map[string]any{{
+				"id": testRuleID, "display_name": "test", "project_id": testSessionID,
 				"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
 			}})
 		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodPost:
@@ -1442,8 +1535,8 @@ func TestEvaluatorUploadWithoutReplaceRefusesRenamedEvaluator(t *testing.T) {
 			sawWrite = true
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode([]map[string]any{{
-			"id": testRuleID, "display_name": "test", "session_id": testSessionID,
+		_ = writeRulePage(w, []map[string]any{{
+			"id": testRuleID, "display_name": "test", "project_id": testSessionID,
 			"evaluator_id": testEvaluatorID, "evaluator_name": "ready_for_task_grade",
 		}})
 	})

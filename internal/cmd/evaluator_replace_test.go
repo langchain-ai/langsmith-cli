@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -53,8 +54,13 @@ func (s *fullReplaceRuleServer) handler(t *testing.T) http.HandlerFunc {
 				"items":       []map[string]any{{"id": replaceTargetDS, "name": "eval-set"}},
 				"next_cursor": nil,
 			})
-		case r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode([]map[string]any{s.rule})
+		case r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet:
+			rule := maps.Clone(s.rule)
+			if id, ok := rule["session_id"]; ok {
+				delete(rule, "session_id")
+				rule["project_id"] = id
+			}
+			_ = writeRulePage(w, []map[string]any{rule})
 		case r.URL.Path == "/api/v1/runs/rules/"+replaceRuleID && r.Method == http.MethodPatch:
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -286,11 +292,11 @@ func TestEvaluatorRuleDeleteConfirmationListsOtherActions(t *testing.T) {
 		if r.Method == http.MethodDelete {
 			sawDelete = true
 		}
-		if r.URL.Path == "/api/v1/runs/rules" && r.Method == http.MethodGet {
+		if r.URL.Path == "/api/v2/runs/rules" && r.Method == http.MethodGet {
 			rule := codeRule()
 			rule["add_to_dataset_name"] = "corrections"
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode([]map[string]any{rule})
+			_ = writeRulePage(w, []map[string]any{rule})
 			return
 		}
 		http.Error(w, "not found", http.StatusNotFound)
@@ -329,9 +335,9 @@ func TestEvaluatorDeleteConfirmationListsRuleActions(t *testing.T) {
 			sawDelete = true
 		case r.URL.Path == "/api/v1/platform/evaluators/"+testEvaluatorID:
 			_ = json.NewEncoder(w).Encode(readyForTaskGrade())
-		case r.URL.Path == "/api/v1/runs/rules" && r.URL.Query().Get("evaluator_id") == testEvaluatorID:
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": testRuleID, "display_name": "test", "session_id": testSessionID, "session_name": "my-app",
+		case r.URL.Path == "/api/v2/runs/rules" && r.URL.Query().Get("evaluator_id") == testEvaluatorID:
+			_ = writeRulePage(w, []map[string]any{{
+				"id": testRuleID, "display_name": "test", "project_id": testSessionID, "project_name": "my-app",
 				"evaluator_id": testEvaluatorID,
 				"webhooks":     []map[string]any{{"url": "https://example.com/hook"}},
 			}})

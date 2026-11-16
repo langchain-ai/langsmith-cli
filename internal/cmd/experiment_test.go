@@ -121,7 +121,7 @@ func TestExperimentGet_TotalCostOutput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/sessions/"+id {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v2/sessions/"+id {
 					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -155,5 +155,35 @@ func TestExperimentGet_TotalCostOutput(t *testing.T) {
 				t.Errorf("run_stats.total_cost = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExperimentGet_FeedbackStatTypeLowerCase(t *testing.T) {
+	const id = "019a0000-0000-7000-8000-000000000001"
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"`+id+`","tenant_id":"019a0000-0000-7000-8000-000000000002","name":"e","start_time":"2026-10-26T00:00:00Z","type":"EXPERIMENT",`+
+			`"feedback_stats":{"correctness":{"n":2,"avg":0.5,"errors":0,"type":"NUMERIC","contains_thread_feedback":false}}}`)
+	})
+	defer setupTestEnv(t, srv.URL)()
+	flagOutputFormat = "json"
+
+	out := captureStdout(t, func() {
+		cmd := newExperimentCmd()
+		cmd.SetArgs([]string{"get", id})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	})
+
+	var experiment struct {
+		FeedbackStats map[string]map[string]any `json:"feedback_stats"`
+	}
+	if err := json.Unmarshal([]byte(out), &experiment); err != nil {
+		t.Fatalf("output is not a JSON object: %v\n%s", err, out)
+	}
+	stat := experiment.FeedbackStats["correctness"]
+	if stat["type"] != "numeric" || stat["avg"] != 0.5 || stat["n"] != 2.0 {
+		t.Errorf("feedback_stats.correctness = %v, want type numeric with the API's values", stat)
 	}
 }

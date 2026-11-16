@@ -66,8 +66,8 @@ github.com/itchyny/timefmt-go v0.1.9 h1:J4j1qMqZbg5jycwT6zIKfRgZ9aqqMxqanaI6Rr9E
 github.com/itchyny/timefmt-go v0.1.9/go.mod h1:5E46Q+zj7vbTgWY8o5YkMeYb4I6GeWLFnetPy5oBrAI=
 github.com/klauspost/compress v1.19.0 h1:sXLILfc9jV2QYWkzFOPWStmcUVH2RHEB1JCdY2oVvCQ=
 github.com/klauspost/compress v1.19.0/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
-github.com/langchain-ai/langsmith-go v0.31.0 h1:LNrpfAPlA8LQKKGVqCaqcZY5A7dVd6ck4rwSUIFAv6E=
-github.com/langchain-ai/langsmith-go v0.31.0/go.mod h1:CMCcwWyF+weR+k20oR5JU9893uXSVvEVyk5bqsREvqM=
+github.com/langchain-ai/langsmith-go v0.32.0 h1:U7bscib36VYXzTZplwbIcCGZ/YS1Yd4+HIR4Jd5cs4E=
+github.com/langchain-ai/langsmith-go v0.32.0/go.mod h1:BTRQJxQTrsI58ooMyqOuEODPz/S2DftRz3Z6k+mSPus=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=

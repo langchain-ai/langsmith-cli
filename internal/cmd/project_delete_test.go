@@ -15,7 +15,7 @@ func TestProjectDeleteCmd_UsesSDKAfterConfirmation(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/sessions/"+deleteTestProjectID:
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/sessions/"+deleteTestProjectID:
 			getCalled = true
 			if got := r.URL.Query().Get("include_stats"); got != "true" {
 				t.Errorf("include_stats = %q, want true", got)

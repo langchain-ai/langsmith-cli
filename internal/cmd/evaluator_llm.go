@@ -17,10 +17,10 @@ type evaluatorTarget struct {
 	datasetID, projectID string
 }
 
-func (t evaluatorTarget) ruleListParams() langsmith.EvaluatorListParams {
-	params := langsmith.EvaluatorListParams{}
+func (t evaluatorTarget) ruleListParams() langsmith.EvaluatorListV2Params {
+	params := langsmith.EvaluatorListV2Params{}
 	if t.projectID != "" {
-		params.SessionID = langsmith.F(t.projectID)
+		params.ProjectID = langsmith.F(t.projectID)
 	}
 	if t.datasetID != "" {
 		params.DatasetID = langsmith.F(t.datasetID)
@@ -149,12 +149,12 @@ func resolveEvaluatorTarget(ctx context.Context, c *client.Client, dataset, proj
 // findRuleToReplace returns the evaluator rule on the target that --name
 // refers to, or nil when there is none and a new one should be created. It
 // errors when one exists and --replace is not set, or the user declines.
-func findRuleToReplace(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Evaluator, error) {
-	rules, err := c.SDK.Evaluators.List(ctx, target.ruleListParams())
+func findRuleToReplace(ctx context.Context, c *client.Client, name string, target evaluatorTarget, replace, yes bool) (*langsmith.Rule, error) {
+	rules, err := listRules(ctx, c, target.ruleListParams())
 	if err != nil {
 		return nil, fmt.Errorf("checking existing evaluators: %w", err)
 	}
-	existing, err := findRuleForReplace(*rules, name, target.datasetID, target.projectID)
+	existing, err := findRuleForReplace(rules, name, target.datasetID, target.projectID)
 	if err != nil || existing == nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func replaceOverridesFromFlags(cmd *cobra.Command) replaceOverrides {
 // keeps group_by, spend_limit, use_corrections_dataset, num_few_shot_examples,
 // is_tracing_disabled, and the trace-retention flags when they are omitted, so
 // those are left out; sending a retention flag also needs an extra permission.
-func keepRuleSettings(payload map[string]any, existing langsmith.Evaluator, overrides replaceOverrides) error {
+func keepRuleSettings(payload map[string]any, existing langsmith.Rule, overrides replaceOverrides) error {
 	if len(existing.Alerts) > 0 {
 		return fmt.Errorf("rule %q (%s) has %d alert(s), which the API no longer accepts on update, so --replace would remove them; not updated", existing.DisplayName, existing.ID, len(existing.Alerts))
 	}

@@ -194,7 +194,7 @@ func seedRule(t *testing.T, c *client.Client, ctx context.Context, datasetID, na
 	return seededRule{id: created.ID, name: name, webhookURL: hook}
 }
 
-func fetchRule(t *testing.T, c *client.Client, ctx context.Context, id string) *langsmith.Evaluator {
+func fetchRule(t *testing.T, c *client.Client, ctx context.Context, id string) *langsmith.Rule {
 	t.Helper()
 	rule, err := getRule(ctx, c, id)
 	if err != nil {
@@ -205,15 +205,15 @@ func fetchRule(t *testing.T, c *client.Client, ctx context.Context, id string) *
 
 func ruleExists(t *testing.T, c *client.Client, ctx context.Context, id string) bool {
 	t.Helper()
-	rules, err := c.SDK.Evaluators.List(ctx, langsmith.EvaluatorListParams{ID: langsmith.F([]string{id})})
+	rules, err := listRules(ctx, c, langsmith.EvaluatorListV2Params{ID: langsmith.F([]string{id})})
 	if err != nil {
 		t.Fatalf("listing rule %s: %v", id, err)
 	}
-	return slices.ContainsFunc(*rules, func(r langsmith.Evaluator) bool { return r.ID == id })
+	return slices.ContainsFunc(rules, func(r langsmith.Rule) bool { return r.ID == id })
 }
 
 // assertSeededSettings checks that the rule still has every seeded setting.
-func assertSeededSettings(t *testing.T, c *client.Client, ctx context.Context, seed seededRule, wantSampling float64) *langsmith.Evaluator {
+func assertSeededSettings(t *testing.T, c *client.Client, ctx context.Context, seed seededRule, wantSampling float64) *langsmith.Rule {
 	t.Helper()
 	rule := fetchRule(t, c, ctx, seed.id)
 	if rule.DisplayName != seed.name {
