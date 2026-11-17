@@ -101,13 +101,17 @@ jobs:
           owner: langchain-ai
           repositories: homebrew-tap
 
+      # Runs brew bump-formula-pr directly. The bump PR is opened with the App
+      # token so the tap's bottle CI runs on it. Homebrew reads the commit
+      # identity from HOMEBREW_GIT_NAME and HOMEBREW_GIT_EMAIL.
       - name: Open bump PR against the tap
-        uses: dawidd6/action-homebrew-bump-formula@b12d2bc99c46444125e606142f28200ec71a1214 # v10
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          user_name: "langtions-bot[bot]"
-          user_email: "261626216+langtions-bot[bot]@users.noreply.github.com"
-          no_fork: true
-          tap: langchain-ai/homebrew-tap
-          formula: langsmith-cli
-          tag: ${{ github.ref }}
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ steps.app-token.outputs.token }}
+          HOMEBREW_GIT_NAME: "langtions-bot[bot]"
+          HOMEBREW_GIT_EMAIL: "261626216+langtions-bot[bot]@users.noreply.github.com"
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          brew=/home/linuxbrew/.linuxbrew/bin/brew
+          "$brew" tap langchain-ai/tap
+          "$brew" bump-formula-pr --no-audit --no-browse --no-fork \
+            --version "${RELEASE_TAG#v}" langchain-ai/tap/langsmith-cli
