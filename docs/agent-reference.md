@@ -17,7 +17,7 @@ Rules of thumb:
 | Flag | Description |
 |---|---|
 | `--api-url string` | LangSmith API URL [env: LANGSMITH_ENDPOINT] |
-| `--format string` | Output format: pretty or json |
+| `--format string` | Output format: pretty or json (default pretty; json when piped from 1.0.0) |
 | `--profile string` | Named profile to use [env: LANGSMITH_PROFILE] |
 | `--workspace string` | LangSmith workspace ID [env: LANGSMITH_WORKSPACE_ID] |
 
@@ -31,7 +31,7 @@ Don't print API keys, and don't put them on the command line where they end up i
 
 ### Output
 
-- `--format json` prints machine-readable JSON. Lists print a JSON array.
+- `--format json` prints machine-readable JSON. Lists print a JSON array. Until 1.0.0, output that is not a terminal defaults to `pretty` and warns on stderr; from 1.0.0 it defaults to `json`.
 - `--jq EXPR` filters the JSON output with a jq expression and implies `--format json`, e.g. `--jq '.[].id'`. No separate `jq` install is needed.
 - Many read commands take `-o FILE` (`--output`) to write the JSON to a file instead of stdout, which keeps large payloads out of the agent's context.
 - Trace and run commands return compact rows by default. Add `--include-io` for inputs, outputs and errors, `--include-metadata` for status, latency, tokens and costs, `--include-feedback` for feedback scores, or `--full` for all three.

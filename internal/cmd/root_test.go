@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/langchain-ai/langsmith-cli/internal/cmdutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,8 +137,54 @@ func TestRootCmd_PersistentFlags_Format(t *testing.T) {
 	if f == nil {
 		t.Fatal("--format flag not found")
 	}
-	if f.DefValue != "pretty" {
-		t.Errorf("expected default pretty, got %q", f.DefValue)
+	if f.DefValue != "" {
+		t.Errorf("expected no static default, got %q", f.DefValue)
+	}
+}
+
+// withStdoutTerminal makes the CLI treat stdout as a terminal, or not, for one
+// test.
+func withStdoutTerminal(t *testing.T, terminal bool) {
+	t.Helper()
+	prev := cmdutil.StdoutIsTerminal
+	cmdutil.StdoutIsTerminal = func() bool { return terminal }
+	t.Cleanup(func() { cmdutil.StdoutIsTerminal = prev })
+}
+
+func TestPipedPrettyOutputWarnsAboutTheJSONDefault(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("LANGSMITH_CONFIG_FILE", configPath)
+	t.Setenv("LANGSMITH_PROFILE", "")
+	if err := os.WriteFile(configPath, []byte(`{"current_profile":"dev","profiles":{"dev":{"api_url":"https://dev.example"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const warning = "defaults to --format json in 1.0.0"
+	for _, tt := range []struct {
+		name     string
+		terminal bool
+		args     []string
+		wantJSON bool
+		wantWarn bool
+	}{
+		{"piped", false, nil, false, true},
+		{"terminal", true, nil, false, false},
+		{"piped with --format pretty", false, []string{"--format", "pretty"}, false, false},
+		{"piped with --format json", false, []string{"--format", "json"}, true, false},
+		{"piped with --jq", false, []string{"--jq", "."}, true, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			withStdoutTerminal(t, tt.terminal)
+			out, err := executeCommand(t, append(tt.args, "profile", "list")...)
+			if err != nil {
+				t.Fatalf("profile list returned error: %v\noutput: %s", err, out)
+			}
+			if got := strings.Count(out, warning); got != map[bool]int{true: 1, false: 0}[tt.wantWarn] {
+				t.Fatalf("warning count = %d, want warning %v:\n%s", got, tt.wantWarn, out)
+			}
+			if got := json.Valid([]byte(out)); got != tt.wantJSON {
+				t.Fatalf("JSON output = %v, want %v:\n%s", got, tt.wantJSON, out)
+			}
+		})
 	}
 }
 

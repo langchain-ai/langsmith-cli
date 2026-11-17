@@ -575,3 +575,41 @@ func TestGeneratedSandboxUsageRawOutput(t *testing.T) {
 		t.Fatalf("raw output = %s after %d requests; want the complete single-page response", stdout, requests)
 	}
 }
+
+func TestGeneratedCommandPrintsJSONWhenPiped(t *testing.T) {
+	isolateGeneratedAuth(t)
+	const body = `{"id":"11111111-1111-1111-1111-111111111111","name":"my-dataset","description":"two\nlines"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer ts.Close()
+	previousExit := exitGenerated
+	exitGenerated = func(code int) { t.Errorf("unexpected CLI exit: %d", code) }
+	t.Cleanup(func() { exitGenerated = previousExit })
+	run := func(extra ...string) string {
+		root := NewRootCmd("dev", "dev")
+		root.SetArgs(append([]string{"--api-url", ts.URL, "--api-key", "test-key", "datasets", "update",
+			"--dataset-id", "11111111-1111-1111-1111-111111111111", "--name", "my-dataset"}, extra...))
+		return captureStdout(t, func() {
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+	stdout := run()
+	var got, want any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("piped output without --format is not JSON: %v\n%s", err, stdout)
+	}
+	if err := json.Unmarshal([]byte(body), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("output = %s, want %s", stdout, body)
+	}
+	if stdout = run("--format", "pretty"); json.Valid([]byte(stdout)) {
+		t.Fatalf("--format pretty should win over the piped default, got JSON:\n%s", stdout)
+	}
+}

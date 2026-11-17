@@ -12,7 +12,8 @@ import (
 
 func testCmd(format string, out *bytes.Buffer) *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
-	cmd.PersistentFlags().String("format", format, "")
+	cmd.PersistentFlags().String("format", "", "")
+	_ = cmd.PersistentFlags().Set("format", format)
 	cmd.Flags().String("jq", "", "")
 	cmd.SetOut(out)
 	return cmd
@@ -26,6 +27,22 @@ func TestRenderJSONIgnoresTextSpec(t *testing.T) {
 
 	require.NoError(t, err)
 	require.JSONEq(t, `{"name":"sandbox"}`, out.String())
+}
+
+func TestRenderStringIsBareUnlessFormatIsGiven(t *testing.T) {
+	var out bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.PersistentFlags().String("format", "", "")
+	cmd.Flags().String("jq", "", "")
+	cmd.SetOut(&out)
+
+	require.NoError(t, Render(cmd, "secret-token", Template("{{.}}\n")))
+	require.Equal(t, "secret-token\n", out.String())
+
+	out.Reset()
+	require.NoError(t, cmd.PersistentFlags().Set("format", "json"))
+	require.NoError(t, Render(cmd, "secret-token", Template("{{.}}\n")))
+	require.Equal(t, "\"secret-token\"\n", out.String())
 }
 
 func TestCommandCustomOutputSkipsRender(t *testing.T) {

@@ -36,8 +36,13 @@ func runSetupCommandDefault(ctx context.Context, name string, args ...string) er
 // With --yes it proceeds without prompting; in a non-interactive shell without
 // --yes it refuses rather than hang.
 func confirmApply(cmd *cobra.Command, yes bool, preview string) (bool, error) {
+	prompt := !yes && inputIsTerminal(os.Stdin)
 	if GetFormat() == "pretty" {
 		fmt.Fprint(cmd.OutOrStdout(), preview)
+	} else if prompt {
+		// Stdout carries JSON, but the person answering the prompt still
+		// needs to see what they are approving.
+		fmt.Fprint(cmd.ErrOrStderr(), preview)
 	}
 	if yes {
 		return true, nil

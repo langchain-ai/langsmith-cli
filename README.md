@@ -178,6 +178,8 @@ on LangSmith Cloud and BYOC, not standalone self-hosted deployments.
 
 ## Output Formats
 
+Commands print human-readable tables and trees by default. From 1.0.0, output that is piped or redirected defaults to JSON; until then such output stays pretty and the CLI warns on stderr. Pass `--format` to choose explicitly.
+
 ```bash
 langsmith traces list --project my-app
 ```

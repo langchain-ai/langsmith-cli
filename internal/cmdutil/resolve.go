@@ -2,13 +2,48 @@ package cmdutil
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/langchain-ai/langsmith-cli/internal/client"
 	lsconfig "github.com/langchain-ai/langsmith-cli/internal/config"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
+
+// StdoutIsTerminal reports whether stdout is an interactive terminal. Tests
+// replace it.
+var StdoutIsTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// PipedJSONVersion is the major version from which output that is not going
+// to a terminal defaults to json instead of pretty.
+const PipedJSONVersion = "1.0.0"
+
+var (
+	formatWarningOut   io.Writer = os.Stderr
+	formatWarningShown bool
+)
+
+// ResetFormatWarning sends the next DefaultFormat warning to w. Call it once
+// per command run.
+func ResetFormatWarning(w io.Writer) {
+	formatWarningOut = w
+	formatWarningShown = false
+}
+
+// DefaultFormat is the output format used when neither --format nor --jq is
+// given: pretty. Piped output switches to json in PipedJSONVersion, so until
+// then choosing pretty for stdout that is not a terminal warns once on stderr.
+func DefaultFormat() string {
+	if !formatWarningShown && !StdoutIsTerminal() {
+		formatWarningShown = true
+		fmt.Fprintf(formatWarningOut, "warning: output that is not a terminal defaults to --format json in %s; pass --format pretty to keep this output, or --format json to switch now\n", PipedJSONVersion)
+	}
+	return "pretty"
+}
 
 // getFlagString looks up a string flag by checking Flags() (which includes
 // inherited persistent flags for child commands) and then PersistentFlags()
@@ -54,16 +89,20 @@ func ResolveAPIURL(cmd *cobra.Command) string {
 }
 
 // ResolveFormat reads the output format from cobra's flag tree. --jq filters
-// JSON, so it implies json.
+// JSON, so it implies json; without --format, DefaultFormat applies.
 func ResolveFormat(cmd *cobra.Command) string {
 	if ResolveJQ(cmd) != "" {
 		return "json"
 	}
-	v := getFlagString(cmd, "format")
-	if v == "" {
-		return "pretty"
+	if v := getFlagString(cmd, "format"); v != "" && FormatChanged(cmd) {
+		return v
 	}
-	return v
+	return DefaultFormat()
+}
+
+// FormatChanged reports whether --format was given on the command line.
+func FormatChanged(cmd *cobra.Command) bool {
+	return isFlagChanged(cmd, "format")
 }
 
 // ResolveJQ reads the jq filter from cobra's flag tree.

@@ -92,9 +92,39 @@ func TestResolveFormat_Flag(t *testing.T) {
 }
 
 func TestResolveFormat_Default(t *testing.T) {
+	for _, tt := range []struct {
+		terminal bool
+		warning  bool
+	}{
+		{true, false},
+		{false, true},
+	} {
+		prev := StdoutIsTerminal
+		StdoutIsTerminal = func() bool { return tt.terminal }
+		var stderr strings.Builder
+		ResetFormatWarning(&stderr)
+		cmd := newTestCmd()
+		for range 2 {
+			if got := ResolveFormat(cmd); got != "pretty" {
+				t.Errorf("terminal=%v: expected pretty, got %q", tt.terminal, got)
+			}
+		}
+		if got := strings.Count(stderr.String(), "warning:"); got != map[bool]int{true: 1, false: 0}[tt.warning] {
+			t.Errorf("terminal=%v: %d warnings, want warning %v: %q", tt.terminal, got, tt.warning, stderr.String())
+		}
+		StdoutIsTerminal = prev
+	}
+	ResetFormatWarning(os.Stderr)
+}
+
+func TestResolveFormat_FlagWinsWhenPiped(t *testing.T) {
+	prev := StdoutIsTerminal
+	StdoutIsTerminal = func() bool { return false }
+	t.Cleanup(func() { StdoutIsTerminal = prev })
 	cmd := newTestCmd()
-	if got := ResolveFormat(cmd); got != "pretty" {
-		t.Errorf("expected pretty, got %q", got)
+	_ = cmd.PersistentFlags().Set("format", "json")
+	if got := ResolveFormat(cmd); got != "json" {
+		t.Errorf("expected json, got %q", got)
 	}
 }
 
