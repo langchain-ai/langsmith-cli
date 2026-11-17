@@ -51,8 +51,22 @@ Quick start:
   langsmith traces list --project my-project --limit 5
   langsmith runs list --project my-project --run-type llm --limit 10
   langsmith datasets list
-  langsmith evaluator list
+  langsmith evaluators list
   langsmith experiments list --dataset my-eval-dataset
+
+Common workflows:
+  Find and confirm a fix for production failures:
+    langsmith investigate --project my-app --last-n-minutes 60
+    langsmith verify --project my-app --since 2026-11-10T14:00:00Z
+  Turn failed runs into an evaluation:
+    langsmith runs list --project my-app --error --include-io --limit 20
+    langsmith datasets create --name my-eval-dataset
+    langsmith examples create --dataset my-eval-dataset --inputs '{"question": "..."}' --outputs '{"answer": "..."}'
+    langsmith evaluators upload evals.py --function correctness --name correctness --dataset my-eval-dataset
+    langsmith experiments list --dataset my-eval-dataset
+    langsmith experiments get my-experiment
+
+Coding agents: run 'langsmith docs agents' for task-by-task usage.
 
 	Output:
 	  --format pretty  Human-readable tables, trees, and syntax-highlighted JSON (default).

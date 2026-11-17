@@ -70,9 +70,8 @@ type agentReferenceFlag struct {
 
 func newDocsCmd() *cobra.Command {
 	docs := &cobra.Command{
-		Use:    "docs",
-		Short:  "Generate CLI documentation",
-		Hidden: true,
+		Use:   "docs",
+		Short: "Print CLI documentation, such as the coding-agent reference",
 	}
 	docs.AddCommand(&cobra.Command{
 		Use:         "agents",

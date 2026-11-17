@@ -61,4 +61,14 @@ func TestAgentReferenceChecksExamples(t *testing.T) {
 			require.Error(t, err, tc.example)
 		}
 	}
+
+	// Every command the root help names must exist with the flags it shows.
+	var checked int
+	for _, line := range strings.Split(root.Long, "\n") {
+		if ex := strings.TrimSpace(line); strings.HasPrefix(ex, "langsmith ") {
+			require.NoError(t, checkExample(root, ex), "root help: %s", ex)
+			checked++
+		}
+	}
+	require.NotZero(t, checked, "root help names no commands")
 }

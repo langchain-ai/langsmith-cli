@@ -747,6 +747,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith datasets update-tags` | Tag a dataset version. |
 | `langsmith datasets upload` | Upload a JSON file as a new dataset |
 | `langsmith datasets versions retrieve-diff` | Get diff between two dataset versions. |
+| `langsmith docs agents` | Print the task-oriented CLI reference for coding agents as Markdown |
 | `langsmith evaluators create-decision-model` | Create a decision-model evaluator (Jev, SemIf or OpenAI Decisions) from its prompt and questions, and attach it to a project or dataset. |
 | `langsmith evaluators create-llm` | Create an LLM-as-judge evaluator rule |
 | `langsmith evaluators delete` | Delete an evaluator by ID *(confirms)* |
