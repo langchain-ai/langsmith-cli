@@ -540,12 +540,17 @@ Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `buil
 
 ### `tunnel` and `relay` — Serve private network connections
 
-A private network connection lets LangSmith reach a network it can't reach directly, through a connector running inside that network. These commands run the connector until interrupted. Create the connection in LangSmith first and pass its ID.
+A private network connection lets LangSmith reach a network it can't reach directly, through a connector running inside that network. These commands run the connector until interrupted. Create the connection in LangSmith first and pass its ID, or use `tunnel connect --quick` to have the command create a personal tunnel for the session.
 
 ```bash
 # Tunnel: LangSmith reaches the named targets through this machine.
 # An http(s):// target also gets a tunnel URL; host:port is raw TCP.
 langsmith tunnel connect <connection-id> --target app=http://localhost:8080 --target db=10.0.0.5:5432
+
+# Quick tunnel: LangSmith creates a personal tunnel only you and sandboxes you
+# create can call, prints each tunnel URL, and deletes it when this exits.
+# If this dies without cleaning up, LangSmith deletes the tunnel five minutes later.
+langsmith tunnel connect --quick --target app=http://localhost:2024
 
 # Relay: sandbox traffic matching a relay rule leaves through this machine
 langsmith relay connect <relay-id> --allow 10.0.0.0/8 --deny 10.0.9.0/24

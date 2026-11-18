@@ -18,16 +18,19 @@ import (
 type tunnelConnectInput struct {
 	Targets  []string
 	LogLevel string
+	Quick    bool
 }
 
 var tunnelConnectCommand = structured.Command[*tunnelConnectInput]{
-	Use:   "connect <connection-id> --target <name=address>",
+	Use:   "connect (<connection-id> | --quick) --target <name=address>",
 	Short: "Serve a private network tunnel from this machine",
 	Long: `Serve a private network tunnel from this machine until interrupted.
 
 LangSmith reaches each target through this process, so a target only has to
 be reachable from here. Create the tunnel connection in LangSmith first and
-pass its ID.
+pass its ID, or pass --quick instead: LangSmith creates a personal tunnel only
+you and sandboxes you create can call, and deletes it when this command exits.
+--quick prints each HTTP target's tunnel URL once the tunnel is ready.
 
 A target is name=host:port for raw TCP, or name=http://host:port (or https)
 for an HTTP service, which LangSmith also serves at a tunnel URL.
@@ -36,13 +39,26 @@ The connector authenticates with an API key: set LANGSMITH_API_KEY or use a
 profile with an API key. OAuth logins are not accepted.
 
 Examples:
+  langsmith tunnel connect --quick --target app=http://localhost:2024
   langsmith tunnel connect <connection-id> --target app=http://localhost:8080
   langsmith tunnel connect <connection-id> --target db=10.0.0.5:5432 --target api=https://api.internal:443`,
-	Args: cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if quick, _ := cmd.Flags().GetBool("quick"); quick {
+			if len(args) > 0 {
+				return errors.New("--quick creates its own tunnel connection; omit <connection-id>")
+			}
+			return nil
+		}
+		if len(args) != 1 {
+			return errors.New("requires a <connection-id> argument, or --quick to create a tunnel connection")
+		}
+		return nil
+	},
 	Input: func(cmd *cobra.Command) *tunnelConnectInput {
 		in := &tunnelConnectInput{LogLevel: "info"}
 		cmd.Flags().StringSliceVar(&in.Targets, "target", nil, "Target to serve as name=host:port or name=http(s)://host:port (repeatable)")
 		cmd.Flags().StringVar(&in.LogLevel, "log-level", in.LogLevel, "Log level: debug, info, warn, error")
+		cmd.Flags().BoolVar(&in.Quick, "quick", false, "Create a personal tunnel connection for this session and delete it on exit")
 		_ = cmd.MarkFlagRequired("target")
 		return in
 	},
@@ -51,6 +67,9 @@ Examples:
 		targets, err := parseConnectorTargets(in.Targets)
 		if err != nil {
 			return nil, err
+		}
+		if in.Quick {
+			return nil, runQuickTunnel(ctx, cmd.OutOrStdout(), targets, in.LogLevel)
 		}
 		return nil, runConnector(ctx, connector.Settings{ConnectionID: args[0], Targets: targets}, in.LogLevel)
 	},
@@ -120,23 +139,34 @@ func newRelayCmd() *cobra.Command {
 // runConnector serves a connection with the CLI's endpoint and API key until
 // ctx is cancelled or the process is interrupted.
 func runConnector(ctx context.Context, settings connector.Settings, logLevel string) error {
-	opts, err := resolveClientOptions()
+	config, err := newConnectorConfig(settings)
 	if err != nil {
 		return err
+	}
+	return serveConnector(ctx, config, logLevel)
+}
+
+// newConnectorConfig validates settings with the CLI's endpoint and API key.
+func newConnectorConfig(settings connector.Settings) (connector.Config, error) {
+	opts, err := resolveClientOptions()
+	if err != nil {
+		return connector.Config{}, err
 	}
 	apiKey, err := connectorAPIKey(opts)
 	if err != nil {
-		return err
+		return connector.Config{}, err
 	}
 	if apiKey == "" {
-		return errors.New("a connector needs an API key: set LANGSMITH_API_KEY or use a profile with an API key (OAuth logins are not accepted)")
+		return connector.Config{}, errors.New("a connector needs an API key: set LANGSMITH_API_KEY or use a profile with an API key (OAuth logins are not accepted)")
 	}
 	settings.Endpoint = client.NormalizeURL(opts.APIURL)
 	settings.APIKey = apiKey
-	config, err := connector.NewConfig(settings)
-	if err != nil {
-		return err
-	}
+	return connector.NewConfig(settings)
+}
+
+// serveConnector runs a connector until ctx is cancelled or the process is
+// interrupted. Tests replace it to exercise the commands without an edge.
+var serveConnector = func(ctx context.Context, config connector.Config, logLevel string) error {
 	logger := newTunnelLogger(logLevel)
 	connectorClient, err := connector.NewClient(config, connector.WithLogger(logger))
 	if err != nil {

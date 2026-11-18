@@ -116,6 +116,14 @@ func executeCommand(t *testing.T, args ...string) (string, error) {
 // executeCommandContext is executeCommand with a context the command runs under.
 func executeCommandContext(t *testing.T, ctx context.Context, args ...string) (string, error) {
 	t.Helper()
+	var outBuf bytes.Buffer
+	err := executeCommandTo(ctx, &outBuf, args...)
+	return outBuf.String(), err
+}
+
+// executeCommandTo runs a new root command under ctx, writing its stdout and
+// stderr to out, for tests that read output while the command still runs.
+func executeCommandTo(ctx context.Context, out io.Writer, args ...string) error {
 	oldKey := flagAPIKey
 	oldURL := flagAPIURL
 	oldProfile := flagProfile
@@ -131,10 +139,8 @@ func executeCommandContext(t *testing.T, ctx context.Context, args ...string) (s
 	}()
 
 	cmd := NewRootCmd("test", "test")
-	var outBuf bytes.Buffer
-	cmd.SetOut(&outBuf)
-	cmd.SetErr(&outBuf)
+	cmd.SetOut(out)
+	cmd.SetErr(out)
 	cmd.SetArgs(args)
-	err := cmd.ExecuteContext(ctx)
-	return outBuf.String(), err
+	return cmd.ExecuteContext(ctx)
 }

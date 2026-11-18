@@ -13,6 +13,11 @@ import (
 // the /api prefix, e.g. "/v1/platform/issues/%s" or "/runs/rules".
 var barePath = regexp.MustCompile(`"(/(?:v1|v2|runs|repos|commits|feedback|sessions|threads|traces)[a-zA-Z0-9/%{}._?=&-]*)"`)
 
+// connectionsAPIPath is exempt: the connections API, like the connector carrier
+// path in langsmith-go's lib/connector, is served at the API origin on every
+// topology rather than under /api.
+const connectionsAPIPath = "/v1/connections"
+
 // The generated SDK emits paths under /api, but the CLI also builds paths itself
 // for endpoints the SDK does not cover yet and passes them to the Raw* helpers.
 // Single-origin self-hosted deployments serve the API under /api and have no
@@ -35,6 +40,9 @@ func TestHandWrittenPathsCarryAPIPrefix(t *testing.T) {
 			return err
 		}
 		for _, m := range barePath.FindAllStringSubmatch(string(src), -1) {
+			if m[1] == connectionsAPIPath || strings.HasPrefix(m[1], connectionsAPIPath+"/") {
+				continue
+			}
 			t.Errorf("%s: request path %q is missing the /api prefix; single-origin "+
 				"self-hosted serves the API under /api and has no route for the bare form. "+
 				"Use \"/api%s\" (or the SDK, if it covers this endpoint).", path, m[1], m[1])
