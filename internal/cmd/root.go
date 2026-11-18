@@ -109,6 +109,7 @@ Coding agents: run 'langsmith docs agents' for task-by-task usage.
 	// Register all subcommand groups
 	rootCmd.AddCommand(newProductFeedbackCmd(rawVersion))
 	rootCmd.AddCommand(newProjectCmd())
+	rootCmd.AddCommand(newDashboardCmd())
 	rootCmd.AddCommand(newTraceCmd())
 	rootCmd.AddCommand(newAgentSetupCmd())
 	rootCmd.AddCommand(newRunCmd())
