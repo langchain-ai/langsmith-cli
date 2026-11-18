@@ -61,6 +61,7 @@ Agents and scripts depend on command names, flags, and output, so the CLI follow
 - These helpers cover langsmith's own commands and flags, including global flags on generated commands. A generated operation's flags come from the API schema: rename one with `generatedFlagRenames` in `internal/cmd/generated.go` so the old name keeps working, and change or remove the field through the API's deprecation process.
 - Keep the old behavior working next to the new one during the window: add the new flag or command and deprecate the old one, rather than changing what the old one does.
 - Update `README.md`, the templates in `internal/cmd/templates/agents-md/`, and any agent skill that uses the command in the same PR as the deprecation or change.
+- Commands whose short help ends in `(experimental)`, such as `sandboxes`, `relay` and `tunnel`, are exempt, along with their subcommands and flags: they can change in any release without a deprecation window. Mark the change breaking (`!` in the PR title) so the changelog lists it, and name the replacement in the PR description.
 
 ## Releasing
 
