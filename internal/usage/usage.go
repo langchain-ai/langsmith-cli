@@ -1,6 +1,6 @@
 // Package usage adds the headers LangSmith uses to count CLI usage: the CLI
-// version, the command name as typed (never its arguments), and the coding
-// agent running the CLI, if any.
+// version, the command name as typed (never its arguments), the coding agent
+// running the CLI, if any, and the skill that ran it, if any.
 package usage
 
 import (
@@ -17,12 +17,18 @@ import (
 const (
 	CommandHeader = "X-LangSmith-CLI-Command"
 	AgentHeader   = "X-LangSmith-CLI-Agent"
+	SkillHeader   = "X-LangSmith-CLI-Skill"
+
+	// SkillEnv names the agent skill running the CLI. Skills set it on the
+	// commands they run so usage can be broken down by skill.
+	SkillEnv = "LANGSMITH_SKILL"
 )
 
 var (
 	userAgent string
 	command   string
 	agent     string
+	skill     string
 )
 
 // SetVersion sets the CLI version reported in the User-Agent.
@@ -37,6 +43,7 @@ func SetVersion(version string) {
 func SetCommand(cmd *cobra.Command) {
 	command = invokedPath(cmd, os.Args[1:])
 	agent = detectAgent(os.Getenv)
+	skill = strings.TrimSpace(os.Getenv(SkillEnv))
 }
 
 // Apply sets the usage headers on an outgoing LangSmith API request.
@@ -47,6 +54,9 @@ func Apply(h http.Header) {
 	if command != "" {
 		h.Set(CommandHeader, command)
 		h.Set(AgentHeader, agent)
+		if skill != "" {
+			h.Set(SkillHeader, skill)
+		}
 	}
 }
 

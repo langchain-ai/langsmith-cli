@@ -13,13 +13,13 @@ import (
 )
 
 func reset(t *testing.T) {
-	t.Cleanup(func() { userAgent, command, agent = "", "", "" })
+	t.Cleanup(func() { userAgent, command, agent, skill = "", "", "", "" })
 }
 
 func TestApply(t *testing.T) {
 	reset(t)
 	SetVersion("0.5.1")
-	command, agent = "traces query", "codex"
+	command, agent, skill = "traces query", "codex", "langsmith-trace"
 
 	h := http.Header{}
 	Apply(h)
@@ -32,6 +32,34 @@ func TestApply(t *testing.T) {
 	}
 	if got := h.Get(AgentHeader); got != "codex" {
 		t.Errorf("%s = %q", AgentHeader, got)
+	}
+	if got := h.Get(SkillHeader); got != "langsmith-trace" {
+		t.Errorf("%s = %q", SkillHeader, got)
+	}
+}
+
+func TestApplyWithoutSkill(t *testing.T) {
+	reset(t)
+	command, agent = "traces query", "none"
+	h := http.Header{}
+	Apply(h)
+	if h.Values(SkillHeader) != nil {
+		t.Errorf("%s set without a skill: %v", SkillHeader, h)
+	}
+}
+
+func TestSetCommandReadsSkill(t *testing.T) {
+	reset(t)
+	t.Setenv(SkillEnv, " langsmith-dataset ")
+	root := &cobra.Command{Use: "langsmith"}
+	list := &cobra.Command{Use: "list"}
+	root.AddCommand(list)
+	SetCommand(list)
+
+	h := http.Header{}
+	Apply(h)
+	if got := h.Get(SkillHeader); got != "langsmith-dataset" {
+		t.Errorf("%s = %q", SkillHeader, got)
 	}
 }
 

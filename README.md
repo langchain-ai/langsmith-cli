@@ -88,6 +88,10 @@ export LANGSMITH_WORKSPACE_ID="<workspace-id>"                # Default workspac
 export LANGSMITH_PROJECT="my-default-project"                 # Default project for queries
 ```
 
+Agent skills that run `langsmith` set `LANGSMITH_SKILL=<skill-name>` on those
+commands. The CLI sends it in the `X-LangSmith-CLI-Skill` header, alongside the
+command name and calling agent, so LangSmith can count CLI usage by skill.
+
 Or save the credentials in a profile:
 
 ```bash
