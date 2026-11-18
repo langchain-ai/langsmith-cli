@@ -95,6 +95,27 @@ contract:
       headers: {X-Tenant-Id: 55555555-5555-5555-5555-555555555555}
       stdout: 44444444-4444-4444-4444-444444444444
 
+  - name: list completed items the reviewers disagreed on
+    op: list
+    args:
+      - --queue-id
+      - 11111111-1111-1111-1111-111111111111
+      - --status
+      - archived
+      - --agreement
+      - disagreed
+      - --has-unresolved-keys
+    response:
+      body: {items: [*item], next_cursor: null}
+    want:
+      method: GET
+      path: /api/v1/platform/annotation-queues/11111111-1111-1111-1111-111111111111/items
+      query:
+        status: archived
+        agreement: disagreed
+        has_unresolved_keys: "true"
+      stdout: 44444444-4444-4444-4444-444444444444
+
   - name: update timestamps
     op: update
     args:

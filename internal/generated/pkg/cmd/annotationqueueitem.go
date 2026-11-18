@@ -118,6 +118,11 @@ var annotationQueuesItemsList = cli.Command{
 			QueryPath: "status",
 		},
 		&requestflag.Flag[string]{
+			Name:      "agreement",
+			Usage:     "Only completed items whose reviewers disagreed on at least one rubric key. Returns 501 unless multi-reviewer queues are on for the workspace. Requires status=archived",
+			QueryPath: "agreement",
+		},
+		&requestflag.Flag[string]{
 			Name:      "cursor",
 			Usage:     "Opaque pagination cursor",
 			QueryPath: "cursor",
@@ -127,6 +132,11 @@ var annotationQueuesItemsList = cli.Command{
 			Usage:     "Pagination direction. backward requires cursor",
 			Default:   "forward",
 			QueryPath: "direction",
+		},
+		&requestflag.Flag[bool]{
+			Name:      "has-unresolved-keys",
+			Usage:     "Only completed items that do (true) or do not (false) still have a disagreed rubric key with no final answer. Items with no agreement result match neither value. Returns 501 unless multi-reviewer queues are on for the workspace. Requires status=archived",
+			QueryPath: "has_unresolved_keys",
 		},
 		&requestflag.Flag[string]{
 			Name:      "item-type",
@@ -218,9 +228,19 @@ var annotationQueuesItemsRetrieveCount = cli.Command{
 			QueryPath: "status",
 		},
 		&requestflag.Flag[string]{
+			Name:      "agreement",
+			Usage:     "Count only completed items whose reviewers disagreed on at least one rubric key. Returns 501 unless multi-reviewer queues are on for the workspace. Requires status=archived",
+			QueryPath: "agreement",
+		},
+		&requestflag.Flag[string]{
 			Name:      "end-time",
 			Usage:     "Archived strictly before this time. Only used when status=archived",
 			QueryPath: "end_time",
+		},
+		&requestflag.Flag[bool]{
+			Name:      "has-unresolved-keys",
+			Usage:     "Count only completed items that do (true) or do not (false) still have a disagreed rubric key with no final answer. Items with no agreement result match neither value. Returns 501 unless multi-reviewer queues are on for the workspace. Requires status=archived",
+			QueryPath: "has_unresolved_keys",
 		},
 		&requestflag.Flag[any]{
 			Name:      "max-start-time",
