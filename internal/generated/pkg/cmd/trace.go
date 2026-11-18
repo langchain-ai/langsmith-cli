@@ -16,7 +16,7 @@ import (
 
 var tracesQuery = cli.Command{
 	Name:    "query",
-	Usage:   "Returns a paginated list of traces (root runs) for a single tracing project.\nEach item carries the trace's root run plus optional trace-wide aggregates\n(`total_tokens`, `total_cost`, `first_token_time`) under `trace_aggregates`, so\nclients never have to merge by `trace_id`.",
+	Usage:   "GET with body payload — no resources created. Returns the traces matching the\nquery passed as the request payload.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{

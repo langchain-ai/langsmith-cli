@@ -901,12 +901,12 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith traces get` | Fetch every run in a single trace |
 | `langsmith traces list` | List traces (root runs) matching filter criteria (default: 20, newest first) |
 | `langsmith traces messages` | Get conversation messages for multiple traces (batch) |
-| `langsmith traces query` | Returns a paginated list of traces (root runs) for a single tracing project. |
+| `langsmith traces query` | Returns the traces matching the query passed as the request payload. |
 | `langsmith traces setup` | Configure coding agents (Claude Code, Codex) to trace to LangSmith |
 | `langsmith traces setup claude` | Configure Claude Code to trace to LangSmith |
 | `langsmith traces setup codex` | Configure Codex to trace to LangSmith |
 | `langsmith traces stats` | Aggregate stats for traces in a project (token usage, latency, costs, feedback) |
-| `langsmith traces streaming query` | Returns a paginated list of traces (root runs) for a single tracing project. |
+| `langsmith traces streaming query` | Returns the traces matching the query passed as the request payload. |
 | `langsmith tunnel connect` | Serve a private network tunnel from this machine |
 | `langsmith verify` | Check that failures seen before a fix stopped after it |
 | `langsmith workspaces create` | Create a new workspace. |
