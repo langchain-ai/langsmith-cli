@@ -25,6 +25,7 @@ Results are sorted newest-first by start time.
 
 Examples:
   langsmith runs list --project my-app --run-type llm --limit 10
+  langsmith runs list --project my-app --filter 'and(eq(input_key, "in_reply_to"), eq(input_value, "T-1001"))' --include-io
   langsmith runs get <run-id> --full
   langsmith runs export runs.jsonl --project my-app --run-type llm`,
 	}

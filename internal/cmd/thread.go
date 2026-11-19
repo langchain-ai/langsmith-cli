@@ -27,7 +27,10 @@ func newThreadCmd() *cobra.Command {
 		Long: `Query multi-turn conversation threads.
 
 A thread groups multiple root runs that share a thread_id, representing
-a multi-turn conversation.
+a multi-turn conversation. Traces linked some other way, such as a
+follow-up whose inputs name the earlier request, are not a thread; find
+them with traces list --filter 'and(eq(input_key, "in_reply_to"),
+eq(input_value, "<id>"))'.
 
 Results are paginated and return at most 20 threads by default
 (use --limit to change). Threads are sorted by most recent activity

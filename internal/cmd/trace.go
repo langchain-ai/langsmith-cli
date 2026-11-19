@@ -32,6 +32,7 @@ Results are sorted newest-first by start time.
 
 Examples:
   langsmith traces list --project my-app --limit 5
+  langsmith traces list --project my-app --filter 'and(eq(input_key, "in_reply_to"), eq(input_value, "T-1001"))' --include-io
   langsmith traces get <trace-id> --full
   langsmith traces export ./traces --project my-app --limit 20 --full`,
 	}

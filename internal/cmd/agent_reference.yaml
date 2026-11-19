@@ -52,6 +52,8 @@ sections:
         examples:
           - langsmith traces list --project my-app --last-n-minutes 60 --limit 10 --format json
           - langsmith traces list --project my-app --metadata user_id=u_123 --include-metadata --format json
+          - "langsmith traces list --project my-app --filter 'and(eq(input_key, \"in_reply_to\"), eq(input_value, \"T-1001\"))' --include-io --format json"
+        note: "Match a field in inputs or outputs with `input_key`/`input_value` or `output_key`/`output_value` in `--filter`; nested keys use dots (`eq(input_key, \"ticket.id\")`). `inputs.x` paths are not supported."
       - path: runs list
         flags: [--project, --run-type, --name, --limit, --last-n-minutes, --error, --min-latency, --min-tokens, --filter, --trace-ids, --full]
         examples:
@@ -59,7 +61,7 @@ sections:
           - langsmith runs list --project my-app --run-type tool --error --include-io --format json
       - path: threads list
         flags: [--project, --limit, --last-n-minutes, --filter]
-        note: Threads group traces that share a thread ID (a multi-turn conversation).
+        note: Threads group traces that share a thread ID (a multi-turn conversation). Traces linked through an input field, such as a follow-up whose `inputs.in_reply_to` names an earlier request, are not a thread; find them with `traces list --filter` on `input_key`/`input_value`.
         examples:
           - langsmith threads list --project my-app --limit 10 --format json
       - path: traces stats

@@ -91,9 +91,12 @@ Usage: `langsmith traces list [flags]`
 | `--full` | Shorthand for --include-metadata --include-io --include-feedback |
 | `--show-hierarchy` | Fetch the full run tree for each trace |
 
+Match a field in inputs or outputs with `input_key`/`input_value` or `output_key`/`output_value` in `--filter`; nested keys use dots (`eq(input_key, "ticket.id")`). `inputs.x` paths are not supported.
+
 ```bash
 langsmith traces list --project my-app --last-n-minutes 60 --limit 10 --format json
 langsmith traces list --project my-app --metadata user_id=u_123 --include-metadata --format json
+langsmith traces list --project my-app --filter 'and(eq(input_key, "in_reply_to"), eq(input_value, "T-1001"))' --include-io --format json
 ```
 
 ### `langsmith runs list`
@@ -134,7 +137,7 @@ Usage: `langsmith threads list [flags]`
 | `--last-n-minutes int` | Only include threads active in last N minutes |
 | `--filter string` | LangSmith filter DSL, e.g. 'and(eq(run_type, "llm"), gte(latency, 5))'. Match metadata with 'and(eq(metadata_key, "user_id"), eq(metadata_value, "u1"))', and inputs or outputs with input_key/input_value or output_key/output_value; metadata.x and inputs.x paths are not supported |
 
-Threads group traces that share a thread ID (a multi-turn conversation).
+Threads group traces that share a thread ID (a multi-turn conversation). Traces linked through an input field, such as a follow-up whose `inputs.in_reply_to` names an earlier request, are not a thread; find them with `traces list --filter` on `input_key`/`input_value`.
 
 ```bash
 langsmith threads list --project my-app --limit 10 --format json
