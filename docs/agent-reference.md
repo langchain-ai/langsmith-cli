@@ -848,7 +848,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith runs list` | List runs matching filter criteria (default: 50, newest first) |
 | `langsmith runs share create` | Creates or returns a share token for a run. |
 | `langsmith runs share delete` | Deletes the share token for the trace identified by trace_id and session_id. *(confirms)* |
-| `langsmith runs streaming query-v2` | Returns a paginated list of runs for the given projects within min/max start_time. |
+| `langsmith runs streaming query-v2` | Returns the runs matching the query passed as the request payload. |
 | `langsmith sandboxes boxes delete-service-url` | Removes the sharing grant for one port, or for every port when port is omitted. *(confirms)* |
 | `langsmith sandboxes boxes list-service-urls` | Returns one entry per port the sandbox is currently reachable on, so a caller can see what is shared before turning it off. |
 | `langsmith sandboxes browsers attachments create` | Beta: give a sandbox its own window of the browser, or, with no sandbox, open a window for the person calling (or, with controller "agent", for a client to drive over api_cdp_url). |

@@ -14,7 +14,7 @@ import (
 
 var runsStreamingQueryV2 = cli.Command{
 	Name:    "query-v2",
-	Usage:   "Returns a paginated list of runs for the given projects within min/max\nstart_time. Supports filters, cursor pagination, and `selects` to select fields\nto return.",
+	Usage:   "GET with body payload — no resources created. Returns the runs matching the\nquery passed as the request payload.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
