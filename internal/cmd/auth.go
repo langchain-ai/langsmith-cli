@@ -37,6 +37,7 @@ var authCommand = structured.Parent{
 	Children: []func() *cobra.Command{
 		newLoginCmd,
 		newSignupCmd,
+		newHashPasswordCmd,
 		authInfoCommand.Cobra,
 		authTokenCommand.Cobra,
 	},

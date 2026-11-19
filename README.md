@@ -131,6 +131,18 @@ Other settings can be passed as flags:
 langsmith --workspace <workspace-id> trace list --project my-app
 ```
 
+### Generate a self-hosted recovery password hash
+
+Generate a hash for `RECOVERY_ADMIN_PASSWORD_HASH` entirely offline, without logging in or setting an API key:
+
+```bash
+langsmith auth hash-password --format pretty
+```
+
+The command prompts for a password and confirmation without echoing either. It prints a PBKDF2-SHA256 hash with 600,000 iterations and a fresh 16-byte salt. Store the hash through your deployment's secret wiring; keep the strong, unique original password separately for recovery login. Generating a hash does not configure the server or change an account.
+
+For automation, pipe the password from a secret manager using `--password-stdin` (at most 4096 bytes, with one trailing LF or CRLF removed). Do not pass passwords as command arguments. Use `--format json` for a JSON string instead of the bare hash.
+
 ## Quick Start
 
 ```bash

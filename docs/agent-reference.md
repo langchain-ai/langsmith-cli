@@ -725,6 +725,7 @@ Every command in this version of the CLI. Run `langsmith <command> --help` for i
 | `langsmith apps list` | List custom apps |
 | `langsmith apps pull` | Download a custom app's source into a new directory |
 | `langsmith apps push` | Upload the current directory as a custom app |
+| `langsmith auth hash-password` | Hash a local recovery password without contacting LangSmith |
 | `langsmith auth info` | Show the current authentication state |
 | `langsmith auth login` | Authenticate with LangSmith using OAuth |
 | `langsmith auth signup` | Create a LangSmith account and log the CLI in to it |

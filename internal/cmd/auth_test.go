@@ -16,7 +16,7 @@ func TestAuthCmdHasSubcommands(t *testing.T) {
 	for _, child := range cmd.Commands() {
 		names[child.Name()] = true
 	}
-	for _, expected := range []string{"login", "info", "token"} {
+	for _, expected := range []string{"login", "info", "token", "hash-password"} {
 		if !names[expected] {
 			t.Fatalf("auth command missing subcommand %q", expected)
 		}
