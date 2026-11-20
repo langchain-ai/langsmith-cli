@@ -112,8 +112,7 @@ func TestConnectCommandsDialTheEdgeAsTheirKind(t *testing.T) {
 // TestConnectCommandsUseTheSavedProfile covers a profile written by an older
 // login: an API URL ending in /api/v1, and an API key kept alongside a later
 // OAuth login. Other commands normalize the URL and use OAuth; a connector
-// normalizes the URL the same way and uses the key, the only credential the
-// edge accepts.
+// normalizes the URL the same way and uses the key, which needs no refreshing.
 func TestConnectCommandsUseTheSavedProfile(t *testing.T) {
 	isolateConnectorConfig(t)
 	path, headers := dialEdge(t, func(edgeURL string) []string {
@@ -125,13 +124,23 @@ func TestConnectCommandsUseTheSavedProfile(t *testing.T) {
 	assert.Equal(t, "profile-api-key", headers.Get("X-Api-Key"))
 }
 
-func TestConnectCommandsRejectOAuthOnlyProfiles(t *testing.T) {
+func TestConnectCommandsUseOAuthOnlyProfiles(t *testing.T) {
 	isolateConnectorConfig(t)
-	writeConnectorProfile(t, `{`+testOAuthLogin+`}`)
+	_, headers := dialEdge(t, func(edgeURL string) []string {
+		writeConnectorProfile(t, `{"api_url": "`+edgeURL+`", `+testOAuthLogin+`}`)
+		return []string{"relay", "connect", testConnectionID}
+	})
+
+	assert.Equal(t, "Bearer test-access-token", headers.Get("Authorization"))
+	assert.Empty(t, headers.Get("X-Api-Key"))
+}
+
+func TestConnectCommandsNeedCredentials(t *testing.T) {
+	isolateConnectorConfig(t)
 
 	_, err := executeCommand(t, "relay", "connect", testConnectionID)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "needs an API key")
+	assert.Contains(t, err.Error(), "needs credentials")
 }
 
 func TestConnectCommandsRejectInvalidInput(t *testing.T) {

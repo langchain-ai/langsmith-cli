@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -35,8 +36,8 @@ you and sandboxes you create can call, and deletes it when this command exits.
 A target is name=host:port for raw TCP, or name=http://host:port (or https)
 for an HTTP service, which LangSmith also serves at a tunnel URL.
 
-The connector authenticates with an API key: set LANGSMITH_API_KEY or use a
-profile with an API key. OAuth logins are not accepted.
+The connector authenticates with an API key (LANGSMITH_API_KEY or a profile
+with one) or with a profile's OAuth login, refreshed while it runs.
 
 Examples:
   langsmith tunnel connect --quick --target app=http://localhost:2024
@@ -95,8 +96,8 @@ widens that and --deny narrows it. Each rule is a CIDR (10.0.0.0/8), an IP
 address, a hostname (db.corp.internal), or a wildcard (*.corp.internal),
 optionally followed by :PORT. Cloud metadata addresses are always refused.
 
-The connector authenticates with an API key: set LANGSMITH_API_KEY or use a
-profile with an API key. OAuth logins are not accepted.
+The connector authenticates with an API key (LANGSMITH_API_KEY or a profile
+with one) or with a profile's OAuth login, refreshed while it runs.
 
 Examples:
   langsmith relay connect <relay-id> --allow 10.0.0.0/8
@@ -136,7 +137,7 @@ func newRelayCmd() *cobra.Command {
 	}.Cobra()
 }
 
-// runConnector serves a connection with the CLI's endpoint and API key until
+// runConnector serves a connection with the CLI's endpoint and credentials until
 // ctx is cancelled or the process is interrupted.
 func runConnector(ctx context.Context, settings connector.Settings, logLevel string) error {
 	config, err := newConnectorConfig(settings)
@@ -146,7 +147,7 @@ func runConnector(ctx context.Context, settings connector.Settings, logLevel str
 	return serveConnector(ctx, config, logLevel)
 }
 
-// newConnectorConfig validates settings with the CLI's endpoint and API key.
+// newConnectorConfig validates settings with the CLI's endpoint and credentials.
 func newConnectorConfig(settings connector.Settings) (connector.Config, error) {
 	opts, err := resolveClientOptions()
 	if err != nil {
@@ -156,11 +157,20 @@ func newConnectorConfig(settings connector.Settings) (connector.Config, error) {
 	if err != nil {
 		return connector.Config{}, err
 	}
-	if apiKey == "" {
-		return connector.Config{}, errors.New("a connector needs an API key: set LANGSMITH_API_KEY or use a profile with an API key (OAuth logins are not accepted)")
-	}
 	settings.Endpoint = client.NormalizeURL(opts.APIURL)
-	settings.APIKey = apiKey
+	switch {
+	case apiKey != "":
+		settings.APIKey = apiKey
+	case opts.HasAuth():
+		// Resolved on every carrier attempt, so an expired OAuth access token is
+		// refreshed before the connector reconnects.
+		sdk := client.NewWithOptions(opts).SDK
+		settings.AuthHeaders = func(ctx context.Context) (http.Header, error) {
+			return sdk.AuthHeaders(ctx)
+		}
+	default:
+		return connector.Config{}, errors.New("a connector needs credentials: set LANGSMITH_API_KEY, or log in with 'langsmith auth login'")
+	}
 	return connector.NewConfig(settings)
 }
 
@@ -183,9 +193,8 @@ var serveConnector = func(ctx context.Context, config connector.Config, logLevel
 	return nil
 }
 
-// connectorAPIKey returns the API key a connector authenticates with. Other
-// commands use a profile's OAuth login when it has one, but the edge accepts
-// only API keys, so a profile's saved key is used even then.
+// connectorAPIKey returns the API key a connector authenticates with. A
+// profile's saved key wins over its OAuth login, which needs refreshing.
 func connectorAPIKey(opts client.Options) (string, error) {
 	if opts.APIKey != "" || opts.ProfileName == "" {
 		return opts.APIKey, nil

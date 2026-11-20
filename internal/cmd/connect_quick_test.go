@@ -282,7 +282,6 @@ func TestTunnelConnectQuickRejectsInvalidInput(t *testing.T) {
 		{name: "connection ID", args: []string{testConnectionID, "--target", "app=http://localhost:2024", "--api-key", "test-api-key"}, want: "--quick creates its own tunnel connection"},
 		{name: "missing target", args: []string{"--api-key", "test-api-key"}, want: "target"},
 		{name: "invalid target", args: []string{"--target", "app=ftp://localhost:21", "--api-key", "test-api-key"}, want: "target"},
-		{name: "OAuth-only profile", args: []string{"--target", "app=http://localhost:2024"}, profile: `{` + testOAuthLogin + `}`, want: "needs an API key"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			isolateConnectorConfig(t)
