@@ -69,23 +69,32 @@ organization. Pass --scope to force one tier.`,
 			if err := confirmSourceDirReplace(cmd, dest, force); err != nil {
 				return err
 			}
-			if err := os.RemoveAll(dest); err != nil {
-				return fmt.Errorf("clearing %s: %w", dest, err)
-			}
-			if err := os.MkdirAll(dest, 0o755); err != nil {
-				return fmt.Errorf("creating %s: %w", dest, err)
-			}
 
-			written, err := extractSourceArchive(dest, archive)
+			staging, err := os.MkdirTemp(cwd, "."+dirName+".pull-*")
+			if err != nil {
+				return fmt.Errorf("creating staging directory: %w", err)
+			}
+			stagingOwned := true
+			defer func() {
+				if stagingOwned {
+					_ = os.RemoveAll(staging)
+				}
+			}()
+
+			written, err := extractSourceArchive(staging, archive)
 			if err != nil {
 				return err
 			}
 			if len(written) == 0 {
 				return fmt.Errorf("the stored source archive for %q is empty", app.Name)
 			}
-			if err := writeAppLink(dest, appLink{AppID: app.ID, Name: app.Name}); err != nil {
+			if err := writeAppLink(staging, appLink{AppID: app.ID, Name: app.Name}); err != nil {
 				return err
 			}
+			if err := replaceStagedApp(staging, dest); err != nil {
+				return err
+			}
+			stagingOwned = false
 
 			fmt.Fprintf(os.Stderr, "Pulled %q into %s (%d files).\n", app.Name, dest, len(written))
 			fmt.Fprintf(os.Stderr, "Next: cd %s && npm install && langsmith apps dev.\n", dirName)
@@ -221,6 +230,50 @@ func confirmSourceDirReplace(cmd *cobra.Command, dest string, force bool) error 
 	_, _ = fmt.Fscanln(cmd.InOrStdin(), &confirm)
 	if ans := strings.ToLower(strings.TrimSpace(confirm)); ans != "y" && ans != "yes" {
 		return errors.New("aborted: pass --force to replace the directory")
+	}
+	return nil
+}
+
+// replaceStagedApp replaces dest with a complete staged directory. Keeping the
+// old directory under a sibling backup until the staged rename succeeds makes
+// extraction and validation failures non-destructive, while the rollback keeps
+// the original directory recoverable if the replacement rename itself fails.
+func replaceStagedApp(staging, dest string) error {
+	parent := filepath.Dir(dest)
+	backup, err := os.MkdirTemp(parent, ".app-backup-*")
+	if err != nil {
+		return fmt.Errorf("creating replacement backup: %w", err)
+	}
+	if err := os.Remove(backup); err != nil {
+		return fmt.Errorf("preparing replacement backup: %w", err)
+	}
+
+	destExists := false
+	if _, err := os.Lstat(dest); err == nil {
+		destExists = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("checking destination %s: %w", dest, err)
+	}
+
+	if destExists {
+		if err := os.Rename(dest, backup); err != nil {
+			return fmt.Errorf("backing up %s: %w", dest, err)
+		}
+	}
+
+	if err := os.Rename(staging, dest); err != nil {
+		if destExists {
+			if rollbackErr := os.Rename(backup, dest); rollbackErr != nil {
+				return fmt.Errorf("installing staged app: %v (rollback failed: %w)", err, rollbackErr)
+			}
+		}
+		return fmt.Errorf("installing staged app: %w", err)
+	}
+
+	if destExists {
+		if err := os.RemoveAll(backup); err != nil {
+			return fmt.Errorf("removing replacement backup %s: %w", backup, err)
+		}
 	}
 	return nil
 }
