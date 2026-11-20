@@ -170,7 +170,7 @@ langsmith experiments list --dataset my-eval-set
 
 ## For coding agents
 
-[docs/agent-reference.md](docs/agent-reference.md) is a task-oriented reference for coding agents (Claude Code, Codex, Cursor and others): which commands to use for traces, datasets, experiments, prompts, evaluators, feedback and annotation queues, with key flags, JSON output, paging and safety notes. It is generated from the command tree, so it matches this version of the CLI; `langsmith docs agents` prints the same reference for the installed binary.
+[docs/agent-reference.md](https://github.com/langchain-ai/langsmith-go/blob/main/cli/docs/agent-reference.md) is a task-oriented reference for coding agents (Claude Code, Codex, Cursor and others): which commands to use for traces, datasets, experiments, prompts, evaluators, feedback and annotation queues, with key flags, JSON output, paging and safety notes. It is generated from the command tree, so it matches this version of the CLI; `langsmith docs agents` prints the same reference for the installed binary.
 
 ## Product feedback
 
@@ -698,13 +698,15 @@ Most `trace` and `run` commands share these filter options:
 
 ## Local Development
 
+The CLI's code is in [langsmith-go](https://github.com/langchain-ai/langsmith-go) under `cli/`, next to the SDK it calls; this repo holds its `main` package, release tooling, install scripts and agent evals. Both are developed in langchainplus (`sdks/go/cli` and `cli/`).
+
 For local dev, create a wrapper script at `~/.local/bin/langsmith` that loads your `.env` and uses `go run`:
 
 ```bash
 cat > ~/.local/bin/langsmith << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-cd /path/to/langsmith-cli
+cd /path/to/langsmith-go
 set -a && source .env && set +a
 exec go run ./cmd/langsmith "$@"
 EOF
@@ -726,7 +728,7 @@ Ensure `~/.local/bin` is in your `PATH` before `~/go/bin`. This way commands lik
 
 Releases work as in the langsmith SDK repos. [`release-please.yml`](.github/workflows/release-please.yml) keeps a release PR open on langsmith-cli with the next version and its changelog, built from the conventional commit titles of the changes Copybara exports (`test` and `ci` commits are left out). Merging that PR tags the version, creates the GitHub Release, and dispatches [`publish-binaries.yml`](.github/workflows/publish-binaries.yml): GoReleaser cross-compiles linux/darwin/windows on amd64+arm64 and attaches the archives and `checksums.txt`, the Homebrew tap gets a bump PR, and [`scripts/build_wheels.py`](scripts/build_wheels.py) repackages the archives as platform wheels and publishes them to PyPI as `langchain-langsmith-cli`. The PyPI job uses Trusted Publishing from the `pypi` environment, so it needs no token, and it skips files PyPI already has, so a failed run can be rerun.
 
-A release must use a released `langsmith-go`, so merge a release PR only while `go.mod` requires a released tag. CI in langchainplus, where this module is developed, fails a change whose `go.mod` requires an unreleased `langsmith-go` (a pseudo-version or pre-release) or has a `replace`. The release is the release PR's merge commit, and the workflow refuses to release a commit whose `go.mod` uses a pseudo-version or a `replace`. If one is merged anyway, the workflow fails with the way out: release `langsmith-go` and update `go.mod`, then revert the release PR and remove its `autorelease: pending` label, and release-please opens a new release PR.
+The CLI's code ships in `langsmith-go` releases, and this repo releases the `langsmith-go` version its `go.mod` requires; Dependabot in langchainplus opens the bump after each `langsmith-go` release. A release must use a released `langsmith-go`, so merge a release PR only while `go.mod` requires a released tag. CI in langchainplus, where this module is developed, fails a change whose `go.mod` requires an unreleased `langsmith-go` (a pseudo-version or pre-release) or has a `replace`. The release is the release PR's merge commit, and the workflow refuses to release a commit whose `go.mod` uses a pseudo-version or a `replace`. If one is merged anyway, the workflow fails with the way out: release `langsmith-go` and update `go.mod`, then revert the release PR and remove its `autorelease: pending` label, and release-please opens a new release PR.
 
 There is no version file to edit: the version is stamped into the binary from the tag via ldflags. The install scripts and `langsmith self-update` both read the latest GitHub Release.
 

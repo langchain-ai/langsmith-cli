@@ -1,11 +1,13 @@
+// Command langsmith is the LangSmith CLI. Its code lives in
+// github.com/langchain-ai/langsmith-go/cli; this module builds and releases
+// it, and keeps `go install github.com/langchain-ai/langsmith-cli/cmd/langsmith`
+// working.
 package main
 
 import (
-	"errors"
-	"fmt"
 	"os"
 
-	"github.com/langchain-ai/langsmith-cli/internal/cmd"
+	"github.com/langchain-ai/langsmith-go/cli"
 )
 
 var (
@@ -15,12 +17,5 @@ var (
 )
 
 func main() {
-	rootCmd := cmd.NewRootCmd(version, fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date))
-	if err := rootCmd.Execute(); err != nil {
-		var reported cmd.ReportedError
-		if !errors.As(err, &reported) {
-			fmt.Println(err.Error())
-		}
-		os.Exit(1)
-	}
+	os.Exit(cli.Main(version, commit, date))
 }
