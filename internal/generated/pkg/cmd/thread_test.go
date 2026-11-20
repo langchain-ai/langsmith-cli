@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/mocktest"
+	"github.com/langchain-ai/langsmith-cli/internal/generated/internal/requestflag"
 )
 
 func TestThreadsAggregateStats(t *testing.T) {
@@ -24,6 +25,33 @@ func TestThreadsAggregateStats(t *testing.T) {
 			"--filter", `eq(status, "error")`,
 			"--max-start-time", "'2019-12-27T18:11:19.117Z'",
 			"--min-start-time", "'2019-12-27T18:11:19.117Z'",
+			"--stride", "{unit: HOUR, value: 1}",
+			"--thread-filter", "gte(turn_count, 3)",
+			"--trace-filter", `eq(status, "error")`,
+			"--tree-filter", `has(tags, "production")`,
+		)
+	})
+
+	t.Run("inner flags", func(t *testing.T) {
+		// Check that inner flags have been set up correctly
+		requestflag.CheckInnerFlags(threadsAggregateStats)
+
+		// Alternative argument passing style using inner flags
+		mocktest.TestRunMockTestWithFlags(
+			t,
+			"--api-key", "string",
+			"--tenant-id", "string",
+			"threads", "aggregate-stats",
+			"--project-id", "0190a1b2-c3d4-7ef0-a5b6-6ea3a82e9328",
+			"--select", "THREAD_COUNT",
+			"--select", "TRACE_COUNT",
+			"--select", "TOTAL_TOKENS",
+			"--select", "TOTAL_COST",
+			"--filter", `eq(status, "error")`,
+			"--max-start-time", "'2019-12-27T18:11:19.117Z'",
+			"--min-start-time", "'2019-12-27T18:11:19.117Z'",
+			"--stride.unit", "HOUR",
+			"--stride.value", "1",
 			"--thread-filter", "gte(turn_count, 3)",
 			"--trace-filter", `eq(status, "error")`,
 			"--tree-filter", `has(tags, "production")`,
@@ -42,6 +70,9 @@ func TestThreadsAggregateStats(t *testing.T) {
 			"filter: eq(status, \"error\")\n" +
 			"max_start_time: '2019-12-27T18:11:19.117Z'\n" +
 			"min_start_time: '2019-12-27T18:11:19.117Z'\n" +
+			"stride:\n" +
+			"  unit: HOUR\n" +
+			"  value: 1\n" +
 			"thread_filter: gte(turn_count, 3)\n" +
 			"trace_filter: eq(status, \"error\")\n" +
 			"tree_filter: has(tags, \"production\")\n")

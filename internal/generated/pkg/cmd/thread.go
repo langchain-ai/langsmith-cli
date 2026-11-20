@@ -14,9 +14,9 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var threadsAggregateStats = cli.Command{
+var threadsAggregateStats = requestflag.WithInnerFlags(cli.Command{
 	Name:    "aggregate-stats",
-	Usage:   "GET with body payload — no resources created. Returns aggregate statistics for\nthreads in a tracing project. The response includes the thread counts, run\ncounts, latency percentiles, rates, token totals, and cost totals requested in\n`select`.",
+	Usage:   "GET with body payload — no resources created. Returns aggregate statistics for\nthreads in a tracing project. The response includes the thread counts, run\ncounts, latency percentiles, rates, token totals, and cost totals requested in\n`select`. Set `stride` to return the statistics as a time series in `buckets`.",
 	Suggest: true,
 	Flags: []cli.Flag{
 		&requestflag.Flag[string]{
@@ -46,6 +46,11 @@ var threadsAggregateStats = cli.Command{
 			Usage:    "`min_start_time` is the inclusive lower bound on thread activity (RFC3339 date-time). Defaults to 1 day before now (UTC) when omitted.",
 			BodyPath: "min_start_time",
 		},
+		&requestflag.Flag[map[string]any]{
+			Name:     "stride",
+			Usage:    "`stride` returns the statistics as a time series in `buckets`. Each thread counts once, in the bucket containing the start of its most recent trace. Omit for a single aggregate over the whole window.",
+			BodyPath: "stride",
+		},
 		&requestflag.Flag[string]{
 			Name:     "thread-filter",
 			Usage:    "`thread_filter` narrows eligible threads using a LangSmith filter expression evaluated against the complete thread summary.",
@@ -64,7 +69,20 @@ var threadsAggregateStats = cli.Command{
 	},
 	Action:          handleThreadsAggregateStats,
 	HideHelpCommand: true,
-}
+}, map[string][]requestflag.HasOuterFlag{
+	"stride": {
+		&requestflag.InnerFlag[string]{
+			Name:       "stride.unit",
+			Usage:      "`unit` is the unit of time used for each bucket. See the `StrideUnit` enum for allowed values.",
+			InnerField: "unit",
+		},
+		&requestflag.InnerFlag[int64]{
+			Name:       "stride.value",
+			Usage:      "`value` is the number of time units per bucket. Must be at least 1.",
+			InnerField: "value",
+		},
+	},
+})
 
 var threadsQuery = cli.Command{
 	Name:    "query",
