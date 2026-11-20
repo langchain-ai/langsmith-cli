@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.1](https://github.com/langchain-ai/langsmith-cli/compare/v0.5.0...v0.5.1) (2026-11-20)
+
+
+### Features
+
+* add opt-in local recovery login for self-hosted SSO ([f7aae8b](https://github.com/langchain-ai/langsmith-cli/commit/f7aae8b0ae6234025f3a8e7a458357b1f95cddaa))
+* **annotation-queues:** return agreement on the items list and count ([0f42edb](https://github.com/langchain-ai/langsmith-cli/commit/0f42edba0965ab572d388767a8a136002caa44c4))
+* **cli:** count CLI calls by the skill that made them ([2aba04b](https://github.com/langchain-ai/langsmith-cli/commit/2aba04b9f1fbdd326b670a18b268af7484e459b8))
+* **cli:** run connectors on a profile's OAuth login ([dd99c4c](https://github.com/langchain-ai/langsmith-cli/commit/dd99c4c10ce86b2d8bdbcbe9232b05fdf64a6344))
+* **cli:** surface agent docs and workflows in root help (ADX-436) ([51f0630](https://github.com/langchain-ai/langsmith-cli/commit/51f063032080890a1b5f96b77ebf47c86d5b5cf1))
+* **cli:** warn that piped output defaults to JSON in 1.0.0 ([2fd57f9](https://github.com/langchain-ai/langsmith-cli/commit/2fd57f96062ef1656575679f4c6b33f7c10d684c))
+* **connections:** personal tunnels any member can create and only their sandboxes can call ([f21ba7a](https://github.com/langchain-ai/langsmith-cli/commit/f21ba7a41bc01481ecda86c50fb5d1132a8ddd36))
+* **runs:** add stride to /v2/threads/stats and return thread feedback stats ([ac00d03](https://github.com/langchain-ai/langsmith-cli/commit/ac00d038e2dec10de13f6a83acb3ea0fb6553162))
+
+
+### Bug Fixes
+
+* **runs:** gate standard runs/query page limits behind FF_RUNS_QUERY_PAGE_LIMITS [closes LSO-5052] ([c3d6269](https://github.com/langchain-ai/langsmith-cli/commit/c3d6269ec15ac73ebd036b634078023e3c34ffbd))
+
+
+### Documentation
+
+* **cli:** exempt experimental commands from the deprecation window ([0ea8ea2](https://github.com/langchain-ai/langsmith-cli/commit/0ea8ea258fb96bc5f72a886ac5677ba451bc53f1))
+* **cli:** show how to find runs by an input field ([b9e1586](https://github.com/langchain-ai/langsmith-cli/commit/b9e1586c1db209b9c9e2cf743ffeae3bad2bd9b2))
+* **runs:** mark POST /v2/traces/query as a read [closes LSO-5053] ([f30010e](https://github.com/langchain-ai/langsmith-cli/commit/f30010e558abc3fec3e509379b3a85c9c534475f))
+
 ## [0.5.0](https://github.com/langchain-ai/langsmith-cli/compare/v0.4.0...v0.5.0) (2026-11-17)
 
 
