@@ -341,6 +341,7 @@ Examples:
 						"session_id": e.SessionID,
 						"issue_id":   issueID,
 						"event_type": e.EventType,
+						"payload":    e.Payload,
 						"actor":      e.Actor,
 						"created_at": formatTimeISO(e.CreatedAt),
 					}

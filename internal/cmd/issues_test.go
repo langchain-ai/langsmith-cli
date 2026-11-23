@@ -254,3 +254,60 @@ func TestProjectIssuesUpdateCmd_HelpDocumentsDismissal(t *testing.T) {
 		t.Error("update help still claims only 'open' is accepted")
 	}
 }
+
+func TestProjectIssuesEventsCmd_PreservesPayload(t *testing.T) {
+	const projectID = "38bf88a5-eb8e-45b7-86ea-a7bb4841945a"
+	for _, closeReason := range []string{"not_important", "incorrectly_flagged"} {
+		t.Run(closeReason, func(t *testing.T) {
+			payload := map[string]any{
+				"to":                 "ignored",
+				"reason":             "Reviewer dismissal",
+				"close_reason":       closeReason,
+				"via_langsmith_chat": true,
+			}
+			srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v1/platform/sessions/"+projectID+"/issue-events" {
+					t.Errorf("unexpected request path: %s", r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode([]map[string]any{{
+					"id": "event-123", "session_id": projectID,
+					"event_type": "status_changed", "actor": "user",
+					"payload": payload,
+				}})
+			})
+			defer setupTestEnv(t, srv.URL)()
+			flagOutputFormat = "json"
+
+			out := captureStdout(t, func() {
+				cmd := newProjectIssuesEventsCmd()
+				cmd.SetArgs([]string{"--project-id", projectID})
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("execute: %v", err)
+				}
+			})
+
+			var rows []map[string]any
+			if err := json.Unmarshal([]byte(out), &rows); err != nil {
+				t.Fatalf("decode output: %v\n%s", err, out)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("expected one event, got %d", len(rows))
+			}
+			gotPayload, ok := rows[0]["payload"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected payload object, got %#v", rows[0]["payload"])
+			}
+			for key, want := range payload {
+				if gotPayload[key] != want {
+					t.Errorf("payload.%s = %#v, want %#v", key, gotPayload[key], want)
+				}
+			}
+			for _, key := range []string{"to", "reason"} {
+				if rows[0][key] != payload[key] {
+					t.Errorf("%s = %#v, want %#v", key, rows[0][key], payload[key])
+				}
+			}
+		})
+	}
+}
