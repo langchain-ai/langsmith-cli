@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -177,6 +179,9 @@ func TestParseAssertion_Valid(t *testing.T) {
 		{"eq=a=b is valid", "eq", "a=b is valid"},
 		// whitespace is trimmed
 		{"  key  =  comment here  ", "key", "comment here"},
+		{"Must_preserve_2=Response preserves user's a=b", "Must_preserve_2", "Response preserves user's a=b"},
+		{"must_quote=Response ends with 'quoted'", "must_quote", "Response ends with 'quoted'"},
+		{`must_quote=Response ends with "quoted"`, "must_quote", `Response ends with "quoted"`},
 	}
 	for _, tc := range cases {
 		a, err := parseAssertion(tc.input)
@@ -208,6 +213,117 @@ func TestParseAssertion_Invalid(t *testing.T) {
 		if err == nil {
 			t.Errorf("parseAssertion(%q) [%s]: expected error, got nil", tc.input, tc.desc)
 		}
+	}
+}
+
+func TestParseAssertion_RejectsShellQuotedArgv(t *testing.T) {
+	for _, input := range []string{
+		"'must_reply=Response replies'",
+		`"must_reply=Response replies"`,
+		`'"must_reply=Response replies"'`,
+		` "'must_reply=Response replies'" `,
+	} {
+		_, err := parseAssertion(input)
+		if err == nil {
+			t.Fatalf("parseAssertion(%q): expected shell-quoting error", input)
+		}
+		for _, explanation := range []string{"shell-quoted or double-shell-quoted", "argv callers", "raw key=comment", "without extra surrounding quotes"} {
+			if !strings.Contains(err.Error(), explanation) {
+				t.Errorf("parseAssertion(%q): error %q missing %q", input, err, explanation)
+			}
+		}
+	}
+}
+
+func TestParseAssertion_InvalidIdentifiers(t *testing.T) {
+	for _, key := range []string{"1key", "_key", "must-reply", "must reply", "key.comment", "kéy", "key'", `key"`, "key\nreply"} {
+		_, err := parseAssertion(key + "=comment")
+		if err == nil || !strings.Contains(err.Error(), "must match ^[A-Za-z][A-Za-z0-9_]*$") {
+			t.Errorf("parseAssertion key %q: expected identifier validation error, got %v", key, err)
+		}
+	}
+}
+
+func TestProjectIssuesProposeExampleCmd_Assertions(t *testing.T) {
+	submitted := []exampleAssertion{
+		{Key: "must_preserve_2", Comment: "Response preserves a=b, user's apostrophe, `code`, $(text), and \""},
+		{Key: "must_reply", Comment: "Response replies"},
+	}
+	cases := []struct {
+		name     string
+		returned []exampleAssertion
+		wantWarn bool
+	}{
+		{name: "identical", returned: submitted},
+		{name: "reordered", returned: []exampleAssertion{submitted[1], submitted[0]}},
+		{name: "different key", returned: []exampleAssertion{{Key: "'must_preserve_2", Comment: submitted[0].Comment}, submitted[1]}, wantWarn: true},
+		{name: "different comment", returned: []exampleAssertion{{Key: submitted[0].Key, Comment: "Old comment"}, submitted[1]}, wantWarn: true},
+		{name: "missing assertion", returned: submitted[:1], wantWarn: true},
+		{name: "extra assertion", returned: append([]exampleAssertion{submitted[0], submitted[1]}, exampleAssertion{Key: "must_extra", Comment: "Extra claim"}), wantWarn: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			response := map[string]any{"id": "example-123", "run_id": "run-123", "assertions": tc.returned, "is_root": true}
+			requests := 0
+			srv := newTestServer(t, func(writer http.ResponseWriter, request *http.Request) {
+				requests++
+				if request.Method != http.MethodPost || request.URL.Path != "/api/v1/platform/issues/issue-123/proposed-examples" {
+					t.Errorf("unexpected request: %s %s", request.Method, request.URL.Path)
+				}
+				var body struct {
+					RunID      string             `json:"run_id"`
+					StartTime  string             `json:"start_time"`
+					Assertions []exampleAssertion `json:"assertions"`
+				}
+				if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+					t.Errorf("decode request: %v", err)
+				}
+				if body.RunID != "run-123" || body.StartTime != "2026-04-10T00:00:00Z" || !reflect.DeepEqual(body.Assertions, submitted) {
+					t.Errorf("submitted values changed: %+v", body)
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(writer).Encode(response)
+			})
+			defer setupTestEnv(t, srv.URL)()
+			flagOutputFormat = "json"
+			cmd := newProjectIssuesProposeExampleCmd()
+			cmd.SetArgs([]string{"issue-123", "--run-id", "run-123", "--start-time", "2026-04-10T00:00:00Z",
+				"--assertion", submitted[0].Key + "=" + submitted[0].Comment,
+				"--assertion", submitted[1].Key + "=" + submitted[1].Comment})
+			var stderr bytes.Buffer
+			cmd.SetErr(&stderr)
+			out := captureStdout(t, func() {
+				if err := cmd.Execute(); err != nil {
+					t.Fatalf("execute: %v", err)
+				}
+			})
+			if requests != 1 {
+				t.Errorf("expected one proposal request, got %d", requests)
+			}
+			if tc.wantWarn {
+				for _, text := range []string{"warning:", "existing proposal was returned", "submitted assertions were not applied"} {
+					if !strings.Contains(stderr.String(), text) {
+						t.Errorf("warning %q missing %q", stderr.String(), text)
+					}
+				}
+			} else if stderr.Len() != 0 {
+				t.Errorf("unexpected warning: %s", stderr.String())
+			}
+			var got, want map[string]any
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("decode output: %v", err)
+			}
+			encoded, err := json.Marshal(response)
+			if err != nil {
+				t.Fatalf("encode expected response: %v", err)
+			}
+			if err := json.Unmarshal(encoded, &want); err != nil {
+				t.Fatalf("decode expected response: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("response JSON changed: got %v, want %v", got, want)
+			}
+		})
 	}
 }
 
