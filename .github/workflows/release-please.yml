@@ -36,22 +36,17 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # A release must use a released langsmith-go. Generated commands can be
-      # merged while go.mod points at an unreleased commit (a pseudo-version)
-      # or a replace, and releasing then would ship SDK code that has no SDK
-      # release. The commit release-please would tag is fixed, so a later fix
-      # to go.mod cannot make it releasable.
-      - name: Check the release commit requires a released langsmith-go
+      # A release builds against the langsmith-go commit go.mod requires: a
+      # release or a pseudo-version of main, which the langchainplus export
+      # pins. A replace would break go install, and the commit release-please
+      # would tag is fixed, so a later fix to go.mod cannot make it releasable.
+      - name: Check the release commit has no langsmith-go replace
         id: sdk
         if: steps.pending.outputs.sha != ''
         env:
           RELEASE_PR: ${{ steps.pending.outputs.number }}
         run: |
           module=github.com/langchain-ai/langsmith-go
-          blocked() {
-            echo "::error::Release PR #$RELEASE_PR was merged while $1, so its commit cannot be released. Release langsmith-go and update go.mod in langchainplus, then revert #$RELEASE_PR on main and remove its 'autorelease: pending' label; release-please then opens a new release PR."
-            echo "released=false" >> "$GITHUB_OUTPUT"
-          }
           # go list fails when go.mod does not require the module; report that
           # with its own error. Any later go list failure fails the step.
           version=$(go list -m -f '{{.Version}}' "$module" 2>/dev/null || true)
@@ -61,9 +56,8 @@ jobs:
           fi
           replace=$(go list -m -f '{{with .Replace}}{{.Path}} {{.Version}}{{end}}' "$module")
           if [[ -n "$replace" ]]; then
-            blocked "go.mod replaced langsmith-go with $replace"
-          elif [[ "$version" =~ [0-9]{14}-[0-9a-f]{12}$ ]]; then
-            blocked "go.mod used langsmith-go $version, an unreleased commit"
+            echo "::error::Release PR #$RELEASE_PR was merged while go.mod replaced langsmith-go with $replace, so its commit cannot be released. Remove the replace, then revert #$RELEASE_PR on main and remove its 'autorelease: pending' label; release-please then opens a new release PR."
+            echo "released=false" >> "$GITHUB_OUTPUT"
           else
             echo "langsmith-go $version"
             echo "released=true" >> "$GITHUB_OUTPUT"

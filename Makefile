@@ -6,7 +6,7 @@ LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X m
 
 # The CLI's code is in langsmith-go (sdks/go/cli in langchainplus); develop
 # and test commands there. In langchainplus, build the binary from the Go SDK
-# in the same checkout, since this module requires a released langsmith-go.
+# in the same checkout, so it has SDK changes this module does not pin yet.
 SRC := $(if $(wildcard ../sdks/go/cmd/langsmith),../sdks/go,.)
 
 .PHONY: build clean test-wheels install agent-evals test-agent-evals
