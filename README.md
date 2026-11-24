@@ -143,6 +143,42 @@ The command prompts for a password and confirmation without echoing either. It p
 
 For automation, pipe the password from a secret manager using `--password-stdin` (at most 4096 bytes, with one trailing LF or CRLF removed). Do not pass passwords as command arguments. Use `--format json` for a JSON string instead of the bare hash.
 
+## LLM Gateway
+
+The `gateway` commands (experimental) call the LangSmith LLM Gateway with the
+same credentials as every other command: your `langsmith auth login` OAuth
+login, or an API key. The gateway URL comes from the API URL
+(`gateway.smith.langchain.com` for `api.smith.langchain.com`, `<origin>/gateway`
+for self-hosted); override it with `--gateway-url` or `LANGSMITH_GATEWAY_URL`.
+
+List the models the gateway serves your workspace, after its model access
+policies. A `<provider>/<model>` ID routes to that provider; an ID without a
+provider prefix is a LangChain-hosted model.
+
+```bash
+langsmith gateway models
+langsmith gateway models --provider anthropic
+langsmith gateway models --jq '.[].id'
+```
+
+Run any command with its Anthropic and OpenAI API requests sent through the
+gateway. `gateway wrap` starts a proxy on `127.0.0.1` that attaches your
+credentials to each request, refreshing an OAuth access token as it expires,
+and points `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` and
+`OPENAI_BASE_URL`/`OPENAI_API_KEY` at it, with an `sk-` key for that run
+only, which works only against the proxy. Other provider keys and settings are
+removed from the command's environment.
+
+Flags for `langsmith` go before the command; everything from the command on is
+passed to it.
+
+```bash
+langsmith gateway wrap claude                         # Claude Code, interactive
+langsmith gateway wrap claude -p "summarize this"     # arguments go to Claude Code
+langsmith --profile eu gateway wrap codex             # another logged-in profile
+langsmith gateway wrap python agent.py
+```
+
 ## Quick Start
 
 ```bash
