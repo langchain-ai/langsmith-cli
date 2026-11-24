@@ -16,6 +16,7 @@ Available Commands:
 
 Flags:
   -h, --help           help for feedback
+      --error[=true|false]   only errored feedback
   -l, --limit int      max rows
       --yes            skip confirmation
 
@@ -47,6 +48,7 @@ def test_parse_cobra_page():
     assert aliases == ["feedback", "fb"]
     assert flags["--limit"] is True and flags["-l"] is True
     assert flags["--yes"] is False and flags["--format"] is True
+    assert flags["--error"] is False  # --flag[=value]: the value is optional
     assert runnable and not accepts_args
 
 
@@ -81,8 +83,8 @@ def test_real_commands_are_known(tree):
 def test_made_up_commands_and_flags(tree):
     chk = surface.check_call(tree, ["datasets", "lst"])
     assert chk.unknown_command == "datasets lst"
-    chk = surface.check_call(tree, ["feedback", "create", "--run-id", "x"])
-    assert chk.unknown_command == "feedback create"
+    chk = surface.check_call(tree, ["feedback", "frobnicate", "--run-id", "x"])
+    assert chk.unknown_command == "feedback frobnicate"
     chk = surface.check_call(tree, ["runs", "list", "--errors-only"])
     assert chk.unknown_flags == ["--errors-only"] and chk.command == "runs list"
     chk = surface.check_call(tree, ["bogus"])

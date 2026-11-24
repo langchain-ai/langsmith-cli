@@ -14,12 +14,18 @@ from dataclasses import dataclass, field
 
 _SECTION = re.compile(r"^([A-Za-z][A-Za-z ]+):\s*$")
 # cobra:   "  -p, --project string   desc" / "      --yes   desc"
+#          "      --error[=true|false]   desc" (a flag whose value is optional)
 # urfave:  "   --name string  desc" / "   --help, -h  show help" / "   --x string=any [ ... ]"
+_OPTIONAL_VALUE = r"(?:\[=[^\]\s]*\])?"
 _COBRA_FLAG = re.compile(
-    r"^\s+(?:-(?P<short>\w), )?--(?P<long>[\w-]+)(?: (?P<type>[\w.\[\]=]+))?(?:\s{2,}|$)"
+    r"^\s+(?:-(?P<short>\w), )?--(?P<long>[\w-]+)"
+    + _OPTIONAL_VALUE
+    + r"(?: (?P<type>[\w.\[\]=]+))?(?:\s{2,}|$)"
 )
 _URFAVE_FLAG = re.compile(
-    r"^\s+--(?P<long>[\w-]+)(?:, -(?P<short>\w))?(?: (?P<type>[\w.=]+))?(?:\s|$)"
+    r"^\s+--(?P<long>[\w-]+)"
+    + _OPTIONAL_VALUE
+    + r"(?:, -(?P<short>\w))?(?: (?P<type>[\w.=]+))?(?:\s|$)"
 )
 _GROUP_SECTIONS = {"available commands", "additional commands", "commands"}
 _FLAG_SECTIONS = {"flags", "global flags", "options", "global options"}

@@ -35,7 +35,7 @@ def test_loop_records_calls_tokens_and_made_up_commands(binary, tree):
     script = [
         [tool(1, ["datasets", "--help"])],
         [
-            tool(2, ["feedback", "create", "--key", "x"]),
+            tool(2, ["feedback", "frobnicate", "--key", "x"]),
             tool(3, ["runs", "list", "--errors-only"]),
         ],
         [text('Done. {"count": 2}')],

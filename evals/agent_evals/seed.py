@@ -351,7 +351,7 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
                 key="correctness",
                 score=mark,
                 trace_id=r["id"],
-                project_id=exp.id,
+                session_id=exp.id,
             )
     s.better_experiment = exp_names["candidate"]
     s.better_experiment_score = sum(scores["candidate"]) / len(scores["candidate"])

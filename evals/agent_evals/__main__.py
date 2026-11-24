@@ -386,7 +386,7 @@ def attempt(
                 score=row[key],
                 trace_id=root_id,
                 comment=chk.detail if key == "success" else None,
-                project_id=experiment.id,
+                session_id=experiment.id,
             )
     return row
 
