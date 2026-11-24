@@ -274,7 +274,7 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
     s.refund_trace_id = root_ids["Can I get a refund for order 7731?"]
 
     _wait_for_runs(
-        client, s.project, expected_roots=len(_TRACES) + len(_OLD_TRACES) + len(_THREAD)
+        client, s.project, [r["id"] for r in runs if not r.get("parent_run_id")]
     )
 
     # User ratings: two thumbs-down, the rest of the recent successes thumbs-up.
@@ -344,7 +344,7 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
             )
         client.batch_ingest_runs(create=exp_runs)
         s.known_ids += [str(exp.id), *(r["id"] for r in exp_runs)]
-        _wait_for_runs(client, name, expected_roots=len(exp_runs))
+        _wait_for_runs(client, name, [r["id"] for r in exp_runs])
         for r, mark in zip(exp_runs, marks):
             client.create_feedback(
                 r["id"],
@@ -361,20 +361,36 @@ def seed(client: Client, run_id: str, now: dt.datetime | None = None) -> Seed:
 
 
 def _wait_for_runs(
-    client: Client, project: str, expected_roots: int, timeout_s: float = 180
+    client: Client, project: str, root_ids: list[str], timeout_s: float = 180
 ) -> None:
+    """Wait until every seeded root run is visible to queries.
+
+    Run queries need a time range (SmithDB requires one), so the listing is bounded
+    to the ingest window. On timeout the error says whether one of the runs can be
+    read by ID, which separates a failed ingest from runs that only listing misses.
+    """
+    since = dt.datetime.now(UTC) - dt.timedelta(hours=24)
     deadline = time.time() + timeout_s
     seen = 0
     while time.time() < deadline:
         seen = sum(
             1
-            for _ in client.list_runs(project_name=project, is_root=True, select=["id"])
+            for _ in client.list_runs(
+                project_name=project, is_root=True, start_time=since, select=["id"]
+            )
         )
-        if seen >= expected_roots:
+        if seen >= len(root_ids):
             return
         time.sleep(3)
+    try:
+        client.read_run(root_ids[0])
+        probe = f"run {root_ids[0]} can be read by ID, so listing is what misses them"
+    except Exception as e:  # noqa: BLE001 - only used to explain the timeout
+        probe = (
+            f"run {root_ids[0]} can't be read by ID either ({type(e).__name__}: {e})"
+        )
     raise TimeoutError(
-        f"only {seen}/{expected_roots} root runs visible in {project} after {timeout_s}s"
+        f"only {seen}/{len(root_ids)} root runs visible in {project} after {timeout_s}s; {probe}"
     )
 
 

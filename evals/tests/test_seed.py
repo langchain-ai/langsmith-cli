@@ -2,6 +2,7 @@ import datetime as dt
 from types import SimpleNamespace as NS
 from unittest.mock import MagicMock
 
+import pytest
 from agent_evals import seed
 
 
@@ -50,3 +51,13 @@ def test_every_seeded_run_starts_within_the_ingest_window():
     assert any(r["error"] for r in older)
     slowest = max(recent, key=lambda r: r["end_time"] - r["start_time"])
     assert slowest["id"] == s.slowest_trace_id
+
+
+def test_wait_timeout_says_whether_runs_were_ingested():
+    client = MagicMock()
+    client.list_runs.return_value = []
+    with pytest.raises(TimeoutError, match="can be read by ID"):
+        seed._wait_for_runs(client, "p", ["run-1"], timeout_s=0)
+    client.read_run.side_effect = RuntimeError("404")
+    with pytest.raises(TimeoutError, match="can't be read by ID either"):
+        seed._wait_for_runs(client, "p", ["run-1"], timeout_s=0)
