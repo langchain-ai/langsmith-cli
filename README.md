@@ -468,6 +468,7 @@ langsmith datasets get my-dataset
 
 # Create and delete
 langsmith datasets create --name my-eval-set --description "QA pairs for v2"
+langsmith datasets create --name my-eval-set --if-not-exists  # returns it if it exists
 langsmith datasets delete my-old-dataset --yes
 
 # Export examples to JSON
