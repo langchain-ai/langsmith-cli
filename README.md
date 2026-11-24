@@ -227,7 +227,7 @@ on LangSmith Cloud and BYOC, not standalone self-hosted deployments.
 
 ## Output Formats
 
-Commands print human-readable tables and trees by default. From 1.0.0, output that is piped or redirected defaults to JSON; until then such output stays pretty and the CLI warns on stderr. Pass `--format` to choose explicitly.
+Commands print human-readable tables and trees by default. From 1.0.0, output that is piped or redirected defaults to JSON; until then such output stays pretty and the CLI warns on stderr. Pass `--format` to choose explicitly. Every command also takes `--json`, which is the same as `--format json`; combining it with a different `--format` is an error.
 
 ```bash
 langsmith traces list --project my-app
@@ -235,6 +235,10 @@ langsmith traces list --project my-app
 
 ```bash
 langsmith --format=json trace list --project my-app
+```
+
+```bash
+langsmith trace list --project my-app --json
 ```
 
 ```bash
