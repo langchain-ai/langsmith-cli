@@ -666,15 +666,16 @@ langsmith was installed.
 ### `setup` — Install LangSmith skills and MCP into coding agents
 
 Detects Claude Code, Cursor, and Codex on this machine and installs the
-[LangSmith skills](https://github.com/langchain-ai/langsmith-skills) and the hosted
+[LangChain skills](https://github.com/langchain-ai/langchain-skills) and the hosted
 LangSmith MCP server into each one. It prints the plan, asks before writing, and a
-second run changes nothing. It never replaces an MCP entry named `langsmith` or a
+second run changes nothing. It replaces skills from the retired `langsmith-skills`
+package that it installed earlier. It never replaces an MCP entry named `langsmith` or a
 skill directory it didn't write unless you pass `--force`. No API key is written:
 each agent signs in to the MCP server with OAuth.
 
 | Agent | Skills | MCP server |
 |-------|--------|------------|
-| Claude Code | `langsmith-skills` plugin, via `claude plugin install` | user-scope `langsmith`, via `claude mcp add` |
+| Claude Code | `langchain-skills` plugin, via `claude plugin install` | user-scope `langsmith`, via `claude mcp add` |
 | Cursor | `~/.cursor/skills/<skill>` | `mcpServers.langsmith` in `~/.cursor/mcp.json` |
 | Codex | `$CODEX_HOME/skills/<skill>` | `[mcp_servers.langsmith]` in `$CODEX_HOME/config.toml` |
 
