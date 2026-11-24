@@ -229,6 +229,8 @@ on LangSmith Cloud and BYOC, not standalone self-hosted deployments.
 
 Commands print human-readable tables and trees by default. From 1.0.0, output that is piped or redirected defaults to JSON; until then such output stays pretty and the CLI warns on stderr. Pass `--format` to choose explicitly. Every command also takes `--json`, which is the same as `--format json`; combining it with a different `--format` is an error.
 
+Stdout carries only the result. Notes about it go to stderr, once per command: the profile and workspace used when more than one profile is saved, a list that stopped at `--limit` while more items match, and a run or trace list that only searched the default 7-day window. With `--format json` or `--jq` each note is one JSON object per line with a `notice` field (`active_profile`, `truncated`, `default_time_window`).
+
 ```bash
 langsmith traces list --project my-app
 ```
