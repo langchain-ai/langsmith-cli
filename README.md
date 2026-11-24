@@ -521,22 +521,40 @@ langsmith evaluator rule list --evaluator-id <evaluator-id>
 langsmith evaluator rule get <rule-id>
 langsmith evaluator rule delete accuracy --dataset my-eval-set --yes
 
-# Upload an offline evaluator (for experiments)
-langsmith evaluator upload evals.py \
-  --name accuracy --function check_accuracy --dataset my-eval-set
+# Upload an offline evaluator (for experiments). The file is sent unchanged, so
+# imports and helpers are kept; it must define perform_eval (Python) or
+# performEval (JavaScript/TypeScript) itself.
+langsmith evaluator upload evals.py --name accuracy --dataset my-eval-set
 
 # Upload an online evaluator (for production monitoring)
-langsmith evaluator upload evals.py \
-  --name latency-check --function check_latency --project my-app
+langsmith evaluator upload evals.py --name latency-check --project my-app
 
 # Set sampling rate (evaluate a fraction of runs, 0.0-1.0)
-langsmith evaluator upload evals.py \
-  --name latency-check --function check_latency --project my-app --sampling-rate 0.5
+langsmith evaluator upload evals.py --name latency-check --project my-app --sampling-rate 0.5
 
-# Replace an existing evaluator's code. The rule keeps its sampling rate, filters,
+# Upload an advanced evaluator, which runs in a sandbox, defines evaluate(ctx), and can install
+# dependencies (requirements.txt or package.json, sent as is) and use workspace
+# secrets. The command waits for the build and exits non-zero if it fails;
+# --no-wait returns right away. Uploads that contain what looks like a hardcoded
+# credential are refused unless you pass --ignore-credential-check, and advanced
+# evaluators that import modules from their own folder are refused unless you
+# pass --ignore-import-check.
+langsmith evaluator upload evals.py --name accuracy --dataset my-eval-set \
+  --advanced --dependencies requirements.txt --workspace-secret OPENAI_API_KEY
+
+# Score whole threads or trajectories (advanced only): --input thread,
+# all_messages, human_ai_pairs, first_human_last_ai, or trajectory
+langsmith evaluator upload thread_eval.py --name resolution --project my-app \
+  --advanced --input thread
+
+# Replace an existing evaluator's code. The evaluator stays an advanced evaluator
+# or not, unless you pass --advanced. The rule keeps its sampling rate, filters,
 # webhooks, and other actions unless you pass --sampling-rate or --trace-filter.
-langsmith evaluator upload evals.py \
-  --name accuracy --function check_accuracy_v2 --dataset my-eval-set --replace --yes
+langsmith evaluator upload evals.py --name accuracy --dataset my-eval-set --replace --yes
+
+# --function is deprecated and is removed in 1.0.0. It uploads one function,
+# renamed to perform_eval/performEval, without the rest of the file, and cannot
+# be combined with --advanced, --dependencies, --workspace-secret, --input, or --no-wait.
 
 # Create an LLM-as-judge evaluator (--model-config is always required)
 # model.json: copy the structured.model block from an existing evaluator or the UI.
