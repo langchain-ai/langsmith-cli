@@ -254,6 +254,23 @@ langsmith traces list --project my-app --jq '.[].trace_id'
 langsmith agents list --jq 'map(select(.name == "support")) | .[0].id'
 ```
 
+## Exit codes
+
+Every failure exits 1 until 1.0.0, which switches every command, including the ones generated from the API, to the detailed codes below so a script or agent can tell a retryable failure from one it has to fix. Set `LANGSMITH_EXIT_CODES=detailed` to use them now. Until then, a failure whose code will change writes a deprecation warning to stderr naming the new code (a JSON object with `"deprecated": true` and `"kind": "exit_code"` under `--format json` or `--jq`). The error message goes to stderr.
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| 0 | Success | |
+| 1 | Bad input: invalid flags or arguments, a request the API rejected as invalid (400, 422), or any failure not listed below | Fix the input before retrying; for a failure not listed below, read the error message |
+| 2 | Authentication: no credentials, or the API rejected them (401, 403) | Check the API key, its workspace and region, or run `langsmith auth login` |
+| 3 | Not found (404, 410), including a `--project` name that matches no project | Check the ID or name |
+| 4 | Conflict or limit: the request is valid but the resource's state or the plan refuses it (409, 402) | Don't retry unchanged |
+| 5 | A `--wait` timed out before the operation finished | The operation may still finish; check its status with the ID in the output or error instead of starting it again |
+| 6 | Server error (5xx), a request timeout (408), or the API could not be reached | Retry reads with backoff. For writes, check whether the change took effect before repeating it |
+| 7 | Rate limited (429) | Retry with backoff |
+
+`langsmith sandboxes exec` is the exception: it exits with the remote command's own exit code. Scripts that only check for a non-zero exit are unaffected by the switch.
+
 ## Selecting a project
 
 Every command that operates on a project takes either `--project <name>` or
