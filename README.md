@@ -609,7 +609,7 @@ langsmith hub delete acme/my-skill --yes
 
 Identifiers use `[OWNER/]REPO` format. Omitting owner defaults to `-` (the API's "current tenant" wildcard).
 
-Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; non-empty directories without a `SKILL.md`/`AGENTS.md` marker require `--yes`.
+Push excludes `.git/`, `node_modules/`, `__pycache__/`, `.venv/`, `dist/`, `build/`, `target/`, `.next/`, `.cache/`, plus `.env*` files, common secret extensions (`.pem`, `.key`, `.pfx`, `.p12`, `.crt`), and rejects binary or oversize (>1 MiB) files. Pull wipes the destination dir before writing; a non-empty directory, including one pulled into before, asks first; pass `--yes` when stdin is not a terminal (until 1.0.0, a directory pulled into before is still replaced without it, with a deprecation warning).
 
 ### `tunnel` and `relay` — Serve private network connections
 
