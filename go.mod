@@ -2,7 +2,7 @@ module github.com/langchain-ai/langsmith-cli
 
 go 1.26.7
 
-require github.com/langchain-ai/langsmith-go v0.33.2-0.20261124211527-4edfb8a54c27
+require github.com/langchain-ai/langsmith-go v0.33.2-0.20261125041321-c22581bc70ab
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
