@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.6.0](https://github.com/langchain-ai/langsmith-cli/compare/v0.5.1...v0.6.0) (2026-11-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** add --wait and --timeout to sandboxes create and start
+
+### Features
+
+* **cli:** add --if-not-exists to datasets, prompt and agents create ([fe7368a](https://github.com/langchain-ai/langsmith-cli/commit/fe7368ae460ca1443f562f6e651a8515142e7b93))
+* **cli:** add --json as shorthand for --format json ([3ca6e52](https://github.com/langchain-ai/langsmith-cli/commit/3ca6e528a69ae9fca7a113d0b3ae397db5fd2600))
+* **cli:** add --wait and --timeout to sandboxes create and start ([44130b9](https://github.com/langchain-ai/langsmith-cli/commit/44130b93155fc9cc730a628a626453181e718ee5))
+* **cli:** add `langsmith gateway wrap` and `gateway models` for the LLM Gateway ([e3b212f](https://github.com/langchain-ai/langsmith-cli/commit/e3b212fd8f6c4690329bfaf14acf51acbfd33c4a))
+* **cli:** create examples from runs (ADX-439) ([5b05b86](https://github.com/langchain-ai/langsmith-cli/commit/5b05b8649e050c18cf3ceb35ca3966cff65487fc))
+* **cli:** experiments compare (ADX-438) ([2abe626](https://github.com/langchain-ai/langsmith-cli/commit/2abe626f75684392e237f443ccb0ab417a4a1d47))
+* **cli:** expose sandbox memory, lifecycle, snapshot, volume and file options ([41bc816](https://github.com/langchain-ai/langsmith-cli/commit/41bc8169a1904610b3ef95c4ff8754fd47a3e599))
+* **cli:** map errors to distinct exit codes, opt-in until 1.0 ([aaf9ee5](https://github.com/langchain-ai/langsmith-cli/commit/aaf9ee541b4ef498c21c23d97eadc170580eca96))
+* **cli:** name the fix command in not-found, workspace and 403 errors ([5b05b86](https://github.com/langchain-ai/langsmith-cli/commit/5b05b8649e050c18cf3ceb35ca3966cff65487fc))
+* **cli:** stderr notes for active profile, truncated lists and default time window ([1e9c326](https://github.com/langchain-ai/langsmith-cli/commit/1e9c3261d073e7c8a95a46d8f04668567fc38ddb))
+* **cli:** upload whole evaluator files and sandbox code evaluators ([8d4b793](https://github.com/langchain-ai/langsmith-cli/commit/8d4b7930409413565abf5fa9e4d0bae4f8316baf))
+* **custom-apps:** answer custom apps errors with problem details ([2dd6af0](https://github.com/langchain-ai/langsmith-cli/commit/2dd6af018bf7f424df0d8366a54c426a792a2e2e))
+* **sdks:** build sandbox snapshots from a local Dockerfile in the Go SDK and CLI ([41bc816](https://github.com/langchain-ai/langsmith-cli/commit/41bc8169a1904610b3ef95c4ff8754fd47a3e599))
+
+
+### Bug Fixes
+
+* **cli:** error on unknown subcommands (ADX-435) ([5b05b86](https://github.com/langchain-ai/langsmith-cli/commit/5b05b8649e050c18cf3ceb35ca3966cff65487fc))
+* **cli:** find trace get's project through v2, not the deprecated v1 runs query ([0915db0](https://github.com/langchain-ai/langsmith-cli/commit/0915db031d48ae184d75b35fec8042f51529b073))
+* **cli:** install the LangChain skills in langsmith setup ([87adf50](https://github.com/langchain-ai/langsmith-cli/commit/87adf50fe509cc79eac1809616d8d1579b19fb42))
+* **cli:** install the LangChain skills in langsmith setup ([5b05b86](https://github.com/langchain-ai/langsmith-cli/commit/5b05b8649e050c18cf3ceb35ca3966cff65487fc))
+* **cli:** pass session_id to feedback in the agent evals ([cf3b631](https://github.com/langchain-ai/langsmith-cli/commit/cf3b631605c09432150c6448ef22fdc20dc41617))
+* **cli:** require --yes for every destructive command (ADX-440) ([0cbfa12](https://github.com/langchain-ai/langsmith-cli/commit/0cbfa12d85431d30973f9e2fd160fb9fc39d58b5))
+* **go:** write the workspace-required auth error as problem details ([de20385](https://github.com/langchain-ai/langsmith-cli/commit/de20385fd5fcd1e882c43e531214b0067ee3c4d6))
+
+
+### Refactors
+
+* **cli:** move the CLI's code into the Go SDK module ([499ee54](https://github.com/langchain-ai/langsmith-cli/commit/499ee5492f0cac7468e0b9b1f336bcf8e3265da5))
+
+
+### Build System
+
+* **deps:** build against langsmith-go 5a67eb267395 ([5094ada](https://github.com/langchain-ai/langsmith-cli/commit/5094ada2501ef726ae80f3c8d5860e7fce97a91b))
+* **deps:** build against langsmith-go 5bb9f8108cd7 ([2c51907](https://github.com/langchain-ai/langsmith-cli/commit/2c519077ab802bae4117479f24b2d91a2aa087f7))
+* **deps:** build against langsmith-go 955ff5243952 ([865d459](https://github.com/langchain-ai/langsmith-cli/commit/865d459cd5478060c1ba122761d1bb9d06fda3d2))
+* **deps:** build against langsmith-go a064cf97b6bb ([4cfe34e](https://github.com/langchain-ai/langsmith-cli/commit/4cfe34ed28e16408ab3d242bbe66a2a8e07f8762))
+* **deps:** build against langsmith-go ae2b84931dd7 ([4366651](https://github.com/langchain-ai/langsmith-cli/commit/4366651ef37a821a045c7fc3c8e794b9ac29c1ae))
+* **deps:** build against langsmith-go fc6275d3084c ([f24ce52](https://github.com/langchain-ai/langsmith-cli/commit/f24ce5225d8021ea9f491df3605da4a6ccda720b))
+
 ## [0.5.1](https://github.com/langchain-ai/langsmith-cli/compare/v0.5.0...v0.5.1) (2026-11-20)
 
 
